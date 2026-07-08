@@ -17,6 +17,8 @@ class TaskStatusTest {
             "CREATED, SCHEDULED",
             "SCHEDULED, REMINDED",
             "REMINDED, CONFIRMED",
+            // debounce 視窗過後再次進入地點,允許重新提醒
+            "REMINDED, REMINDED",
             // 未回應升級,且可重複升級
             "REMINDED, ESCALATED",
             "ESCALATED, ESCALATED",

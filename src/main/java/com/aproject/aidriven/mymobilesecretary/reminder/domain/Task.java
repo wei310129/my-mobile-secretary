@@ -82,6 +82,19 @@ public class Task {
         transitionTo(TaskStatus.CANCELED, now);
     }
 
+    /**
+     * 已對使用者送出提醒 → REMINDED。
+     * REMINDED → REMINDED 合法(debounce 視窗過後的重新提醒)。
+     */
+    public void remind(Instant now) {
+        transitionTo(TaskStatus.REMINDED, now);
+    }
+
+    /** 任務是否還能接收提醒(已確認/取消的任務不再提醒)。 */
+    public boolean canBeReminded() {
+        return status.canTransitionTo(TaskStatus.REMINDED);
+    }
+
     /** 集中的轉換守門:非法轉換丟 INVALID_STATE_TRANSITION。 */
     private void transitionTo(TaskStatus target, Instant now) {
         if (!status.canTransitionTo(target)) {

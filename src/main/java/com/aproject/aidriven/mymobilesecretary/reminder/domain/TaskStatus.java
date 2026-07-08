@@ -36,7 +36,8 @@ public enum TaskStatus {
             // CREATED 允許直接 CONFIRMED:使用者可能在任何提醒發生前就自行完成
             case CREATED -> EnumSet.of(SCHEDULED, REMINDED, CONFIRMED, CANCELED);
             case SCHEDULED -> EnumSet.of(REMINDED, CONFIRMED, CANCELED);
-            case REMINDED -> EnumSet.of(CONFIRMED, ESCALATED, CANCELED);
+            // REMINDED → REMINDED:debounce 視窗過後再次進入地點,允許重新提醒
+            case REMINDED -> EnumSet.of(REMINDED, CONFIRMED, ESCALATED, CANCELED);
             // ESCALATED → ESCALATED:允許重複升級(第 2、3 次再提醒)
             case ESCALATED -> EnumSet.of(CONFIRMED, ESCALATED, CANCELED);
             case CONFIRMED, CANCELED -> EnumSet.noneOf(TaskStatus.class);

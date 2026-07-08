@@ -1,0 +1,16 @@
+# 本機開發:連 compose.yaml 起的 PostGIS 與 Redis
+spring:
+  datasource:
+    url: jdbc:postgresql://localhost:5432/mymobilesecretary
+    username: mms
+    password: mms-local-dev
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+management:
+  endpoint:
+    health:
+      # 本機直接看完整健康細節,方便排查 DB/Redis 連線
+      show-details: always

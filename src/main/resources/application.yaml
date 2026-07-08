@@ -1,3 +1,22 @@
+# 共用設定;環境差異放各 profile 檔(local/test/prod)
 spring:
   application:
     name: my-mobile-secretary
+  profiles:
+    # 沒指定 profile 時預設當本機開發
+    default: local
+  threads:
+    virtual:
+      # Java 21 虛擬執行緒:規劃引擎平行呼叫外部 API 的基礎
+      enabled: true
+  jpa:
+    # schema 一律由 Flyway 管,Hibernate 只驗證不改表
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info

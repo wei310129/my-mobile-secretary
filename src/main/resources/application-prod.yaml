@@ -1,0 +1,17 @@
+# 正式環境:所有機敏設定一律走環境變數,不寫進版控
+spring:
+  datasource:
+    url: ${DB_URL}
+    username: ${DB_USERNAME}
+    password: ${DB_PASSWORD}
+  data:
+    redis:
+      host: ${REDIS_HOST}
+      port: ${REDIS_PORT:6379}
+      password: ${REDIS_PASSWORD:}
+
+management:
+  endpoint:
+    health:
+      # 對外只回 UP/DOWN,不洩漏內部元件細節
+      show-details: never

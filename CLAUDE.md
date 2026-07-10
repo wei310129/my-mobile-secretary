@@ -34,7 +34,9 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 **薄手機、厚後端。** 所有判斷、規劃、記憶都在後端;手機端只做感測、顯示、通知。這確保未來 Android 版只需重寫薄殼,LLM 與外部 API 整合天生屬伺服器端。
 
-**後端採模組化單體(modular monolith)**——單一 Spring Boot 專案,靠 package 邊界維持分工,模組間只透過介面與事件溝通,未來可直接拆微服務。基礎套件:`com.aproject.aidriven.mymobilesecretary`。規劃中的模組:`api`、`geo`、`reminder`、`planner`、`knowledge`、`integration`、`shared`(詳細子結構見開發計畫第 6 節)。
+**後端採模組化單體(modular monolith)**——單一 Spring Boot 專案,靠 package 邊界維持分工,模組間只透過介面與事件溝通,未來可直接拆微服務。基礎套件:`com.aproject.aidriven.mymobilesecretary`。規劃中的模組:`api`、`geo`、`reminder`、`planner`、`schedule`(Phase 2 起,行程與可行性把關)、`knowledge`、`integration`、`shared`(詳細子結構見開發計畫第 6 節)。
+
+**多使用者(家庭共享)排 Phase 5**:在那之前系統維持單人設計,新資料表**不要**預加 user_id(Phase 5 一次遷移);位置事件永遠不共享。
 
 依賴方向必須守住:
 - `api` → application service → `domain`;`api` 不直接呼叫 repository。

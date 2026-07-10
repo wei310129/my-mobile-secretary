@@ -1,0 +1,118 @@
+### VS Code REST Client 檔(裝 "REST Client" 擴充後,點各請求上方的 Send Request)
+### 後端須先啟動:docker compose up -d 然後 .\mvnw.cmd spring-boot:run
+
+@baseUrl = http://localhost:8080
+
+### 健康檢查
+GET {{baseUrl}}/actuator/health
+
+### ── 任務 ──────────────────────────────
+
+### 建立任務(地點型:之後用 geofence 綁地點)
+POST {{baseUrl}}/api/tasks
+Content-Type: application/json
+
+{
+  "title": "買排骨",
+  "description": "菜市場 10 點前,晚了就買不到",
+  "priority": "HIGH"
+}
+
+### 建立任務(時間型:dueAt 到點自動提醒;UTC 時間)
+POST {{baseUrl}}/api/tasks
+Content-Type: application/json
+
+{
+  "title": "繳學費",
+  "dueAt": "2026-07-15T01:00:00Z"
+}
+
+### 列出任務
+GET {{baseUrl}}/api/tasks
+
+### 查單一任務
+GET {{baseUrl}}/api/tasks/1
+
+### 完成任務
+PATCH {{baseUrl}}/api/tasks/1/confirm
+
+### 取消任務
+PATCH {{baseUrl}}/api/tasks/1/cancel
+
+### ── 地點 ──────────────────────────────
+
+### 建立地點
+POST {{baseUrl}}/api/places
+Content-Type: application/json
+
+{
+  "name": "全聯",
+  "address": "台北市信義區",
+  "latitude": 25.0330,
+  "longitude": 121.5654,
+  "type": "超市"
+}
+
+### 列出地點
+GET {{baseUrl}}/api/places
+
+### ── geofence 規則 ─────────────────────
+
+### 任務綁地點(進入半徑 200 公尺內提醒)
+POST {{baseUrl}}/api/tasks/1/geofence-rules
+Content-Type: application/json
+
+{
+  "placeId": 1,
+  "radiusMeters": 200,
+  "triggerType": "ENTER"
+}
+
+### ── 位置事件(模擬手機)────────────────
+
+### 我到了(MANUAL_PING 視同進入)
+POST {{baseUrl}}/api/location-events
+Content-Type: application/json
+
+{
+  "eventType": "MANUAL_PING",
+  "latitude": 25.0330,
+  "longitude": 121.5654,
+  "source": "rest-client"
+}
+
+### 進入區域
+POST {{baseUrl}}/api/location-events
+Content-Type: application/json
+
+{
+  "eventType": "ENTER",
+  "latitude": 25.0330,
+  "longitude": 121.5654,
+  "source": "rest-client"
+}
+
+### 離開區域
+POST {{baseUrl}}/api/location-events
+Content-Type: application/json
+
+{
+  "eventType": "EXIT",
+  "latitude": 25.0330,
+  "longitude": 121.5654,
+  "source": "rest-client"
+}
+
+### 事件歷史
+GET {{baseUrl}}/api/location-events
+
+### ── 提醒 ──────────────────────────────
+
+### 列出提醒(新到舊)
+GET {{baseUrl}}/api/reminders
+
+### 查單一提醒
+GET {{baseUrl}}/api/reminders/1
+
+### 確認提醒已處理(催促鏈停止)
+PATCH {{baseUrl}}/api/reminders/1/confirm

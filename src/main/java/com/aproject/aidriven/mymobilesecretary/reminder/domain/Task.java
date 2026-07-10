@@ -95,6 +95,19 @@ public class Task {
         return status.canTransitionTo(TaskStatus.REMINDED);
     }
 
+    /**
+     * 提醒後未確認,升級再提醒 → ESCALATED。
+     * ESCALATED → ESCALATED 合法(第 2、3 次催促)。
+     */
+    public void escalate(Instant now) {
+        transitionTo(TaskStatus.ESCALATED, now);
+    }
+
+    /** 任務是否可被升級催促(只有 REMINDED/ESCALATED 可以;已結案或還沒提醒過的不行)。 */
+    public boolean canBeEscalated() {
+        return status.canTransitionTo(TaskStatus.ESCALATED);
+    }
+
     /** 集中的轉換守門:非法轉換丟 INVALID_STATE_TRANSITION。 */
     private void transitionTo(TaskStatus target, Instant now) {
         if (!status.canTransitionTo(target)) {

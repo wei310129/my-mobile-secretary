@@ -58,6 +58,19 @@ public class Reminder {
     }
 
     /**
+     * 逾時未確認,升級催促。允許從 TRIGGERED 或 ESCALATED(重複催促)進入;
+     * 已 CONFIRMED 的提醒不可再升級。
+     */
+    public void escalate(Instant now) {
+        if (status == ReminderStatus.CONFIRMED) {
+            throw new BusinessException(
+                    "INVALID_STATE_TRANSITION",
+                    "Reminder %d is already confirmed and cannot be escalated".formatted(id));
+        }
+        this.status = ReminderStatus.ESCALATED;
+    }
+
+    /**
      * 使用者確認收到並處理了這次提醒。
      * 注意:確認「提醒」不等於確認「任務」完成——任務閉環由 /api/tasks/{id}/confirm 負責。
      */

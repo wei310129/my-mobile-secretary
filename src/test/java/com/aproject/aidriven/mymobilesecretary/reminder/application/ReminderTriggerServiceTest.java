@@ -33,6 +33,7 @@ class ReminderTriggerServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-07-09T10:00:00Z");
     private static final Duration WINDOW = Duration.ofMinutes(10);
+    private static final Duration ESCALATION_INTERVAL = Duration.ofMinutes(15);
 
     @Mock
     private TaskRepository taskRepository;
@@ -43,13 +44,16 @@ class ReminderTriggerServiceTest {
     @Mock
     private ReminderDeliveryService deliveryService;
 
+    @Mock
+    private ReminderScheduleService scheduleService;
+
     private ReminderTriggerService service;
 
     @BeforeEach
     void setUp() {
         service = new ReminderTriggerService(
-                taskRepository, reminderRepository, deliveryService,
-                new ReminderProperties(WINDOW),
+                taskRepository, reminderRepository, deliveryService, scheduleService,
+                new ReminderProperties(WINDOW, ESCALATION_INTERVAL, 3),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -102,7 +106,8 @@ class ReminderTriggerServiceTest {
         assertThat(result.get().getTriggerReason()).isEqualTo("ENTER geofence: 全聯");
         assertThat(result.get().getTriggeredAt()).isEqualTo(NOW);
         assertThat(task.getStatus()).isEqualTo(TaskStatus.REMINDED);
-        // 觸發成功必須送出通知
+        // 觸發成功必須送出通知,並排入第一次升級催促
         verify(deliveryService).deliver(result.get(), task);
+        verify(scheduleService).scheduleEscalation(result.get().getId(), 1, NOW.plus(ESCALATION_INTERVAL));
     }
 }

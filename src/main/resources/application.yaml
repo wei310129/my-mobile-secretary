@@ -22,9 +22,18 @@ management:
         include: health,info
 
 app:
+  scheduling:
+    # 背景排程(延遲提醒佇列輪詢);測試環境關閉改為直接呼叫
+    enabled: true
   reminder:
     # 同一任務兩次提醒的最小間隔(同地點重複進出不重複轟炸)
     debounce-window: 10m
+    # 提醒後未確認,多久後升級催促
+    escalation-interval: 15m
+    # 最多催促次數,之後不再輪
+    max-escalations: 3
+    # 延遲佇列輪詢間隔
+    poll-interval: 5s
   notification:
     windows-toast:
       # 預設關閉;只在本機開發(local profile)打開

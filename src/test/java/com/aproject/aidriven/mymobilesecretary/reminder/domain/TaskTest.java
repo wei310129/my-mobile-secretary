@@ -53,4 +53,29 @@ class TaskTest {
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("code", "INVALID_STATE_TRANSITION");
     }
+
+    /** 提醒後可升級,且可重複升級(第 2、3 次催促)。 */
+    @Test
+    void escalateAfterRemindAndRepeatedly() {
+        Task task = Task.create("買排骨", null, TaskPriority.NORMAL, null, T0);
+        task.remind(T1);
+
+        task.escalate(T1);
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.ESCALATED);
+        assertThat(task.canBeEscalated()).isTrue();
+
+        task.escalate(T1);
+        assertThat(task.getStatus()).isEqualTo(TaskStatus.ESCALATED);
+    }
+
+    /** 還沒提醒過的任務不可直接升級。 */
+    @Test
+    void escalateBeforeRemindIsRejected() {
+        Task task = Task.create("買排骨", null, TaskPriority.NORMAL, null, T0);
+
+        assertThat(task.canBeEscalated()).isFalse();
+        assertThatThrownBy(() -> task.escalate(T1))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "INVALID_STATE_TRANSITION");
+    }
 }

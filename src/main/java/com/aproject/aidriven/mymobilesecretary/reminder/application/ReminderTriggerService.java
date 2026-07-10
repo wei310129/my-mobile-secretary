@@ -26,17 +26,20 @@ public class ReminderTriggerService {
     private final TaskRepository taskRepository;
     private final ReminderRepository reminderRepository;
     private final ReminderDeliveryService deliveryService;
+    private final ReminderScheduleService scheduleService;
     private final ReminderProperties properties;
     private final Clock clock;
 
     public ReminderTriggerService(TaskRepository taskRepository,
                                   ReminderRepository reminderRepository,
                                   ReminderDeliveryService deliveryService,
+                                  ReminderScheduleService scheduleService,
                                   ReminderProperties properties,
                                   Clock clock) {
         this.taskRepository = taskRepository;
         this.reminderRepository = reminderRepository;
         this.deliveryService = deliveryService;
+        this.scheduleService = scheduleService;
         this.properties = properties;
         this.clock = clock;
     }
@@ -69,6 +72,9 @@ public class ReminderTriggerService {
 
         // 立即送出到所有通道;送出失敗只會被記錄,不影響提醒本身
         deliveryService.deliver(reminder, task);
+
+        // 排入第一次升級催促:逾時未確認就再提醒(追蹤到底,秘書與鬧鐘的差別)
+        scheduleService.scheduleEscalation(reminder.getId(), 1, now.plus(properties.escalationInterval()));
         return Optional.of(reminder);
     }
 }

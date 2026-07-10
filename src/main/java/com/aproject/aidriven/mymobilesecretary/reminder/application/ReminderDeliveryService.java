@@ -40,12 +40,19 @@ public class ReminderDeliveryService {
     }
 
     /**
-     * 對所有通道送出提醒,每通道各記一筆成敗。
-     * 一個通道失敗不影響其他通道繼續送。
+     * 對所有通道送出提醒,內文用提醒的觸發原因。
      */
     public void deliver(Reminder reminder, Task task) {
+        deliver(reminder, task, reminder.getTriggerReason());
+    }
+
+    /**
+     * 對所有通道送出提醒,每通道各記一筆成敗;內文可覆寫(升級催促用)。
+     * 一個通道失敗不影響其他通道繼續送。
+     */
+    public void deliver(Reminder reminder, Task task, String message) {
         ReminderNotification notification = new ReminderNotification(
-                reminder.getId(), task.getId(), task.getTitle(), reminder.getTriggerReason());
+                reminder.getId(), task.getId(), task.getTitle(), message);
 
         for (NotificationSender sender : senders) {
             String channel = sender.channel().name();

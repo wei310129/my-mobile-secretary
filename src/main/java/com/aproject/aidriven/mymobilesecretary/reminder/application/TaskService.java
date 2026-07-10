@@ -19,21 +19,28 @@ import org.springframework.transaction.annotation.Transactional;
 public class TaskService {
 
     private final TaskRepository taskRepository;
+    private final ReminderScheduleService scheduleService;
     private final Clock clock;
 
-    public TaskService(TaskRepository taskRepository, Clock clock) {
+    public TaskService(TaskRepository taskRepository, ReminderScheduleService scheduleService, Clock clock) {
         this.taskRepository = taskRepository;
+        this.scheduleService = scheduleService;
         this.clock = clock;
     }
 
     /**
      * 建立新任務(初始狀態 CREATED)。
+     * 有期限的任務自動排入到期提醒;到期時該不該提醒由觸發服務守門
+     * (任務屆時已確認/取消就不會響)。
      *
      * @param priority 呼叫端未指定時由 API 層預設 NORMAL
      */
     public Task createTask(String title, String description, TaskPriority priority, Instant dueAt) {
-        Task task = Task.create(title, description, priority, dueAt, Instant.now(clock));
-        return taskRepository.save(task);
+        Task task = taskRepository.save(Task.create(title, description, priority, dueAt, Instant.now(clock)));
+        if (dueAt != null) {
+            scheduleService.scheduleDueReminder(task.getId(), dueAt);
+        }
+        return task;
     }
 
     @Transactional(readOnly = true)

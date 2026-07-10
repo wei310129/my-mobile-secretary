@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.reminder.domain;
 
+import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -54,6 +55,20 @@ public class Reminder {
     /** 建立一筆已觸發的提醒。 */
     public static Reminder triggered(Long taskId, String triggerReason, Instant now) {
         return new Reminder(taskId, triggerReason, now);
+    }
+
+    /**
+     * 使用者確認收到並處理了這次提醒。
+     * 注意:確認「提醒」不等於確認「任務」完成——任務閉環由 /api/tasks/{id}/confirm 負責。
+     */
+    public void confirm(Instant now) {
+        if (status == ReminderStatus.CONFIRMED) {
+            throw new BusinessException(
+                    "INVALID_STATE_TRANSITION",
+                    "Reminder %d is already confirmed".formatted(id));
+        }
+        this.status = ReminderStatus.CONFIRMED;
+        this.confirmedAt = now;
     }
 
     public Long getId() {

@@ -1,4 +1,10 @@
 # 本機開發:連 compose.yaml 起的 PostGIS 與 Redis
+app:
+  notification:
+    windows-toast:
+      # 本機開發時提醒直接跳 Windows 桌面通知
+      enabled: true
+
 spring:
   datasource:
     url: jdbc:postgresql://localhost:5432/mymobilesecretary

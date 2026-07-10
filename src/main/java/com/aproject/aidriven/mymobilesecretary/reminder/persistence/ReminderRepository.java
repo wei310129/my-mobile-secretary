@@ -12,4 +12,7 @@ public interface ReminderRepository extends JpaRepository<Reminder, Long> {
 
     /** debounce 用:任務在某時點之後是否已觸發過提醒。 */
     boolean existsByTaskIdAndTriggeredAtAfter(Long taskId, Instant threshold);
+
+    /** 依觸發時間新到舊列出。 */
+    List<Reminder> findAllByOrderByTriggeredAtDesc();
 }

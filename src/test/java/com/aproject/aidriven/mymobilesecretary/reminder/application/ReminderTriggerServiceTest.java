@@ -40,12 +40,15 @@ class ReminderTriggerServiceTest {
     @Mock
     private ReminderRepository reminderRepository;
 
+    @Mock
+    private ReminderDeliveryService deliveryService;
+
     private ReminderTriggerService service;
 
     @BeforeEach
     void setUp() {
         service = new ReminderTriggerService(
-                taskRepository, reminderRepository,
+                taskRepository, reminderRepository, deliveryService,
                 new ReminderProperties(WINDOW),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
@@ -99,5 +102,7 @@ class ReminderTriggerServiceTest {
         assertThat(result.get().getTriggerReason()).isEqualTo("ENTER geofence: 全聯");
         assertThat(result.get().getTriggeredAt()).isEqualTo(NOW);
         assertThat(task.getStatus()).isEqualTo(TaskStatus.REMINDED);
+        // 觸發成功必須送出通知
+        verify(deliveryService).deliver(result.get(), task);
     }
 }

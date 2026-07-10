@@ -25,15 +25,18 @@ public class ReminderTriggerService {
 
     private final TaskRepository taskRepository;
     private final ReminderRepository reminderRepository;
+    private final ReminderDeliveryService deliveryService;
     private final ReminderProperties properties;
     private final Clock clock;
 
     public ReminderTriggerService(TaskRepository taskRepository,
                                   ReminderRepository reminderRepository,
+                                  ReminderDeliveryService deliveryService,
                                   ReminderProperties properties,
                                   Clock clock) {
         this.taskRepository = taskRepository;
         this.reminderRepository = reminderRepository;
+        this.deliveryService = deliveryService;
         this.properties = properties;
         this.clock = clock;
     }
@@ -62,6 +65,10 @@ public class ReminderTriggerService {
         }
 
         task.remind(now);
-        return Optional.of(reminderRepository.save(Reminder.triggered(taskId, reason, now)));
+        Reminder reminder = reminderRepository.save(Reminder.triggered(taskId, reason, now));
+
+        // 立即送出到所有通道;送出失敗只會被記錄,不影響提醒本身
+        deliveryService.deliver(reminder, task);
+        return Optional.of(reminder);
     }
 }

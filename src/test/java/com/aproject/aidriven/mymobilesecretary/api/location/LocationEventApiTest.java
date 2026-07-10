@@ -90,6 +90,18 @@ class LocationEventApiTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"));
     }
 
+    /** 不存在的 enum 值(壞 request body)→ 400,不能誤判成 500。 */
+    @Test
+    void invalidEventTypeEnumReturns400() throws Exception {
+        mockMvc.perform(post("/api/location-events")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"eventType": "TELEPORT", "latitude": 25.0, "longitude": 121.5}
+                                """))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MALFORMED_REQUEST"));
+    }
+
     /** 驗收核心:模擬進入綁定地點半徑內 → 建立提醒、任務轉 REMINDED。 */
     @Test
     void enterInsideRadiusTriggersReminderAndMovesTaskToReminded() throws Exception {

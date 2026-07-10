@@ -89,6 +89,14 @@ class TaskApiTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }
 
+    /** 路徑參數不是數字 → 400(不能誤判成 500)。 */
+    @Test
+    void nonNumericTaskIdReturns400() throws Exception {
+        mockMvc.perform(get("/api/tasks/{id}", "abc"))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("INVALID_PARAMETER"));
+    }
+
     @Test
     void confirmTaskMovesToConfirmed() throws Exception {
         long id = createTask();

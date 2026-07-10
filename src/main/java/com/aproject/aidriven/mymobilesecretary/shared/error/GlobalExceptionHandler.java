@@ -7,9 +7,11 @@ import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
+import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
+import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
 
 /**
  * 全域例外處理:把四類錯誤(validation、not found、business、unexpected)
@@ -39,6 +41,28 @@ public class GlobalExceptionHandler {
                 .toList();
         ErrorResponse body = new ErrorResponse(
                 "VALIDATION_ERROR", "Request validation failed", Instant.now(clock), violations);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    /**
+     * request body 無法解析(壞 JSON、不存在的 enum 值)→ 400。
+     * 沒有這個 handler 時會落到 500,誤把客戶端錯誤當伺服器錯誤。
+     */
+    @ExceptionHandler(HttpMessageNotReadableException.class)
+    public ResponseEntity<ErrorResponse> handleUnreadable(HttpMessageNotReadableException ex) {
+        ErrorResponse body = ErrorResponse.of(
+                "MALFORMED_REQUEST", "Request body is malformed or contains invalid values", Instant.now(clock));
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
+    }
+
+    /**
+     * 路徑/查詢參數型別錯誤(例如 /api/tasks/abc)→ 400。
+     */
+    @ExceptionHandler(MethodArgumentTypeMismatchException.class)
+    public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException ex) {
+        ErrorResponse body = ErrorResponse.of(
+                "INVALID_PARAMETER", "Parameter '%s' has invalid value".formatted(ex.getName()),
+                Instant.now(clock));
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(body);
     }
 

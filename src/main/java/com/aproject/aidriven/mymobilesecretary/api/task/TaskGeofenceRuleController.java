@@ -2,7 +2,9 @@ package com.aproject.aidriven.mymobilesecretary.api.task;
 
 import com.aproject.aidriven.mymobilesecretary.geo.application.GeofenceRuleService;
 import jakarta.validation.Valid;
+import java.util.List;
 import org.springframework.http.HttpStatus;
+import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestBody;
@@ -30,5 +32,13 @@ public class TaskGeofenceRuleController {
                                            @Valid @RequestBody CreateGeofenceRuleRequest request) {
         return GeofenceRuleResponse.from(geofenceRuleService.createRule(
                 taskId, request.placeId(), request.radiusMeters(), request.triggerType()));
+    }
+
+    /** 列出任務的全部規則(含自動綁定產生的)。 */
+    @GetMapping
+    public List<GeofenceRuleResponse> listRules(@PathVariable Long taskId) {
+        return geofenceRuleService.listRulesForTask(taskId).stream()
+                .map(GeofenceRuleResponse::from)
+                .toList();
     }
 }

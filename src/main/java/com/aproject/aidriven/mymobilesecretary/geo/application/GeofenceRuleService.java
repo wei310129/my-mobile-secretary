@@ -6,6 +6,7 @@ import com.aproject.aidriven.mymobilesecretary.geo.persistence.GeofenceRuleRepos
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -47,5 +48,17 @@ public class GeofenceRuleService {
 
         GeofenceRule rule = GeofenceRule.create(taskId, placeId, radiusMeters, triggerType, Instant.now(clock));
         return geofenceRuleRepository.save(rule);
+    }
+
+    /** 同任務+同地點+同方向的規則是否已存在(自動綁定去重用)。 */
+    @Transactional(readOnly = true)
+    public boolean ruleExists(Long taskId, Long placeId, TriggerType triggerType) {
+        return geofenceRuleRepository.existsByTaskIdAndPlaceIdAndTriggerType(taskId, placeId, triggerType);
+    }
+
+    /** 列出任務的全部規則。 */
+    @Transactional(readOnly = true)
+    public List<GeofenceRule> listRulesForTask(Long taskId) {
+        return geofenceRuleRepository.findByTaskId(taskId);
     }
 }

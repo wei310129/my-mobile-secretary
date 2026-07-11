@@ -1,6 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.geo.persistence;
 
 import com.aproject.aidriven.mymobilesecretary.geo.domain.GeofenceRule;
+import com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -10,6 +11,9 @@ import org.springframework.data.repository.query.Param;
 public interface GeofenceRuleRepository extends JpaRepository<GeofenceRule, Long> {
 
     List<GeofenceRule> findByTaskId(Long taskId);
+
+    /** 自動綁定去重:同任務+同地點+同方向是否已有規則。 */
+    boolean existsByTaskIdAndPlaceIdAndTriggerType(Long taskId, Long placeId, TriggerType triggerType);
 
     /**
      * 找出事件座標命中的啟用規則:事件點落在「規則綁定地點」的半徑內,且觸發方向相符。

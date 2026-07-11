@@ -19,6 +19,8 @@
 | 家庭共享 | 排 Phase 5；Phase 2-4 新資料表「不」預加 user_id，Phase 5 開工時一次遷移 |
 | debounce | 同一任務兩次提醒最小間隔 10 分鐘（app.reminder.debounce-window 可調） |
 | 升級提醒 | 提醒後未確認，間隔 15 分鐘再提醒，最多升級 3 次 |
+| Phase 1E | 使用者決定跳過一週測試（2026-07-11）；arrive/提醒流程已人工驗證可用 |
+| Phase 2 順序 | 2A 知識庫+自動綁定 → 2B 行程模型+可行性把關 → 2C 外部資料整合 → 2D planner v1+pending 池 |
 
 ## 2. Spring Boot 版本建議
 

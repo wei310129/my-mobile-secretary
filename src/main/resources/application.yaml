@@ -38,3 +38,6 @@ app:
     windows-toast:
       # 預設關閉;只在本機開發(local profile)打開
       enabled: false
+  knowledge:
+    # 品項自動綁定時建立的 geofence 半徑
+    auto-bind-radius-meters: 200

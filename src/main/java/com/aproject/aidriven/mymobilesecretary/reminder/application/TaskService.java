@@ -7,6 +7,7 @@ import com.aproject.aidriven.mymobilesecretary.shared.error.NotFoundException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,11 +21,14 @@ public class TaskService {
 
     private final TaskRepository taskRepository;
     private final ReminderScheduleService scheduleService;
+    private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
-    public TaskService(TaskRepository taskRepository, ReminderScheduleService scheduleService, Clock clock) {
+    public TaskService(TaskRepository taskRepository, ReminderScheduleService scheduleService,
+                       ApplicationEventPublisher eventPublisher, Clock clock) {
         this.taskRepository = taskRepository;
         this.scheduleService = scheduleService;
+        this.eventPublisher = eventPublisher;
         this.clock = clock;
     }
 
@@ -32,6 +36,7 @@ public class TaskService {
      * 建立新任務(初始狀態 CREATED)。
      * 有期限的任務自動排入到期提醒;到期時該不該提醒由觸發服務守門
      * (任務屆時已確認/取消就不會響)。
+     * 發佈 TaskCreatedEvent 供其他模組反應(如 knowledge 的品項自動綁定)。
      *
      * @param priority 呼叫端未指定時由 API 層預設 NORMAL
      */
@@ -40,6 +45,8 @@ public class TaskService {
         if (dueAt != null) {
             scheduleService.scheduleDueReminder(task.getId(), dueAt);
         }
+        // 同交易的同步事件:回應返回前自動綁定已完成
+        eventPublisher.publishEvent(new TaskCreatedEvent(task.getId(), task.getTitle()));
         return task;
     }
 

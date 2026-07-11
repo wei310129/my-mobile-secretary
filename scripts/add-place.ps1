@@ -1,13 +1,38 @@
-﻿# 新增地點。例:
+﻿# 新增地點。座標支援 Google Maps 直接貼上(逗號可留著)。例:
 #   .\add-place.ps1 "全聯" 25.0330 121.5654 -Type "超市"
+#   .\add-place.ps1 "我家" 24.982896852652157, 121.54288248224684
+#   .\add-place.ps1 "我家" "24.982896852652157, 121.54288248224684"
 param(
     [Parameter(Mandatory, Position = 0)][string]$Name,
-    [Parameter(Mandatory, Position = 1)][double]$Lat,
-    [Parameter(Mandatory, Position = 2)][double]$Lon,
+    # 接受:兩個數字、一串 "lat, lon" 文字、或 PowerShell 把逗號解讀成的陣列
+    [Parameter(Mandatory, Position = 1)]$Lat,
+    [Parameter(Position = 2)]$Lon,
     [string]$Address,
     [string]$Type
 )
 . "$PSScriptRoot\_common.ps1"
+
+# 座標解析:把各種貼法統一成兩個 double
+if ($Lat -is [array]) {
+    # .\add-place.ps1 "我家" 24.98, 121.54 → 逗號讓 PowerShell 綁成陣列
+    $Lon = $Lat[1]; $Lat = $Lat[0]
+} elseif ("$Lat" -match ",") {
+    # .\add-place.ps1 "我家" "24.98, 121.54" → 單一字串含逗號
+    $parts = "$Lat" -split "," | ForEach-Object { $_.Trim() } | Where-Object { $_ }
+    $Lat = $parts[0]; $Lon = $parts[1]
+}
+if ($null -eq $Lon) {
+    Write-Host "缺少經度。用法:.\add-place.ps1 `"名稱`" 緯度 經度(或直接貼 Google Maps 的「緯度, 經度」)" -ForegroundColor Yellow
+    exit 1
+}
+# 去掉殘留的逗號後轉數字;轉不動就報清楚的錯
+try {
+    $Lat = [double]("$Lat".TrimEnd(","))
+    $Lon = [double]("$Lon".TrimEnd(","))
+} catch {
+    Write-Host "座標看不懂:Lat=$Lat Lon=$Lon。範例:.\add-place.ps1 `"我家`" 24.9828 121.5428" -ForegroundColor Yellow
+    exit 1
+}
 
 $body = @{ name = $Name; latitude = $Lat; longitude = $Lon }
 if ($Address) { $body.address = $Address }

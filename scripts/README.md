@@ -36,7 +36,20 @@ cd scripts
 提醒行為(數值見 application.yaml):
 - 同一任務 10 分鐘內不重複提醒(debounce)
 - 提醒後 15 分鐘沒確認 → 催促,最多 3 次
-- 座標可從 Google Maps 上點右鍵複製
+- 座標可從 Google Maps 上點右鍵複製(逗號不用刪,直接貼)
+
+### 店中店/共用座標
+
+商場內有多個店(例:萬家福裡有特力屋、outlet)時,用 `-SameAs` 讓它們共用座標:
+
+```powershell
+.\add-place.ps1 "萬家福" 24.9718 121.5423 -Type "量販"
+.\add-place.ps1 "特力屋" -SameAs "萬家福" -Type "居家修繕"
+.\add-place.ps1 "萬家福outlet" -SameAs "萬家福" -Type "outlet"
+```
+
+geofence 命中是**純空間判斷**(比距離,不比地點身分),所以人到商場
+`.\arrive.ps1 "萬家福"` 一次,綁在特力屋、outlet 上的任務也會一起觸發。
 
 ## api.http
 

@@ -18,7 +18,13 @@ function Invoke-Api {
         $params.Body = [System.Text.Encoding]::UTF8.GetBytes($json)
     }
     try {
-        Invoke-RestMethod @params
+        # 不用 Invoke-RestMethod:PS 5.1 對沒標 charset 的回應用 ISO-8859-1 解碼,中文會變亂碼。
+        # 改拿原始 bytes 強制以 UTF-8 解碼再解析 JSON。
+        $resp = Invoke-WebRequest @params -UseBasicParsing
+        $bytes = $resp.RawContentStream.ToArray()
+        if ($bytes.Length -gt 0) {
+            [System.Text.Encoding]::UTF8.GetString($bytes) | ConvertFrom-Json
+        }
     } catch {
         # 把後端的 ErrorResponse 印出來,而不是 PowerShell 的原始例外
         $resp = $_.Exception.Response

@@ -69,6 +69,11 @@
             <groupId>org.springframework.boot</groupId>
             <artifactId>spring-boot-starter-data-redis</artifactId>
         </dependency>
+        <!-- Spring Cache abstraction (backed by Redis) for external API results -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-cache</artifactId>
+        </dependency>
 
         <!-- Test: JUnit 5 / AssertJ / Mockito / MockMvc -->
         <dependency>

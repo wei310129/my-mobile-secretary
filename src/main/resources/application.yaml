@@ -2,6 +2,9 @@
 spring:
   application:
     name: my-mobile-secretary
+  config:
+    # 機密(API 金鑰)放專案根目錄的 secrets.yaml,已 gitignore;沒有該檔也能啟動
+    import: optional:file:./secrets.yaml
   profiles:
     # 沒指定 profile 時預設當本機開發
     default: local

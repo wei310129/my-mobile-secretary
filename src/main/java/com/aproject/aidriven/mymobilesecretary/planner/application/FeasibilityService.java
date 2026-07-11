@@ -1,6 +1,5 @@
 package com.aproject.aidriven.mymobilesecretary.planner.application;
 
-import com.aproject.aidriven.mymobilesecretary.geo.domain.GeoDistance;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.LocationEventRepository;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
@@ -37,18 +36,18 @@ public class FeasibilityService {
     private final ScheduleItemRepository scheduleItemRepository;
     private final PlaceRepository placeRepository;
     private final LocationEventRepository locationEventRepository;
-    private final FeasibilityProperties properties;
+    private final TravelTimeEstimator travelTimeEstimator;
     private final Clock clock;
 
     public FeasibilityService(ScheduleItemRepository scheduleItemRepository,
                               PlaceRepository placeRepository,
                               LocationEventRepository locationEventRepository,
-                              FeasibilityProperties properties,
+                              TravelTimeEstimator travelTimeEstimator,
                               Clock clock) {
         this.scheduleItemRepository = scheduleItemRepository;
         this.placeRepository = placeRepository;
         this.locationEventRepository = locationEventRepository;
-        this.properties = properties;
+        this.travelTimeEstimator = travelTimeEstimator;
         this.clock = clock;
     }
 
@@ -110,7 +109,10 @@ public class FeasibilityService {
             Place prevPlace = placeRepository.findById(previous.get().getPlaceId()).orElse(null);
             if (prevPlace != null) {
                 Duration gap = Duration.between(previous.get().getEndAt(), candidate.getStartAt());
-                Duration need = travelTime(prevPlace.getLatitude(), prevPlace.getLongitude(), candidatePlace);
+                Duration need = travelTimeEstimator.estimate(
+                        prevPlace.getLatitude(), prevPlace.getLongitude(),
+                        candidatePlace.getLatitude(), candidatePlace.getLongitude(),
+                        previous.get().getEndAt());
                 if (need.compareTo(gap) > 0) {
                     issues.add(new FeasibilityIssue(
                             FeasibilityIssue.Type.TRAVEL_FROM_PREVIOUS,
@@ -123,8 +125,11 @@ public class FeasibilityService {
         } else {
             // 2. 沒有前行程 → 從最後已知位置、以「現在」為出發時間驗算
             locationEventRepository.findTopByOrderByOccurredAtDesc().ifPresent(last -> {
-                Duration gap = Duration.between(Instant.now(clock), candidate.getStartAt());
-                Duration need = travelTime(last.getLatitude(), last.getLongitude(), candidatePlace);
+                Instant now = Instant.now(clock);
+                Duration gap = Duration.between(now, candidate.getStartAt());
+                Duration need = travelTimeEstimator.estimate(
+                        last.getLatitude(), last.getLongitude(),
+                        candidatePlace.getLatitude(), candidatePlace.getLongitude(), now);
                 if (gap.isNegative() || need.compareTo(gap) > 0) {
                     issues.add(new FeasibilityIssue(
                             FeasibilityIssue.Type.TRAVEL_FROM_CURRENT_LOCATION,
@@ -147,7 +152,10 @@ public class FeasibilityService {
                         return;
                     }
                     Duration gap = Duration.between(candidate.getEndAt(), next.getStartAt());
-                    Duration need = travelTime(candidatePlace.getLatitude(), candidatePlace.getLongitude(), nextPlace);
+                    Duration need = travelTimeEstimator.estimate(
+                            candidatePlace.getLatitude(), candidatePlace.getLongitude(),
+                            nextPlace.getLatitude(), nextPlace.getLongitude(),
+                            candidate.getEndAt());
                     if (need.compareTo(gap) > 0) {
                         issues.add(new FeasibilityIssue(
                                 FeasibilityIssue.Type.TRAVEL_TO_NEXT,
@@ -159,10 +167,4 @@ public class FeasibilityService {
                 });
     }
 
-    private Duration travelTime(double fromLat, double fromLon, Place to) {
-        double meters = GeoDistance.metersBetween(fromLat, fromLon, to.getLatitude(), to.getLongitude());
-        // 直線距離 ÷ 假設速度 + 固定轉場緩衝(保守估計,寧可誤報)
-        long seconds = Math.round(meters / (properties.assumedSpeedKmh() * 1000.0 / 3600.0));
-        return Duration.ofSeconds(seconds).plus(properties.transferBuffer());
-    }
 }

@@ -31,3 +31,6 @@ build/
 
 ### VS Code ###
 .vscode/
+
+### 機密(絕不進版控)###
+secrets.yaml

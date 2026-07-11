@@ -4,6 +4,10 @@ app:
   scheduling:
     # 測試不跑背景輪詢:worker 由測試直接呼叫,確保時序可控
     enabled: false
+  integration:
+    tdx:
+      # 測試絕不打真實 TDX:交通估算直接用直線粗估
+      enabled: false
 
 spring:
   jpa:

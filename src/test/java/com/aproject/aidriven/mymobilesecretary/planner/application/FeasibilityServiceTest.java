@@ -52,9 +52,10 @@ class FeasibilityServiceTest {
 
     @BeforeEach
     void setUp() {
+        // 用直線估算器(確定性),TDX 版在 CompositeTravelTimeEstimatorTest 另測
         service = new FeasibilityService(
                 scheduleItemRepository, placeRepository, locationEventRepository,
-                new FeasibilityProperties(25, Duration.ofMinutes(10)),
+                new StraightLineTravelTimeEstimator(new FeasibilityProperties(25, Duration.ofMinutes(10))),
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 

@@ -41,3 +41,8 @@ app:
   knowledge:
     # 品項自動綁定時建立的 geofence 半徑
     auto-bind-radius-meters: 200
+  feasibility:
+    # 直線距離換算交通時間的假設速度(km/h);保守取低,寧可誤報要求確認
+    assumed-speed-kmh: 25
+    # 每段移動的固定緩衝(出門、停車、等車)
+    transfer-buffer: 10m

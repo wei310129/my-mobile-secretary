@@ -49,3 +49,19 @@ app:
     assumed-speed-kmh: 25
     # 每段移動的固定緩衝(出門、停車、等車)
     transfer-buffer: 10m
+  weather:
+    # 提醒訊息附天氣建議
+    enabled: true
+    county: 新北市
+    rain-probability-threshold: 60
+    high-temp-threshold: 34
+  pending:
+    prompt:
+      # 空閒定義:未來 1 小時沒有已確認行程
+      idle-window: 1h
+      # 最少隔 4 小時才再問一次
+      min-interval: 4h
+      # 只在白天詢問(台北時間)
+      start: "08:00"
+      end: "21:00"
+      poll-interval: 10m

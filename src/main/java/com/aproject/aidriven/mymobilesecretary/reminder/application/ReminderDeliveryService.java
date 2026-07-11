@@ -2,6 +2,7 @@ package com.aproject.aidriven.mymobilesecretary.reminder.application;
 
 import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationSender;
 import com.aproject.aidriven.mymobilesecretary.integration.notification.ReminderNotification;
+import com.aproject.aidriven.mymobilesecretary.planner.application.WeatherAdvisoryService;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Reminder;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.ReminderDelivery;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
@@ -28,14 +29,17 @@ public class ReminderDeliveryService {
 
     private final List<NotificationSender> senders;
     private final ReminderDeliveryRepository deliveryRepository;
+    private final WeatherAdvisoryService weatherAdvisoryService;
     private final Clock clock;
 
     /** senders 由 Spring 注入所有啟用的 NotificationSender(LOG 永遠在;toast 依設定)。 */
     public ReminderDeliveryService(List<NotificationSender> senders,
                                    ReminderDeliveryRepository deliveryRepository,
+                                   WeatherAdvisoryService weatherAdvisoryService,
                                    Clock clock) {
         this.senders = senders;
         this.deliveryRepository = deliveryRepository;
+        this.weatherAdvisoryService = weatherAdvisoryService;
         this.clock = clock;
     }
 
@@ -49,10 +53,14 @@ public class ReminderDeliveryService {
     /**
      * 對所有通道送出提醒,每通道各記一筆成敗;內文可覆寫(升級催促用)。
      * 一個通道失敗不影響其他通道繼續送。
+     * 有天氣風險時附上建議(取不到天氣就不附,不影響送出)。
      */
     public void deliver(Reminder reminder, Task task, String message) {
+        String finalMessage = weatherAdvisoryService.currentAdvisory()
+                .map(advisory -> message + "(" + advisory + ")")
+                .orElse(message);
         ReminderNotification notification = new ReminderNotification(
-                reminder.getId(), task.getId(), task.getTitle(), message);
+                reminder.getId(), task.getId(), task.getTitle(), finalMessage);
 
         for (NotificationSender sender : senders) {
             String channel = sender.channel().name();

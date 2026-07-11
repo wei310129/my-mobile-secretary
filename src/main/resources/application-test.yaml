@@ -8,6 +8,14 @@ app:
     tdx:
       # 測試絕不打真實 TDX:交通估算直接用直線粗估
       enabled: false
+  weather:
+    # 測試不打真實氣象署:提醒不附天氣建議
+    enabled: false
+  pending:
+    prompt:
+      # 測試時窗全開,不受執行時刻影響
+      start: "00:00"
+      end: "23:59"
 
 spring:
   jpa:

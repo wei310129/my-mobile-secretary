@@ -4,11 +4,13 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.when;
 
 import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationChannel;
 import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationException;
 import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationSender;
 import com.aproject.aidriven.mymobilesecretary.integration.notification.ReminderNotification;
+import com.aproject.aidriven.mymobilesecretary.planner.application.WeatherAdvisoryService;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Reminder;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.ReminderDelivery;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
@@ -35,6 +37,9 @@ class ReminderDeliveryServiceTest {
 
     @Mock
     private ReminderDeliveryRepository deliveryRepository;
+
+    @Mock
+    private WeatherAdvisoryService weatherAdvisoryService;
 
     /** 記下收到的通知、可設定為失敗的假 sender。 */
     private static class StubSender implements NotificationSender {
@@ -73,8 +78,10 @@ class ReminderDeliveryServiceTest {
     void successfulDeliveryIsRecordedPerChannel() {
         StubSender logSender = new StubSender(NotificationChannel.LOG, false);
         StubSender toastSender = new StubSender(NotificationChannel.WINDOWS_TOAST, false);
+        when(weatherAdvisoryService.currentAdvisory()).thenReturn(java.util.Optional.empty());
         ReminderDeliveryService service = new ReminderDeliveryService(
-                List.of(logSender, toastSender), deliveryRepository, Clock.fixed(NOW, ZoneOffset.UTC));
+                List.of(logSender, toastSender), deliveryRepository, weatherAdvisoryService,
+                Clock.fixed(NOW, ZoneOffset.UTC));
 
         service.deliver(reminder(), task());
 
@@ -89,13 +96,31 @@ class ReminderDeliveryServiceTest {
         assertThat(logSender.received.get(0).title()).isEqualTo("買排骨");
     }
 
+    /** 有天氣風險時,通知內文附上建議。 */
+    @Test
+    void weatherAdvisoryIsAppendedToMessage() {
+        StubSender logSender = new StubSender(NotificationChannel.LOG, false);
+        when(weatherAdvisoryService.currentAdvisory())
+                .thenReturn(java.util.Optional.of("降雨機率 70%,記得帶傘、東西別買太多"));
+        ReminderDeliveryService service = new ReminderDeliveryService(
+                List.of(logSender), deliveryRepository, weatherAdvisoryService,
+                Clock.fixed(NOW, ZoneOffset.UTC));
+
+        service.deliver(reminder(), task());
+
+        assertThat(logSender.received.get(0).message())
+                .isEqualTo("ENTER geofence: 全聯(降雨機率 70%,記得帶傘、東西別買太多)");
+    }
+
     /** 一個通道失敗:記失敗、不丟例外、其他通道照送。 */
     @Test
     void failingChannelIsRecordedAndOthersStillDeliver() {
         StubSender failing = new StubSender(NotificationChannel.WINDOWS_TOAST, true);
         StubSender logSender = new StubSender(NotificationChannel.LOG, false);
+        when(weatherAdvisoryService.currentAdvisory()).thenReturn(java.util.Optional.empty());
         ReminderDeliveryService service = new ReminderDeliveryService(
-                List.of(failing, logSender), deliveryRepository, Clock.fixed(NOW, ZoneOffset.UTC));
+                List.of(failing, logSender), deliveryRepository, weatherAdvisoryService,
+                Clock.fixed(NOW, ZoneOffset.UTC));
 
         // 關鍵:通知失敗絕不能讓提醒核心炸掉
         assertThatCode(() -> service.deliver(reminder(), task())).doesNotThrowAnyException();

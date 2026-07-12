@@ -1,0 +1,91 @@
+package com.aproject.aidriven.mymobilesecretary.api.intent;
+
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+import com.aproject.aidriven.mymobilesecretary.IntegrationTestBase;
+import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubIntentInterpreter;
+import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.http.MediaType;
+
+/**
+ * 意圖 API 整合測試:解析(stub)→ 驗證 → 執行 → 自動綁定/可行性把關的完整鏈。
+ */
+class IntentApiTest extends IntegrationTestBase {
+
+    @Autowired
+    private StubIntentInterpreter stub;
+
+    private void say(String text, org.springframework.test.web.servlet.ResultMatcher... matchers) throws Exception {
+        var actions = mockMvc.perform(post("/api/intent")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"text": "%s"}
+                                """.formatted(text)))
+                .andExpect(status().isOk());
+        for (var matcher : matchers) {
+            actions.andExpect(matcher);
+        }
+    }
+
+    /** 一句話建任務:標題來自 LLM 解析,不是原文照存。 */
+    @Test
+    void createTaskIntentCreatesTask() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_TASK, "買醬油膏", null, null, null, null, "NORMAL", null));
+
+        say("欸幫我記一下要買醬油膏",
+                jsonPath("$.action").value("TASK_CREATED"),
+                jsonPath("$.task.title").value("買醬油膏"),
+                jsonPath("$.task.status").value("CREATED"));
+    }
+
+    /** 一句話建行程:可行 → 直接 CONFIRMED(走真實可行性引擎)。 */
+    @Test
+    void createScheduleIntentGoesThroughFeasibilityGate() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE, "剪頭髮", null,
+                "2027-06-01T11:00:00+08:00", "2027-06-01T12:00:00+08:00", null, null, null));
+
+        say("下下下週剪頭髮",
+                jsonPath("$.action").value("SCHEDULE_CONFIRMED"),
+                jsonPath("$.schedule.schedule.title").value("剪頭髮"),
+                jsonPath("$.schedule.feasible").value(true));
+    }
+
+    /** 聽不懂 → 回問,不建任何東西。 */
+    @Test
+    void unknownIntentAsksForClarification() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.UNKNOWN, null, null, null, null, null, null, "請告訴我具體要做什麼"));
+
+        say("嗯...那個...",
+                jsonPath("$.action").value("CLARIFICATION_NEEDED"),
+                jsonPath("$.message").value("請告訴我具體要做什麼"));
+    }
+
+    /** 可靠度鐵律:LLM 失敗(stub 沒塞回覆=模擬炸掉)→ 原文存成任務,不丟資料。 */
+    @Test
+    void interpreterFailureFallsBackToPlainTask() throws Exception {
+        // 不呼叫 stub.nextCommand → interpret 會丟例外
+
+        say("這句話一定要被留下來",
+                jsonPath("$.action").value("FALLBACK_TASK_CREATED"),
+                jsonPath("$.task.title").value("這句話一定要被留下來"));
+    }
+
+    /** LLM 輸出爛時間 → 驗證擋下 → 一樣 fallback,不丟資料。 */
+    @Test
+    void invalidCommandTimeFallsBackToPlainTask() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE, "壞時間行程", null,
+                "明天十一點", "後天", null, null, null));
+
+        say("測試爛時間",
+                jsonPath("$.action").value("FALLBACK_TASK_CREATED"),
+                jsonPath("$.task.title").value("測試爛時間"));
+    }
+}

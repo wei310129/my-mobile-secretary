@@ -1,5 +1,9 @@
 package com.aproject.aidriven.mymobilesecretary;
 
+import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
+import com.aproject.aidriven.mymobilesecretary.intent.application.IntentInterpreter;
+import java.time.Instant;
+import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.boot.test.context.TestConfiguration;
 import org.springframework.boot.testcontainers.service.connection.ServiceConnection;
 import org.springframework.context.annotation.Bean;
@@ -29,5 +33,33 @@ public class TestcontainersConfiguration {
     @ServiceConnection(name = "redis")
     GenericContainer<?> redisContainer() {
         return new GenericContainer<>(DockerImageName.parse("redis:7-alpine")).withExposedPorts(6379);
+    }
+
+    /**
+     * 測試用意圖解析器:不打真實 LLM,由測試預先塞入下一個回覆。
+     * 沒塞就丟例外——順便驗證 IntentService 的 fallback 路徑。
+     */
+    public static class StubIntentInterpreter implements IntentInterpreter {
+
+        private final AtomicReference<IntentCommand> next = new AtomicReference<>();
+
+        /** 測試呼叫:設定下一次 interpret 的回傳。 */
+        public void nextCommand(IntentCommand command) {
+            next.set(command);
+        }
+
+        @Override
+        public IntentCommand interpret(String text, Instant now) {
+            IntentCommand command = next.getAndSet(null);
+            if (command == null) {
+                throw new IllegalStateException("stub has no command (simulates LLM failure)");
+            }
+            return command;
+        }
+    }
+
+    @Bean
+    StubIntentInterpreter stubIntentInterpreter() {
+        return new StubIntentInterpreter();
     }
 }

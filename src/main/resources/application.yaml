@@ -5,6 +5,14 @@ spring:
   config:
     # 機密(API 金鑰)放專案根目錄的 secrets.yaml,已 gitignore;沒有該檔也能啟動
     import: optional:file:./secrets.yaml
+  ai:
+    anthropic:
+      # 真金鑰放 secrets.yaml;沒設時 intent 呼叫會失敗並 fallback 成一般任務,核心不受影響
+      api-key: not-configured
+      chat:
+        options:
+          model: claude-opus-4-8
+          max-tokens: 1024
   profiles:
     # 沒指定 profile 時預設當本機開發
     default: local
@@ -44,6 +52,9 @@ app:
   knowledge:
     # 品項自動綁定時建立的 geofence 半徑
     auto-bind-radius-meters: 200
+  intent:
+    # LLM 意圖理解;關閉時 /api/intent 直接把原文存成任務
+    enabled: true
   feasibility:
     # 直線距離換算交通時間的假設速度(km/h);保守取低,寧可誤報要求確認
     assumed-speed-kmh: 25

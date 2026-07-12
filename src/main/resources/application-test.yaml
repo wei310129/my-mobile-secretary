@@ -11,6 +11,9 @@ app:
   weather:
     # 測試不打真實氣象署:提醒不附天氣建議
     enabled: false
+  intent:
+    # 測試不打真實 LLM:改用 TestcontainersConfiguration 裡的 stub 解析器
+    enabled: false
   pending:
     prompt:
       # 測試時窗全開,不受執行時刻影響

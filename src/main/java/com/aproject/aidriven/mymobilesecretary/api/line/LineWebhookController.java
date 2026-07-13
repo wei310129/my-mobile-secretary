@@ -1,0 +1,91 @@
+package com.aproject.aidriven.mymobilesecretary.api.line;
+
+import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessagingClient;
+import com.aproject.aidriven.mymobilesecretary.integration.line.LineProperties;
+import com.aproject.aidriven.mymobilesecretary.integration.line.LineSignatureVerifier;
+import com.aproject.aidriven.mymobilesecretary.integration.line.LineWebhookPayload;
+import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
+import com.aproject.aidriven.mymobilesecretary.intent.application.IntentService;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+import org.springframework.http.HttpStatus;
+import org.springframework.http.ResponseEntity;
+import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.RequestBody;
+import org.springframework.web.bind.annotation.RequestHeader;
+import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RestController;
+
+/**
+ * LINE webhook 入口:轉傳訊息 → 意圖解析 → 建任務/行程 → 回覆結果。
+ *
+ * 這是 architecture.md §11 的「LINE 沒有讓第三方直接讀訊息的 API,轉傳是正規解法」——
+ * 使用者手動把訊息轉傳給官方帳號 bot,bot 收到後走跟 say.ps1 一樣的 IntentService 流程。
+ *
+ * 關鍵規則:一律回 200(LINE 平台對非 200 會重送,重送會造成重複處理);
+ * 驗簽失敗回 401 是唯一例外——那代表請求根本不是 LINE 發的。
+ */
+@RestController
+@RequestMapping("/api/line")
+public class LineWebhookController {
+
+    private static final Logger log = LoggerFactory.getLogger(LineWebhookController.class);
+
+    private final LineSignatureVerifier signatureVerifier;
+    private final LineMessagingClient messagingClient;
+    private final LineProperties properties;
+    private final IntentService intentService;
+    private final ObjectMapper objectMapper;
+
+    public LineWebhookController(LineSignatureVerifier signatureVerifier,
+                                 LineMessagingClient messagingClient,
+                                 LineProperties properties,
+                                 IntentService intentService,
+                                 ObjectMapper objectMapper) {
+        this.signatureVerifier = signatureVerifier;
+        this.messagingClient = messagingClient;
+        this.properties = properties;
+        this.intentService = intentService;
+        this.objectMapper = objectMapper;
+    }
+
+    /**
+     * 接收 LINE webhook。用 raw byte[] 而不是自動反序列化的 DTO,
+     * 因為簽章驗證必須對「未被框架動過」的原始 body 計算,順序不能顛倒。
+     */
+    @PostMapping("/webhook")
+    public ResponseEntity<Void> webhook(@RequestHeader(value = "X-Line-Signature", required = false) String signature,
+                                        @RequestBody byte[] rawBody) {
+        if (!properties.usable()) {
+            // 尚未設定 channel secret/token:不驗簽(驗不了)、直接吞掉,避免誤判成攻擊
+            return ResponseEntity.ok().build();
+        }
+        if (!signatureVerifier.verify(rawBody, signature, properties.channelSecret())) {
+            log.warn("LINE webhook signature verification failed");
+            return ResponseEntity.status(HttpStatus.UNAUTHORIZED).build();
+        }
+
+        LineWebhookPayload payload;
+        try {
+            payload = objectMapper.readValue(rawBody, LineWebhookPayload.class);
+        } catch (Exception e) {
+            // 格式壞掉也回 200——這是 LINE 平台驗證請求或未知事件,不是我方要處理的錯誤
+            log.warn("LINE webhook payload unparsable", e);
+            return ResponseEntity.ok().build();
+        }
+
+        for (LineWebhookPayload.Event event : payload.events()) {
+            if (event.isTextMessage()) {
+                handleTextMessage(event);
+            }
+        }
+        return ResponseEntity.ok().build();
+    }
+
+    /** 單則文字訊息:走跟 /api/intent 相同的意圖處理,結果回覆給使用者。 */
+    private void handleTextMessage(LineWebhookPayload.Event event) {
+        IntentResult result = intentService.handle(event.message().text());
+        messagingClient.reply(event.replyToken(), result.message());
+    }
+}

@@ -8,6 +8,11 @@ app:
     tdx:
       # 測試絕不打真實 TDX:交通估算直接用直線粗估
       enabled: false
+    line:
+      # 測試用假的 channel secret,自己算簽章驗證邏輯本身(不打真實 LINE API)
+      enabled: true
+      channel-secret: test-channel-secret
+      channel-access-token: test-access-token
   weather:
     # 測試不打真實氣象署:提醒不附天氣建議
     enabled: false

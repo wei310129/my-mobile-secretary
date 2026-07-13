@@ -55,6 +55,10 @@ app:
   intent:
     # LLM 意圖理解;關閉時 /api/intent 直接把原文存成任務
     enabled: true
+  integration:
+    line:
+      # 真憑證放 secrets.yaml;未設定時 webhook 直接吞掉請求(見 LineWebhookController)
+      enabled: true
   feasibility:
     # 直線距離換算交通時間的假設速度(km/h);保守取低,寧可誤報要求確認
     assumed-speed-kmh: 25

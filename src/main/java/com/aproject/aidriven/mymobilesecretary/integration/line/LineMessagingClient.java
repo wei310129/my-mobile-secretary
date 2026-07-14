@@ -22,10 +22,10 @@ public class LineMessagingClient {
     private static final Logger log = LoggerFactory.getLogger(LineMessagingClient.class);
 
     private final RestClient restClient;
-    private final LineProperties properties;
+    private final LineTokenManager tokenManager;
 
-    public LineMessagingClient(RestClient.Builder builder, LineProperties properties) {
-        this.properties = properties;
+    public LineMessagingClient(RestClient.Builder builder, LineProperties properties, LineTokenManager tokenManager) {
+        this.tokenManager = tokenManager;
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
         factory.setConnectTimeout((int) properties.timeout().toMillis());
         factory.setReadTimeout((int) properties.timeout().toMillis());
@@ -35,12 +35,15 @@ public class LineMessagingClient {
                 .build();
     }
 
-    /** 用 reply token 回覆一則文字訊息;reply token 一次性且短效,失敗不重試。 */
+    /**
+     * 用 reply token 回覆一則文字訊息;reply token 一次性且短效,失敗不重試。
+     * 取 token 失敗(換發 stateless token 出錯)也走同一個 catch——回覆通道故障不得外洩。
+     */
     public void reply(String replyToken, String text) {
         try {
             restClient.post()
                     .uri("/v2/bot/message/reply")
-                    .header("Authorization", "Bearer " + properties.channelAccessToken())
+                    .header("Authorization", "Bearer " + tokenManager.getAccessToken())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of(
                             "replyToken", replyToken,

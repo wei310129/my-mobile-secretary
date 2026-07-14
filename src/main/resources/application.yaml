@@ -70,6 +70,19 @@ app:
     county: 新北市
     rain-probability-threshold: 60
     high-temp-threshold: 34
+  follow-up:
+    # 行程結果追蹤詢問(數值為使用者拍板;變更前先問使用者)
+    # 行程結束後多久發詢問
+    after-end: 15m
+    # GPS 離開行程地點後多久發詢問(與 after-end 先到先發)
+    after-exit: 5m
+    # 一天最多幾則追蹤詢問(台北時間換日重算)
+    daily-limit: 50
+    # 只追蹤這段時間內結束的行程(避免部署後舊行程湧入詢問)
+    lookback: 24h
+    # GPS 離開點多近才算「該行程的地點」
+    exit-radius-meters: 200
+    poll-interval: 1m
   pending:
     prompt:
       # 空閒定義:未來 1 小時沒有已確認行程

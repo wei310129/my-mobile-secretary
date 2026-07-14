@@ -5,8 +5,11 @@ import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskPriority;
+import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleFollowUpService;
+import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleFollowUpService.OutcomeRecorded;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService.ScheduleDecision;
+import com.aproject.aidriven.mymobilesecretary.schedule.domain.OutcomeReason;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -30,17 +33,20 @@ public class IntentService {
     private final ObjectProvider<IntentInterpreter> interpreterProvider;
     private final TaskService taskService;
     private final ScheduleService scheduleService;
+    private final ScheduleFollowUpService followUpService;
     private final PlaceRepository placeRepository;
     private final Clock clock;
 
     public IntentService(ObjectProvider<IntentInterpreter> interpreterProvider,
                          TaskService taskService,
                          ScheduleService scheduleService,
+                         ScheduleFollowUpService followUpService,
                          PlaceRepository placeRepository,
                          Clock clock) {
         this.interpreterProvider = interpreterProvider;
         this.taskService = taskService;
         this.scheduleService = scheduleService;
+        this.followUpService = followUpService;
         this.placeRepository = placeRepository;
         this.clock = clock;
     }
@@ -93,6 +99,21 @@ public class IntentService {
                         command.title(), startAt, endAt, placeId);
                 yield IntentResult.scheduleDecided(decision);
             }
+            case RECORD_OUTCOME -> {
+                if (command.onTime() == null) {
+                    throw new IllegalArgumentException("outcome missing onTime");
+                }
+                boolean onTime = command.onTime();
+                if (!onTime && (command.overrunMinutes() == null || command.overrunMinutes() <= 0)) {
+                    throw new IllegalArgumentException("overrun outcome missing overrunMinutes");
+                }
+                // 原文整句存進 note:分類選項有限,細節(「客戶臨時加需求」)不能丟
+                Optional<OutcomeRecorded> recorded = followUpService.recordOutcomeForLatestAsked(
+                        onTime, command.overrunMinutes(), parseOutcomeReason(command.outcomeReason()), text);
+                yield recorded.map(IntentResult::outcomeRecorded)
+                        .orElseGet(() -> IntentResult.clarificationNeeded(
+                                "最近沒有等待回報的行程,想回報哪一個行程的結果?"));
+            }
             case UNKNOWN -> IntentResult.clarificationNeeded(
                     command.reason() == null || command.reason().isBlank()
                             ? "我沒聽懂,可以換個說法嗎?" : command.reason());
@@ -135,6 +156,18 @@ public class IntentService {
             return OffsetDateTime.parse(iso).toInstant();
         } catch (Exception e) {
             throw new IllegalArgumentException("bad time: " + iso);
+        }
+    }
+
+    /** 超時原因寬鬆解析:LLM 給了不認得的值就當沒填,不因分類失敗丟掉回報。 */
+    private static OutcomeReason parseOutcomeReason(String reason) {
+        if (reason == null || reason.isBlank()) {
+            return null;
+        }
+        try {
+            return OutcomeReason.valueOf(reason.toUpperCase());
+        } catch (IllegalArgumentException e) {
+            return null;
         }
     }
 

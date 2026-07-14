@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.api.schedule;
 
+import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleFollowUpService;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import jakarta.validation.Valid;
@@ -23,9 +24,11 @@ import org.springframework.web.bind.annotation.RestController;
 public class ScheduleController {
 
     private final ScheduleService scheduleService;
+    private final ScheduleFollowUpService followUpService;
 
-    public ScheduleController(ScheduleService scheduleService) {
+    public ScheduleController(ScheduleService scheduleService, ScheduleFollowUpService followUpService) {
         this.scheduleService = scheduleService;
+        this.followUpService = followUpService;
     }
 
     /** 提出行程 → 201;可行自動 CONFIRMED,不可行留 PROPOSED + issues。 */
@@ -84,5 +87,20 @@ public class ScheduleController {
     @PatchMapping("/{scheduleId}/complete")
     public ScheduleResponse complete(@PathVariable Long scheduleId) {
         return ScheduleResponse.from(scheduleService.completeSchedule(scheduleId));
+    }
+
+    /** 回報行程實際結果(準時/超時多久/原因)→ 201;重複回報 → 422(業務錯誤)。 */
+    @PostMapping("/{scheduleId}/outcome")
+    @ResponseStatus(HttpStatus.CREATED)
+    public ScheduleOutcomeResponse recordOutcome(@PathVariable Long scheduleId,
+                                                 @Valid @RequestBody RecordOutcomeRequest request) {
+        return ScheduleOutcomeResponse.from(followUpService.recordOutcome(
+                scheduleId, request.onTime(), request.overrunMinutes(), request.reason(), request.note()));
+    }
+
+    /** 查行程結果;尚未回報 → 404。 */
+    @GetMapping("/{scheduleId}/outcome")
+    public ScheduleOutcomeResponse getOutcome(@PathVariable Long scheduleId) {
+        return ScheduleOutcomeResponse.from(followUpService.getOutcome(scheduleId));
     }
 }

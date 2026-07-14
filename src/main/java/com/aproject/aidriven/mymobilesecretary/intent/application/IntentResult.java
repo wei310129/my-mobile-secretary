@@ -1,6 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
+import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleFollowUpService.OutcomeRecorded;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService.ScheduleDecision;
 
 /**
@@ -22,6 +23,7 @@ public record IntentResult(
         TASK_CREATED,
         SCHEDULE_CONFIRMED,
         SCHEDULE_NEEDS_DECISION,
+        OUTCOME_RECORDED,
         CLARIFICATION_NEEDED,
         FALLBACK_TASK_CREATED
     }
@@ -39,6 +41,14 @@ public record IntentResult(
                         ? "行程「%s」可行,已確認".formatted(decision.item().getTitle())
                         : "行程「%s」有問題,需要你決定".formatted(decision.item().getTitle()),
                 null, decision);
+    }
+
+    static IntentResult outcomeRecorded(OutcomeRecorded recorded) {
+        String detail = recorded.outcome().isOnTime()
+                ? "準時完成"
+                : "超時 %d 分鐘".formatted(recorded.outcome().getOverrunMinutes());
+        return new IntentResult(Action.OUTCOME_RECORDED,
+                "已記下「%s」的結果:%s".formatted(recorded.item().getTitle(), detail), null, null);
     }
 
     static IntentResult clarificationNeeded(String reason) {

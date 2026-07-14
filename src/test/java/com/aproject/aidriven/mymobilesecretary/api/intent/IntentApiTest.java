@@ -35,7 +35,8 @@ class IntentApiTest extends IntegrationTestBase {
     @Test
     void createTaskIntentCreatesTask() throws Exception {
         stub.nextCommand(new IntentCommand(
-                IntentCommand.Type.CREATE_TASK, "買醬油膏", null, null, null, null, "NORMAL", null));
+                IntentCommand.Type.CREATE_TASK, "買醬油膏", null, null, null, null, "NORMAL", null,
+                null, null, null));
 
         say("欸幫我記一下要買醬油膏",
                 jsonPath("$.action").value("TASK_CREATED"),
@@ -48,7 +49,8 @@ class IntentApiTest extends IntegrationTestBase {
     void createScheduleIntentGoesThroughFeasibilityGate() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE, "剪頭髮", null,
-                "2027-06-01T11:00:00+08:00", "2027-06-01T12:00:00+08:00", null, null, null));
+                "2027-06-01T11:00:00+08:00", "2027-06-01T12:00:00+08:00", null, null, null,
+                null, null, null));
 
         say("下下下週剪頭髮",
                 jsonPath("$.action").value("SCHEDULE_CONFIRMED"),
@@ -60,7 +62,8 @@ class IntentApiTest extends IntegrationTestBase {
     @Test
     void unknownIntentAsksForClarification() throws Exception {
         stub.nextCommand(new IntentCommand(
-                IntentCommand.Type.UNKNOWN, null, null, null, null, null, null, "請告訴我具體要做什麼"));
+                IntentCommand.Type.UNKNOWN, null, null, null, null, null, null, "請告訴我具體要做什麼",
+                null, null, null));
 
         say("嗯...那個...",
                 jsonPath("$.action").value("CLARIFICATION_NEEDED"),
@@ -82,7 +85,8 @@ class IntentApiTest extends IntegrationTestBase {
     void invalidCommandTimeFallsBackToPlainTask() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE, "壞時間行程", null,
-                "明天十一點", "後天", null, null, null));
+                "明天十一點", "後天", null, null, null,
+                null, null, null));
 
         say("測試爛時間",
                 jsonPath("$.action").value("FALLBACK_TASK_CREATED"),

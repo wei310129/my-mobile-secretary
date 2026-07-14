@@ -21,6 +21,7 @@ public record IntentResult(
 
     public enum Action {
         TASK_CREATED,
+        TASK_COMPLETED,
         SCHEDULE_CONFIRMED,
         SCHEDULE_NEEDS_DECISION,
         OUTCOME_RECORDED,
@@ -41,6 +42,11 @@ public record IntentResult(
                         ? "行程「%s」可行,已確認".formatted(decision.item().getTitle())
                         : "行程「%s」有問題,需要你決定".formatted(decision.item().getTitle()),
                 null, decision);
+    }
+
+    static IntentResult taskCompleted(Task task) {
+        return new IntentResult(Action.TASK_COMPLETED,
+                "「%s」完成,已從追蹤清單劃掉".formatted(task.getTitle()), task, null);
     }
 
     static IntentResult outcomeRecorded(OutcomeRecorded recorded) {

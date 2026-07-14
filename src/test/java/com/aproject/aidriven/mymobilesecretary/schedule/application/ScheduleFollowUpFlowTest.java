@@ -12,6 +12,7 @@ import com.aproject.aidriven.mymobilesecretary.geo.domain.LocationEventType;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
+import com.aproject.aidriven.mymobilesecretary.knowledge.application.BufferRuleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.FollowUpStatus;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.OutcomeReason;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleFollowUp;
@@ -49,6 +50,8 @@ class ScheduleFollowUpFlowTest extends IntegrationTestBase {
     private PlaceRepository placeRepository;
     @Autowired
     private StubIntentInterpreter stub;
+    @Autowired
+    private BufferRuleService bufferRuleService;
 
     /** 秒級截斷避免 DB 時間精度(微秒)造成比對誤差。 */
     private Instant now() {
@@ -119,6 +122,31 @@ class ScheduleFollowUpFlowTest extends IntegrationTestBase {
         ScheduleFollowUp followUp = followUpRepository.findByScheduleItemId(item.getId()).orElseThrow();
         assertThat(followUp.getStatus()).isEqualTo(FollowUpStatus.SCHEDULED);
         assertThat(followUp.getDueAt()).isEqualTo(now.plus(Duration.ofMinutes(5)));
+    }
+
+    /** 緩衝閉環:同地點累積 3 筆回報(30/20/準時)→ 建議緩衝 = 平均 17 分鐘。 */
+    @Test
+    void outcomesAccumulateIntoBufferRule() {
+        Instant now = now();
+        Place place = placeRepository.save(
+                Place.create("常拖時間的會議室", null, 25.2000, 121.3000, "會議室", now));
+        assertThat(bufferRuleService.recommendedBuffer(place.getId())).isEqualTo(java.time.Duration.ZERO);
+
+        int[] overruns = {30, 20, 0};
+        for (int overrun : overruns) {
+            ScheduleItem item = saveConfirmed("週會", now.minus(Duration.ofHours(3)),
+                    now.minus(Duration.ofHours(2)), place.getId());
+            if (overrun > 0) {
+                followUpService.recordOutcome(item.getId(), false, overrun,
+                        OutcomeReason.MEETING_OVERRUN, null);
+            } else {
+                followUpService.recordOutcome(item.getId(), true, null, null, null);
+            }
+        }
+
+        // (30 + 20 + 0) / 3 = 16.67 → 17 分鐘
+        assertThat(bufferRuleService.recommendedBuffer(place.getId()))
+                .isEqualTo(Duration.ofMinutes(17));
     }
 
     /** EXIT 離行程地點很遠(>200m)→ 不觸發詢問排定。 */

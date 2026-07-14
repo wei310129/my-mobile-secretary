@@ -9,6 +9,7 @@ import com.aproject.aidriven.mymobilesecretary.geo.domain.LocationEventType;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.LocationEventRepository;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
+import com.aproject.aidriven.mymobilesecretary.knowledge.application.BufferRuleService;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityResult;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
@@ -48,6 +49,9 @@ class FeasibilityServiceTest {
     @Mock
     private LocationEventRepository locationEventRepository;
 
+    @Mock
+    private BufferRuleService bufferRuleService;
+
     private FeasibilityService service;
 
     @BeforeEach
@@ -56,7 +60,11 @@ class FeasibilityServiceTest {
         service = new FeasibilityService(
                 scheduleItemRepository, placeRepository, locationEventRepository,
                 new StraightLineTravelTimeEstimator(new FeasibilityProperties(25, Duration.ofMinutes(10))),
+                bufferRuleService,
                 Clock.fixed(NOW, ZoneOffset.UTC));
+        // 預設沒有緩衝習慣;個別測試再覆寫
+        lenient().when(bufferRuleService.recommendedBuffer(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(Duration.ZERO);
     }
 
     /** 建立有 id 的行程(排除自身邏輯需要 id)。 */
@@ -179,6 +187,27 @@ class FeasibilityServiceTest {
                 NOW.plus(Duration.ofMinutes(100)), NOW.plus(Duration.ofMinutes(160)), 10L));
 
         assertThat(result.feasible()).isTrue();
+    }
+
+    /**
+     * 緩衝規則生效:同 tightButSufficientGapIsFeasible 的空檔(40 分,需 22 分),
+     * 但出發地累積了 25 分鐘的超時習慣 → 有效空檔剩 15 分 → 擋下並註明已預留緩衝。
+     */
+    @Test
+    void overrunBufferFromPreviousPlaceTightensTheGap() {
+        ScheduleItem prev = schedule(2, "上一件事", NOW, NOW.plus(Duration.ofHours(1)), 20L);
+        confirmedItems(prev);
+        when(placeRepository.findById(10L)).thenReturn(Optional.of(place(10, "目的地", 25.0330, 121.5654)));
+        when(placeRepository.findById(20L)).thenReturn(Optional.of(place(20, "出發地", 25.0780, 121.5654)));
+        when(bufferRuleService.recommendedBuffer(20L)).thenReturn(Duration.ofMinutes(25));
+
+        FeasibilityResult result = service.check(schedule(1, "剪頭髮",
+                NOW.plus(Duration.ofMinutes(100)), NOW.plus(Duration.ofMinutes(160)), 10L));
+
+        assertThat(result.feasible()).isFalse();
+        assertThat(result.issues()).extracting(FeasibilityIssue::type)
+                .containsExactly(FeasibilityIssue.Type.TRAVEL_FROM_PREVIOUS);
+        assertThat(result.issues().get(0).message()).contains("已預留").contains("25 分鐘");
     }
 
     /** 無地點行程只檢查時間重疊,不做交通檢查。 */

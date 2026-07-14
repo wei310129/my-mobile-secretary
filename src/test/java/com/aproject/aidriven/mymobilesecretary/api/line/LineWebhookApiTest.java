@@ -88,6 +88,23 @@ class LineWebhookApiTest extends IntegrationTestBase {
                 .andExpect(status().isOk());
     }
 
+    /**
+     * 圖片訊息(收據):測試環境抓不到 LINE 內容(假憑證)→ 回覆失敗說明,
+     * webhook 仍必須 200,不得把整包事件炸掉。
+     */
+    @Test
+    void imageEventSurvivesContentFetchFailure() throws Exception {
+        byte[] body = """
+                {"events":[{"type":"message","replyToken":"rt-3","message":{"id":"m-1","type":"image"}}]}
+                """.getBytes(StandardCharsets.UTF_8);
+
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(body))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+    }
+
     /** 空事件陣列(LINE 平台的 webhook 驗證請求)→ 200。 */
     @Test
     void emptyEventsReturns200() throws Exception {

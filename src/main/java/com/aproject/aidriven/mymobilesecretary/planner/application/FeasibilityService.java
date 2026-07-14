@@ -3,6 +3,7 @@ package com.aproject.aidriven.mymobilesecretary.planner.application;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.LocationEventRepository;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
+import com.aproject.aidriven.mymobilesecretary.knowledge.application.BufferRuleService;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityResult;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
@@ -42,17 +43,20 @@ public class FeasibilityService {
     private final PlaceRepository placeRepository;
     private final LocationEventRepository locationEventRepository;
     private final TravelTimeEstimator travelTimeEstimator;
+    private final BufferRuleService bufferRuleService;
     private final Clock clock;
 
     public FeasibilityService(ScheduleItemRepository scheduleItemRepository,
                               PlaceRepository placeRepository,
                               LocationEventRepository locationEventRepository,
                               TravelTimeEstimator travelTimeEstimator,
+                              BufferRuleService bufferRuleService,
                               Clock clock) {
         this.scheduleItemRepository = scheduleItemRepository;
         this.placeRepository = placeRepository;
         this.locationEventRepository = locationEventRepository;
         this.travelTimeEstimator = travelTimeEstimator;
+        this.bufferRuleService = bufferRuleService;
         this.clock = clock;
     }
 
@@ -139,7 +143,9 @@ public class FeasibilityService {
                 return Optional::empty;
             }
             ScheduleItem prev = previous.get();
-            Duration gap = Duration.between(prev.getEndAt(), candidate.getStartAt());
+            // 緩衝規則:前一行程的地點若有超時習慣,實際能動身的時間比表定 endAt 晚
+            Duration overrunBuffer = bufferRuleService.recommendedBuffer(prev.getPlaceId());
+            Duration gap = Duration.between(prev.getEndAt(), candidate.getStartAt()).minus(overrunBuffer);
             return () -> {
                 Duration need = travelTimeEstimator.estimate(
                         prevPlace.getLatitude(), prevPlace.getLongitude(),
@@ -147,11 +153,14 @@ public class FeasibilityService {
                 if (need.compareTo(gap) <= 0) {
                     return Optional.empty();
                 }
+                String bufferNote = overrunBuffer.isZero()
+                        ? "" : "(已預留「%s」常見超時 %d 分鐘)".formatted(prevPlace.getName(), overrunBuffer.toMinutes());
                 return Optional.of(new FeasibilityIssue(
                         FeasibilityIssue.Type.TRAVEL_FROM_PREVIOUS,
-                        "從「%s」(%s)趕到「%s」約需 %d 分鐘,但只有 %d 分鐘空檔。可改時間或調整前一行程。"
+                        "從「%s」(%s)趕到「%s」約需 %d 分鐘,但只有 %d 分鐘空檔%s。可改時間或調整前一行程。"
                                 .formatted(prev.getTitle(), prevPlace.getName(),
-                                        candidatePlace.getName(), need.toMinutes(), gap.toMinutes()),
+                                        candidatePlace.getName(), need.toMinutes(),
+                                        Math.max(gap.toMinutes(), 0), bufferNote),
                         prev.getId()));
             };
         }
@@ -194,7 +203,9 @@ public class FeasibilityService {
         if (nextPlace == null) {
             return Optional::empty;
         }
-        Duration gap = Duration.between(candidate.getEndAt(), next.getStartAt());
+        // 緩衝規則:候選行程自己的地點若有超時習慣,實際結束比表定 endAt 晚
+        Duration overrunBuffer = bufferRuleService.recommendedBuffer(candidate.getPlaceId());
+        Duration gap = Duration.between(candidate.getEndAt(), next.getStartAt()).minus(overrunBuffer);
         return () -> {
             Duration need = travelTimeEstimator.estimate(
                     candidatePlace.getLatitude(), candidatePlace.getLongitude(),
@@ -202,11 +213,13 @@ public class FeasibilityService {
             if (need.compareTo(gap) <= 0) {
                 return Optional.empty();
             }
+            String bufferNote = overrunBuffer.isZero()
+                    ? "" : "(已預留「%s」常見超時 %d 分鐘)".formatted(candidatePlace.getName(), overrunBuffer.toMinutes());
             return Optional.of(new FeasibilityIssue(
                     FeasibilityIssue.Type.TRAVEL_TO_NEXT,
-                    "結束後趕往「%s」(%s)約需 %d 分鐘,但只有 %d 分鐘空檔。可提早結束或調整下一行程。"
+                    "結束後趕往「%s」(%s)約需 %d 分鐘,但只有 %d 分鐘空檔%s。可提早結束或調整下一行程。"
                             .formatted(next.getTitle(), nextPlace.getName(),
-                                    need.toMinutes(), gap.toMinutes()),
+                                    need.toMinutes(), Math.max(gap.toMinutes(), 0), bufferNote),
                     next.getId()));
         };
     }

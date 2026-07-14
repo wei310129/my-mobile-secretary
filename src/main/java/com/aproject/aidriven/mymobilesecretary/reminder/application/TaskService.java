@@ -2,10 +2,12 @@ package com.aproject.aidriven.mymobilesecretary.reminder.application;
 
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskPriority;
+import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskStatus;
 import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
 import com.aproject.aidriven.mymobilesecretary.shared.error.NotFoundException;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.EnumSet;
 import java.util.List;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
@@ -60,6 +62,23 @@ public class TaskService {
     public Task getTask(Long taskId) {
         return taskRepository.findById(taskId)
                 .orElseThrow(() -> new NotFoundException("Task", taskId));
+    }
+
+    /**
+     * 關鍵字找未結案任務(自然語言「牛奶買到了」的閉環用)。
+     * 比對是確定性規則:標題包含關鍵字、或關鍵字包含標題;LLM 不得直接指定任務 id。
+     */
+    @Transactional(readOnly = true)
+    public List<Task> findOpenTasksMatching(String keyword) {
+        String needle = keyword == null ? "" : keyword.strip();
+        if (needle.isEmpty()) {
+            return List.of();
+        }
+        return taskRepository.findByStatusIn(EnumSet.of(
+                        TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.REMINDED, TaskStatus.ESCALATED))
+                .stream()
+                .filter(task -> task.getTitle().contains(needle) || needle.contains(task.getTitle()))
+                .toList();
     }
 
     /** 確認任務完成。非法狀態轉換由 domain 丟 BusinessException(422)。 */

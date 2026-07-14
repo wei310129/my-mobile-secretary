@@ -55,6 +55,8 @@ class ScheduleFollowUpServiceTest {
     private StringRedisTemplate redis;
     @Mock
     private ValueOperations<String, String> valueOps;
+    @Mock
+    private org.springframework.context.ApplicationEventPublisher eventPublisher;
 
     /** 記下收到通知的假 sender。 */
     private static class RecordingSender implements NotificationSender {
@@ -76,7 +78,7 @@ class ScheduleFollowUpServiceTest {
     private ScheduleFollowUpService service() {
         return new ScheduleFollowUpService(
                 scheduleItemRepository, followUpRepository, outcomeRepository, placeRepository,
-                List.of(sender), redis,
+                List.of(sender), redis, eventPublisher,
                 new FollowUpProperties(Duration.ofMinutes(15), Duration.ofMinutes(5),
                         50, Duration.ofHours(24), 200),
                 Clock.fixed(NOW, ZoneOffset.UTC));

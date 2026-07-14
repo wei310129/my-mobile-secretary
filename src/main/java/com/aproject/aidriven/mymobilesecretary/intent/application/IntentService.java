@@ -99,6 +99,10 @@ public class IntentService {
                         command.title(), startAt, endAt, placeId);
                 yield IntentResult.scheduleDecided(decision);
             }
+            case COMPLETE_TASK -> {
+                requireText(command.title(), "title");
+                yield completeTaskByKeyword(command.title());
+            }
             case RECORD_OUTCOME -> {
                 if (command.onTime() == null) {
                     throw new IllegalArgumentException("outcome missing onTime");
@@ -118,6 +122,27 @@ public class IntentService {
                     command.reason() == null || command.reason().isBlank()
                             ? "我沒聽懂,可以換個說法嗎?" : command.reason());
         };
+    }
+
+    /**
+     * 關鍵字完成任務:唯一命中才動手,模糊(多筆)或落空(零筆)都回問,
+     * 絕不猜——完成錯任務會讓提醒憑空消失,比多問一句嚴重。
+     */
+    private IntentResult completeTaskByKeyword(String keyword) {
+        var matches = taskService.findOpenTasksMatching(keyword);
+        if (matches.isEmpty()) {
+            return IntentResult.clarificationNeeded(
+                    "找不到跟「%s」有關的未完成任務。".formatted(keyword));
+        }
+        if (matches.size() > 1) {
+            String titles = matches.stream().limit(5)
+                    .map(t -> "「" + t.getTitle() + "」")
+                    .collect(java.util.stream.Collectors.joining("、"));
+            return IntentResult.clarificationNeeded(
+                    "有 %d 件任務都符合:%s,說完整一點我才不會劃錯。".formatted(matches.size(), titles));
+        }
+        Task done = taskService.confirmTask(matches.get(0).getId());
+        return IntentResult.taskCompleted(done);
     }
 
     /** LLM 失敗時的保底:原文直接存成任務(仍會觸發品項自動綁定)。 */

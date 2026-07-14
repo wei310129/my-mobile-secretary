@@ -37,6 +37,8 @@ public record IntentCommand(
         CREATE_TASK,
         /** 建行程(有明確開始/結束時段的承諾)。 */
         CREATE_SCHEDULE,
+        /** 回報任務做完了(「牛奶買到了」);title 放任務關鍵字,配對由 Java 規則做。 */
+        COMPLETE_TASK,
         /** 回報行程實際結果(準時嗎/超時多久/原因)。 */
         RECORD_OUTCOME,
         /** 聽不懂或資訊不足,需要回問。 */

@@ -19,6 +19,9 @@ app:
   intent:
     # 測試不打真實 LLM:改用 TestcontainersConfiguration 裡的 stub 解析器
     enabled: false
+  receipt:
+    # 測試不打真實 LLM:收據解析用 stub
+    enabled: false
   pending:
     prompt:
       # 測試時窗全開,不受執行時刻影響

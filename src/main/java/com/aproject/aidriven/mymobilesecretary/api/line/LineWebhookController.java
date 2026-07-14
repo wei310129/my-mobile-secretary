@@ -1,11 +1,13 @@
 package com.aproject.aidriven.mymobilesecretary.api.line;
 
+import com.aproject.aidriven.mymobilesecretary.integration.line.LineContentClient;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessagingClient;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineProperties;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineSignatureVerifier;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineWebhookPayload;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentService;
+import com.aproject.aidriven.mymobilesecretary.intent.application.ReceiptService;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -34,19 +36,25 @@ public class LineWebhookController {
 
     private final LineSignatureVerifier signatureVerifier;
     private final LineMessagingClient messagingClient;
+    private final LineContentClient contentClient;
     private final LineProperties properties;
     private final IntentService intentService;
+    private final ReceiptService receiptService;
     private final ObjectMapper objectMapper;
 
     public LineWebhookController(LineSignatureVerifier signatureVerifier,
                                  LineMessagingClient messagingClient,
+                                 LineContentClient contentClient,
                                  LineProperties properties,
                                  IntentService intentService,
+                                 ReceiptService receiptService,
                                  ObjectMapper objectMapper) {
         this.signatureVerifier = signatureVerifier;
         this.messagingClient = messagingClient;
+        this.contentClient = contentClient;
         this.properties = properties;
         this.intentService = intentService;
+        this.receiptService = receiptService;
         this.objectMapper = objectMapper;
     }
 
@@ -78,6 +86,8 @@ public class LineWebhookController {
         for (LineWebhookPayload.Event event : payload.events()) {
             if (event.isTextMessage()) {
                 handleTextMessage(event);
+            } else if (event.isImageMessage()) {
+                handleImageMessage(event);
             }
         }
         return ResponseEntity.ok().build();
@@ -87,5 +97,21 @@ public class LineWebhookController {
     private void handleTextMessage(LineWebhookPayload.Event event) {
         IntentResult result = intentService.handle(event.message().text());
         messagingClient.reply(event.replyToken(), result.message());
+    }
+
+    /**
+     * 圖片訊息 = 收據照片:抓內容 → 解析 → 價格入庫 → 回覆摘要。
+     * 任何失敗只回覆說明,不往外拋(webhook 必須回 200,LINE 才不會重送)。
+     */
+    private void handleImageMessage(LineWebhookPayload.Event event) {
+        String message;
+        try {
+            LineContentClient.MessageContent content = contentClient.fetchContent(event.message().id());
+            message = receiptService.handleImage(content.bytes(), content.mimeType()).message();
+        } catch (Exception e) {
+            log.warn("LINE image handling failed [messageId={}]", event.message().id(), e);
+            message = "圖片我拿不到或處理失敗,可以再傳一次,或改用文字告訴我。";
+        }
+        messagingClient.reply(event.replyToken(), message);
     }
 }

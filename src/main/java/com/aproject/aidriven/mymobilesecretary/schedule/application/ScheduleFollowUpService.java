@@ -10,6 +10,7 @@ import com.aproject.aidriven.mymobilesecretary.schedule.domain.OutcomeReason;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleFollowUp;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleOutcome;
+import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleOutcomeRecorded;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleFollowUpRepository;
 import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItemRepository;
@@ -25,6 +26,7 @@ import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.context.event.EventListener;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.stereotype.Service;
@@ -54,6 +56,7 @@ public class ScheduleFollowUpService {
     private final PlaceRepository placeRepository;
     private final List<NotificationSender> senders;
     private final StringRedisTemplate redis;
+    private final ApplicationEventPublisher eventPublisher;
     private final FollowUpProperties properties;
     private final Clock clock;
 
@@ -63,6 +66,7 @@ public class ScheduleFollowUpService {
                                    PlaceRepository placeRepository,
                                    List<NotificationSender> senders,
                                    StringRedisTemplate redis,
+                                   ApplicationEventPublisher eventPublisher,
                                    FollowUpProperties properties,
                                    Clock clock) {
         this.scheduleItemRepository = scheduleItemRepository;
@@ -71,6 +75,7 @@ public class ScheduleFollowUpService {
         this.placeRepository = placeRepository;
         this.senders = senders;
         this.redis = redis;
+        this.eventPublisher = eventPublisher;
         this.properties = properties;
         this.clock = clock;
     }
@@ -180,6 +185,10 @@ public class ScheduleFollowUpService {
         followUpRepository.findByScheduleItemId(scheduleItemId)
                 .filter(f -> f.getStatus() != FollowUpStatus.ANSWERED)
                 .ifPresent(f -> f.markAnswered(now));
+
+        // 廣播給 knowledge 累積地點緩衝統計(同交易,回報與統計一致)
+        eventPublisher.publishEvent(new ScheduleOutcomeRecorded(
+                scheduleItemId, item.getPlaceId(), outcome.isOnTime(), outcome.getOverrunMinutes()));
         return outcome;
     }
 

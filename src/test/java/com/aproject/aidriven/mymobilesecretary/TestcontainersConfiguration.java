@@ -2,6 +2,8 @@ package com.aproject.aidriven.mymobilesecretary;
 
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentInterpreter;
+import com.aproject.aidriven.mymobilesecretary.intent.application.ReceiptCommand;
+import com.aproject.aidriven.mymobilesecretary.intent.application.ReceiptInterpreter;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.boot.test.context.TestConfiguration;
@@ -61,5 +63,33 @@ public class TestcontainersConfiguration {
     @Bean
     StubIntentInterpreter stubIntentInterpreter() {
         return new StubIntentInterpreter();
+    }
+
+    /**
+     * 測試用收據解析器:不打真實多模態 LLM,由測試預先塞入下一個回覆。
+     * 沒塞就丟例外——順便驗證 ReceiptService 的失敗回覆路徑。
+     */
+    public static class StubReceiptInterpreter implements ReceiptInterpreter {
+
+        private final AtomicReference<ReceiptCommand> next = new AtomicReference<>();
+
+        /** 測試呼叫:設定下一次 interpret 的回傳。 */
+        public void nextCommand(ReceiptCommand command) {
+            next.set(command);
+        }
+
+        @Override
+        public ReceiptCommand interpret(byte[] imageBytes, String mimeType) {
+            ReceiptCommand command = next.getAndSet(null);
+            if (command == null) {
+                throw new IllegalStateException("stub has no receipt (simulates LLM failure)");
+            }
+            return command;
+        }
+    }
+
+    @Bean
+    StubReceiptInterpreter stubReceiptInterpreter() {
+        return new StubReceiptInterpreter();
     }
 }

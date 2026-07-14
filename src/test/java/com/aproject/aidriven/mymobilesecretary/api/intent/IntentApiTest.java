@@ -70,6 +70,53 @@ class IntentApiTest extends IntegrationTestBase {
                 jsonPath("$.message").value("請告訴我具體要做什麼"));
     }
 
+    /** 任務閉環:「買到了」→ 唯一命中的未完成任務被劃掉(CONFIRMED)。 */
+    @Test
+    void completeTaskIntentConfirmsUniqueMatch() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_TASK, "買閉環測試醬油", null, null, null, null, "NORMAL", null,
+                null, null, null));
+        say("幫我記買閉環測試醬油");
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.COMPLETE_TASK, "閉環測試醬油", null, null, null, null, null, null,
+                null, null, null));
+        say("閉環測試醬油買到了",
+                jsonPath("$.action").value("TASK_COMPLETED"),
+                jsonPath("$.task.title").value("買閉環測試醬油"),
+                jsonPath("$.task.status").value("CONFIRMED"));
+    }
+
+    /** 多筆符合 → 回問,一件都不動(完成錯任務比多問一句嚴重)。 */
+    @Test
+    void ambiguousCompleteTaskAsksBack() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_TASK, "買歧義測試鮮奶", null, null, null, null, "NORMAL", null,
+                null, null, null));
+        say("記買歧義測試鮮奶");
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_TASK, "退歧義測試鮮奶", null, null, null, null, "NORMAL", null,
+                null, null, null));
+        say("記退歧義測試鮮奶");
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.COMPLETE_TASK, "歧義測試鮮奶", null, null, null, null, null, null,
+                null, null, null));
+        say("歧義測試鮮奶弄好了",
+                jsonPath("$.action").value("CLARIFICATION_NEEDED"));
+    }
+
+    /** 沒有符合的未完成任務 → 回問,不亂建也不亂劃。 */
+    @Test
+    void completeTaskWithoutMatchAsksBack() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.COMPLETE_TASK, "根本不存在的事", null, null, null, null, null, null,
+                null, null, null));
+
+        say("根本不存在的事做完了",
+                jsonPath("$.action").value("CLARIFICATION_NEEDED"));
+    }
+
     /** 可靠度鐵律:LLM 失敗(stub 沒塞回覆=模擬炸掉)→ 原文存成任務,不丟資料。 */
     @Test
     void interpreterFailureFallsBackToPlainTask() throws Exception {

@@ -55,6 +55,9 @@ app:
   intent:
     # LLM 意圖理解;關閉時 /api/intent 直接把原文存成任務
     enabled: true
+  receipt:
+    # 收據照片解析(Claude 多模態);關閉時圖片訊息回覆請改用文字
+    enabled: true
   integration:
     line:
       # 真憑證放 secrets.yaml;未設定時 webhook 直接吞掉請求(見 LineWebhookController)
@@ -70,6 +73,11 @@ app:
     county: 新北市
     rain-probability-threshold: 60
     high-temp-threshold: 34
+  buffer:
+    # 緩衝規則:同地點累積幾筆行程結果後才開始建議緩衝
+    min-samples: 3
+    # 建議緩衝上限(避免單次極端超時擴散)
+    max-buffer: 2h
   follow-up:
     # 行程結果追蹤詢問(數值為使用者拍板;變更前先問使用者)
     # 行程結束後多久發詢問

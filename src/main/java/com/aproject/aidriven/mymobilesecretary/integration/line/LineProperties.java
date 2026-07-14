@@ -20,6 +20,8 @@ public record LineProperties(
         @DefaultValue("") String channelSecret,
         @DefaultValue("") String channelAccessToken,
         @DefaultValue("https://api.line.me") String apiBaseUrl,
+        // 訊息內容(圖片等二進位)在 api-data 網域,與訊息 API 不同台
+        @DefaultValue("https://api-data.line.me") String contentBaseUrl,
         @DefaultValue("https://api.line.me/oauth2/v3/token") String tokenUrl,
         @DefaultValue("5s") Duration timeout
 ) {

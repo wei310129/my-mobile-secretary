@@ -90,7 +90,7 @@ public class ItemService {
     }
 
     /** 指定品項已買到;不存在或本來不在清單的名稱略過。 */
-    public List<Item> markShoppingPurchased(List<String> names) {
+    public List<Item> markShoppingPurchased(List<String> names, Integer purchasedQuantity) {
         Instant now = Instant.now(clock);
         return names.stream()
                 .filter(name -> name != null && !name.isBlank())
@@ -104,7 +104,59 @@ public class ItemService {
                 .map(itemRepository::findByNameIgnoreCase)
                 .flatMap(java.util.Optional::stream)
                 .filter(Item::isShoppingNeeded)
-                .peek(item -> item.removeFromShoppingList(now))
+                .peek(item -> {
+                    item.removeFromShoppingList(now);
+                    if (purchasedQuantity != null && purchasedQuantity > 0) {
+                        item.adjustInventoryQuantity(purchasedQuantity, now);
+                    }
+                })
+                .toList();
+    }
+
+    /** 依相對數量調整庫存;品項不存在時從 0 建立後再調整。 */
+    public Item adjustInventory(String name, int delta) {
+        Instant now = Instant.now(clock);
+        java.util.Optional<Item> existing = itemRepository.findByNameIgnoreCase(name.strip());
+        if (delta < 0 && (existing.isEmpty() || existing.get().getInventoryQuantity() == 0)) {
+            throw new BusinessException("UNKNOWN_INVENTORY",
+                    "「%s」目前是 0 或還沒盤點,不能再直接扣庫存;請告訴我正確數量。".formatted(name.strip()));
+        }
+        Item item = existing.orElseGet(() -> itemRepository.save(Item.create(name.strip(), Set.of(), now)));
+        item.adjustInventoryQuantity(delta, now);
+        return item;
+    }
+
+    @Transactional(readOnly = true)
+    public java.util.Optional<Item> findItem(String name) {
+        return name == null || name.isBlank() ? java.util.Optional.empty()
+                : itemRepository.findByNameIgnoreCase(name.strip());
+    }
+
+    @Transactional(readOnly = true)
+    public List<Item> listInventory(Integer maximumQuantity) {
+        return itemRepository.findAll().stream()
+                // 0 目前也可能代表「尚未盤點」,不可誤報成已用完。
+                .filter(item -> item.getInventoryQuantity() > 0)
+                .filter(item -> maximumQuantity == null
+                        || item.getInventoryQuantity() <= Math.max(maximumQuantity, 0))
+                .sorted(java.util.Comparator.comparingInt(Item::getInventoryQuantity)
+                        .thenComparing(Item::getName))
+                .toList();
+    }
+
+    /** 把低庫存品項加入購物清單,門檻由使用者明確指定或預設 0。 */
+    public List<Item> restockLowInventory(int maximumQuantity) {
+        Instant now = Instant.now(clock);
+        List<Item> items = listInventory(Math.max(maximumQuantity, 0));
+        items.forEach(item -> item.markShoppingNeeded(now));
+        return items;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Item> listKnownItemsAt(Long placeId) {
+        return itemRepository.findAll().stream()
+                .filter(item -> item.getPlaceIds().contains(placeId))
+                .sorted(java.util.Comparator.comparing(Item::getName))
                 .toList();
     }
 

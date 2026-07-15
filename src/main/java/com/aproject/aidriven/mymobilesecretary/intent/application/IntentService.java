@@ -156,7 +156,10 @@ public class IntentService {
                     RESUME_RECURRING_TASK, SKIP_RECURRING_OCCURRENCE,
                     LIST_COMPLETED_TASKS, MARK_SHOPPING_PURCHASED,
                     CLEAR_SHOPPING_LIST, LIST_SHOPPING_BY_PLACE,
-                    AGENDA_SUMMARY, RESIZE_SCHEDULE -> lifestyleIntentService.execute(text, command);
+                    AGENDA_SUMMARY, RESIZE_SCHEDULE, ADJUST_INVENTORY,
+                    LIST_INVENTORY, ASK_ITEM_PLACES, BIND_ITEM_PLACE,
+                    LIST_ITEMS_BY_PLACE, GROUP_SHOPPING_BY_PLACE,
+                    RESTOCK_LOW_INVENTORY -> lifestyleIntentService.execute(text, command);
             case CREATE_TASK -> {
                 requireText(command.title(), "title");
                 // 防重複(使用者實際踩過:「拿包裹」被建了兩次):同名未結案任務存在就回問

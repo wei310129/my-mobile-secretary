@@ -10,6 +10,7 @@
 - 第一波生活對話功能：主程式與全部測試來源 `test-compile` 成功。
 - 100 條能力目錄契約：1/1 通過。
 - 第二波能力目錄與週期任務服務：4/4 通過。
+- 第三波能力目錄與庫存 domain/service：8/8 通過。
 - 第二波 `LifestyleIntentApiTest`：測試環境找不到 Docker，Spring context 在案例執行前停止；
   因此 V14 migration 與 API 整合仍列為關鍵節點待驗證，不算程式測試失敗，也不算通過。
 - 本階段尚未重跑完整 `mvn test`，不得把精準測試通過誤寫成全套通過。

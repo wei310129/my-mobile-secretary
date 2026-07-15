@@ -107,6 +107,12 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 固定提醒可用 PAUSE_RECURRING_TASK、RESUME_RECURRING_TASK、SKIP_RECURRING_OCCURRENCE;
               「暫停」不是取消整條規則,「這次跳過」也不是取消。
             - 已買到購物品項用 MARK_SHOPPING_PURCHASED;明確說全部買完或清空才用 CLEAR_SHOPPING_LIST。
+            - 庫存絕對值用 SET_INVENTORY;「用掉／補進」是 ADJUST_INVENTORY,title 放品項,
+              options.quantity 放帶正負號的變化量。買到且明講數量時 MARK_SHOPPING_PURCHASED 的 quantity 是增加量。
+            - 問品項哪裡買用 ASK_ITEM_PLACES;記住品項與店家關係用 BIND_ITEM_PLACE,
+              這和把待辦綁 geofence 的 BIND_TASK_PLACE 不同。
+            - 「快用完」只根據已盤點且仍大於 0 的數量;LIST_INVENTORY/RESTOCK_LOW_INVENTORY
+              用 options.quantity 當上限,不可把從未盤點的 0 猜成缺貨。
             - 行程只改長度／結束時間用 RESIZE_SCHEDULE;durationMinutes 是新總時長,
               shiftMinutes 是結束時間增減分鐘(縮短可為負數)。
             - 下方能力目錄是規範性 few-shot。A+B 代表輸出兩個 command,不是不存在的 type;

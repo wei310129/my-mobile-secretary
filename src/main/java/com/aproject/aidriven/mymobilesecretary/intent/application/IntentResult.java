@@ -80,7 +80,14 @@ public record IntentResult(
         SHOPPING_LIST_CLEARED,
         SHOPPING_BY_PLACE_LISTED,
         AGENDA_SUMMARY,
-        SCHEDULE_RESIZED
+        SCHEDULE_RESIZED,
+        INVENTORY_ADJUSTED,
+        INVENTORY_LISTED,
+        ITEM_PLACES_INFO,
+        ITEM_PLACE_BOUND,
+        ITEMS_BY_PLACE_LISTED,
+        SHOPPING_GROUPED_BY_PLACE,
+        LOW_INVENTORY_RESTOCKED
     }
 
     /** 清單訊息共用:最多列 10 筆,其餘以「…等 N 件」收尾。 */

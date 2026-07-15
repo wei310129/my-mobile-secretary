@@ -88,6 +88,13 @@ public record IntentCommand(
         LIST_SHOPPING_BY_PLACE,
         AGENDA_SUMMARY,
         RESIZE_SCHEDULE,
+        ADJUST_INVENTORY,
+        LIST_INVENTORY,
+        ASK_ITEM_PLACES,
+        BIND_ITEM_PLACE,
+        LIST_ITEMS_BY_PLACE,
+        GROUP_SHOPPING_BY_PLACE,
+        RESTOCK_LOW_INVENTORY,
         /** 建任務(待辦,無固定時段;可有期限)。 */
         CREATE_TASK,
         /** 建行程(有明確開始/結束時段的承諾)。 */

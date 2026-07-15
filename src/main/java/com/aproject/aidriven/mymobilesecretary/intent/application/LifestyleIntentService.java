@@ -130,6 +130,13 @@ public class LifestyleIntentService {
             case LIST_SHOPPING_BY_PLACE -> listShoppingAt(command);
             case AGENDA_SUMMARY -> agendaSummary(o);
             case RESIZE_SCHEDULE -> resizeSchedule(command, o);
+            case ADJUST_INVENTORY -> adjustInventory(command, o);
+            case LIST_INVENTORY -> listInventory(o);
+            case ASK_ITEM_PLACES -> askItemPlaces(command);
+            case BIND_ITEM_PLACE -> bindItemPlace(command);
+            case LIST_ITEMS_BY_PLACE -> listItemsAt(command);
+            case GROUP_SHOPPING_BY_PLACE -> groupShoppingByPlace();
+            case RESTOCK_LOW_INVENTORY -> restockLowInventory(o);
             default -> throw new IllegalArgumentException("not a lifestyle command: " + command.type());
         };
     }
@@ -368,7 +375,7 @@ public class LifestyleIntentService {
 
     private IntentResult markShoppingPurchased(IntentCommand command, IntentOptions o) {
         List<String> names = itemNames(command, o);
-        List<Item> purchased = itemService.markShoppingPurchased(names);
+        List<Item> purchased = itemService.markShoppingPurchased(names, o.quantity());
         if (purchased.isEmpty()) {
             return IntentResult.message(IntentResult.Action.SHOPPING_ITEMS_PURCHASED,
                     "這些品項目前不在購物清單裡。 ");
@@ -382,6 +389,95 @@ public class LifestyleIntentService {
         List<Item> cleared = itemService.clearShoppingList();
         return IntentResult.message(IntentResult.Action.SHOPPING_LIST_CLEARED,
                 cleared.isEmpty() ? "購物清單本來就是空的。" : "已清空購物清單,共 %d 項。".formatted(cleared.size()));
+    }
+
+    private IntentResult adjustInventory(IntentCommand command, IntentOptions o) {
+        require(command.title(), "title");
+        if (o.quantity() == null || o.quantity() == 0) {
+            throw new IllegalArgumentException("missing inventory delta");
+        }
+        Item item = itemService.adjustInventory(command.title(), o.quantity());
+        return IntentResult.message(IntentResult.Action.INVENTORY_ADJUSTED,
+                "已把「%s」庫存%s %d,目前是 %d。".formatted(item.getName(),
+                        o.quantity() > 0 ? "增加" : "減少", Math.abs(o.quantity()),
+                        item.getInventoryQuantity()));
+    }
+
+    private IntentResult listInventory(IntentOptions o) {
+        Integer maximum = "LOW".equalsIgnoreCase(o.filter())
+                ? (o.quantity() == null ? 1 : o.quantity()) : null;
+        List<Item> items = itemService.listInventory(maximum);
+        String message = items.isEmpty() ? (maximum == null ? "目前沒有大於 0 的庫存紀錄。" : "沒有已知的低庫存品項。")
+                : items.stream().map(item -> "%s｜%d".formatted(item.getName(), item.getInventoryQuantity()))
+                .collect(java.util.stream.Collectors.joining("\n"));
+        return IntentResult.message(IntentResult.Action.INVENTORY_LISTED, message);
+    }
+
+    private IntentResult askItemPlaces(IntentCommand command) {
+        require(command.title(), "title");
+        Optional<Item> found = itemService.findItem(command.title());
+        if (found.isEmpty()) {
+            return IntentResult.clarificationNeeded("我還沒有「%s」的品項紀錄。".formatted(command.title()));
+        }
+        Item item = found.get();
+        List<String> places = item.getPlaceIds().stream().map(placeService::getPlace)
+                .map(Place::getName).sorted().toList();
+        return IntentResult.message(IntentResult.Action.ITEM_PLACES_INFO,
+                places.isEmpty() ? "還不知道「%s」可以在哪裡買。".formatted(item.getName())
+                        : "「%s」可以在:%s。".formatted(item.getName(), String.join("、", places)));
+    }
+
+    private IntentResult bindItemPlace(IntentCommand command) {
+        require(command.title(), "title");
+        require(command.placeName(), "placeName");
+        Place place = resolvePlace(command.placeName()).orElseGet(() ->
+                placeService.createPlace(command.placeName(), null, null, null, null));
+        Item item = itemService.bindItemToPlace(command.title(), place.getId());
+        return IntentResult.message(IntentResult.Action.ITEM_PLACE_BOUND,
+                "記住了,「%s」可以在「%s」買。".formatted(item.getName(), place.getName()));
+    }
+
+    private IntentResult listItemsAt(IntentCommand command) {
+        Place place = resolvePlace(command.placeName()).orElseThrow(() ->
+                new IllegalArgumentException("unknown destination place"));
+        List<Item> items = itemService.listKnownItemsAt(place.getId());
+        String message = items.isEmpty() ? "目前沒有記錄「%s」可買的品項。".formatted(place.getName())
+                : "記得「%s」可買:%s。".formatted(place.getName(), items.stream().map(Item::getName)
+                .collect(java.util.stream.Collectors.joining("、")));
+        return IntentResult.message(IntentResult.Action.ITEMS_BY_PLACE_LISTED, message);
+    }
+
+    private IntentResult groupShoppingByPlace() {
+        List<Item> shopping = itemService.listShoppingItems();
+        if (shopping.isEmpty()) {
+            return IntentResult.message(IntentResult.Action.SHOPPING_GROUPED_BY_PLACE, "購物清單目前是空的。");
+        }
+        java.util.Map<Long, String> placeNames = placeService.listPlaces().stream()
+                .collect(java.util.stream.Collectors.toMap(Place::getId, Place::getName));
+        java.util.Map<String, java.util.List<String>> groups = new java.util.LinkedHashMap<>();
+        for (Item item : shopping) {
+            if (item.getPlaceIds().isEmpty()) {
+                groups.computeIfAbsent("未指定店家", ignored -> new java.util.ArrayList<>()).add(item.getName());
+            } else {
+                for (Long placeId : item.getPlaceIds()) {
+                    String place = placeNames.getOrDefault(placeId, "未知地點");
+                    groups.computeIfAbsent(place, ignored -> new java.util.ArrayList<>()).add(item.getName());
+                }
+            }
+        }
+        String message = groups.entrySet().stream().map(entry -> "%s｜%s".formatted(
+                        entry.getKey(), String.join("、", entry.getValue())))
+                .collect(java.util.stream.Collectors.joining("\n"));
+        return IntentResult.message(IntentResult.Action.SHOPPING_GROUPED_BY_PLACE, message);
+    }
+
+    private IntentResult restockLowInventory(IntentOptions o) {
+        int maximum = o.quantity() == null ? 1 : Math.max(o.quantity(), 1);
+        List<Item> items = itemService.restockLowInventory(maximum);
+        return IntentResult.message(IntentResult.Action.LOW_INVENTORY_RESTOCKED,
+                items.isEmpty() ? "沒有已盤點且低於門檻的庫存。"
+                        : "已把低庫存加入購物清單:%s。".formatted(items.stream().map(Item::getName)
+                        .collect(java.util.stream.Collectors.joining("、"))));
     }
 
     private IntentResult listShoppingAt(IntentCommand command) {

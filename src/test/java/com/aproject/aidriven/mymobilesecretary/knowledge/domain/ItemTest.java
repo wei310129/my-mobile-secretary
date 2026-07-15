@@ -28,4 +28,18 @@ class ItemTest {
         assertThat(porkRibs.isMentionedIn("")).isFalse();
         assertThat(porkRibs.isMentionedIn(null)).isFalse();
     }
+
+    @Test
+    void relativeInventoryNeverDropsBelowZero() {
+        porkRibs.setInventoryQuantity(2, NOW);
+
+        porkRibs.adjustInventoryQuantity(-1, NOW.plusSeconds(1));
+        assertThat(porkRibs.getInventoryQuantity()).isEqualTo(1);
+
+        porkRibs.adjustInventoryQuantity(-10, NOW.plusSeconds(2));
+        assertThat(porkRibs.getInventoryQuantity()).isZero();
+
+        porkRibs.adjustInventoryQuantity(3, NOW.plusSeconds(3));
+        assertThat(porkRibs.getInventoryQuantity()).isEqualTo(3);
+    }
 }

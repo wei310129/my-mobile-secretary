@@ -87,6 +87,12 @@ public class Item {
         this.updatedAt = now;
     }
 
+    /** 以相對數量調整庫存;消耗超過現有量時下限為 0。 */
+    public void adjustInventoryQuantity(int delta, Instant now) {
+        this.inventoryQuantity = Math.max(this.inventoryQuantity + delta, 0);
+        this.updatedAt = now;
+    }
+
     public void addPlace(Long placeId, Instant now) {
         this.placeIds.add(placeId);
         this.updatedAt = now;

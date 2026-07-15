@@ -46,6 +46,10 @@ public class Task {
     @Column(nullable = false, length = 20)
     private Recurrence recurrence = Recurrence.NONE;
 
+    /** 暫停週期規則時保留下一次時間,但不排入提醒佇列。 */
+    @Column(nullable = false)
+    private boolean recurrencePaused;
+
     /** 到期時是否還要先檢查外部條件。 */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
@@ -81,6 +85,7 @@ public class Task {
         this.priority = priority;
         this.category = category == null ? Category.OTHER : category;
         this.recurrence = recurrence == null ? Recurrence.NONE : recurrence;
+        this.recurrencePaused = false;
         this.conditionType = conditionType == null ? ConditionType.NONE : conditionType;
         this.conditionPayload = conditionPayload;
         this.dueAt = dueAt;
@@ -154,6 +159,53 @@ public class Task {
         }
         this.dueAt = newDueAt;
         this.updatedAt = now;
+    }
+
+    /** 修改待辦本身;null 代表該欄不變,空白標題一律拒絕。 */
+    public void updateDetails(String newTitle, String newDescription,
+                              TaskPriority newPriority, Category newCategory, Instant now) {
+        if (status == TaskStatus.CONFIRMED || status == TaskStatus.CANCELED) {
+            throw new BusinessException("INVALID_STATE_TRANSITION",
+                    "Task %d is closed (%s), details cannot change".formatted(id, status));
+        }
+        if (newTitle != null) {
+            if (newTitle.isBlank()) {
+                throw new BusinessException("INVALID_TASK_TITLE", "Task title cannot be blank");
+            }
+            this.title = newTitle.strip();
+        }
+        if (newDescription != null) {
+            this.description = newDescription.isBlank() ? null : newDescription.strip();
+        }
+        if (newPriority != null) {
+            this.priority = newPriority;
+        }
+        if (newCategory != null) {
+            this.category = newCategory;
+        }
+        this.updatedAt = now;
+    }
+
+    public void pauseRecurrence(Instant now) {
+        requireRecurring();
+        this.recurrencePaused = true;
+        this.updatedAt = now;
+    }
+
+    public void resumeRecurrence(Instant now) {
+        requireRecurring();
+        this.recurrencePaused = false;
+        this.updatedAt = now;
+    }
+
+    private void requireRecurring() {
+        if (recurrence == Recurrence.NONE) {
+            throw new BusinessException("TASK_NOT_RECURRING", "Task %d is not recurring".formatted(id));
+        }
+        if (status == TaskStatus.CANCELED || status == TaskStatus.CONFIRMED) {
+            throw new BusinessException("INVALID_STATE_TRANSITION",
+                    "Task %d is closed (%s)".formatted(id, status));
+        }
     }
 
     /**
@@ -236,6 +288,10 @@ public class Task {
 
     public Recurrence getRecurrence() {
         return recurrence;
+    }
+
+    public boolean isRecurrencePaused() {
+        return recurrencePaused;
     }
 
     public ConditionType getConditionType() {

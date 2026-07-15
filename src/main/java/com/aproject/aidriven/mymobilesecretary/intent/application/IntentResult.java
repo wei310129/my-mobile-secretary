@@ -70,7 +70,17 @@ public record IntentResult(
         CONNECTION_CHECKED,
         PLANNING_PREFERENCE_SET,
         CONTEXT_UPDATED,
-        SOCIAL_REPLIED
+        SOCIAL_REPLIED,
+        TASK_UPDATED,
+        RECURRENCE_PAUSED,
+        RECURRENCE_RESUMED,
+        RECURRENCE_SKIPPED,
+        COMPLETED_TASKS_LISTED,
+        SHOPPING_ITEMS_PURCHASED,
+        SHOPPING_LIST_CLEARED,
+        SHOPPING_BY_PLACE_LISTED,
+        AGENDA_SUMMARY,
+        SCHEDULE_RESIZED
     }
 
     /** 清單訊息共用:最多列 10 筆,其餘以「…等 N 件」收尾。 */
@@ -93,6 +103,14 @@ public record IntentResult(
 
     static IntentResult message(Action action, String message) {
         return new IntentResult(action, message, null, null);
+    }
+
+    static IntentResult taskMessage(Action action, String message, Task task) {
+        return new IntentResult(action, message, task, null);
+    }
+
+    static IntentResult scheduleMessage(Action action, String message, ScheduleDecision decision) {
+        return new IntentResult(action, message, null, decision);
     }
 
     static IntentResult scheduleDecided(ScheduleDecision decision) {

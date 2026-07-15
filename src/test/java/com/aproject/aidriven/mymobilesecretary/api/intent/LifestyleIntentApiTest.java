@@ -56,6 +56,11 @@ class LifestyleIntentApiTest extends IntegrationTestBase {
         say("我還缺什麼", jsonPath("$.action").value("SHOPPING_LISTED"),
                 jsonPath("$.message").value(containsString(eggs)),
                 jsonPath("$.message").value(containsString(milk)));
+
+        stub.nextCommand(command(IntentCommand.Type.MARK_SHOPPING_PURCHASED, null,
+                null, null, null, null, itemOptions(List.of(eggs))));
+        say("雞蛋買到了", jsonPath("$.action").value("SHOPPING_ITEMS_PURCHASED"),
+                jsonPath("$.message").value(containsString(eggs)));
     }
 
     @Test
@@ -75,6 +80,36 @@ class LifestyleIntentApiTest extends IntegrationTestBase {
                 null, "2030-08-10T09:00:00+08:00", "2030-08-10T18:00:00+08:00", null,
                 options(null, null, 60, null, null, null, null, null, "AFTERNOON", null)));
         say("找一個一小時空檔", jsonPath("$.action").value("FREE_SLOTS_SUGGESTED"));
+
+        stub.nextCommand(command(IntentCommand.Type.RESIZE_SCHEDULE, "生活測試會議",
+                null, null, null, null, resizeOptions(null, 30)));
+        say("會議延長半小時", jsonPath("$.action").value("SCHEDULE_RESIZED"));
+    }
+
+    @Test
+    void recurringTaskCanBePausedResumedAndUpdated() throws Exception {
+        String title = "生活測試週報";
+        stub.nextCommand(command(IntentCommand.Type.CREATE_TASK, title,
+                "2030-08-09T09:00:00+08:00", null, null, null,
+                options(null, null, null, null, "WEEKLY", "WORK", null, null, null, null)));
+        say("每週提醒我交週報", jsonPath("$.action").value("TASK_CREATED"));
+
+        stub.nextCommand(command(IntentCommand.Type.PAUSE_RECURRING_TASK, title,
+                null, null, null, null, IntentOptions.empty()));
+        say("週報提醒先暫停", jsonPath("$.action").value("RECURRENCE_PAUSED"),
+                jsonPath("$.task.recurrencePaused").value(true));
+
+        stub.nextCommand(command(IntentCommand.Type.RESUME_RECURRING_TASK, title,
+                null, null, null, null, IntentOptions.empty()));
+        say("恢復週報提醒", jsonPath("$.action").value("RECURRENCE_RESUMED"),
+                jsonPath("$.task.recurrencePaused").value(false));
+
+        stub.nextCommand(new IntentCommand(IntentCommand.Type.UPDATE_TASK, title,
+                null, null, null, null, "HIGH", null, null, null,
+                null, null, null, updateOptions("生活測試重要週報", "記得附數據", "WORK")));
+        say("週報改名並設為緊急", jsonPath("$.action").value("TASK_UPDATED"),
+                jsonPath("$.task.title").value("生活測試重要週報"),
+                jsonPath("$.task.priority").value("HIGH"));
     }
 
     @Test
@@ -127,6 +162,24 @@ class LifestyleIntentApiTest extends IntegrationTestBase {
                                          String condition, Integer buffer) {
         return new IntentOptions(filter, ordinal, duration, lead, null, null, recurrence,
                 category, items, quantity, null, null, timeOfDay, null, null, condition,
-                null, buffer, null, null);
+                null, buffer, null, null, null, null);
+    }
+
+    private static IntentOptions itemOptions(List<String> items) {
+        return new IntentOptions(null, null, null, null, null, null, null, null,
+                items, null, null, null, null, null, null, null, null, null,
+                null, null, null, null);
+    }
+
+    private static IntentOptions resizeOptions(Integer duration, Integer shift) {
+        return new IntentOptions(null, null, duration, null, null, null, null, null,
+                null, null, null, null, null, null, shift, null, null, null,
+                null, null, null, null);
+    }
+
+    private static IntentOptions updateOptions(String newTitle, String description, String category) {
+        return new IntentOptions(null, null, null, null, null, null, null, category,
+                null, null, null, null, null, null, null, null, null, null,
+                null, null, newTitle, description);
     }
 }

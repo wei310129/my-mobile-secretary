@@ -94,6 +94,14 @@ public class TaskService {
                 .toList();
     }
 
+    /** 已完成待辦,最近完成的排前面。 */
+    @Transactional(readOnly = true)
+    public List<Task> listCompletedTasks() {
+        return taskRepository.findByStatusIn(EnumSet.of(TaskStatus.CONFIRMED)).stream()
+                .sorted(java.util.Comparator.comparing(Task::getUpdatedAt).reversed())
+                .toList();
+    }
+
     /**
      * 關鍵字找未結案任務(自然語言「牛奶買到了」的閉環用)。
      * 比對是確定性規則:標題包含關鍵字、或關鍵字包含標題;LLM 不得直接指定任務 id。
@@ -120,7 +128,10 @@ public class TaskService {
         List<Task> open = taskRepository.findByStatusIn(EnumSet.of(
                 TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.REMINDED, TaskStatus.ESCALATED));
         Instant now = Instant.now(clock);
-        open.forEach(task -> task.cancel(now));
+        open.forEach(task -> {
+            task.cancel(now);
+            scheduleService.removeDueReminder(task.getId());
+        });
         return open;
     }
 
@@ -138,10 +149,13 @@ public class TaskService {
             }
             Instant next = nextOccurrence(task, now);
             task.advanceOccurrence(next, now);
-            scheduleService.scheduleDueReminder(taskId, next);
+            if (!task.isRecurrencePaused()) {
+                scheduleService.scheduleDueReminder(taskId, next);
+            }
             return task;
         }
         task.confirm(Instant.now(clock));
+        scheduleService.removeDueReminder(taskId);
         return task;
     }
 
@@ -149,6 +163,7 @@ public class TaskService {
     public Task cancelTask(Long taskId) {
         Task task = getTask(taskId);
         task.cancel(Instant.now(clock));
+        scheduleService.removeDueReminder(taskId);
         return task;
     }
 
@@ -159,11 +174,52 @@ public class TaskService {
     public Task changeDueDate(Long taskId, Instant newDueAt) {
         Task task = getTask(taskId);
         task.changeDueAt(newDueAt, Instant.now(clock));
-        if (newDueAt != null) {
+        if (newDueAt != null && !task.isRecurrencePaused()) {
             scheduleService.scheduleDueReminder(taskId, newDueAt);
         } else {
             scheduleService.removeDueReminder(taskId);
         }
+        return task;
+    }
+
+    /** 修改名稱、備註、優先級或分類。null 欄位維持原值。 */
+    public Task updateTask(Long taskId, String newTitle, String description,
+                           TaskPriority priority, Task.Category category) {
+        Task task = getTask(taskId);
+        task.updateDetails(newTitle, description, priority, category, Instant.now(clock));
+        return task;
+    }
+
+    public Task pauseRecurrence(Long taskId) {
+        Task task = getTask(taskId);
+        task.pauseRecurrence(Instant.now(clock));
+        scheduleService.removeDueReminder(taskId);
+        return task;
+    }
+
+    public Task resumeRecurrence(Long taskId) {
+        Task task = getTask(taskId);
+        Instant now = Instant.now(clock);
+        task.resumeRecurrence(now);
+        Instant due = task.getDueAt();
+        if (due == null || !due.isAfter(now)) {
+            due = nextOccurrence(task, now);
+            task.advanceOccurrence(due, now);
+        }
+        scheduleService.scheduleDueReminder(taskId, due);
+        return task;
+    }
+
+    /** 略過本次但保留整條週期規則。 */
+    public Task skipRecurringOccurrence(Long taskId) {
+        Task task = getTask(taskId);
+        if (task.isRecurrencePaused()) {
+            throw new IllegalArgumentException("recurring task is paused");
+        }
+        Instant now = Instant.now(clock);
+        Instant next = nextOccurrence(task, now);
+        task.advanceOccurrence(next, now);
+        scheduleService.scheduleDueReminder(taskId, next);
         return task;
     }
 
@@ -174,6 +230,10 @@ public class TaskService {
     public Task scheduleNextRecurringOccurrence(Long taskId) {
         Task task = getTask(taskId);
         if (task.getRecurrence() == Task.Recurrence.NONE) {
+            return task;
+        }
+        if (task.isRecurrencePaused()) {
+            scheduleService.removeDueReminder(taskId);
             return task;
         }
         Instant now = Instant.now(clock);

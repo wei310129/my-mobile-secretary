@@ -78,6 +78,16 @@ public record IntentCommand(
         SET_CONTEXT_PLACE,
         COPY_CONTEXT,
         SOCIAL,
+        UPDATE_TASK,
+        PAUSE_RECURRING_TASK,
+        RESUME_RECURRING_TASK,
+        SKIP_RECURRING_OCCURRENCE,
+        LIST_COMPLETED_TASKS,
+        MARK_SHOPPING_PURCHASED,
+        CLEAR_SHOPPING_LIST,
+        LIST_SHOPPING_BY_PLACE,
+        AGENDA_SUMMARY,
+        RESIZE_SCHEDULE,
         /** 建任務(待辦,無固定時段;可有期限)。 */
         CREATE_TASK,
         /** 建行程(有明確開始/結束時段的承諾)。 */

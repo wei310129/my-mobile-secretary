@@ -152,7 +152,11 @@ public class IntentService {
                     ASK_TRAVEL_TIME, ASK_DEPARTURE_TIME, CREATE_TRAFFIC_WATCH,
                     CHECK_FEASIBILITY, SET_PLANNING_BUFFER, ACCEPT_CONTEXT,
                     SHIFT_CONTEXT_LATER, CANCEL_CONTEXT, SET_CONTEXT_PLACE,
-                    COPY_CONTEXT, SOCIAL -> lifestyleIntentService.execute(text, command);
+                    COPY_CONTEXT, SOCIAL, UPDATE_TASK, PAUSE_RECURRING_TASK,
+                    RESUME_RECURRING_TASK, SKIP_RECURRING_OCCURRENCE,
+                    LIST_COMPLETED_TASKS, MARK_SHOPPING_PURCHASED,
+                    CLEAR_SHOPPING_LIST, LIST_SHOPPING_BY_PLACE,
+                    AGENDA_SUMMARY, RESIZE_SCHEDULE -> lifestyleIntentService.execute(text, command);
             case CREATE_TASK -> {
                 requireText(command.title(), "title");
                 // 防重複(使用者實際踩過:「拿包裹」被建了兩次):同名未結案任務存在就回問

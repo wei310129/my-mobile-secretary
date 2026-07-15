@@ -120,6 +120,16 @@ public class LifestyleIntentService {
             case COPY_CONTEXT -> copyContext(command, o);
             case SOCIAL -> IntentResult.message(IntentResult.Action.SOCIAL_REPLIED,
                     command.reason() == null || command.reason().isBlank() ? "不客氣,有需要再叫我。" : command.reason());
+            case UPDATE_TASK -> updateTask(command, o);
+            case PAUSE_RECURRING_TASK -> pauseRecurring(command, o);
+            case RESUME_RECURRING_TASK -> resumeRecurring(command, o);
+            case SKIP_RECURRING_OCCURRENCE -> skipRecurring(command, o);
+            case LIST_COMPLETED_TASKS -> listCompleted(o);
+            case MARK_SHOPPING_PURCHASED -> markShoppingPurchased(command, o);
+            case CLEAR_SHOPPING_LIST -> clearShopping();
+            case LIST_SHOPPING_BY_PLACE -> listShoppingAt(command);
+            case AGENDA_SUMMARY -> agendaSummary(o);
+            case RESIZE_SCHEDULE -> resizeSchedule(command, o);
             default -> throw new IllegalArgumentException("not a lifestyle command: " + command.type());
         };
     }
@@ -286,6 +296,135 @@ public class LifestyleIntentService {
         Item item = itemService.setInventory(name, o.quantity() == null ? 0 : o.quantity());
         return IntentResult.message(IntentResult.Action.INVENTORY_UPDATED,
                 "已更新「%s」庫存為 %d。".formatted(item.getName(), item.getInventoryQuantity()));
+    }
+
+    private IntentResult updateTask(IntentCommand command, IntentOptions o) {
+        Task target = taskTarget(command, o);
+        TaskPriority priority = null;
+        if (command.priority() != null && !command.priority().isBlank()) {
+            try { priority = TaskPriority.valueOf(command.priority().toUpperCase()); }
+            catch (IllegalArgumentException ignored) { throw new IllegalArgumentException("bad priority"); }
+        }
+        Task.Category category = null;
+        if (o.category() != null) {
+            try { category = Task.Category.valueOf(o.category().toUpperCase()); }
+            catch (IllegalArgumentException ignored) { throw new IllegalArgumentException("bad category"); }
+        }
+        if (o.newTitle() == null && o.description() == null && priority == null && category == null) {
+            throw new IllegalArgumentException("missing task changes");
+        }
+        Task changed = taskService.updateTask(target.getId(), o.newTitle(), o.description(), priority, category);
+        contextService.rememberTask(changed);
+        return IntentResult.taskMessage(IntentResult.Action.TASK_UPDATED,
+                "已更新待辦「%s」:分類 %s、優先級 %s。".formatted(
+                        changed.getTitle(), changed.getCategory(), changed.getPriority()), changed);
+    }
+
+    private IntentResult pauseRecurring(IntentCommand command, IntentOptions o) {
+        Task target = taskTarget(command, o);
+        Task changed = taskService.pauseRecurrence(target.getId());
+        contextService.rememberTask(changed);
+        return IntentResult.taskMessage(IntentResult.Action.RECURRENCE_PAUSED,
+                "已暫停「%s」的固定提醒;原設定保留,之後可以直接恢復。".formatted(changed.getTitle()), changed);
+    }
+
+    private IntentResult resumeRecurring(IntentCommand command, IntentOptions o) {
+        Task target = taskTarget(command, o);
+        Task changed = taskService.resumeRecurrence(target.getId());
+        contextService.rememberTask(changed);
+        return IntentResult.taskMessage(IntentResult.Action.RECURRENCE_RESUMED,
+                "已恢復「%s」的固定提醒,下一次是 %s。".formatted(
+                        changed.getTitle(), format(changed.getDueAt())), changed);
+    }
+
+    private IntentResult skipRecurring(IntentCommand command, IntentOptions o) {
+        Task target = taskTarget(command, o);
+        Task changed = taskService.skipRecurringOccurrence(target.getId());
+        contextService.rememberTask(changed);
+        return IntentResult.taskMessage(IntentResult.Action.RECURRENCE_SKIPPED,
+                "已略過「%s」這一次,下一次是 %s。".formatted(
+                        changed.getTitle(), format(changed.getDueAt())), changed);
+    }
+
+    private IntentResult listCompleted(IntentOptions o) {
+        Instant now = Instant.now(clock);
+        LocalDate today = LocalDate.ofInstant(now, TAIPEI);
+        String filter = o.filter() == null ? "RECENT" : o.filter().toUpperCase();
+        List<Task> completed = taskService.listCompletedTasks().stream().filter(task -> {
+            LocalDate date = LocalDate.ofInstant(task.getUpdatedAt(), TAIPEI);
+            return switch (filter) {
+                case "TODAY" -> date.equals(today);
+                case "WEEK" -> !date.isBefore(today.minusDays(6));
+                default -> true;
+            };
+        }).limit(20).toList();
+        contextService.rememberTaskList(completed);
+        String message = completed.isEmpty() ? "指定範圍內還沒有完成紀錄。" :
+                "已完成 %d 件:\n%s".formatted(completed.size(), completed.stream()
+                        .map(task -> "✓ %s｜%s".formatted(task.getTitle(), format(task.getUpdatedAt())))
+                        .collect(java.util.stream.Collectors.joining("\n")));
+        return IntentResult.message(IntentResult.Action.COMPLETED_TASKS_LISTED, message);
+    }
+
+    private IntentResult markShoppingPurchased(IntentCommand command, IntentOptions o) {
+        List<String> names = itemNames(command, o);
+        List<Item> purchased = itemService.markShoppingPurchased(names);
+        if (purchased.isEmpty()) {
+            return IntentResult.message(IntentResult.Action.SHOPPING_ITEMS_PURCHASED,
+                    "這些品項目前不在購物清單裡。 ");
+        }
+        return IntentResult.message(IntentResult.Action.SHOPPING_ITEMS_PURCHASED,
+                "已標記買到:%s。".formatted(purchased.stream().map(Item::getName)
+                        .collect(java.util.stream.Collectors.joining("、"))));
+    }
+
+    private IntentResult clearShopping() {
+        List<Item> cleared = itemService.clearShoppingList();
+        return IntentResult.message(IntentResult.Action.SHOPPING_LIST_CLEARED,
+                cleared.isEmpty() ? "購物清單本來就是空的。" : "已清空購物清單,共 %d 項。".formatted(cleared.size()));
+    }
+
+    private IntentResult listShoppingAt(IntentCommand command) {
+        Place place = resolvePlace(command.placeName()).orElseThrow(() ->
+                new IllegalArgumentException("unknown destination place"));
+        List<Item> items = itemService.listShoppingItemsAt(place.getId());
+        String message = items.isEmpty() ? "目前沒有綁在「%s」的待買品項。".formatted(place.getName())
+                : "到「%s」要買:%s。".formatted(place.getName(), items.stream().map(Item::getName)
+                .collect(java.util.stream.Collectors.joining("、")));
+        return IntentResult.message(IntentResult.Action.SHOPPING_BY_PLACE_LISTED, message);
+    }
+
+    private IntentResult agendaSummary(IntentOptions o) {
+        List<Task> tasks = filterTasks(taskService.listOpenTasks(), o);
+        List<ScheduleItem> schedules = filterSchedules(upcomingSchedules(), o);
+        long scheduledMinutes = schedules.stream()
+                .mapToLong(item -> Duration.between(item.getStartAt(), item.getEndAt()).toMinutes()).sum();
+        long dueTasks = tasks.stream().filter(task -> task.getDueAt() != null).count();
+        return IntentResult.message(IntentResult.Action.AGENDA_SUMMARY,
+                "共有 %d 個行程(約 %d 小時 %d 分鐘)、%d 件待辦,其中 %d 件有期限。".formatted(
+                        schedules.size(), scheduledMinutes / 60, scheduledMinutes % 60,
+                        tasks.size(), dueTasks));
+    }
+
+    private IntentResult resizeSchedule(IntentCommand command, IntentOptions o) {
+        ScheduleItem item = scheduleTarget(command, o);
+        Instant start = parse(command.startAt());
+        if (start == null) start = item.getStartAt();
+        Instant end = parse(command.endAt());
+        if (end == null && o.durationMinutes() != null && o.durationMinutes() > 0) {
+            end = start.plus(Duration.ofMinutes(o.durationMinutes()));
+        }
+        if (end == null && o.shiftMinutes() != null && o.shiftMinutes() != 0) {
+            end = item.getEndAt().plus(Duration.ofMinutes(o.shiftMinutes()));
+        }
+        if (end == null) throw new IllegalArgumentException("missing schedule duration change");
+        var decision = scheduleService.reschedule(item.getId(), start, end);
+        contextService.rememberSchedule(decision.item());
+        return IntentResult.scheduleMessage(IntentResult.Action.SCHEDULE_RESIZED,
+                "已把「%s」調整為 %s–%s。".formatted(decision.item().getTitle(),
+                        format(decision.item().getStartAt()),
+                        ZonedDateTime.ofInstant(decision.item().getEndAt(), TAIPEI)
+                                .format(DateTimeFormatter.ofPattern("HH:mm"))), decision);
     }
 
     private IntentResult comparePrices(IntentCommand command) {
@@ -484,12 +623,17 @@ public class LifestyleIntentService {
                         && LocalDate.ofInstant(t.getDueAt(), TAIPEI).equals(today.plusDays(1));
                 case "UPCOMING_DUE" -> t.getDueAt() != null && !t.getDueAt().isBefore(now)
                         && t.getDueAt().isBefore(now.plus(Duration.ofDays(3)));
+                case "WEEK" -> t.getDueAt() != null && !t.getDueAt().isBefore(now)
+                        && !LocalDate.ofInstant(t.getDueAt(), TAIPEI).isAfter(today.plusDays(7));
+                case "OVERDUE" -> t.getDueAt() != null && t.getDueAt().isBefore(now);
+                case "NO_DUE" -> t.getDueAt() == null;
                 default -> true;
             };
             Task.Category wanted = parseCategory(o.category());
             boolean category = o.category() == null || wanted == t.getCategory();
             if ("WORK_TODAY".equals(filter)) category = t.getCategory() == Task.Category.WORK;
-            return date && category;
+            boolean priority = !"HIGH_PRIORITY".equals(filter) || t.getPriority() == TaskPriority.HIGH;
+            return date && category && priority;
         }).toList();
     }
 

@@ -26,10 +26,13 @@ public record IntentOptions(
         String fromPlaceName,
         Integer bufferMinutes,
         String clarificationQuestion,
-        String alias
+        String alias,
+        String newTitle,
+        String description
 ) {
     public static IntentOptions empty() {
         return new IntentOptions(null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null);
     }
 }

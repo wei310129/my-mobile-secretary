@@ -81,7 +81,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               若與清單某項「相近但不確定」(可能是筆誤,如「夏印尼」vs「夏恩英語」)→ 不要硬猜,
               回 UNKNOWN 且 reason 寫「你是說『夏恩英語』嗎?」這種確認句。
             - CREATE_PLACE 的 placeName 可包含分店/地區資訊(「夏恩英語 新店七張分校」),查得更準。
-            - priority:聽得出急迫(趕快、務必、很急)才填 HIGH;否則 NORMAL。
+            - priority:CREATE_TASK 聽得出急迫(趕快、務必、很急)才填 HIGH,否則 NORMAL;
+              UPDATE_TASK 只有使用者明講要改優先級時才填,沒講必須留空。
             - RECORD_OUTCOME:onTime 準時為 true;超時填 overrunMinutes(分鐘,「半小時」=30);
               outcomeReason 聽得出原因才填:會議/活動拖延=MEETING_OVERRUN、交通事故/意外=TRAFFIC_INCIDENT、
               上下班尖峰塞車=RUSH_HOUR、其他=OTHER。
@@ -95,11 +96,19 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - options 可填:filter、ordinal、durationMinutes、leadMinutes、radiusMeters、triggerType、
               recurrence、category、itemNames、quantity、referenceTitle、referenceKind、timeOfDay、
               keepTime、shiftMinutes、condition、fromPlaceName、bufferMinutes、clarificationQuestion、alias。
+              第二波欄位還有 newTitle、description。
             - CREATE_TASK 可同時填 dueAt、placeName 與 options。重複提醒填 options.recurrence;
               天氣條件提醒用 CREATE_WEATHER_REMINDER,不要把「如果」忽略。
             - 「今天有什麼事」是 LIST_AGENDA+filter TODAY,不能退化成列全部未完成待辦。
             - 序號操作一定填 options.ordinal;省略名稱的承接操作不要自行虛構 title。
             - 純致謝、結束語輸出 SOCIAL;抱怨輸出 FEEDBACK,絕不可 fallback 建成待辦。
+            - 修改待辦名稱／備註／分類／優先級用 UPDATE_TASK。只有使用者明講優先級時才填 priority;
+              改名填 options.newTitle,備註填 options.description,不可誤建新待辦。
+            - 固定提醒可用 PAUSE_RECURRING_TASK、RESUME_RECURRING_TASK、SKIP_RECURRING_OCCURRENCE;
+              「暫停」不是取消整條規則,「這次跳過」也不是取消。
+            - 已買到購物品項用 MARK_SHOPPING_PURCHASED;明確說全部買完或清空才用 CLEAR_SHOPPING_LIST。
+            - 行程只改長度／結束時間用 RESIZE_SCHEDULE;durationMinutes 是新總時長,
+              shiftMinutes 是結束時間增減分鐘(縮短可為負數)。
             - 下方能力目錄是規範性 few-shot。A+B 代表輸出兩個 command,不是不存在的 type;
               RECEIPT_IMAGE 表示文字 intent 不處理圖片;FOLLOW_UP 表示依上下文輸出實際待補的 command。
             """;

@@ -89,6 +89,40 @@ public class ItemService {
         return itemRepository.findByShoppingNeededTrueOrderByNameAsc();
     }
 
+    /** 指定品項已買到;不存在或本來不在清單的名稱略過。 */
+    public List<Item> markShoppingPurchased(List<String> names) {
+        Instant now = Instant.now(clock);
+        return names.stream()
+                .filter(name -> name != null && !name.isBlank())
+                .map(String::strip)
+                .collect(java.util.stream.Collectors.toMap(
+                        name -> name.toLowerCase(java.util.Locale.ROOT),
+                        name -> name,
+                        (first, ignored) -> first,
+                        java.util.LinkedHashMap::new))
+                .values().stream()
+                .map(itemRepository::findByNameIgnoreCase)
+                .flatMap(java.util.Optional::stream)
+                .filter(Item::isShoppingNeeded)
+                .peek(item -> item.removeFromShoppingList(now))
+                .toList();
+    }
+
+    /** 清空目前購物清單,保留品項與價格／店家知識。 */
+    public List<Item> clearShoppingList() {
+        Instant now = Instant.now(clock);
+        List<Item> items = itemRepository.findByShoppingNeededTrueOrderByNameAsc();
+        items.forEach(item -> item.removeFromShoppingList(now));
+        return items;
+    }
+
+    @Transactional(readOnly = true)
+    public List<Item> listShoppingItemsAt(Long placeId) {
+        return itemRepository.findByShoppingNeededTrueOrderByNameAsc().stream()
+                .filter(item -> item.getPlaceIds().contains(placeId))
+                .toList();
+    }
+
     /** 更新家中庫存;品項不存在時一併建立。 */
     public Item setInventory(String name, int quantity) {
         Instant now = Instant.now(clock);

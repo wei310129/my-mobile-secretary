@@ -153,3 +153,15 @@
 153|我現在的勿擾設定是什麼|ASK_REMINDER_PREFERENCES|列固定時段、緊急例外與臨時靜音
 154|取消每天的勿擾時段|CLEAR_QUIET_HOURS|臨時靜音不受影響
 155|午休十二點到一點也不要提醒|SET_QUIET_HOURS|options.quietStart=12:00;quietEnd=13:00;目前單一固定時段會取代舊設定
+156|哪些待辦有到點提醒|LIST_LOCATION_TASKS|options.filter=BOUND
+157|哪些待辦還沒綁地點|LIST_LOCATION_TASKS|options.filter=UNBOUND
+158|到全聯會提醒我什麼|ASK_PLACE_TASKS|placeName=全聯
+159|離開家會提醒哪些事|ASK_PLACE_TASKS|placeName=家;options.triggerType=EXIT
+160|買牛奶的地點提醒怎麼設的|ASK_TASK_GEOFENCE|title=買牛奶;列地點、方向、半徑
+161|這件事是進去還是離開才提醒|ASK_TASK_GEOFENCE|使用上一個待辦
+162|全聯的買牛奶改成五百公尺|UPDATE_TASK_GEOFENCE|title=買牛奶;placeName=全聯;options.radiusMeters=500
+163|帶垃圾改成離開家才提醒|UPDATE_TASK_GEOFENCE|title=帶垃圾;placeName=家;options.triggerType=EXIT
+164|買牛奶不要再綁全聯|REMOVE_TASK_PLACE|title=買牛奶;placeName=全聯;保留待辦
+165|只移除公司的地點提醒，事情留著|REMOVE_TASK_PLACE|使用上一個待辦;placeName=公司
+166|把那個到家提醒改成離開|UPDATE_TASK_GEOFENCE|只有上下文能唯一指向待辦與地點才執行，否則UNKNOWN
+167|公司附近有哪些進入型提醒|ASK_PLACE_TASKS|placeName=公司;options.triggerType=ENTER

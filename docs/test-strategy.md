@@ -13,6 +13,7 @@
 - 第三波能力目錄與庫存 domain/service：8/8 通過。
 - 第四波能力目錄、勿擾時間計算、提醒觸發與升級催促：16/16 通過；
   Maven 同時重新編譯 204 份主程式來源與 59 份測試來源成功。
+- 第五波能力目錄、geofence domain 邊界與唯一規則修改／移除：15/15 通過。
 - 第二波 `LifestyleIntentApiTest`：測試環境找不到 Docker，Spring context 在案例執行前停止；
   因此 V14/V15 migration 與 API 整合仍列為關鍵節點待驗證，不算程式測試失敗，也不算通過。
 - 本階段尚未重跑完整 `mvn test`，不得把精準測試通過誤寫成全套通過。

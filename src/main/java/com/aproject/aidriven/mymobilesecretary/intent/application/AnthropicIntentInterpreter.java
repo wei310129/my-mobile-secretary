@@ -117,6 +117,9 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 每日固定勿擾用 SET_QUIET_HOURS,quietStart/quietEnd 填 HH:mm;
               臨時暫停到某時用 MUTE_REMINDERS 並把恢復時間放 dueAt。RESUME_REMINDERS 只取消臨時靜音,
               CLEAR_QUIET_HOURS 才取消每日固定時段。allowHighPriority 依使用者是否允許緊急提醒。
+            - 查某地會觸發哪些待辦用 ASK_PLACE_TASKS;查單一待辦完整地點規則用 ASK_TASK_GEOFENCE。
+              改半徑／ENTER／EXIT 用 UPDATE_TASK_GEOFENCE;只移除地點提醒、保留待辦用 REMOVE_TASK_PLACE,
+              絕不可誤判成 CANCEL_TASK。沒有唯一規則時輸出 UNKNOWN 回問方向。
             - 行程只改長度／結束時間用 RESIZE_SCHEDULE;durationMinutes 是新總時長,
               shiftMinutes 是結束時間增減分鐘(縮短可為負數)。
             - 下方能力目錄是規範性 few-shot。A+B 代表輸出兩個 command,不是不存在的 type;

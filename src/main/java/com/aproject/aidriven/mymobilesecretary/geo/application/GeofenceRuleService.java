@@ -7,6 +7,7 @@ import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -60,5 +61,42 @@ public class GeofenceRuleService {
     @Transactional(readOnly = true)
     public List<GeofenceRule> listRulesForTask(Long taskId) {
         return geofenceRuleRepository.findByTaskId(taskId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<GeofenceRule> listRulesForPlace(Long placeId) {
+        return geofenceRuleRepository.findByPlaceId(placeId);
+    }
+
+    @Transactional(readOnly = true)
+    public List<GeofenceRule> listAllRules() {
+        return geofenceRuleRepository.findAll();
+    }
+
+    /** 自然語言修改只允許唯一命中,避免同地點 ENTER/EXIT 都被意外改掉。 */
+    public GeofenceRule updateUniqueRule(Long taskId, Long placeId,
+                                         Integer radiusMeters, TriggerType triggerType) {
+        GeofenceRule rule = uniqueRule(taskId, placeId, "修改");
+        rule.change(radiusMeters, triggerType);
+        return rule;
+    }
+
+    /** 移除單一任務與地點的唯一規則;任務本身保留。 */
+    public GeofenceRule removeUniqueRule(Long taskId, Long placeId) {
+        GeofenceRule rule = uniqueRule(taskId, placeId, "移除");
+        geofenceRuleRepository.delete(rule);
+        return rule;
+    }
+
+    private GeofenceRule uniqueRule(Long taskId, Long placeId, String action) {
+        List<GeofenceRule> rules = geofenceRuleRepository.findByTaskIdAndPlaceId(taskId, placeId);
+        if (rules.isEmpty()) {
+            throw new BusinessException("GEOFENCE_RULE_NOT_FOUND", "這個待辦沒有綁在指定地點。");
+        }
+        if (rules.size() > 1) {
+            throw new BusinessException("AMBIGUOUS_GEOFENCE_RULE",
+                    "這個待辦在指定地點有多個進入／離開規則,請說要%s哪一種。".formatted(action));
+        }
+        return rules.getFirst();
     }
 }

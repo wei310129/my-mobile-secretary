@@ -39,4 +39,23 @@ class GeofenceRuleTest {
 
         assertThat(rule.isEnabled()).isTrue();
     }
+
+    @Test
+    void existingRuleCanChangeRadiusAndDirection() {
+        GeofenceRule rule = GeofenceRule.create(1L, 2L, 100, TriggerType.ENTER, NOW);
+
+        rule.change(500, TriggerType.EXIT);
+
+        assertThat(rule.getRadiusMeters()).isEqualTo(500);
+        assertThat(rule.getTriggerType()).isEqualTo(TriggerType.EXIT);
+    }
+
+    @Test
+    void changingRuleKeepsSameRadiusValidation() {
+        GeofenceRule rule = GeofenceRule.create(1L, 2L, 100, TriggerType.ENTER, NOW);
+
+        assertThatThrownBy(() -> rule.change(10, null))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "INVALID_RADIUS");
+    }
 }

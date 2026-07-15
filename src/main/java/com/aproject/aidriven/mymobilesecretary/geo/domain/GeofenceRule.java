@@ -76,6 +76,21 @@ public class GeofenceRule {
         return new GeofenceRule(taskId, placeId, radiusMeters, triggerType, now);
     }
 
+    /** 修改既有規則;半徑沿用與建立時相同的可靠度界線。 */
+    public void change(Integer newRadiusMeters, TriggerType newTriggerType) {
+        if (newRadiusMeters != null) {
+            if (newRadiusMeters < MIN_RADIUS_METERS || newRadiusMeters > MAX_RADIUS_METERS) {
+                throw new BusinessException("INVALID_RADIUS",
+                        "radiusMeters must be between %d and %d, got %d".formatted(
+                                MIN_RADIUS_METERS, MAX_RADIUS_METERS, newRadiusMeters));
+            }
+            this.radiusMeters = newRadiusMeters;
+        }
+        if (newTriggerType != null) {
+            this.triggerType = newTriggerType;
+        }
+    }
+
     public Long getId() {
         return id;
     }

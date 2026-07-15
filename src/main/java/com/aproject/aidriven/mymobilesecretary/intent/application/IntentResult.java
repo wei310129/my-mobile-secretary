@@ -89,7 +89,12 @@ public record IntentResult(
         SHOPPING_GROUPED_BY_PLACE,
         LOW_INVENTORY_RESTOCKED,
         REMINDER_PREFERENCE_UPDATED,
-        REMINDER_PREFERENCE_INFO
+        REMINDER_PREFERENCE_INFO,
+        LOCATION_TASKS_LISTED,
+        PLACE_TASKS_INFO,
+        TASK_GEOFENCE_INFO,
+        TASK_GEOFENCE_UPDATED,
+        TASK_PLACE_REMOVED
     }
 
     /** 清單訊息共用:最多列 10 筆,其餘以「…等 N 件」收尾。 */

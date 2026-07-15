@@ -100,6 +100,11 @@ public record IntentCommand(
         MUTE_REMINDERS,
         RESUME_REMINDERS,
         ASK_REMINDER_PREFERENCES,
+        LIST_LOCATION_TASKS,
+        ASK_PLACE_TASKS,
+        ASK_TASK_GEOFENCE,
+        UPDATE_TASK_GEOFENCE,
+        REMOVE_TASK_PLACE,
         /** 建任務(待辦,無固定時段;可有期限)。 */
         CREATE_TASK,
         /** 建行程(有明確開始/結束時段的承諾)。 */

@@ -148,6 +148,11 @@ public class LifestyleIntentService {
             case MUTE_REMINDERS -> muteReminders(command);
             case RESUME_REMINDERS -> resumeReminders();
             case ASK_REMINDER_PREFERENCES -> reminderPreferences();
+            case LIST_LOCATION_TASKS -> listLocationTasks(o);
+            case ASK_PLACE_TASKS -> askPlaceTasks(command, o);
+            case ASK_TASK_GEOFENCE -> askTaskGeofence(command, o);
+            case UPDATE_TASK_GEOFENCE -> updateTaskGeofence(command, o);
+            case REMOVE_TASK_PLACE -> removeTaskPlace(command, o);
             default -> throw new IllegalArgumentException("not a lifestyle command: " + command.type());
         };
     }
@@ -547,6 +552,73 @@ public class LifestyleIntentService {
                 && preference.getMutedUntil().isAfter(Instant.now(clock))
                 ? "，臨時靜音到 " + format(preference.getMutedUntil()) : "";
         return IntentResult.message(IntentResult.Action.REMINDER_PREFERENCE_INFO, quiet + mute + "。");
+    }
+
+    private IntentResult listLocationTasks(IntentOptions o) {
+        java.util.Set<Long> boundIds = geofenceService.listAllRules().stream()
+                .map(rule -> rule.getTaskId()).collect(java.util.stream.Collectors.toSet());
+        boolean unbound = "UNBOUND".equalsIgnoreCase(o.filter());
+        List<Task> tasks = taskService.listOpenTasks().stream()
+                .filter(task -> unbound != boundIds.contains(task.getId()))
+                .toList();
+        contextService.rememberTaskList(tasks);
+        String message = tasks.isEmpty() ? (unbound ? "所有未完成待辦都已有地點規則。" : "目前沒有地點提醒待辦。")
+                : tasks.stream().map(task -> "「%s」".formatted(task.getTitle()))
+                .collect(java.util.stream.Collectors.joining("、"));
+        return IntentResult.message(IntentResult.Action.LOCATION_TASKS_LISTED, message);
+    }
+
+    private IntentResult askPlaceTasks(IntentCommand command, IntentOptions o) {
+        Place place = resolvePlace(command.placeName()).orElseThrow(() ->
+                new IllegalArgumentException("unknown destination place"));
+        TriggerType trigger = o.triggerType() == null ? null : parseTrigger(o.triggerType());
+        java.util.Map<Long, Task> open = taskService.listOpenTasks().stream()
+                .collect(java.util.stream.Collectors.toMap(Task::getId, task -> task));
+        List<String> lines = geofenceService.listRulesForPlace(place.getId()).stream()
+                .filter(rule -> trigger == null || rule.getTriggerType() == trigger)
+                .filter(rule -> open.containsKey(rule.getTaskId()))
+                .map(rule -> "%s｜%s｜%dm".formatted(open.get(rule.getTaskId()).getTitle(),
+                        rule.getTriggerType(), rule.getRadiusMeters()))
+                .toList();
+        return IntentResult.message(IntentResult.Action.PLACE_TASKS_INFO,
+                lines.isEmpty() ? "目前到「%s」沒有會觸發的未完成待辦。".formatted(place.getName())
+                        : "「%s」的提醒:\n%s".formatted(place.getName(), String.join("\n", lines)));
+    }
+
+    private IntentResult askTaskGeofence(IntentCommand command, IntentOptions o) {
+        Task task = taskTarget(command, o);
+        List<String> lines = geofenceService.listRulesForTask(task.getId()).stream()
+                .map(rule -> "%s｜%s｜半徑 %dm".formatted(
+                        placeService.getPlace(rule.getPlaceId()).getName(),
+                        rule.getTriggerType(), rule.getRadiusMeters()))
+                .toList();
+        return IntentResult.message(IntentResult.Action.TASK_GEOFENCE_INFO,
+                lines.isEmpty() ? "「%s」目前沒有地點提醒。".formatted(task.getTitle())
+                        : "「%s」的地點提醒:\n%s".formatted(task.getTitle(), String.join("\n", lines)));
+    }
+
+    private IntentResult updateTaskGeofence(IntentCommand command, IntentOptions o) {
+        Task task = taskTarget(command, o);
+        Place place = resolvePlace(command.placeName()).orElseThrow(() ->
+                new IllegalArgumentException("unknown destination place"));
+        TriggerType trigger = o.triggerType() == null ? null : parseTrigger(o.triggerType());
+        if (o.radiusMeters() == null && trigger == null) {
+            throw new IllegalArgumentException("missing geofence changes");
+        }
+        var rule = geofenceService.updateUniqueRule(task.getId(), place.getId(), o.radiusMeters(), trigger);
+        return IntentResult.message(IntentResult.Action.TASK_GEOFENCE_UPDATED,
+                "已把「%s」在「%s」的提醒改為 %s、半徑 %d 公尺。".formatted(
+                        task.getTitle(), place.getName(), rule.getTriggerType(), rule.getRadiusMeters()));
+    }
+
+    private IntentResult removeTaskPlace(IntentCommand command, IntentOptions o) {
+        Task task = taskTarget(command, o);
+        Place place = resolvePlace(command.placeName()).orElseThrow(() ->
+                new IllegalArgumentException("unknown destination place"));
+        geofenceService.removeUniqueRule(task.getId(), place.getId());
+        return IntentResult.message(IntentResult.Action.TASK_PLACE_REMOVED,
+                "已移除「%s」在「%s」的地點提醒;待辦本身仍保留。".formatted(
+                        task.getTitle(), place.getName()));
     }
 
     private IntentResult listShoppingAt(IntentCommand command) {

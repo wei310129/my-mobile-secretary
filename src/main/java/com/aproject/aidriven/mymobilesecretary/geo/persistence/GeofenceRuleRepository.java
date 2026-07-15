@@ -12,6 +12,10 @@ public interface GeofenceRuleRepository extends JpaRepository<GeofenceRule, Long
 
     List<GeofenceRule> findByTaskId(Long taskId);
 
+    List<GeofenceRule> findByPlaceId(Long placeId);
+
+    List<GeofenceRule> findByTaskIdAndPlaceId(Long taskId, Long placeId);
+
     /** 自動綁定去重:同任務+同地點+同方向是否已有規則。 */
     boolean existsByTaskIdAndPlaceIdAndTriggerType(Long taskId, Long placeId, TriggerType triggerType);
 

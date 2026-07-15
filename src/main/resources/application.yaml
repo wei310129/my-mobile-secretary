@@ -73,6 +73,22 @@ app:
     county: 新北市
     rain-probability-threshold: 60
     high-temp-threshold: 34
+    alert:
+      # 主動提醒時窗(帶傘提醒的「出門前」近似;晚上不吵人)
+      start: "07:00"
+      end: "21:00"
+      # 降雨機率高於此值 → 大雨風險,主動問要不要調整行程
+      heavy-rain-threshold: 80
+      # 大雨警示只看這段時間內開始的已確認行程
+      schedule-lookahead: 6h
+      poll-interval: 30m
+  suggestion:
+    # 「待會」= 未來 3 小時(使用者拍板);此範圍內找順路可做的待辦
+    window: 3h
+    # 幾公尺內的任務地點才算順路
+    max-distance-meters: 2000
+    # 最多建議幾件
+    limit: 5
   buffer:
     # 緩衝規則:同地點累積幾筆行程結果後才開始建議緩衝
     min-samples: 3

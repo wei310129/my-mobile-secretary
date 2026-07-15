@@ -117,6 +117,52 @@ class IntentApiTest extends IntegrationTestBase {
                 jsonPath("$.action").value("CLARIFICATION_NEEDED"));
     }
 
+    /** 查待辦:「還有什麼要做」→ 列出未完成任務(含剛建立的)。 */
+    @Test
+    void listTasksIntentShowsOpenTasks() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_TASK, "買清單查詢測試米", null, null, null, null, "NORMAL", null,
+                null, null, null));
+        say("幫我記買清單查詢測試米");
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.LIST_TASKS, null, null, null, null, null, null, null,
+                null, null, null));
+        say("我還有什麼待辦事項",
+                jsonPath("$.action").value("TASKS_LISTED"),
+                jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("買清單查詢測試米")));
+    }
+
+    /** 查行程:「今天有什麼行程」→ 列出還沒結束的已確認行程。 */
+    @Test
+    void listSchedulesIntentShowsUpcomingConfirmed() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE, "清單查詢測試會議", null,
+                "2027-08-01T10:00:00+08:00", "2027-08-01T11:00:00+08:00", null, null, null,
+                null, null, null));
+        say("八月一號十點清單查詢測試會議");
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.LIST_SCHEDULES, null, null, null, null, null, null, null,
+                null, null, null));
+        say("接下來有什麼行程",
+                jsonPath("$.action").value("SCHEDULES_LISTED"),
+                jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString("清單查詢測試會議")));
+    }
+
+    /** 「待會可以順便做」→ 走順路建議(內容依測試資料浮動,只驗路由與動作)。 */
+    @Test
+    void suggestNearbyIntentReturnsSuggestion() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.SUGGEST_NEARBY, null, null, null, null, null, null, null,
+                null, null, null));
+
+        say("待會有什麼可以順便做",
+                jsonPath("$.action").value("SUGGESTION_MADE"));
+    }
+
     /** 可靠度鐵律:LLM 失敗(stub 沒塞回覆=模擬炸掉)→ 原文存成任務,不丟資料。 */
     @Test
     void interpreterFailureFallsBackToPlainTask() throws Exception {

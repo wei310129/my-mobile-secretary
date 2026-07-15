@@ -34,6 +34,9 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               使用者沒說結束時間就依活動常識估 endAt(剪頭髮約 1 小時、會議約 1 小時)。
             - 待辦事項(買東西、繳費、聯絡某人)→ CREATE_TASK;有截止時間才填 dueAt。
             - 回報待辦已完成(「牛奶買到了」「電費繳完了」)→ COMPLETE_TASK,title 放該任務的關鍵字(如「牛奶」)。
+            - 查詢待辦清單(「還有什麼要做」「我有哪些待辦」)→ LIST_TASKS。
+            - 查詢行程(「今天有什麼行程」「接下來要幹嘛」)→ LIST_SCHEDULES。
+            - 問待會/接下來可以「順便、順路」做什麼(「待會有什麼可以順便做」)→ SUGGEST_NEARBY。
             - 回報剛結束行程的實際結果(「準時結束」「會開晚了半小時」「路上塞車遲到20分」)→ RECORD_OUTCOME。
             - 聽不懂、或缺關鍵資訊無法決定 → UNKNOWN,reason 用繁體中文說明缺什麼。
 

@@ -64,6 +64,17 @@ public class TaskService {
                 .orElseThrow(() -> new NotFoundException("Task", taskId));
     }
 
+    /** 未結案任務清單(自然語言「還有什麼要做」用);有期限的排前面。 */
+    @Transactional(readOnly = true)
+    public List<Task> listOpenTasks() {
+        return taskRepository.findByStatusIn(EnumSet.of(
+                        TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.REMINDED, TaskStatus.ESCALATED))
+                .stream()
+                .sorted(java.util.Comparator.comparing(Task::getDueAt,
+                        java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
+                .toList();
+    }
+
     /**
      * 關鍵字找未結案任務(自然語言「牛奶買到了」的閉環用)。
      * 比對是確定性規則:標題包含關鍵字、或關鍵字包含標題;LLM 不得直接指定任務 id。

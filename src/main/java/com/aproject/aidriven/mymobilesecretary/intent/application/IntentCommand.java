@@ -39,6 +39,12 @@ public record IntentCommand(
         CREATE_SCHEDULE,
         /** 回報任務做完了(「牛奶買到了」);title 放任務關鍵字,配對由 Java 規則做。 */
         COMPLETE_TASK,
+        /** 查詢未完成的待辦(「還有什麼要做」)。 */
+        LIST_TASKS,
+        /** 查詢接下來的行程(「今天有什麼行程」)。 */
+        LIST_SCHEDULES,
+        /** 問待會(未來 3 小時)可以順路做什麼(「待會有什麼可以順便做」)。 */
+        SUGGEST_NEARBY,
         /** 回報行程實際結果(準時嗎/超時多久/原因)。 */
         RECORD_OUTCOME,
         /** 聽不懂或資訊不足,需要回問。 */

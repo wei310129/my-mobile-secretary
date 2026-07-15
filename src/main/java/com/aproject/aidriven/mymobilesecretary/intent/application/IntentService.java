@@ -34,6 +34,8 @@ public class IntentService {
     private final TaskService taskService;
     private final ScheduleService scheduleService;
     private final ScheduleFollowUpService followUpService;
+    private final IntentIssueService issueService;
+    private final com.aproject.aidriven.mymobilesecretary.planner.application.NearbySuggestionService nearbySuggestionService;
     private final PlaceRepository placeRepository;
     private final Clock clock;
 
@@ -41,18 +43,28 @@ public class IntentService {
                          TaskService taskService,
                          ScheduleService scheduleService,
                          ScheduleFollowUpService followUpService,
+                         IntentIssueService issueService,
+                         com.aproject.aidriven.mymobilesecretary.planner.application.NearbySuggestionService nearbySuggestionService,
                          PlaceRepository placeRepository,
                          Clock clock) {
         this.interpreterProvider = interpreterProvider;
         this.taskService = taskService;
         this.scheduleService = scheduleService;
         this.followUpService = followUpService;
+        this.issueService = issueService;
+        this.nearbySuggestionService = nearbySuggestionService;
         this.placeRepository = placeRepository;
         this.clock = clock;
     }
 
-    /** 處理使用者的一句話,回傳做了什麼。 */
+    /** 處理使用者的一句話,回傳做了什麼;聽不懂/退回保底的話語會記成意圖問題供開發追蹤。 */
     public IntentResult handle(String text) {
+        IntentResult result = doHandle(text);
+        recordIssueIfUnresolved(text, result);
+        return result;
+    }
+
+    private IntentResult doHandle(String text) {
         IntentCommand command;
         IntentInterpreter interpreter = interpreterProvider.getIfAvailable();
         if (interpreter == null) {
@@ -103,6 +115,12 @@ public class IntentService {
                 requireText(command.title(), "title");
                 yield completeTaskByKeyword(command.title());
             }
+            case LIST_TASKS -> {
+                var open = taskService.listOpenTasks();
+                yield IntentResult.tasksListed(open, taskListAdvice(open));
+            }
+            case LIST_SCHEDULES -> IntentResult.schedulesListed(upcomingConfirmedSchedules());
+            case SUGGEST_NEARBY -> IntentResult.suggestionMade(nearbySuggestionService.suggest());
             case RECORD_OUTCOME -> {
                 if (command.onTime() == null) {
                     throw new IllegalArgumentException("outcome missing onTime");
@@ -122,6 +140,88 @@ public class IntentService {
                     command.reason() == null || command.reason().isBlank()
                             ? "我沒聽懂,可以換個說法嗎?" : command.reason());
         };
+    }
+
+    /**
+     * 回問與保底都代表「這句話沒被好好服務到」→ 記成意圖問題。
+     * 正常完成的意圖不記;紀錄失敗不影響回覆(IntentIssueService 內部吞錯)。
+     */
+    private void recordIssueIfUnresolved(String text, IntentResult result) {
+        switch (result.action()) {
+            case CLARIFICATION_NEEDED -> issueService.recordSafely(
+                    text, result.message(), com.aproject.aidriven.mymobilesecretary.intent.domain.IntentIssue.Category.CLARIFICATION);
+            case FALLBACK_TASK_CREATED -> issueService.recordSafely(
+                    text, result.message(), com.aproject.aidriven.mymobilesecretary.intent.domain.IntentIssue.Category.FALLBACK);
+            default -> {
+            }
+        }
+    }
+
+    /**
+     * 清單附加建議(使用者 2026-07-15 要求):
+     * 1. 缺期限的待辦追問時間地點——沒有期限與地點就只能被動等使用者想起。
+     * 2. 對最急(最早到期)的待辦給具體時段建議,由使用者核准後再建行程。
+     */
+    private String taskListAdvice(java.util.List<Task> tasks) {
+        StringBuilder advice = new StringBuilder();
+
+        var missing = tasks.stream().filter(t -> t.getDueAt() == null).limit(3).toList();
+        if (!missing.isEmpty()) {
+            advice.append("\n%s還沒有時間或地點,補一句(例:「%s這週六早上處理」)我才能主動提醒。"
+                    .formatted(
+                            missing.stream().map(t -> "「" + t.getTitle() + "」")
+                                    .collect(java.util.stream.Collectors.joining("、")),
+                            missing.get(0).getTitle()));
+        }
+
+        Instant now = Instant.now(clock);
+        tasks.stream()
+                .filter(t -> t.getDueAt() != null && t.getDueAt().isAfter(now))
+                .findFirst()
+                .flatMap(t -> suggestSlotBefore(t, now))
+                .ifPresent(advice::append);
+        return advice.toString();
+    }
+
+    /**
+     * 期限前找 30 分鐘空檔:預設抓期限前 2 小時開始,與已確認行程重疊就放棄建議
+     * (寧可不建議,不給會撞期的建議)。
+     */
+    private Optional<String> suggestSlotBefore(Task task, Instant now) {
+        Instant start = task.getDueAt().minus(java.time.Duration.ofHours(2));
+        if (start.isBefore(now)) {
+            start = now.plus(java.time.Duration.ofMinutes(15));
+        }
+        Instant end = start.plus(java.time.Duration.ofMinutes(30));
+        if (end.isAfter(task.getDueAt())) {
+            return Optional.empty();
+        }
+        final Instant s = start;
+        boolean overlaps = scheduleService.listSchedules(
+                        com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus.CONFIRMED)
+                .stream()
+                .anyMatch(item -> item.getStartAt().isBefore(end) && s.isBefore(item.getEndAt()));
+        if (overlaps) {
+            return Optional.empty();
+        }
+        var fmt = java.time.format.DateTimeFormatter.ofPattern("MM/dd HH:mm");
+        var zone = java.time.ZoneId.of("Asia/Taipei");
+        return Optional.of("\n建議:把「%s」排在 %s-%s(期限前),OK 的話跟我說一聲我就排進行程。"
+                .formatted(task.getTitle(),
+                        java.time.ZonedDateTime.ofInstant(s, zone).format(fmt),
+                        java.time.ZonedDateTime.ofInstant(end, zone)
+                                .format(java.time.format.DateTimeFormatter.ofPattern("HH:mm"))));
+    }
+
+    /** 接下來的已確認行程:還沒結束的才算(進行中也列),依開始時間排序。 */
+    private java.util.List<com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem>
+            upcomingConfirmedSchedules() {
+        Instant now = Instant.now(clock);
+        return scheduleService.listSchedules(
+                        com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus.CONFIRMED)
+                .stream()
+                .filter(item -> item.getEndAt().isAfter(now))
+                .toList();
     }
 
     /**

@@ -135,12 +135,16 @@ public class ScheduleService {
     }
 
     private List<ScheduleItem> findSchedulesMatching(String keyword, EnumSet<ScheduleStatus> statuses) {
-        String needle = keyword == null ? "" : keyword.strip();
+        // 不分大小寫,同 TaskService 的關鍵字規則(英文行程才對得上)
+        String needle = keyword == null ? "" : keyword.strip().toLowerCase();
         if (needle.isEmpty()) {
             return List.of();
         }
         return scheduleItemRepository.findByStatusInOrderByStartAtAsc(statuses).stream()
-                .filter(item -> item.getTitle().contains(needle) || needle.contains(item.getTitle()))
+                .filter(item -> {
+                    String title = item.getTitle().toLowerCase();
+                    return title.contains(needle) || needle.contains(title);
+                })
                 .toList();
     }
 

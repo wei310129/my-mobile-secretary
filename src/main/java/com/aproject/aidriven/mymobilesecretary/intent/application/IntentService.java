@@ -38,6 +38,9 @@ public class IntentService {
     private final IntentIssueService issueService;
     private final com.aproject.aidriven.mymobilesecretary.planner.application.NearbySuggestionService nearbySuggestionService;
     private final PlaceRepository placeRepository;
+    private final com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService placeService;
+    private final com.aproject.aidriven.mymobilesecretary.geo.application.GeofenceRuleService geofenceRuleService;
+    private final int bindRadiusMeters;
     private final Clock clock;
 
     public IntentService(ObjectProvider<IntentInterpreter> interpreterProvider,
@@ -47,6 +50,10 @@ public class IntentService {
                          IntentIssueService issueService,
                          com.aproject.aidriven.mymobilesecretary.planner.application.NearbySuggestionService nearbySuggestionService,
                          PlaceRepository placeRepository,
+                         com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService placeService,
+                         com.aproject.aidriven.mymobilesecretary.geo.application.GeofenceRuleService geofenceRuleService,
+                         @org.springframework.beans.factory.annotation.Value(
+                                 "${app.knowledge.auto-bind-radius-meters:200}") int bindRadiusMeters,
                          Clock clock) {
         this.interpreterProvider = interpreterProvider;
         this.taskService = taskService;
@@ -55,6 +62,9 @@ public class IntentService {
         this.issueService = issueService;
         this.nearbySuggestionService = nearbySuggestionService;
         this.placeRepository = placeRepository;
+        this.placeService = placeService;
+        this.geofenceRuleService = geofenceRuleService;
+        this.bindRadiusMeters = bindRadiusMeters;
         this.clock = clock;
     }
 
@@ -89,6 +99,11 @@ public class IntentService {
                 // LLM 輸出未通過驗證(時間格式爛、缺欄位)→ 同樣不丟資料
                 log.warn("Intent command invalid ({}), falling back to plain task", e.getMessage());
                 return fallbackTask(text, "解析結果不完整");
+            } catch (com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException e) {
+                // 業務錯誤(如 Google 查不到地點)→ 轉成可讀回覆;
+                // 絕不能往 webhook 洩漏成非 200,否則 LINE 會重送整包事件
+                log.warn("Intent command hit business rule: {}", e.getMessage());
+                return IntentResult.clarificationNeeded(e.getMessage());
             }
         }
 
@@ -118,6 +133,14 @@ public class IntentService {
         return switch (command.type()) {
             case CREATE_TASK -> {
                 requireText(command.title(), "title");
+                // 防重複(使用者實際踩過:「拿包裹」被建了兩次):同名未結案任務存在就回問
+                boolean duplicate = taskService.findOpenTasksMatching(command.title()).stream()
+                        .anyMatch(t -> t.getTitle().equalsIgnoreCase(command.title().strip()));
+                if (duplicate) {
+                    yield IntentResult.clarificationNeeded(
+                            "已經有「%s」這件未完成待辦了,不再重複建立;要改時間或地點直接說。"
+                                    .formatted(command.title()));
+                }
                 Task task = taskService.createTask(
                         command.title(), null, parsePriority(command.priority()),
                         parseTime(command.dueAt()));
@@ -147,6 +170,7 @@ public class IntentService {
                 yield match.failure() != null ? match.failure()
                         : IntentResult.taskCanceled(taskService.cancelTask(match.task().getId()));
             }
+            case CANCEL_ALL_TASKS -> IntentResult.allTasksCanceled(taskService.cancelAllOpenTasks());
             case RESCHEDULE_TASK -> {
                 requireText(command.title(), "title");
                 Instant newDueAt = parseTime(command.dueAt());
@@ -187,8 +211,51 @@ public class IntentService {
                 yield resolvePlace(command.placeName())
                         .map(IntentResult::placeInfo)
                         .orElseGet(() -> IntentResult.clarificationNeeded(
-                                "我沒有叫「%s」的地點紀錄。".formatted(command.placeName())));
+                                "我沒有叫「%s」的地點紀錄,說「建立地點:%s」我就去 Google 查來存。"
+                                        .formatted(command.placeName(), command.placeName())));
             }
+            case CREATE_PLACE -> {
+                requireText(command.placeName(), "placeName");
+                // 已有同名(含)地點就不重建,直接回資訊
+                var existing = resolvePlace(command.placeName());
+                if (existing.isPresent()) {
+                    yield IntentResult.placeInfo(existing.get());
+                }
+                // 座標留空 → PlaceService 向 Google 補全;查不到丟業務錯誤,由外層轉成回覆
+                yield IntentResult.placeCreated(placeService.createPlace(
+                        command.placeName(), null, null, null, null));
+            }
+            case BIND_TASK_PLACE -> {
+                requireText(command.title(), "title");
+                requireText(command.placeName(), "placeName");
+                TaskMatch match = matchOpenTask(command.title(), "綁");
+                if (match.failure() != null) {
+                    yield match.failure();
+                }
+                // 地點沒建過就先透過 Google 建檔,再綁——使用者只講一句就要完成閉環
+                Place place = resolvePlace(command.placeName())
+                        .orElseGet(() -> placeService.createPlace(
+                                command.placeName(), null, null, null, null));
+                if (!geofenceRuleService.ruleExists(match.task().getId(), place.getId(),
+                        com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType.ENTER)) {
+                    geofenceRuleService.createRule(match.task().getId(), place.getId(),
+                            bindRadiusMeters, com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType.ENTER);
+                }
+                yield IntentResult.taskPlaceBound(match.task(), place);
+            }
+            case ASK_TASK_PLACE -> {
+                requireText(command.title(), "title");
+                TaskMatch match = matchOpenTask(command.title(), "查");
+                if (match.failure() != null) {
+                    yield match.failure();
+                }
+                var places = geofenceRuleService.listRulesForTask(match.task().getId()).stream()
+                        .map(rule -> placeService.getPlace(rule.getPlaceId()))
+                        .distinct()
+                        .toList();
+                yield IntentResult.taskPlaceInfo(match.task(), places);
+            }
+            case FEEDBACK -> IntentResult.feedbackReceived();
             case LIST_TASKS -> {
                 var open = taskService.listOpenTasks();
                 yield IntentResult.tasksListed(open, taskListAdvice(open));
@@ -236,6 +303,8 @@ public class IntentService {
                     text, result.message(), com.aproject.aidriven.mymobilesecretary.intent.domain.IntentIssue.Category.CLARIFICATION);
             case FALLBACK_TASK_CREATED -> issueService.recordSafely(
                     text, result.message(), com.aproject.aidriven.mymobilesecretary.intent.domain.IntentIssue.Category.FALLBACK);
+            case FEEDBACK_RECEIVED -> issueService.recordSafely(
+                    text, result.message(), com.aproject.aidriven.mymobilesecretary.intent.domain.IntentIssue.Category.FEEDBACK);
             default -> {
             }
         }

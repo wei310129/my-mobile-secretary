@@ -24,7 +24,9 @@ public class IntentIssue {
         /** bot 回問(聽不懂、資訊不足、配對模糊)。 */
         CLARIFICATION,
         /** LLM 失敗退回保底任務。 */
-        FALLBACK
+        FALLBACK,
+        /** 使用者對系統本身的抱怨/建議(「你是不是重複建立了」)。 */
+        FEEDBACK
     }
 
     /** 處理狀態:OPEN 是唯一非終止態。 */

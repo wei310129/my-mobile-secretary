@@ -60,6 +60,21 @@ class IntentIssueApiTest extends IntegrationTestBase {
         assertThat(issue.getCategory()).isEqualTo(IntentIssue.Category.FALLBACK);
     }
 
+    /** 對系統的抱怨(FEEDBACK 意圖)→ 記成 FEEDBACK 分類,開發前一併檢視。 */
+    @Test
+    void feedbackIntentIsRecordedAsFeedbackIssue() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.FEEDBACK, null, null, null, null, null, null, null,
+                null, null, null, null));
+        say("問題紀錄測試-你上次建重複了");
+
+        var issue = issueRepository.findAllByOrderByCreatedAtDesc().stream()
+                .filter(i -> i.getUtterance().contains("你上次建重複了"))
+                .findFirst().orElseThrow();
+        assertThat(issue.getCategory()).isEqualTo(IntentIssue.Category.FEEDBACK);
+        assertThat(issue.getStatus()).isEqualTo(IntentIssue.Status.OPEN);
+    }
+
     /** 開發工作流:查 OPEN → 標 RESOLVED → 不再出現在 OPEN 清單;重複標記 → 422。 */
     @Test
     void resolveWorkflowTransitionsAndRejectsDoubleResolve() throws Exception {

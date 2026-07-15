@@ -32,10 +32,15 @@ public record IntentResult(
         TASK_RESCHEDULED,
         SCHEDULE_CANCELED,
         SCHEDULE_RESCHEDULED,
+        ALL_TASKS_CANCELED,
         TASKS_LISTED,
         SCHEDULES_LISTED,
         SUGGESTION_MADE,
         PLACE_INFO,
+        PLACE_CREATED,
+        TASK_PLACE_BOUND,
+        TASK_PLACE_INFO,
+        FEEDBACK_RECEIVED,
         BATCH_EXECUTED,
         SCHEDULE_CONFIRMED,
         SCHEDULE_NEEDS_DECISION,
@@ -139,6 +144,56 @@ public record IntentResult(
                 ? "行程「%s」已改到 %s,可行並已確認".formatted(item.getTitle(), interval)
                 : "行程「%s」已改到 %s,但新時段有問題,需要你決定".formatted(item.getTitle(), interval);
         return new IntentResult(Action.SCHEDULE_RESCHEDULED, message, null, decision);
+    }
+
+    static IntentResult allTasksCanceled(List<Task> canceled) {
+        if (canceled.isEmpty()) {
+            return new IntentResult(Action.ALL_TASKS_CANCELED, "目前沒有可取消的待辦。", null, null);
+        }
+        String titles = canceled.stream().limit(LIST_LIMIT)
+                .map(t -> "「" + t.getTitle() + "」")
+                .collect(Collectors.joining("、"));
+        return new IntentResult(Action.ALL_TASKS_CANCELED,
+                "已取消全部 %d 件待辦:%s".formatted(canceled.size(), titles), null, null);
+    }
+
+    static IntentResult placeCreated(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
+        String detail = place.getAddress() == null || place.getAddress().isBlank()
+                ? "座標 (%.5f, %.5f)".formatted(place.getLatitude(), place.getLongitude())
+                : place.getAddress();
+        return new IntentResult(Action.PLACE_CREATED,
+                "已建立地點「%s」:%s%s".formatted(place.getName(), detail,
+                        place.getType() == null || place.getType().isBlank()
+                                ? "" : "(%s)".formatted(place.getType())),
+                null, null);
+    }
+
+    static IntentResult taskPlaceBound(Task task,
+                                       com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
+        return new IntentResult(Action.TASK_PLACE_BOUND,
+                "「%s」已綁定「%s」,你到附近時我會提醒你。".formatted(task.getTitle(), place.getName()),
+                task, null);
+    }
+
+    static IntentResult taskPlaceInfo(Task task,
+                                      List<com.aproject.aidriven.mymobilesecretary.geo.domain.Place> places) {
+        if (places.isEmpty()) {
+            return new IntentResult(Action.TASK_PLACE_INFO,
+                    "「%s」還沒綁定地點,跟我說「%s是要到某地點」我就記住。"
+                            .formatted(task.getTitle(), task.getTitle()),
+                    task, null);
+        }
+        String lines = places.stream()
+                .map(p -> "「%s」%s".formatted(p.getName(),
+                        p.getAddress() == null || p.getAddress().isBlank() ? "" : ":" + p.getAddress()))
+                .collect(Collectors.joining("\n"));
+        return new IntentResult(Action.TASK_PLACE_INFO,
+                "「%s」要去:\n%s".formatted(task.getTitle(), lines), task, null);
+    }
+
+    static IntentResult feedbackReceived() {
+        return new IntentResult(Action.FEEDBACK_RECEIVED,
+                "收到,這個問題我記下來了,下次開發會處理。", null, null);
     }
 
     static IntentResult placeInfo(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {

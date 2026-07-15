@@ -37,7 +37,12 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 待辦事項(買東西、繳費、聯絡某人)→ CREATE_TASK;有截止時間才填 dueAt。
             - 回報待辦已完成(「牛奶買到了」「電費繳完了」)→ COMPLETE_TASK,title 放該任務的關鍵字(如「牛奶」)。
             - 取消待辦(「取消買排骨」「醬油不用買了」)→ CANCEL_TASK,title 放關鍵字。
+            - 一次取消全部待辦(「全部待辦都取消」「清空待辦」)→ CANCEL_ALL_TASKS。
             - 改待辦的期限(「拿包裹改成今天11點」)→ RESCHEDULE_TASK,title 放關鍵字,dueAt 放新期限。
+            - 建立地點(「建立地點:X」「幫我把X存起來」)→ CREATE_PLACE,placeName 放地點名。
+            - 說某待辦要在哪裡做(「拿包裹是要到蝦皮店到店中興二店」)→ BIND_TASK_PLACE,
+              title 放待辦關鍵字,placeName 放地點名;這不是建新待辦!
+            - 問某待辦要去哪裡做(「我要去哪取蝦皮?」「包裹在哪拿」)→ ASK_TASK_PLACE,title 放待辦關鍵字。
             - 取消既有行程(「明天的會議取消」)→ CANCEL_SCHEDULE,title 放行程關鍵字。
             - 改既有行程時間(「週會改到下午兩點」)→ RESCHEDULE_SCHEDULE,title 放行程關鍵字,
               startAt 放新開始時間;使用者明講結束時間或時長才填 endAt,否則留空保留原時長。
@@ -47,10 +52,14 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 問待會/接下來可以「順便、順路」做什麼(「待會有什麼可以順便做」)→ SUGGEST_NEARBY;
               使用者明講時間長度(「看2小時」「未來一小時」)才填 windowHours(小時整數),沒講就留空、不要猜。
             - 回報剛結束行程的實際結果(「準時結束」「會開晚了半小時」「路上塞車遲到20分」)→ RECORD_OUTCOME。
+            - 對系統本身的抱怨、質疑、建議(「你是不是重複建立了」「你沒問我地點」)→ FEEDBACK,
+              不要回 UNKNOWN,這些話要記錄給開發者。
             - 聽不懂、或缺關鍵資訊無法決定 → UNKNOWN,reason 用繁體中文說明缺什麼。
 
             欄位規則:
             - title:動作本體,去掉時間與地點詞(「明天11點在台北剪頭髮」→「剪頭髮」)。
+            - 完成/取消/改期的 title 關鍵字必須保留原文語言與拼寫,不可翻譯:
+              使用者的待辦叫「Buy soy sauce」,關鍵字就是「soy sauce」,不是「醬油」。
             - 時間一律輸出 ISO-8601 含時區,例如 2026-07-13T11:00:00+08:00;相對時間(明天、下週六)以 user 提供的現在時間換算。
             - placeName:使用者明講的地點才填;若與已知地點清單中某項明顯是同一個,用清單中的名稱。不要猜。
             - priority:聽得出急迫(趕快、務必、很急)才填 HIGH;否則 NORMAL。

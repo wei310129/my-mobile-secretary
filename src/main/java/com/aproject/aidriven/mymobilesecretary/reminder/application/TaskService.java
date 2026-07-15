@@ -78,18 +78,31 @@ public class TaskService {
     /**
      * 關鍵字找未結案任務(自然語言「牛奶買到了」的閉環用)。
      * 比對是確定性規則:標題包含關鍵字、或關鍵字包含標題;LLM 不得直接指定任務 id。
+     * 不分大小寫——英文任務(「Buy soy sauce」)才不會因大小寫對不上。
      */
     @Transactional(readOnly = true)
     public List<Task> findOpenTasksMatching(String keyword) {
-        String needle = keyword == null ? "" : keyword.strip();
+        String needle = keyword == null ? "" : keyword.strip().toLowerCase();
         if (needle.isEmpty()) {
             return List.of();
         }
         return taskRepository.findByStatusIn(EnumSet.of(
                         TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.REMINDED, TaskStatus.ESCALATED))
                 .stream()
-                .filter(task -> task.getTitle().contains(needle) || needle.contains(task.getTitle()))
+                .filter(task -> {
+                    String title = task.getTitle().toLowerCase();
+                    return title.contains(needle) || needle.contains(title);
+                })
                 .toList();
+    }
+
+    /** 一次取消全部未結案任務(「全部待辦都取消」);回傳被取消的清單供回覆。 */
+    public List<Task> cancelAllOpenTasks() {
+        List<Task> open = taskRepository.findByStatusIn(EnumSet.of(
+                TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.REMINDED, TaskStatus.ESCALATED));
+        Instant now = Instant.now(clock);
+        open.forEach(task -> task.cancel(now));
+        return open;
     }
 
     /** 確認任務完成。非法狀態轉換由 domain 丟 BusinessException(422)。 */

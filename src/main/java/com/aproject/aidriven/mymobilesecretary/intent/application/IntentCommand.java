@@ -43,6 +43,8 @@ public record IntentCommand(
         COMPLETE_TASK,
         /** 取消待辦(「取消買排骨」);title 放關鍵字。 */
         CANCEL_TASK,
+        /** 一次取消全部待辦(「全部待辦都取消」)。 */
+        CANCEL_ALL_TASKS,
         /** 改待辦期限(「拿包裹改成今天11點」);title 關鍵字 + dueAt 新期限。 */
         RESCHEDULE_TASK,
         /** 取消既有行程(「明天的會議取消」);title 放行程關鍵字,由 Java 規則找唯一行程。 */
@@ -51,6 +53,14 @@ public record IntentCommand(
         RESCHEDULE_SCHEDULE,
         /** 問已知地點的資訊(「全聯是指哪一間?」);placeName 放地點名。 */
         ASK_PLACE,
+        /** 建立地點(「建立地點:蝦皮店到店中興二店」);placeName 放地點名,詳細資訊由 Google 補全。 */
+        CREATE_PLACE,
+        /** 把待辦綁到地點(「拿包裹是要到蝦皮店到店」);title 任務關鍵字 + placeName 地點名。 */
+        BIND_TASK_PLACE,
+        /** 問某待辦要去哪裡做(「我要去哪取蝦皮?」);title 任務關鍵字。 */
+        ASK_TASK_PLACE,
+        /** 對系統本身的抱怨/建議/回饋(「你是不是重複建立了」);記錄給開發者。 */
+        FEEDBACK,
         /** 查詢未完成的待辦(「還有什麼要做」)。 */
         LIST_TASKS,
         /** 查詢接下來的行程(「今天有什麼行程」)。 */

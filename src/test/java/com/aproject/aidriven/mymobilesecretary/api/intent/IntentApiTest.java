@@ -117,6 +117,105 @@ class IntentApiTest extends IntegrationTestBase {
                 jsonPath("$.action").value("CLARIFICATION_NEEDED"));
     }
 
+    /** 英文任務 + 大小寫不同的關鍵字也要對得上(對話紀錄實際踩過的雷)。 */
+    @Test
+    void completeTaskKeywordIsCaseInsensitive() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_TASK, "Buy soy sauce casetest", null, null, null, null, "NORMAL", null,
+                null, null, null, null));
+        say("remind me to buy soy sauce casetest");
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.COMPLETE_TASK, "buy SOY sauce casetest", null, null, null, null, null, null,
+                null, null, null, null));
+        say("soy sauce casetest買到了",
+                jsonPath("$.action").value("TASK_COMPLETED"),
+                jsonPath("$.task.status").value("CONFIRMED"));
+    }
+
+    /** 同名未結案任務已存在 → 不重複建立,回問(對話紀錄實際踩過的雷)。 */
+    @Test
+    void duplicateCreateTaskAsksBackInsteadOfCreating() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_TASK, "重複防呆測試包裹", null, null, null, null, "NORMAL", null,
+                null, null, null, null));
+        say("記重複防呆測試包裹");
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_TASK, "重複防呆測試包裹", null, null, null, null, "NORMAL", null,
+                null, null, null, null));
+        say("記重複防呆測試包裹",
+                jsonPath("$.action").value("CLARIFICATION_NEEDED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不再重複建立")));
+    }
+
+    /** 「全部待辦都取消」→ 一次取消全部未結案任務。 */
+    @Test
+    void cancelAllTasksIntentCancelsEverythingOpen() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_TASK, "全取消測試甲", null, null, null, null, "NORMAL", null,
+                null, null, null, null));
+        say("記全取消測試甲");
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CANCEL_ALL_TASKS, null, null, null, null, null, null, null,
+                null, null, null, null));
+        say("全部待辦都取消",
+                jsonPath("$.action").value("ALL_TASKS_CANCELED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("全取消測試甲")));
+    }
+
+    /** 建地點但 Google 未啟用(測試環境)→ 回覆可行動訊息而非 500/422(webhook 必須 200)。 */
+    @Test
+    void createPlaceWithoutGoogleRepliesActionableMessage() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_PLACE, null, null, null, null, "建地點測試蝦皮店到店", null, null,
+                null, null, null, null));
+        say("建立地點:建地點測試蝦皮店到店",
+                jsonPath("$.action").value("CLARIFICATION_NEEDED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("經緯度")));
+    }
+
+    /** 任務綁地點閉環:「拿包裹是要到X」→ 綁 geofence;「要去哪拿」→ 回地點。 */
+    @Test
+    void bindTaskPlaceThenAskWhere() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_TASK, "拿綁定測試包裹", null, null, null, null, "NORMAL", null,
+                null, null, null, null));
+        say("記拿綁定測試包裹");
+        mockMvc.perform(post("/api/places")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "綁定測試蝦皮店到店", "latitude": 24.9670, "longitude": 121.5400}
+                                """))
+                .andExpect(status().isCreated());
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.BIND_TASK_PLACE, "綁定測試包裹", null, null, null,
+                "綁定測試蝦皮店到店", null, null, null, null, null, null));
+        say("拿綁定測試包裹是要到綁定測試蝦皮店到店",
+                jsonPath("$.action").value("TASK_PLACE_BOUND"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("已綁定")));
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.ASK_TASK_PLACE, "綁定測試包裹", null, null, null, null, null, null,
+                null, null, null, null));
+        say("我要去哪拿綁定測試包裹?",
+                jsonPath("$.action").value("TASK_PLACE_INFO"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("綁定測試蝦皮店到店")));
+    }
+
+    /** 對系統的抱怨 → FEEDBACK:友善回覆並記錄給開發者。 */
+    @Test
+    void feedbackIsAcknowledged() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.FEEDBACK, null, null, null, null, null, null, null,
+                null, null, null, null));
+        say("你是不是重複建立任務了",
+                jsonPath("$.action").value("FEEDBACK_RECEIVED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("記下來")));
+    }
+
     /** 取消待辦:「取消買排骨」→ 唯一命中的任務 CANCELED。 */
     @Test
     void cancelTaskIntentCancelsUniqueMatch() throws Exception {

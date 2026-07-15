@@ -18,6 +18,7 @@ package com.aproject.aidriven.mymobilesecretary.intent.application;
  * @param overrunMinutes RECORD_OUTCOME:超時分鐘數(「晚了半小時」= 30)
  * @param outcomeReason  RECORD_OUTCOME:MEETING_OVERRUN/TRAFFIC_INCIDENT/RUSH_HOUR/OTHER(聽得出才填)
  * @param windowHours    SUGGEST_NEARBY:使用者明講的時間長度(小時);沒講就空,不要猜
+ * @param recurring      CREATE_SCHEDULE/SET_SCHEDULE_RECURRING:每週固定行程為 true
  */
 public record IntentCommand(
         Type type,
@@ -31,7 +32,8 @@ public record IntentCommand(
         Boolean onTime,
         Integer overrunMinutes,
         String outcomeReason,
-        Integer windowHours
+        Integer windowHours,
+        Boolean recurring
 ) {
 
     public enum Type {
@@ -49,6 +51,12 @@ public record IntentCommand(
         RESCHEDULE_TASK,
         /** 取消既有行程(「明天的會議取消」);title 放行程關鍵字,由 Java 規則找唯一行程。 */
         CANCEL_SCHEDULE,
+        /** 把行程設為/取消每週固定(「送女兒上課是每週固定的」);title 關鍵字 + recurring。 */
+        SET_SCHEDULE_RECURRING,
+        /** 問某行程的細節(「送女兒上課是固定行程嗎?」「會議是幾點?」);title 關鍵字。 */
+        ASK_SCHEDULE_INFO,
+        /** 查某品項的價格明細(「列出買奶粉的明細」);title 放品項關鍵字。 */
+        ASK_PRICE_HISTORY,
         /** 改既有行程時間(「週會改到兩點」);title + startAt,未指定 endAt 時沿用原時長。 */
         RESCHEDULE_SCHEDULE,
         /** 問已知地點的資訊(「全聯是指哪一間?」);placeName 放地點名。 */

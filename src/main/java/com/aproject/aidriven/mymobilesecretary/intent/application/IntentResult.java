@@ -32,6 +32,9 @@ public record IntentResult(
         TASK_RESCHEDULED,
         SCHEDULE_CANCELED,
         SCHEDULE_RESCHEDULED,
+        SCHEDULE_RECURRENCE_SET,
+        SCHEDULE_INFO,
+        PRICE_HISTORY,
         ALL_TASKS_CANCELED,
         TASKS_LISTED,
         SCHEDULES_LISTED,
@@ -127,6 +130,49 @@ public record IntentResult(
                 "「%s」期限改到 %s".formatted(task.getTitle(),
                         ZonedDateTime.ofInstant(task.getDueAt(), TAIPEI).format(LIST_TIME)),
                 task, null);
+    }
+
+    static IntentResult scheduleRecurrenceSet(ScheduleItem item) {
+        boolean weekly = item.getRecurrence() == ScheduleItem.Recurrence.WEEKLY;
+        return new IntentResult(Action.SCHEDULE_RECURRENCE_SET,
+                weekly
+                        ? "「%s」已設為每週固定,這週結束後我會自動排下一週。".formatted(item.getTitle())
+                        : "「%s」已改回單次行程,不再自動重複。".formatted(item.getTitle()),
+                null, null);
+    }
+
+    static IntentResult scheduleInfo(ScheduleItem item,
+                                     com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
+        String time = "%s-%s".formatted(
+                ZonedDateTime.ofInstant(item.getStartAt(), TAIPEI).format(LIST_TIME),
+                ZonedDateTime.ofInstant(item.getEndAt(), TAIPEI)
+                        .format(DateTimeFormatter.ofPattern("HH:mm")));
+        StringBuilder message = new StringBuilder("「%s」:%s".formatted(item.getTitle(), time));
+        message.append("\n類型:").append(
+                item.getRecurrence() == ScheduleItem.Recurrence.WEEKLY ? "每週固定" : "單次");
+        if (place != null) {
+            message.append("\n地點:").append(place.getName());
+        }
+        return new IntentResult(Action.SCHEDULE_INFO, message.toString(), null, null);
+    }
+
+    static IntentResult priceHistory(String keyword,
+                                     List<com.aproject.aidriven.mymobilesecretary.knowledge.domain.PriceRecord> records) {
+        if (records.isEmpty()) {
+            return new IntentResult(Action.PRICE_HISTORY,
+                    "沒有「%s」的價格紀錄;傳收據照片給我,之後就查得到。".formatted(keyword), null, null);
+        }
+        String lines = records.stream().limit(LIST_LIMIT)
+                .map(r -> "%s %s %d元%s".formatted(
+                        r.getPurchasedAt().format(DateTimeFormatter.ofPattern("MM/dd")),
+                        r.getStoreName() == null || r.getStoreName().isBlank() ? "" : r.getStoreName(),
+                        r.getPriceTwd(),
+                        "「" + r.getItemName() + "」"))
+                .collect(Collectors.joining("\n"));
+        String tail = records.size() > LIST_LIMIT ? "\n…等 %d 筆".formatted(records.size()) : "";
+        return new IntentResult(Action.PRICE_HISTORY,
+                "「%s」的購買明細(%d 筆):\n%s%s".formatted(keyword, records.size(), lines, tail),
+                null, null);
     }
 
     static IntentResult scheduleCanceled(ScheduleItem item) {

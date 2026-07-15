@@ -33,7 +33,11 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
 
             判斷規則:
             - 有明確「開始時段」的活動(剪頭髮、開會、聚餐)→ CREATE_SCHEDULE,startAt 必填;
-              使用者沒說結束時間就依活動常識估 endAt(剪頭髮約 1 小時、會議約 1 小時)。
+              使用者沒說結束時間就依活動常識估 endAt(剪頭髮約 1 小時、會議約 1 小時);
+              聽得出是每週固定(「每週三」「固定行程」)→ recurring 填 true。
+            - 接送/陪同類行程要主動拆成完整的配套:「送女兒10點到12點上課」不是一個 10-12 的行程,
+              而是兩個 command:CREATE_SCHEDULE「送女兒上課」(到達時間前約 20 分鐘出發到抵達)+
+              CREATE_SCHEDULE「接女兒下課」(結束時間起約 20 分鐘),中間時段留空讓使用者能排其他事。
             - 待辦事項(買東西、繳費、聯絡某人)→ CREATE_TASK;有截止時間才填 dueAt。
             - 回報待辦已完成(「牛奶買到了」「電費繳完了」)→ COMPLETE_TASK,title 放該任務的關鍵字(如「牛奶」)。
             - 取消待辦(「取消買排骨」「醬油不用買了」)→ CANCEL_TASK,title 放關鍵字。
@@ -44,6 +48,11 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               title 放待辦關鍵字,placeName 放地點名;這不是建新待辦!
             - 問某待辦要去哪裡做(「我要去哪取蝦皮?」「包裹在哪拿」)→ ASK_TASK_PLACE,title 放待辦關鍵字。
             - 取消既有行程(「明天的會議取消」)→ CANCEL_SCHEDULE,title 放行程關鍵字。
+            - 說某行程是每週固定/取消固定(「送女兒上課是每週固定的」)→ SET_SCHEDULE_RECURRING,
+              title 放關鍵字,recurring 填 true(取消固定填 false)。
+            - 問某行程的細節(「送女兒上課是固定行程嗎?」「會議是幾點?」)→ ASK_SCHEDULE_INFO,title 放關鍵字。
+            - 查某品項買過的價格明細(「列出買奶粉的明細」「鮮奶上次多少錢」)→ ASK_PRICE_HISTORY,
+              title 放品項關鍵字(如「奶粉」)。
             - 改既有行程時間(「週會改到下午兩點」)→ RESCHEDULE_SCHEDULE,title 放行程關鍵字,
               startAt 放新開始時間;使用者明講結束時間或時長才填 endAt,否則留空保留原時長。
             - 問某個已知地點的資訊(「全聯是指哪一間?」)→ ASK_PLACE,placeName 放地點名。
@@ -61,7 +70,10 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 完成/取消/改期的 title 關鍵字必須保留原文語言與拼寫,不可翻譯:
               使用者的待辦叫「Buy soy sauce」,關鍵字就是「soy sauce」,不是「醬油」。
             - 時間一律輸出 ISO-8601 含時區,例如 2026-07-13T11:00:00+08:00;相對時間(明天、下週六)以 user 提供的現在時間換算。
-            - placeName:使用者明講的地點才填;若與已知地點清單中某項明顯是同一個,用清單中的名稱。不要猜。
+            - placeName:使用者明講的地點才填;若與已知地點清單中某項明顯是同一個,用清單中的名稱。
+              若與清單某項「相近但不確定」(可能是筆誤,如「夏印尼」vs「夏恩英語」)→ 不要硬猜,
+              回 UNKNOWN 且 reason 寫「你是說『夏恩英語』嗎?」這種確認句。
+            - CREATE_PLACE 的 placeName 可包含分店/地區資訊(「夏恩英語 新店七張分校」),查得更準。
             - priority:聽得出急迫(趕快、務必、很急)才填 HIGH;否則 NORMAL。
             - RECORD_OUTCOME:onTime 準時為 true;超時填 overrunMinutes(分鐘,「半小時」=30);
               outcomeReason 聽得出原因才填:會議/活動拖延=MEETING_OVERRUN、交通事故/意外=TRAFFIC_INCIDENT、

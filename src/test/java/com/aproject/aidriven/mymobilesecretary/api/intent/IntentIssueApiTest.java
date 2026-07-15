@@ -37,7 +37,7 @@ class IntentIssueApiTest extends IntegrationTestBase {
     void unknownIntentIsRecordedAsOpenIssue() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.UNKNOWN, null, null, null, null, null, null,
-                "無法判斷是查待辦還是查行程", null, null, null, null));
+                "無法判斷是查待辦還是查行程", null, null, null, null, null));
         say("問題紀錄測試-待會有什麼可以順便做");
 
         var issue = issueRepository.findAllByOrderByCreatedAtDesc().stream()
@@ -65,7 +65,7 @@ class IntentIssueApiTest extends IntegrationTestBase {
     void feedbackIntentIsRecordedAsFeedbackIssue() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.FEEDBACK, null, null, null, null, null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("問題紀錄測試-你上次建重複了");
 
         var issue = issueRepository.findAllByOrderByCreatedAtDesc().stream()
@@ -80,7 +80,7 @@ class IntentIssueApiTest extends IntegrationTestBase {
     void resolveWorkflowTransitionsAndRejectsDoubleResolve() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.UNKNOWN, null, null, null, null, null, null,
-                "聽不懂", null, null, null, null));
+                "聽不懂", null, null, null, null, null));
         say("問題紀錄測試-解決流程");
         Long id = issueRepository.findAllByOrderByCreatedAtDesc().stream()
                 .filter(i -> i.getUtterance().contains("解決流程"))
@@ -100,7 +100,7 @@ class IntentIssueApiTest extends IntegrationTestBase {
     void outOfScopeMarking() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.UNKNOWN, null, null, null, null, null, null,
-                "這不是排程相關請求", null, null, null, null));
+                "這不是排程相關請求", null, null, null, null, null));
         say("問題紀錄測試-幫我寫python");
         Long id = issueRepository.findAllByOrderByCreatedAtDesc().stream()
                 .filter(i -> i.getUtterance().contains("寫python"))

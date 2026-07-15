@@ -35,7 +35,7 @@ class LineContentClientTest {
 
     private LineContentClient client() {
         String base = "http://localhost:" + server.getAddress().getPort();
-        LineProperties props = new LineProperties(true, "cid", "secret", "static-token",
+        LineProperties props = new LineProperties(true, "cid", "secret", "static-token", "",
                 base, base, base + "/token", Duration.ofSeconds(2));
         return new LineContentClient(RestClient.builder(), props,
                 new LineTokenManager(RestClient.builder(), props, Clock.systemUTC()));

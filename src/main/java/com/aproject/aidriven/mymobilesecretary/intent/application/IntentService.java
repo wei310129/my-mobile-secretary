@@ -40,6 +40,7 @@ public class IntentService {
     private final PlaceRepository placeRepository;
     private final com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService placeService;
     private final com.aproject.aidriven.mymobilesecretary.geo.application.GeofenceRuleService geofenceRuleService;
+    private final com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService priceRecordService;
     private final int bindRadiusMeters;
     private final Clock clock;
 
@@ -52,6 +53,7 @@ public class IntentService {
                          PlaceRepository placeRepository,
                          com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService placeService,
                          com.aproject.aidriven.mymobilesecretary.geo.application.GeofenceRuleService geofenceRuleService,
+                         com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService priceRecordService,
                          @org.springframework.beans.factory.annotation.Value(
                                  "${app.knowledge.auto-bind-radius-meters:200}") int bindRadiusMeters,
                          Clock clock) {
@@ -64,6 +66,7 @@ public class IntentService {
         this.placeRepository = placeRepository;
         this.placeService = placeService;
         this.geofenceRuleService = geofenceRuleService;
+        this.priceRecordService = priceRecordService;
         this.bindRadiusMeters = bindRadiusMeters;
         this.clock = clock;
     }
@@ -155,7 +158,8 @@ public class IntentService {
                 }
                 Long placeId = resolvePlace(command.placeName()).map(Place::getId).orElse(null);
                 ScheduleDecision decision = scheduleService.createSchedule(
-                        command.title(), startAt, endAt, placeId);
+                        command.title(), startAt, endAt, placeId,
+                        Boolean.TRUE.equals(command.recurring()));
                 yield IntentResult.scheduleDecided(decision);
             }
             case COMPLETE_TASK -> {
@@ -205,6 +209,27 @@ public class IntentService {
                 ScheduleDecision decision = scheduleService.reschedule(
                         match.item().getId(), newStartAt, newEndAt);
                 yield IntentResult.scheduleRescheduled(decision);
+            }
+            case SET_SCHEDULE_RECURRING -> {
+                requireText(command.title(), "title");
+                boolean recurring = !Boolean.FALSE.equals(command.recurring());
+                ScheduleMatch match = matchReschedulableSchedule(command.title(), "設定");
+                yield match.failure() != null ? match.failure()
+                        : IntentResult.scheduleRecurrenceSet(
+                                scheduleService.setWeeklyRecurrence(match.item().getId(), recurring));
+            }
+            case ASK_SCHEDULE_INFO -> {
+                requireText(command.title(), "title");
+                ScheduleMatch match = matchReschedulableSchedule(command.title(), "查");
+                yield match.failure() != null ? match.failure()
+                        : IntentResult.scheduleInfo(match.item(),
+                                match.item().getPlaceId() == null
+                                        ? null : placeService.getPlace(match.item().getPlaceId()));
+            }
+            case ASK_PRICE_HISTORY -> {
+                requireText(command.title(), "title");
+                yield IntentResult.priceHistory(command.title(),
+                        priceRecordService.list(command.title()));
             }
             case ASK_PLACE -> {
                 requireText(command.placeName(), "placeName");

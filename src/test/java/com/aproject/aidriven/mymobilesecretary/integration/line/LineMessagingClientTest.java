@@ -45,7 +45,7 @@ class LineMessagingClientTest {
     }
 
     private LineProperties props(String staticAccessToken) {
-        return new LineProperties(true, "channel-id", "channel-secret", staticAccessToken,
+        return new LineProperties(true, "channel-id", "channel-secret", staticAccessToken, "",
                 baseUrl(), baseUrl(), baseUrl() + "/oauth2/v3/token", Duration.ofSeconds(2));
     }
 

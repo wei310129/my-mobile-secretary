@@ -18,6 +18,8 @@ class IntentApiTest extends IntegrationTestBase {
 
     @Autowired
     private StubIntentInterpreter stub;
+    @Autowired
+    private com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService priceRecordService;
 
     private void say(String text, org.springframework.test.web.servlet.ResultMatcher... matchers) throws Exception {
         var actions = mockMvc.perform(post("/api/intent")
@@ -36,7 +38,7 @@ class IntentApiTest extends IntegrationTestBase {
     void createTaskIntentCreatesTask() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_TASK, "買醬油膏", null, null, null, null, "NORMAL", null,
-                null, null, null, null));
+                null, null, null, null, null));
 
         say("欸幫我記一下要買醬油膏",
                 jsonPath("$.action").value("TASK_CREATED"),
@@ -50,7 +52,7 @@ class IntentApiTest extends IntegrationTestBase {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE, "剪頭髮", null,
                 "2027-06-01T11:00:00+08:00", "2027-06-01T12:00:00+08:00", null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
 
         say("下下下週剪頭髮",
                 jsonPath("$.action").value("SCHEDULE_CONFIRMED"),
@@ -63,7 +65,7 @@ class IntentApiTest extends IntegrationTestBase {
     void unknownIntentAsksForClarification() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.UNKNOWN, null, null, null, null, null, null, "請告訴我具體要做什麼",
-                null, null, null, null));
+                null, null, null, null, null));
 
         say("嗯...那個...",
                 jsonPath("$.action").value("CLARIFICATION_NEEDED"),
@@ -75,12 +77,12 @@ class IntentApiTest extends IntegrationTestBase {
     void completeTaskIntentConfirmsUniqueMatch() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_TASK, "買閉環測試醬油", null, null, null, null, "NORMAL", null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("幫我記買閉環測試醬油");
 
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.COMPLETE_TASK, "閉環測試醬油", null, null, null, null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("閉環測試醬油買到了",
                 jsonPath("$.action").value("TASK_COMPLETED"),
                 jsonPath("$.task.title").value("買閉環測試醬油"),
@@ -92,16 +94,16 @@ class IntentApiTest extends IntegrationTestBase {
     void ambiguousCompleteTaskAsksBack() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_TASK, "買歧義測試鮮奶", null, null, null, null, "NORMAL", null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("記買歧義測試鮮奶");
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_TASK, "退歧義測試鮮奶", null, null, null, null, "NORMAL", null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("記退歧義測試鮮奶");
 
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.COMPLETE_TASK, "歧義測試鮮奶", null, null, null, null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("歧義測試鮮奶弄好了",
                 jsonPath("$.action").value("CLARIFICATION_NEEDED"));
     }
@@ -111,7 +113,7 @@ class IntentApiTest extends IntegrationTestBase {
     void completeTaskWithoutMatchAsksBack() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.COMPLETE_TASK, "根本不存在的事", null, null, null, null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
 
         say("根本不存在的事做完了",
                 jsonPath("$.action").value("CLARIFICATION_NEEDED"));
@@ -122,12 +124,12 @@ class IntentApiTest extends IntegrationTestBase {
     void completeTaskKeywordIsCaseInsensitive() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_TASK, "Buy soy sauce casetest", null, null, null, null, "NORMAL", null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("remind me to buy soy sauce casetest");
 
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.COMPLETE_TASK, "buy SOY sauce casetest", null, null, null, null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("soy sauce casetest買到了",
                 jsonPath("$.action").value("TASK_COMPLETED"),
                 jsonPath("$.task.status").value("CONFIRMED"));
@@ -138,12 +140,12 @@ class IntentApiTest extends IntegrationTestBase {
     void duplicateCreateTaskAsksBackInsteadOfCreating() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_TASK, "重複防呆測試包裹", null, null, null, null, "NORMAL", null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("記重複防呆測試包裹");
 
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_TASK, "重複防呆測試包裹", null, null, null, null, "NORMAL", null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("記重複防呆測試包裹",
                 jsonPath("$.action").value("CLARIFICATION_NEEDED"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不再重複建立")));
@@ -154,12 +156,12 @@ class IntentApiTest extends IntegrationTestBase {
     void cancelAllTasksIntentCancelsEverythingOpen() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_TASK, "全取消測試甲", null, null, null, null, "NORMAL", null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("記全取消測試甲");
 
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CANCEL_ALL_TASKS, null, null, null, null, null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("全部待辦都取消",
                 jsonPath("$.action").value("ALL_TASKS_CANCELED"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString("全取消測試甲")));
@@ -170,7 +172,7 @@ class IntentApiTest extends IntegrationTestBase {
     void createPlaceWithoutGoogleRepliesActionableMessage() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_PLACE, null, null, null, null, "建地點測試蝦皮店到店", null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("建立地點:建地點測試蝦皮店到店",
                 jsonPath("$.action").value("CLARIFICATION_NEEDED"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString("經緯度")));
@@ -181,7 +183,7 @@ class IntentApiTest extends IntegrationTestBase {
     void bindTaskPlaceThenAskWhere() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_TASK, "拿綁定測試包裹", null, null, null, null, "NORMAL", null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("記拿綁定測試包裹");
         mockMvc.perform(post("/api/places")
                         .contentType(MediaType.APPLICATION_JSON)
@@ -192,14 +194,14 @@ class IntentApiTest extends IntegrationTestBase {
 
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.BIND_TASK_PLACE, "綁定測試包裹", null, null, null,
-                "綁定測試蝦皮店到店", null, null, null, null, null, null));
+                "綁定測試蝦皮店到店", null, null, null, null, null, null, null));
         say("拿綁定測試包裹是要到綁定測試蝦皮店到店",
                 jsonPath("$.action").value("TASK_PLACE_BOUND"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString("已綁定")));
 
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.ASK_TASK_PLACE, "綁定測試包裹", null, null, null, null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("我要去哪拿綁定測試包裹?",
                 jsonPath("$.action").value("TASK_PLACE_INFO"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString("綁定測試蝦皮店到店")));
@@ -210,7 +212,7 @@ class IntentApiTest extends IntegrationTestBase {
     void feedbackIsAcknowledged() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.FEEDBACK, null, null, null, null, null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("你是不是重複建立任務了",
                 jsonPath("$.action").value("FEEDBACK_RECEIVED"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString("記下來")));
@@ -221,12 +223,12 @@ class IntentApiTest extends IntegrationTestBase {
     void cancelTaskIntentCancelsUniqueMatch() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_TASK, "買取消測試排骨", null, null, null, null, "NORMAL", null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("幫我記買取消測試排骨");
 
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CANCEL_TASK, "取消測試排骨", null, null, null, null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("取消買取消測試排骨",
                 jsonPath("$.action").value("TASK_CANCELED"),
                 jsonPath("$.task.status").value("CANCELED"));
@@ -237,12 +239,12 @@ class IntentApiTest extends IntegrationTestBase {
     void rescheduleTaskIntentUpdatesDueDate() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_TASK, "拿改期測試包裹", null, null, null, null, "NORMAL", null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("幫我記拿改期測試包裹");
 
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.RESCHEDULE_TASK, "改期測試包裹", "2027-09-01T11:00:00+08:00",
-                null, null, null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null, null, null));
         say("拿改期測試包裹改成九月一號11點",
                 jsonPath("$.action").value("TASK_RESCHEDULED"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString("09/01 11:00")),
@@ -255,12 +257,12 @@ class IntentApiTest extends IntegrationTestBase {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE, "取消行程測試午餐", null,
                 "2027-09-03T12:00:00+08:00", "2027-09-03T13:00:00+08:00", null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("幫我排取消行程測試午餐");
 
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CANCEL_SCHEDULE, "取消行程測試午餐", null,
-                null, null, null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null, null, null));
         say("取消取消行程測試午餐",
                 jsonPath("$.action").value("SCHEDULE_CANCELED"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString("已取消")));
@@ -272,12 +274,12 @@ class IntentApiTest extends IntegrationTestBase {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE, "改期行程測試會議", null,
                 "2027-09-04T11:00:00+08:00", "2027-09-04T12:30:00+08:00", null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("幫我排改期行程測試會議");
 
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.RESCHEDULE_SCHEDULE, "改期行程測試會議", null,
-                "2027-09-04T14:00:00+08:00", null, null, null, null, null, null, null, null));
+                "2027-09-04T14:00:00+08:00", null, null, null, null, null, null, null, null, null));
         say("改期行程測試會議改到下午兩點",
                 jsonPath("$.action").value("SCHEDULE_RESCHEDULED"),
                 jsonPath("$.schedule.schedule.status").value("CONFIRMED"),
@@ -293,13 +295,13 @@ class IntentApiTest extends IntegrationTestBase {
                 {"歧義行程測試會議下午", "2027-09-05T14:00:00+08:00", "2027-09-05T15:00:00+08:00"}}) {
             stub.nextCommand(new IntentCommand(
                     IntentCommand.Type.CREATE_SCHEDULE, times[0], null, times[1], times[2], null, null, null,
-                    null, null, null, null));
+                    null, null, null, null, null));
             say("幫我排" + times[0]);
         }
 
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CANCEL_SCHEDULE, "歧義行程測試會議", null,
-                null, null, null, null, null, null, null, null, null));
+                null, null, null, null, null, null, null, null, null, null));
         say("取消歧義行程測試會議",
                 jsonPath("$.action").value("CLARIFICATION_NEEDED"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString("2 個行程")));
@@ -314,17 +316,17 @@ class IntentApiTest extends IntegrationTestBase {
         for (String title : new String[]{"買批次測試排骨", "買批次測試醬油", "拿批次測試包裹"}) {
             stub.nextCommand(new IntentCommand(
                     IntentCommand.Type.CREATE_TASK, title, null, null, null, null, "NORMAL", null,
-                    null, null, null, null));
+                    null, null, null, null, null));
             say("幫我記" + title);
         }
 
         stub.nextCommands(
                 new IntentCommand(IntentCommand.Type.CANCEL_TASK, "批次測試排骨", null,
-                        null, null, null, null, null, null, null, null, null),
+                        null, null, null, null, null, null, null, null, null, null),
                 new IntentCommand(IntentCommand.Type.CANCEL_TASK, "批次測試醬油", null,
-                        null, null, null, null, null, null, null, null, null),
+                        null, null, null, null, null, null, null, null, null, null),
                 new IntentCommand(IntentCommand.Type.RESCHEDULE_TASK, "批次測試包裹", "2027-09-02T11:00:00+08:00",
-                        null, null, null, null, null, null, null, null, null));
+                        null, null, null, null, null, null, null, null, null, null));
         say("取消買批次測試排骨,批次測試醬油也取消,拿批次測試包裹改成11點",
                 jsonPath("$.action").value("BATCH_EXECUTED"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString("買批次測試排骨」已取消")),
@@ -345,7 +347,7 @@ class IntentApiTest extends IntegrationTestBase {
 
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.ASK_PLACE, null, null, null, null, "地點詢問測試全聯", null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("地點詢問測試全聯是指哪一間?",
                 jsonPath("$.action").value("PLACE_INFO"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString("民權路 42 號")));
@@ -356,7 +358,7 @@ class IntentApiTest extends IntegrationTestBase {
     void askUnknownPlaceAsksBack() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.ASK_PLACE, null, null, null, null, "沒建過的神秘地點", null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("沒建過的神秘地點是哪裡?",
                 jsonPath("$.action").value("CLARIFICATION_NEEDED"));
     }
@@ -366,7 +368,7 @@ class IntentApiTest extends IntegrationTestBase {
     void suggestWithoutWindowAsksAndGivesPreview() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.SUGGEST_NEARBY, null, null, null, null, null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("待會有什麼可以順便做",
                 jsonPath("$.action").value("SUGGESTION_MADE"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString("你抓多久")),
@@ -378,11 +380,71 @@ class IntentApiTest extends IntegrationTestBase {
     void suggestWithExplicitWindowUsesIt() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.SUGGEST_NEARBY, null, null, null, null, null, null, null,
-                null, null, null, 2));
+                null, null, null, 2, null));
         say("待會兩小時內有什麼可以順便做",
                 jsonPath("$.action").value("SUGGESTION_MADE"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("你抓多久"))));
+    }
+
+    /** 固定行程:建立時聽出「每週」→ WEEKLY;查詢細節回「每週固定」。 */
+    @Test
+    void recurringScheduleCreateAndAskInfo() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE, "固定意圖測試送課", null,
+                "2027-10-06T10:00:00+08:00", "2027-10-06T10:20:00+08:00", null, null, null,
+                null, null, null, null, true));
+        say("每週三早上十點固定意圖測試送課",
+                jsonPath("$.action").value("SCHEDULE_CONFIRMED"));
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.ASK_SCHEDULE_INFO, "固定意圖測試送課", null, null, null, null, null, null,
+                null, null, null, null, null));
+        say("固定意圖測試送課是固定行程嗎?",
+                jsonPath("$.action").value("SCHEDULE_INFO"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("每週固定")));
+    }
+
+    /** 既有行程事後設為固定(「送女兒上課是每週固定的」)。 */
+    @Test
+    void setExistingScheduleRecurring() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE, "事後固定測試會議", null,
+                "2027-10-07T14:00:00+08:00", "2027-10-07T15:00:00+08:00", null, null, null,
+                null, null, null, null, null));
+        say("下週四下午兩點事後固定測試會議");
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.SET_SCHEDULE_RECURRING, "事後固定測試會議", null, null, null, null, null, null,
+                null, null, null, null, true));
+        say("事後固定測試會議是每週固定的",
+                jsonPath("$.action").value("SCHEDULE_RECURRENCE_SET"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("每週固定")));
+    }
+
+    /** 價格明細查詢(對話紀錄 issue #12):沒有紀錄時引導傳收據。 */
+    @Test
+    void askPriceHistoryWithoutRecordsGuidesUser() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.ASK_PRICE_HISTORY, "價格查詢測試奶粉", null, null, null, null, null, null,
+                null, null, null, null, null));
+        say("列出買價格查詢測試奶粉的明細",
+                jsonPath("$.action").value("PRICE_HISTORY"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("沒有")));
+    }
+
+    /** 價格明細查詢:有紀錄時列出日期/店家/價格。 */
+    @Test
+    void askPriceHistoryListsRecords() throws Exception {
+        priceRecordService.record("價格明細測試奶粉", "全聯", 899, java.time.LocalDate.parse("2026-07-10"));
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.ASK_PRICE_HISTORY, "價格明細測試奶粉", null, null, null, null, null, null,
+                null, null, null, null, null));
+        say("列出買價格明細測試奶粉的明細",
+                jsonPath("$.action").value("PRICE_HISTORY"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("899")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("全聯")));
     }
 
     /** 查待辦:「還有什麼要做」→ 列出未完成任務(含剛建立的)。 */
@@ -390,12 +452,12 @@ class IntentApiTest extends IntegrationTestBase {
     void listTasksIntentShowsOpenTasks() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_TASK, "買清單查詢測試米", null, null, null, null, "NORMAL", null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("幫我記買清單查詢測試米");
 
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.LIST_TASKS, null, null, null, null, null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("我還有什麼待辦事項",
                 jsonPath("$.action").value("TASKS_LISTED"),
                 jsonPath("$.message").value(
@@ -408,12 +470,12 @@ class IntentApiTest extends IntegrationTestBase {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE, "清單查詢測試會議", null,
                 "2027-08-01T10:00:00+08:00", "2027-08-01T11:00:00+08:00", null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("八月一號十點清單查詢測試會議");
 
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.LIST_SCHEDULES, null, null, null, null, null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
         say("接下來有什麼行程",
                 jsonPath("$.action").value("SCHEDULES_LISTED"),
                 jsonPath("$.message").value(
@@ -425,7 +487,7 @@ class IntentApiTest extends IntegrationTestBase {
     void suggestNearbyIntentReturnsSuggestion() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.SUGGEST_NEARBY, null, null, null, null, null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
 
         say("待會有什麼可以順便做",
                 jsonPath("$.action").value("SUGGESTION_MADE"));
@@ -447,7 +509,7 @@ class IntentApiTest extends IntegrationTestBase {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE, "壞時間行程", null,
                 "明天十一點", "後天", null, null, null,
-                null, null, null, null));
+                null, null, null, null, null));
 
         say("測試爛時間",
                 jsonPath("$.action").value("FALLBACK_TASK_CREATED"),

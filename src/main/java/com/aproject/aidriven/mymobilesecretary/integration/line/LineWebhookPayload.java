@@ -10,7 +10,7 @@ import java.util.List;
 public record LineWebhookPayload(List<Event> events) {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Event(String type, String replyToken, Message message) {
+    public record Event(String type, String replyToken, Message message, Source source) {
 
         /** 是否為使用者傳來的純文字訊息。 */
         public boolean isTextMessage() {
@@ -21,9 +21,18 @@ public record LineWebhookPayload(List<Event> events) {
         public boolean isImageMessage() {
             return "message".equals(type) && message != null && "image".equals(message.type());
         }
+
+        /** 發訊者的 LINE userId;LINE 平台驗證請求等無來源事件為 null。 */
+        public String sourceUserId() {
+            return source == null ? null : source.userId();
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Message(String id, String type, String text) {
+    }
+
+    @JsonIgnoreProperties(ignoreUnknown = true)
+    public record Source(String userId) {
     }
 }

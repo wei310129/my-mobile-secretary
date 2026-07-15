@@ -84,7 +84,7 @@ class ScheduleFollowUpFlowTest extends IntegrationTestBase {
         // 使用者(經 LINE/intent)回報:「會開晚了半小時,會議拖太久」
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.RECORD_OUTCOME, null, null, null, null, null, null, null,
-                false, 30, "MEETING_OVERRUN", null));
+                false, 30, "MEETING_OVERRUN", null, null));
         mockMvc.perform(post("/api/intent")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("{\"text\": \"會開晚了半小時,會議拖太久\"}"))

@@ -19,6 +19,9 @@ public record LineProperties(
         @DefaultValue("") String channelId,
         @DefaultValue("") String channelSecret,
         @DefaultValue("") String channelAccessToken,
+        // 擁有者的 LINE userId(secrets.yaml):設定後只服務擁有者,其他人一律忽略——
+        // 系統是單人設計(多使用者是 Phase 5),任何加好友的人都能操作等於隱私洩漏
+        @DefaultValue("") String ownerUserId,
         @DefaultValue("https://api.line.me") String apiBaseUrl,
         // 訊息內容(圖片等二進位)在 api-data 網域,與訊息 API 不同台
         @DefaultValue("https://api-data.line.me") String contentBaseUrl,

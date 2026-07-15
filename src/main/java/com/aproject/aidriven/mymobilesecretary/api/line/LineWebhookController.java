@@ -4,6 +4,7 @@ import com.aproject.aidriven.mymobilesecretary.integration.line.LineContentClien
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLog;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLogService;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessagingClient;
+import com.aproject.aidriven.mymobilesecretary.integration.line.LineOwnerGuard;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineProperties;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineSignatureVerifier;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineWebhookPayload;
@@ -43,6 +44,7 @@ public class LineWebhookController {
     private final IntentService intentService;
     private final ReceiptService receiptService;
     private final LineMessageLogService messageLogService;
+    private final LineOwnerGuard ownerGuard;
     private final ObjectMapper objectMapper;
 
     public LineWebhookController(LineSignatureVerifier signatureVerifier,
@@ -52,6 +54,7 @@ public class LineWebhookController {
                                  IntentService intentService,
                                  ReceiptService receiptService,
                                  LineMessageLogService messageLogService,
+                                 LineOwnerGuard ownerGuard,
                                  ObjectMapper objectMapper) {
         this.signatureVerifier = signatureVerifier;
         this.messagingClient = messagingClient;
@@ -60,6 +63,7 @@ public class LineWebhookController {
         this.intentService = intentService;
         this.receiptService = receiptService;
         this.messageLogService = messageLogService;
+        this.ownerGuard = ownerGuard;
         this.objectMapper = objectMapper;
     }
 
@@ -89,6 +93,14 @@ public class LineWebhookController {
         }
 
         for (LineWebhookPayload.Event event : payload.events()) {
+            // 單人設計:非擁有者的訊息不處理也不回覆(隱私),只留底供擁有者查證
+            if ((event.isTextMessage() || event.isImageMessage())
+                    && !ownerGuard.allows(event.sourceUserId())) {
+                messageLogService.recordSafely(LineMessageLog.Direction.IN, "BLOCKED",
+                        "[非擁有者 %s] %s".formatted(event.sourceUserId(),
+                                event.isTextMessage() ? event.message().text() : "(圖片)"));
+                continue;
+            }
             if (event.isTextMessage()) {
                 handleTextMessage(event);
             } else if (event.isImageMessage()) {

@@ -16,6 +16,14 @@ public interface ScheduleItemRepository extends JpaRepository<ScheduleItem, Long
 
     List<ScheduleItem> findByStatusInOrderByStartAtAsc(Collection<ScheduleStatus> statuses);
 
+    /** 固定行程 rollover:已結束的每週行程。 */
+    List<ScheduleItem> findByRecurrenceAndEndAtLessThanEqual(
+            ScheduleItem.Recurrence recurrence, Instant endAt);
+
+    /** rollover 判重:下一週場次是否已排。 */
+    boolean existsByTitleAndRecurrenceAndStartAt(
+            String title, ScheduleItem.Recurrence recurrence, Instant startAt);
+
     /** 空閒偵測:某狀態的行程是否與 [from, until) 時間窗重疊。 */
     boolean existsByStatusAndStartAtLessThanAndEndAtGreaterThan(
             ScheduleStatus status, Instant until, Instant from);

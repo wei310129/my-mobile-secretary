@@ -42,13 +42,64 @@ public class ScheduleService {
 
     /** 提出新行程並驗算;可行自動放行。 */
     public ScheduleDecision createSchedule(String title, Instant startAt, Instant endAt, Long placeId) {
+        return createSchedule(title, startAt, endAt, placeId, false);
+    }
+
+    /** 提出新行程並驗算;recurring = true 表示每週固定(結束後自動排下一週)。 */
+    public ScheduleDecision createSchedule(String title, Instant startAt, Instant endAt,
+                                           Long placeId, boolean recurring) {
         if (placeId != null) {
             placeService.getPlace(placeId); // 地點必須存在
         }
         Instant now = Instant.now(clock);
-        ScheduleItem item = scheduleItemRepository.save(
-                ScheduleItem.propose(title, startAt, endAt, placeId, now));
+        ScheduleItem item = ScheduleItem.propose(title, startAt, endAt, placeId, now);
+        if (recurring) {
+            item.repeatWeekly(now);
+        }
+        item = scheduleItemRepository.save(item);
         return gate(item, now);
+    }
+
+    /** 設定/取消每週固定。 */
+    public ScheduleItem setWeeklyRecurrence(Long scheduleId, boolean recurring) {
+        ScheduleItem item = getSchedule(scheduleId);
+        Instant now = Instant.now(clock);
+        if (recurring) {
+            item.repeatWeekly(now);
+        } else {
+            item.stopRepeating(now);
+        }
+        return item;
+    }
+
+    /**
+     * 固定行程 rollover:已結束的 WEEKLY 行程(已確認/已完成)排出下一週的場次,
+     * 下一週場次繼承固定屬性並照常走可行性關卡;已取消的視為使用者終止固定,不再排。
+     * 同一場次只排一次(以「同標題+同週期+下一週開始時間」判重)。
+     *
+     * @return 這次新排出的場次數(測試與除錯用)
+     */
+    public int rolloverDueRecurringSchedules() {
+        Instant now = Instant.now(clock);
+        List<ScheduleItem> due = scheduleItemRepository
+                .findByRecurrenceAndEndAtLessThanEqual(ScheduleItem.Recurrence.WEEKLY, now).stream()
+                .filter(item -> item.getStatus() == ScheduleStatus.CONFIRMED
+                        || item.getStatus() == ScheduleStatus.COMPLETED)
+                .toList();
+        int created = 0;
+        for (ScheduleItem item : due) {
+            Instant nextStart = item.getStartAt().plus(java.time.Duration.ofDays(7));
+            if (scheduleItemRepository.existsByTitleAndRecurrenceAndStartAt(
+                    item.getTitle(), ScheduleItem.Recurrence.WEEKLY, nextStart)) {
+                continue;
+            }
+            createSchedule(item.getTitle(), nextStart,
+                    item.getEndAt().plus(java.time.Duration.ofDays(7)), item.getPlaceId(), true);
+            // 本場次交棒後改回單次,避免每輪重掃(下一週場次接手 WEEKLY 身分)
+            item.stopRepeating(now);
+            created++;
+        }
+        return created;
     }
 
     /** 改時間 → 回 PROPOSED 重新驗算;可行一樣自動放行。 */

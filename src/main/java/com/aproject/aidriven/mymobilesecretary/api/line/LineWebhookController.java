@@ -1,6 +1,8 @@
 package com.aproject.aidriven.mymobilesecretary.api.line;
 
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineContentClient;
+import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLog;
+import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLogService;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessagingClient;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineProperties;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineSignatureVerifier;
@@ -40,6 +42,7 @@ public class LineWebhookController {
     private final LineProperties properties;
     private final IntentService intentService;
     private final ReceiptService receiptService;
+    private final LineMessageLogService messageLogService;
     private final ObjectMapper objectMapper;
 
     public LineWebhookController(LineSignatureVerifier signatureVerifier,
@@ -48,6 +51,7 @@ public class LineWebhookController {
                                  LineProperties properties,
                                  IntentService intentService,
                                  ReceiptService receiptService,
+                                 LineMessageLogService messageLogService,
                                  ObjectMapper objectMapper) {
         this.signatureVerifier = signatureVerifier;
         this.messagingClient = messagingClient;
@@ -55,6 +59,7 @@ public class LineWebhookController {
         this.properties = properties;
         this.intentService = intentService;
         this.receiptService = receiptService;
+        this.messageLogService = messageLogService;
         this.objectMapper = objectMapper;
     }
 
@@ -93,10 +98,12 @@ public class LineWebhookController {
         return ResponseEntity.ok().build();
     }
 
-    /** 單則文字訊息:走跟 /api/intent 相同的意圖處理,結果回覆給使用者。 */
+    /** 單則文字訊息:走跟 /api/intent 相同的意圖處理,結果回覆給使用者;進出訊息都留底。 */
     private void handleTextMessage(LineWebhookPayload.Event event) {
+        messageLogService.recordSafely(LineMessageLog.Direction.IN, "TEXT", event.message().text());
         IntentResult result = intentService.handle(event.message().text());
         messagingClient.reply(event.replyToken(), result.message());
+        messageLogService.recordSafely(LineMessageLog.Direction.OUT, "TEXT", result.message());
     }
 
     /**
@@ -104,6 +111,8 @@ public class LineWebhookController {
      * 任何失敗只回覆說明,不往外拋(webhook 必須回 200,LINE 才不會重送)。
      */
     private void handleImageMessage(LineWebhookPayload.Event event) {
+        messageLogService.recordSafely(LineMessageLog.Direction.IN, "IMAGE",
+                "[圖片] messageId=" + event.message().id());
         String message;
         try {
             LineContentClient.MessageContent content = contentClient.fetchContent(event.message().id());
@@ -113,5 +122,6 @@ public class LineWebhookController {
             message = "圖片我拿不到或處理失敗,可以再傳一次,或改用文字告訴我。";
         }
         messagingClient.reply(event.replyToken(), message);
+        messageLogService.recordSafely(LineMessageLog.Direction.OUT, "TEXT", message);
     }
 }

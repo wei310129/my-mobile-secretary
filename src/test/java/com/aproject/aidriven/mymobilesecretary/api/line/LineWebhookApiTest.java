@@ -105,6 +105,31 @@ class LineWebhookApiTest extends IntegrationTestBase {
                 .andExpect(status().isOk());
     }
 
+    /** 對話紀錄閉環:進出訊息都留底,GET /api/line/messages 查得到。 */
+    @Test
+    void conversationIsLoggedAndQueryable() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_TASK, "對話紀錄測試任務", null, null, null, null, "NORMAL", null,
+                null, null, null, null));
+        byte[] body = textMessageEvent("對話紀錄測試-幫我記一下");
+
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(body))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        String logs = mockMvc.perform(
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .get("/api/line/messages").param("limit", "10"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(java.nio.charset.StandardCharsets.UTF_8);
+
+        org.assertj.core.api.Assertions.assertThat(logs)
+                .contains("對話紀錄測試-幫我記一下")   // IN:使用者原話
+                .contains("對話紀錄測試任務");          // OUT:bot 回覆(已建立任務「…」)
+    }
+
     /** 空事件陣列(LINE 平台的 webhook 驗證請求)→ 200。 */
     @Test
     void emptyEventsReturns200() throws Exception {

@@ -47,6 +47,18 @@ class PlaceApiTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("latitude"));
     }
 
+    /** 缺座標且 Google 查詢未啟用(測試環境)→ 422 業務錯誤,提示補座標。 */
+    @Test
+    void missingCoordinatesWithoutGoogleReturns422() throws Exception {
+        mockMvc.perform(post("/api/places")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"name": "只給名字的店"}
+                                """))
+                .andExpect(status().isUnprocessableEntity())
+                .andExpect(jsonPath("$.code").value("MISSING_COORDINATES"));
+    }
+
     /** 名稱空白 → 400。 */
     @Test
     void createPlaceWithBlankNameReturns400() throws Exception {

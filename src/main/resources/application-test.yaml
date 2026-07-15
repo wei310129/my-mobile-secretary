@@ -5,6 +5,9 @@ app:
     # 測試不跑背景輪詢:worker 由測試直接呼叫,確保時序可控
     enabled: false
   integration:
+    google-places:
+      # 測試絕不打真實 Google:缺座標一律回業務錯誤
+      enabled: false
     tdx:
       # 測試絕不打真實 TDX:交通估算直接用直線粗估
       enabled: false

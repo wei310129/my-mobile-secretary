@@ -30,6 +30,8 @@ public record IntentResult(
         TASK_COMPLETED,
         TASK_CANCELED,
         TASK_RESCHEDULED,
+        SCHEDULE_CANCELED,
+        SCHEDULE_RESCHEDULED,
         TASKS_LISTED,
         SCHEDULES_LISTED,
         SUGGESTION_MADE,
@@ -79,7 +81,8 @@ public record IntentResult(
                 case LOW -> "【不急】";
                 default -> "";
             };
-            message.append("\n%d. 「%s」%s(%s)".formatted(i + 1, task.getTitle(), urgency, due));
+            // 格式依使用者 2026-07-15 範例:編號後不空格
+            message.append("\n%d.「%s」%s(%s)".formatted(i + 1, task.getTitle(), urgency, due));
         }
         if (tasks.size() > LIST_LIMIT) {
             message.append("\n…等 %d 件".formatted(tasks.size()));
@@ -121,6 +124,23 @@ public record IntentResult(
                 task, null);
     }
 
+    static IntentResult scheduleCanceled(ScheduleItem item) {
+        return new IntentResult(Action.SCHEDULE_CANCELED,
+                "行程「%s」已取消".formatted(item.getTitle()), null, null);
+    }
+
+    static IntentResult scheduleRescheduled(ScheduleDecision decision) {
+        ScheduleItem item = decision.item();
+        String interval = "%s-%s".formatted(
+                ZonedDateTime.ofInstant(item.getStartAt(), TAIPEI).format(LIST_TIME),
+                ZonedDateTime.ofInstant(item.getEndAt(), TAIPEI)
+                        .format(DateTimeFormatter.ofPattern("HH:mm")));
+        String message = decision.feasibility().feasible()
+                ? "行程「%s」已改到 %s,可行並已確認".formatted(item.getTitle(), interval)
+                : "行程「%s」已改到 %s,但新時段有問題,需要你決定".formatted(item.getTitle(), interval);
+        return new IntentResult(Action.SCHEDULE_RESCHEDULED, message, null, decision);
+    }
+
     static IntentResult placeInfo(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
         String location = place.getAddress() == null || place.getAddress().isBlank()
                 ? "座標 (%.5f, %.5f)".formatted(place.getLatitude(), place.getLongitude())
@@ -135,7 +155,7 @@ public record IntentResult(
     static IntentResult batchExecuted(List<String> lines) {
         StringBuilder message = new StringBuilder("一次處理 %d 件:".formatted(lines.size()));
         for (int i = 0; i < lines.size(); i++) {
-            message.append("\n%d. %s".formatted(i + 1, lines.get(i)));
+            message.append("\n%d.%s".formatted(i + 1, lines.get(i)));
         }
         return new IntentResult(Action.BATCH_EXECUTED, message.toString(), null, null);
     }

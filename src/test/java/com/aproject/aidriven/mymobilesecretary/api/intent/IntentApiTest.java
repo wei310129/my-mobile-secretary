@@ -150,6 +150,62 @@ class IntentApiTest extends IntegrationTestBase {
                 jsonPath("$.task.dueAt").value("2027-09-01T03:00:00Z"));
     }
 
+    /** 取消既有行程:唯一命中才取消,不把行程誤當待辦。 */
+    @Test
+    void cancelScheduleIntentCancelsUniqueMatch() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE, "取消行程測試午餐", null,
+                "2027-09-03T12:00:00+08:00", "2027-09-03T13:00:00+08:00", null, null, null,
+                null, null, null, null));
+        say("幫我排取消行程測試午餐");
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CANCEL_SCHEDULE, "取消行程測試午餐", null,
+                null, null, null, null, null, null, null, null, null));
+        say("取消取消行程測試午餐",
+                jsonPath("$.action").value("SCHEDULE_CANCELED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("已取消")));
+    }
+
+    /** 行程改期未指定結束時間時,保留原本的時長並重新通過可行性關卡。 */
+    @Test
+    void rescheduleScheduleIntentKeepsOriginalDuration() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE, "改期行程測試會議", null,
+                "2027-09-04T11:00:00+08:00", "2027-09-04T12:30:00+08:00", null, null, null,
+                null, null, null, null));
+        say("幫我排改期行程測試會議");
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.RESCHEDULE_SCHEDULE, "改期行程測試會議", null,
+                "2027-09-04T14:00:00+08:00", null, null, null, null, null, null, null, null));
+        say("改期行程測試會議改到下午兩點",
+                jsonPath("$.action").value("SCHEDULE_RESCHEDULED"),
+                jsonPath("$.schedule.schedule.status").value("CONFIRMED"),
+                jsonPath("$.schedule.schedule.startAt").value("2027-09-04T06:00:00Z"),
+                jsonPath("$.schedule.schedule.endAt").value("2027-09-04T07:30:00Z"));
+    }
+
+    /** 同名行程多筆時先追問日期/時間,不猜測要取消哪一筆。 */
+    @Test
+    void ambiguousScheduleCancelAsksBack() throws Exception {
+        for (String[] times : new String[][]{
+                {"歧義行程測試會議上午", "2027-09-05T10:00:00+08:00", "2027-09-05T11:00:00+08:00"},
+                {"歧義行程測試會議下午", "2027-09-05T14:00:00+08:00", "2027-09-05T15:00:00+08:00"}}) {
+            stub.nextCommand(new IntentCommand(
+                    IntentCommand.Type.CREATE_SCHEDULE, times[0], null, times[1], times[2], null, null, null,
+                    null, null, null, null));
+            say("幫我排" + times[0]);
+        }
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CANCEL_SCHEDULE, "歧義行程測試會議", null,
+                null, null, null, null, null, null, null, null, null));
+        say("取消歧義行程測試會議",
+                jsonPath("$.action").value("CLARIFICATION_NEEDED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("2 個行程")));
+    }
+
     /**
      * 使用者實際遇到的一句多操作(intent issue #1):
      * 「取消買A,B也取消,C改到11點」→ 三個操作依序執行,一項都不能漏。

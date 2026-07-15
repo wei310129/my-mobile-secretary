@@ -94,17 +94,17 @@ public class NearbySuggestionService {
         if (nearby.isEmpty()) {
             message.append("\n附近 %.0f 公尺內沒有綁定地點的待辦。".formatted(properties.maxDistanceMeters()));
         } else {
-            message.append("\n順路可以做:");
+            message.append("\n\n順路可以做:");
             for (int i = 0; i < nearby.size(); i++) {
                 TaskAtPlace candidate = nearby.get(i);
-                message.append("\n%d. 「%s」— %s(約 %d 公尺)".formatted(
+                message.append("\n%d.「%s」— %s(約 %d 公尺)".formatted(
                         i + 1, candidate.task().getTitle(),
                         candidate.place().getName(), Math.round(candidate.distanceMeters())));
             }
         }
 
         weatherAdvisoryService.currentAdvisory()
-                .ifPresent(advisory -> message.append("\n☔ ").append(advisory));
+                .ifPresent(advisory -> message.append("\n\n☔ ").append(advisory));
         return message.toString();
     }
 

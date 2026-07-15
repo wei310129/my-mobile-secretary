@@ -9,8 +9,8 @@ package com.aproject.aidriven.mymobilesecretary.intent.application;
  * @param type      意圖種類
  * @param title     任務/行程標題(去掉時間地點後的動作本體)
  * @param dueAt     任務期限(CREATE_TASK 用,可空)
- * @param startAt   行程開始(CREATE_SCHEDULE 必填)
- * @param endAt     行程結束(CREATE_SCHEDULE 必填;使用者沒說就依常識估)
+ * @param startAt   行程開始(CREATE_SCHEDULE/RESCHEDULE_SCHEDULE 必填)
+ * @param endAt     行程結束(CREATE_SCHEDULE 必填;RESCHEDULE_SCHEDULE 可空,空時沿用原時長)
  * @param placeName      使用者明講的地點名稱(沒講就空;不要猜)
  * @param priority       LOW/NORMAL/HIGH(聽得出急迫才填,預設 NORMAL)
  * @param reason         UNKNOWN 時說明缺什麼資訊,回問使用者用
@@ -45,6 +45,10 @@ public record IntentCommand(
         CANCEL_TASK,
         /** 改待辦期限(「拿包裹改成今天11點」);title 關鍵字 + dueAt 新期限。 */
         RESCHEDULE_TASK,
+        /** 取消既有行程(「明天的會議取消」);title 放行程關鍵字,由 Java 規則找唯一行程。 */
+        CANCEL_SCHEDULE,
+        /** 改既有行程時間(「週會改到兩點」);title + startAt,未指定 endAt 時沿用原時長。 */
+        RESCHEDULE_SCHEDULE,
         /** 問已知地點的資訊(「全聯是指哪一間?」);placeName 放地點名。 */
         ASK_PLACE,
         /** 查詢未完成的待辦(「還有什麼要做」)。 */

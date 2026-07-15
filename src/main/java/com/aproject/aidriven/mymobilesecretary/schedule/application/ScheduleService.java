@@ -9,6 +9,7 @@ import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItem
 import com.aproject.aidriven.mymobilesecretary.shared.error.NotFoundException;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.EnumSet;
 import java.util.List;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -109,10 +110,38 @@ public class ScheduleService {
                 : scheduleItemRepository.findByStatusOrderByStartAtAsc(status);
     }
 
+    /**
+     * 自然語言取消用的候選行程。只回傳仍可取消的行程;
+     * 同名多筆會全數回傳,由呼叫端追問使用者,絕不任選一筆。
+     */
+    @Transactional(readOnly = true)
+    public List<ScheduleItem> findCancelableSchedulesMatching(String keyword) {
+        return findSchedulesMatching(keyword, EnumSet.of(ScheduleStatus.CONFIRMED, ScheduleStatus.PENDING));
+    }
+
+    /**
+     * 自然語言改期用的候選行程。PROPOSED、CONFIRMED、PENDING 都能改期並重新驗算。
+     */
+    @Transactional(readOnly = true)
+    public List<ScheduleItem> findReschedulableSchedulesMatching(String keyword) {
+        return findSchedulesMatching(keyword,
+                EnumSet.of(ScheduleStatus.PROPOSED, ScheduleStatus.CONFIRMED, ScheduleStatus.PENDING));
+    }
+
     @Transactional(readOnly = true)
     public ScheduleItem getSchedule(Long scheduleId) {
         return scheduleItemRepository.findById(scheduleId)
                 .orElseThrow(() -> new NotFoundException("Schedule", scheduleId));
+    }
+
+    private List<ScheduleItem> findSchedulesMatching(String keyword, EnumSet<ScheduleStatus> statuses) {
+        String needle = keyword == null ? "" : keyword.strip();
+        if (needle.isEmpty()) {
+            return List.of();
+        }
+        return scheduleItemRepository.findByStatusInOrderByStartAtAsc(statuses).stream()
+                .filter(item -> item.getTitle().contains(needle) || needle.contains(item.getTitle()))
+                .toList();
     }
 
     /** 行程 + 可行性驗算結果(建立/改時間的回傳)。 */

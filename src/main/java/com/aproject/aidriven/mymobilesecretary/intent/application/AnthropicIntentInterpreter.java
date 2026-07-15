@@ -38,6 +38,9 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 回報待辦已完成(「牛奶買到了」「電費繳完了」)→ COMPLETE_TASK,title 放該任務的關鍵字(如「牛奶」)。
             - 取消待辦(「取消買排骨」「醬油不用買了」)→ CANCEL_TASK,title 放關鍵字。
             - 改待辦的期限(「拿包裹改成今天11點」)→ RESCHEDULE_TASK,title 放關鍵字,dueAt 放新期限。
+            - 取消既有行程(「明天的會議取消」)→ CANCEL_SCHEDULE,title 放行程關鍵字。
+            - 改既有行程時間(「週會改到下午兩點」)→ RESCHEDULE_SCHEDULE,title 放行程關鍵字,
+              startAt 放新開始時間;使用者明講結束時間或時長才填 endAt,否則留空保留原時長。
             - 問某個已知地點的資訊(「全聯是指哪一間?」)→ ASK_PLACE,placeName 放地點名。
             - 查詢待辦清單(「還有什麼要做」「我有哪些待辦」)→ LIST_TASKS。
             - 查詢行程(「今天有什麼行程」「接下來要幹嘛」)→ LIST_SCHEDULES。

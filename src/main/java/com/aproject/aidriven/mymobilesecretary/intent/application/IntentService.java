@@ -10,6 +10,7 @@ import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleFoll
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService.ScheduleDecision;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.OutcomeReason;
+import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -156,6 +157,31 @@ public class IntentService {
                 yield match.failure() != null ? match.failure()
                         : IntentResult.taskRescheduled(taskService.changeDueDate(match.task().getId(), newDueAt));
             }
+            case CANCEL_SCHEDULE -> {
+                requireText(command.title(), "title");
+                ScheduleMatch match = matchCancelableSchedule(command.title(), "取消");
+                yield match.failure() != null ? match.failure()
+                        : IntentResult.scheduleCanceled(scheduleService.cancelSchedule(match.item().getId()));
+            }
+            case RESCHEDULE_SCHEDULE -> {
+                requireText(command.title(), "title");
+                Instant newStartAt = parseTime(command.startAt());
+                if (newStartAt == null) {
+                    throw new IllegalArgumentException("schedule reschedule missing startAt");
+                }
+                ScheduleMatch match = matchReschedulableSchedule(command.title(), "改");
+                if (match.failure() != null) {
+                    yield match.failure();
+                }
+                Instant newEndAt = parseTime(command.endAt());
+                if (newEndAt == null) {
+                    newEndAt = newStartAt.plus(java.time.Duration.between(
+                            match.item().getStartAt(), match.item().getEndAt()));
+                }
+                ScheduleDecision decision = scheduleService.reschedule(
+                        match.item().getId(), newStartAt, newEndAt);
+                yield IntentResult.scheduleRescheduled(decision);
+            }
             case ASK_PLACE -> {
                 requireText(command.placeName(), "placeName");
                 yield resolvePlace(command.placeName())
@@ -176,7 +202,7 @@ public class IntentService {
                 }
                 long defaultHours = nearbySuggestionService.defaultWindow().toHours();
                 yield IntentResult.suggestionMade(
-                        "「待會」你抓多久?跟我說「看2小時」我就用那個範圍重算;先用 %d 小時給你參考:\n%s"
+                        "「待會」你抓多久?跟我說「看2小時」我就用那個範圍重算;先用 %d 小時給你參考:\n\n%s"
                                 .formatted(defaultHours, nearbySuggestionService.suggest()));
             }
             case RECORD_OUTCOME -> {
@@ -225,7 +251,8 @@ public class IntentService {
 
         var missing = tasks.stream().filter(t -> t.getDueAt() == null).limit(3).toList();
         if (!missing.isEmpty()) {
-            advice.append("\n%s還沒有時間或地點,補一句(例:「%s這週六早上處理」)我才能主動提醒。"
+            // 段落間空一行(使用者 2026-07-15 的格式範例)
+            advice.append("\n\n%s還沒有時間或地點,補一句(例:「%s這週六早上處理」)我才能主動提醒。"
                     .formatted(
                             missing.stream().map(t -> "「" + t.getTitle() + "」")
                                     .collect(java.util.stream.Collectors.joining("、")),
@@ -264,7 +291,7 @@ public class IntentService {
         }
         var fmt = java.time.format.DateTimeFormatter.ofPattern("MM/dd HH:mm");
         var zone = java.time.ZoneId.of("Asia/Taipei");
-        return Optional.of("\n建議:把「%s」排在 %s-%s(期限前),OK 的話跟我說一聲我就排進行程。"
+        return Optional.of("\n\n建議:把「%s」排在 %s-%s(期限前),OK 的話跟我說一聲我就排進行程。"
                 .formatted(task.getTitle(),
                         java.time.ZonedDateTime.ofInstant(s, zone).format(fmt),
                         java.time.ZonedDateTime.ofInstant(end, zone)
@@ -305,6 +332,40 @@ public class IntentService {
 
     /** 關鍵字配對結果:task 與 failure 恰有一個非空。 */
     private record TaskMatch(Task task, IntentResult failure) {
+    }
+
+    /** 取消只允許已確認或 pending 的行程;同名多筆一定回問。 */
+    private ScheduleMatch matchCancelableSchedule(String keyword, String actionVerb) {
+        return uniqueScheduleMatch(scheduleService.findCancelableSchedulesMatching(keyword), keyword, actionVerb);
+    }
+
+    /** 改期可處理 PROPOSED、CONFIRMED 與 PENDING 行程;改後一律重新驗算。 */
+    private ScheduleMatch matchReschedulableSchedule(String keyword, String actionVerb) {
+        return uniqueScheduleMatch(scheduleService.findReschedulableSchedulesMatching(keyword), keyword, actionVerb);
+    }
+
+    private ScheduleMatch uniqueScheduleMatch(java.util.List<ScheduleItem> matches,
+                                              String keyword, String actionVerb) {
+        if (matches.isEmpty()) {
+            return new ScheduleMatch(null, IntentResult.clarificationNeeded(
+                    "找不到跟「%s」有關、還能%s的行程。".formatted(keyword, actionVerb)));
+        }
+        if (matches.size() > 1) {
+            String titles = matches.stream().limit(5)
+                    .map(item -> "「%s」(%s)".formatted(item.getTitle(),
+                            java.time.ZonedDateTime.ofInstant(item.getStartAt(),
+                                    java.time.ZoneId.of("Asia/Taipei"))
+                                    .format(java.time.format.DateTimeFormatter.ofPattern("MM/dd HH:mm"))))
+                    .collect(java.util.stream.Collectors.joining("、"));
+            return new ScheduleMatch(null, IntentResult.clarificationNeeded(
+                    "有 %d 個行程都符合:%s,告訴我日期或時間我才不會%s錯。"
+                            .formatted(matches.size(), titles, actionVerb)));
+        }
+        return new ScheduleMatch(matches.get(0), null);
+    }
+
+    /** 行程關鍵字配對結果:item 與 failure 恰有一個非空。 */
+    private record ScheduleMatch(ScheduleItem item, IntentResult failure) {
     }
 
     /** LLM 失敗時的保底:原文直接存成任務(仍會觸發品項自動綁定)。 */

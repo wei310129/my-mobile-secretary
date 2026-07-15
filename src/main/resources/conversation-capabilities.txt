@@ -165,3 +165,16 @@
 165|只移除公司的地點提醒，事情留著|REMOVE_TASK_PLACE|使用上一個待辦;placeName=公司
 166|把那個到家提醒改成離開|UPDATE_TASK_GEOFENCE|只有上下文能唯一指向待辦與地點才執行，否則UNKNOWN
 167|公司附近有哪些進入型提醒|ASK_PLACE_TASKS|placeName=公司;options.triggerType=ENTER
+168|我的下一個行程是什麼|ASK_NEXT_SCHEDULE|回名稱、時間、地點與倒數
+169|離下一個行程還有多久|ASK_NEXT_SCHEDULE|進行中時明確標示
+170|下一站要去哪裡|ASK_NEXT_SCHEDULE|有地點才列，無地點不猜
+171|會議結束到聚餐中間有多久|ASK_SCHEDULE_GAP|title=會議;options.referenceTitle=聚餐
+172|接下來兩個行程中間空多久|ASK_SCHEDULE_GAP|使用時間排序前兩個已確認行程
+173|把這週行程按天整理|GROUP_SCHEDULES_BY_DAY|options.filter=WEEK
+174|這週末有什麼行程|LIST_SCHEDULES|options.filter=WEEKEND
+175|接下來有哪些晚上的行程|LIST_SCHEDULES|options.filter=EVENING
+176|列出不用出門的線上行程|LIST_SCHEDULES|options.filter=NO_PLACE;無地點只代表可能線上，回覆不可武斷
+177|哪些行程有設定地點|LIST_SCHEDULES|options.filter=WITH_PLACE
+178|接下來早上的行程有哪些|LIST_SCHEDULES|options.filter=MORNING
+179|今天的行程有撞時間嗎|CHECK_SCHEDULE_CONFLICTS|options.filter=TODAY
+180|幫我檢查這週行程衝突|CHECK_SCHEDULE_CONFLICTS|options.filter=WEEK

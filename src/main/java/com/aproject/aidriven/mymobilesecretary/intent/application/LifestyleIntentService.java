@@ -19,6 +19,7 @@ import com.aproject.aidriven.mymobilesecretary.reminder.domain.ReminderPreferenc
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskPriority;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
+import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleInsightService;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import java.time.Clock;
@@ -56,6 +57,7 @@ public class LifestyleIntentService {
     private final PlanningPreferenceService preferenceService;
     private final ConversationContextService contextService;
     private final ReminderPreferenceService reminderPreferenceService;
+    private final ScheduleInsightService scheduleInsightService;
     private final Clock clock;
 
     public LifestyleIntentService(TaskService taskService, ScheduleService scheduleService,
@@ -68,6 +70,7 @@ public class LifestyleIntentService {
                                   PlanningPreferenceService preferenceService,
                                   ConversationContextService contextService,
                                   ReminderPreferenceService reminderPreferenceService,
+                                  ScheduleInsightService scheduleInsightService,
                                   Clock clock) {
         this.taskService = taskService;
         this.scheduleService = scheduleService;
@@ -83,6 +86,7 @@ public class LifestyleIntentService {
         this.preferenceService = preferenceService;
         this.contextService = contextService;
         this.reminderPreferenceService = reminderPreferenceService;
+        this.scheduleInsightService = scheduleInsightService;
         this.clock = clock;
     }
 
@@ -153,6 +157,10 @@ public class LifestyleIntentService {
             case ASK_TASK_GEOFENCE -> askTaskGeofence(command, o);
             case UPDATE_TASK_GEOFENCE -> updateTaskGeofence(command, o);
             case REMOVE_TASK_PLACE -> removeTaskPlace(command, o);
+            case ASK_NEXT_SCHEDULE -> nextSchedule();
+            case ASK_SCHEDULE_GAP -> scheduleGap(command, o);
+            case GROUP_SCHEDULES_BY_DAY -> groupSchedules(o);
+            case CHECK_SCHEDULE_CONFLICTS -> checkScheduleConflicts(o);
             default -> throw new IllegalArgumentException("not a lifestyle command: " + command.type());
         };
     }
@@ -621,6 +629,70 @@ public class LifestyleIntentService {
                         task.getTitle(), place.getName()));
     }
 
+    private IntentResult nextSchedule() {
+        Optional<ScheduleItem> found = scheduleInsightService.next();
+        if (found.isEmpty()) {
+            return IntentResult.message(IntentResult.Action.NEXT_SCHEDULE_INFO, "接下來沒有已確認行程。 ");
+        }
+        ScheduleItem item = found.get();
+        contextService.rememberSchedule(item);
+        Duration until = Duration.between(Instant.now(clock), item.getStartAt());
+        String timing = until.isNegative() || until.isZero()
+                ? "正在進行中" : "還有 %d 小時 %d 分鐘".formatted(until.toHours(), until.toMinutesPart());
+        String place = item.getPlaceId() == null ? "" : "｜" + placeService.getPlace(item.getPlaceId()).getName();
+        return IntentResult.message(IntentResult.Action.NEXT_SCHEDULE_INFO,
+                "下一個是「%s」｜%s%s，%s。".formatted(item.getTitle(), format(item.getStartAt()), place, timing));
+    }
+
+    private IntentResult scheduleGap(IntentCommand command, IntentOptions o) {
+        ScheduleItem first;
+        ScheduleItem second;
+        if (command.title() != null && o.referenceTitle() != null) {
+            first = uniqueSchedule(command.title());
+            second = uniqueSchedule(o.referenceTitle());
+        } else {
+            List<ScheduleItem> upcoming = scheduleInsightService.upcoming();
+            if (upcoming.size() < 2) {
+                return IntentResult.clarificationNeeded("至少要有兩個接下來的行程才能算間隔。 ");
+            }
+            first = upcoming.get(0);
+            second = upcoming.get(1);
+        }
+        var gap = scheduleInsightService.gap(first, second);
+        String message = gap.overlapping()
+                ? "「%s」和「%s」重疊 %d 分鐘。".formatted(gap.first().getTitle(), gap.second().getTitle(),
+                Math.abs(gap.duration().toMinutes()))
+                : "「%s」結束到「%s」開始有 %d 分鐘。".formatted(gap.first().getTitle(),
+                gap.second().getTitle(), gap.duration().toMinutes());
+        return IntentResult.message(IntentResult.Action.SCHEDULE_GAP_INFO, message);
+    }
+
+    private IntentResult groupSchedules(IntentOptions o) {
+        List<ScheduleItem> items = filterSchedules(scheduleInsightService.upcoming(), o);
+        var groups = scheduleInsightService.groupByDay(items);
+        if (groups.isEmpty()) {
+            return IntentResult.message(IntentResult.Action.SCHEDULES_GROUPED_BY_DAY,
+                    "指定範圍內沒有已確認行程。 ");
+        }
+        String message = groups.entrySet().stream().map(entry -> "%s\n%s".formatted(entry.getKey(),
+                        entry.getValue().stream().map(item -> "- %s｜%s".formatted(item.getTitle(),
+                                ZonedDateTime.ofInstant(item.getStartAt(), TAIPEI)
+                                        .format(DateTimeFormatter.ofPattern("HH:mm"))))
+                                .collect(java.util.stream.Collectors.joining("\n"))))
+                .collect(java.util.stream.Collectors.joining("\n"));
+        return IntentResult.message(IntentResult.Action.SCHEDULES_GROUPED_BY_DAY, message);
+    }
+
+    private IntentResult checkScheduleConflicts(IntentOptions o) {
+        List<ScheduleItem> items = filterSchedules(scheduleInsightService.upcoming(), o);
+        var conflicts = scheduleInsightService.conflicts(items);
+        String message = conflicts.isEmpty() ? "指定範圍內沒有時間重疊的已確認行程。"
+                : conflicts.stream().map(gap -> "「%s」↔「%s」重疊 %d 分鐘".formatted(
+                        gap.first().getTitle(), gap.second().getTitle(), Math.abs(gap.duration().toMinutes())))
+                .collect(java.util.stream.Collectors.joining("\n"));
+        return IntentResult.message(IntentResult.Action.SCHEDULE_CONFLICTS_CHECKED, message);
+    }
+
     private IntentResult listShoppingAt(IntentCommand command) {
         Place place = resolvePlace(command.placeName()).orElseThrow(() ->
                 new IllegalArgumentException("unknown destination place"));
@@ -881,6 +953,20 @@ public class LifestyleIntentService {
             case "TODAY", "WORK_TODAY" -> LocalDate.ofInstant(s.getStartAt(), TAIPEI).equals(today);
             case "TOMORROW", "TOMORROW_FIRST" -> LocalDate.ofInstant(s.getStartAt(), TAIPEI).equals(today.plusDays(1));
             case "WEEK" -> !LocalDate.ofInstant(s.getStartAt(), TAIPEI).isAfter(today.plusDays(7));
+            case "WEEKEND" -> {
+                LocalDate date = LocalDate.ofInstant(s.getStartAt(), TAIPEI);
+                yield !date.isAfter(today.plusDays(7))
+                        && (date.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
+                        || date.getDayOfWeek() == java.time.DayOfWeek.SUNDAY);
+            }
+            case "MORNING" -> ZonedDateTime.ofInstant(s.getStartAt(), TAIPEI).getHour() < 12;
+            case "AFTERNOON" -> {
+                int hour = ZonedDateTime.ofInstant(s.getStartAt(), TAIPEI).getHour();
+                yield hour >= 12 && hour < 18;
+            }
+            case "EVENING" -> ZonedDateTime.ofInstant(s.getStartAt(), TAIPEI).getHour() >= 18;
+            case "WITH_PLACE" -> s.getPlaceId() != null;
+            case "NO_PLACE" -> s.getPlaceId() == null;
             default -> true;
         }).toList();
         return "TOMORROW_FIRST".equals(filter) ? filtered.stream().limit(1).toList() : filtered;

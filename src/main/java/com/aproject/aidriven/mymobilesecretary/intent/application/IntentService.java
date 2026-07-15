@@ -163,7 +163,9 @@ public class IntentService {
                     MUTE_REMINDERS, RESUME_REMINDERS,
                     ASK_REMINDER_PREFERENCES, LIST_LOCATION_TASKS,
                     ASK_PLACE_TASKS, ASK_TASK_GEOFENCE, UPDATE_TASK_GEOFENCE,
-                    REMOVE_TASK_PLACE -> lifestyleIntentService.execute(text, command);
+                    REMOVE_TASK_PLACE, ASK_NEXT_SCHEDULE, ASK_SCHEDULE_GAP,
+                    GROUP_SCHEDULES_BY_DAY,
+                    CHECK_SCHEDULE_CONFLICTS -> lifestyleIntentService.execute(text, command);
             case CREATE_TASK -> {
                 requireText(command.title(), "title");
                 // 防重複(使用者實際踩過:「拿包裹」被建了兩次):同名未結案任務存在就回問

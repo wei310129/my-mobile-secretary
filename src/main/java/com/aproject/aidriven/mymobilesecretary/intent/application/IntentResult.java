@@ -94,7 +94,11 @@ public record IntentResult(
         PLACE_TASKS_INFO,
         TASK_GEOFENCE_INFO,
         TASK_GEOFENCE_UPDATED,
-        TASK_PLACE_REMOVED
+        TASK_PLACE_REMOVED,
+        NEXT_SCHEDULE_INFO,
+        SCHEDULE_GAP_INFO,
+        SCHEDULES_GROUPED_BY_DAY,
+        SCHEDULE_CONFLICTS_CHECKED
     }
 
     /** 清單訊息共用:最多列 10 筆,其餘以「…等 N 件」收尾。 */

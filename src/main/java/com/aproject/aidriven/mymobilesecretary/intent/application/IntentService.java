@@ -65,25 +65,48 @@ public class IntentService {
     }
 
     private IntentResult doHandle(String text) {
-        IntentCommand command;
+        IntentScript script;
         IntentInterpreter interpreter = interpreterProvider.getIfAvailable();
         if (interpreter == null) {
             return fallbackTask(text, "意圖解析未啟用");
         }
         try {
-            command = interpreter.interpret(text, Instant.now(clock));
+            script = interpreter.interpret(text, Instant.now(clock));
         } catch (Exception e) {
             log.warn("Intent interpretation failed, falling back to plain task", e);
             return fallbackTask(text, "AI 暫時無法使用");
         }
-
-        try {
-            return execute(text, command);
-        } catch (IllegalArgumentException e) {
-            // LLM 輸出未通過驗證(時間格式爛、缺欄位)→ 同樣不丟資料
-            log.warn("Intent command invalid ({}), falling back to plain task", e.getMessage());
-            return fallbackTask(text, "解析結果不完整");
+        if (script == null || script.commands() == null || script.commands().isEmpty()) {
+            return fallbackTask(text, "解析結果是空的");
         }
+
+        // 單一操作:維持原語意(驗證失敗 → 整句保底)
+        if (script.commands().size() == 1) {
+            try {
+                return execute(text, script.commands().get(0));
+            } catch (IllegalArgumentException e) {
+                // LLM 輸出未通過驗證(時間格式爛、缺欄位)→ 同樣不丟資料
+                log.warn("Intent command invalid ({}), falling back to plain task", e.getMessage());
+                return fallbackTask(text, "解析結果不完整");
+            }
+        }
+
+        // 多操作(「取消A,B也取消,C改到11點」):逐一執行,單項失敗不拖垮其他項
+        java.util.List<String> lines = new java.util.ArrayList<>();
+        int failed = 0;
+        for (IntentCommand command : script.commands()) {
+            try {
+                lines.add(execute(text, command).message());
+            } catch (Exception e) {
+                log.warn("Batch intent command failed", e);
+                failed++;
+                lines.add("有一項我處理不了,請單獨再講一次。");
+            }
+        }
+        if (failed == script.commands().size()) {
+            return fallbackTask(text, "多項操作都解析失敗");
+        }
+        return IntentResult.batchExecuted(lines);
     }
 
     /** 依驗證後的 command 執行;LLM 輸出一律先驗證再信。 */
@@ -113,14 +136,49 @@ public class IntentService {
             }
             case COMPLETE_TASK -> {
                 requireText(command.title(), "title");
-                yield completeTaskByKeyword(command.title());
+                TaskMatch match = matchOpenTask(command.title(), "劃");
+                yield match.failure() != null ? match.failure()
+                        : IntentResult.taskCompleted(taskService.confirmTask(match.task().getId()));
+            }
+            case CANCEL_TASK -> {
+                requireText(command.title(), "title");
+                TaskMatch match = matchOpenTask(command.title(), "取消");
+                yield match.failure() != null ? match.failure()
+                        : IntentResult.taskCanceled(taskService.cancelTask(match.task().getId()));
+            }
+            case RESCHEDULE_TASK -> {
+                requireText(command.title(), "title");
+                Instant newDueAt = parseTime(command.dueAt());
+                if (newDueAt == null) {
+                    throw new IllegalArgumentException("reschedule missing dueAt");
+                }
+                TaskMatch match = matchOpenTask(command.title(), "改");
+                yield match.failure() != null ? match.failure()
+                        : IntentResult.taskRescheduled(taskService.changeDueDate(match.task().getId(), newDueAt));
+            }
+            case ASK_PLACE -> {
+                requireText(command.placeName(), "placeName");
+                yield resolvePlace(command.placeName())
+                        .map(IntentResult::placeInfo)
+                        .orElseGet(() -> IntentResult.clarificationNeeded(
+                                "我沒有叫「%s」的地點紀錄。".formatted(command.placeName())));
             }
             case LIST_TASKS -> {
                 var open = taskService.listOpenTasks();
                 yield IntentResult.tasksListed(open, taskListAdvice(open));
             }
             case LIST_SCHEDULES -> IntentResult.schedulesListed(upcomingConfirmedSchedules());
-            case SUGGEST_NEARBY -> IntentResult.suggestionMade(nearbySuggestionService.suggest());
+            case SUGGEST_NEARBY -> {
+                // 使用者 2026-07-15 更正:沒明講多久就不能直接認定——先回問,同時附預設時窗的參考
+                if (command.windowHours() != null && command.windowHours() > 0) {
+                    yield IntentResult.suggestionMade(nearbySuggestionService.suggest(
+                            java.time.Duration.ofHours(command.windowHours())));
+                }
+                long defaultHours = nearbySuggestionService.defaultWindow().toHours();
+                yield IntentResult.suggestionMade(
+                        "「待會」你抓多久?跟我說「看2小時」我就用那個範圍重算;先用 %d 小時給你參考:\n%s"
+                                .formatted(defaultHours, nearbySuggestionService.suggest()));
+            }
             case RECORD_OUTCOME -> {
                 if (command.onTime() == null) {
                     throw new IllegalArgumentException("outcome missing onTime");
@@ -225,24 +283,28 @@ public class IntentService {
     }
 
     /**
-     * 關鍵字完成任務:唯一命中才動手,模糊(多筆)或落空(零筆)都回問,
-     * 絕不猜——完成錯任務會讓提醒憑空消失,比多問一句嚴重。
+     * 關鍵字對任務(完成/取消/改期共用):唯一命中才動手,
+     * 模糊(多筆)或落空(零筆)都回問,絕不猜——動錯任務比多問一句嚴重。
      */
-    private IntentResult completeTaskByKeyword(String keyword) {
+    private TaskMatch matchOpenTask(String keyword, String actionVerb) {
         var matches = taskService.findOpenTasksMatching(keyword);
         if (matches.isEmpty()) {
-            return IntentResult.clarificationNeeded(
-                    "找不到跟「%s」有關的未完成任務。".formatted(keyword));
+            return new TaskMatch(null, IntentResult.clarificationNeeded(
+                    "找不到跟「%s」有關的未完成任務。".formatted(keyword)));
         }
         if (matches.size() > 1) {
             String titles = matches.stream().limit(5)
                     .map(t -> "「" + t.getTitle() + "」")
                     .collect(java.util.stream.Collectors.joining("、"));
-            return IntentResult.clarificationNeeded(
-                    "有 %d 件任務都符合:%s,說完整一點我才不會劃錯。".formatted(matches.size(), titles));
+            return new TaskMatch(null, IntentResult.clarificationNeeded(
+                    "有 %d 件任務都符合:%s,說完整一點我才不會%s錯。"
+                            .formatted(matches.size(), titles, actionVerb)));
         }
-        Task done = taskService.confirmTask(matches.get(0).getId());
-        return IntentResult.taskCompleted(done);
+        return new TaskMatch(matches.get(0), null);
+    }
+
+    /** 關鍵字配對結果:task 與 failure 恰有一個非空。 */
+    private record TaskMatch(Task task, IntentResult failure) {
     }
 
     /** LLM 失敗時的保底:原文直接存成任務(仍會觸發品項自動綁定)。 */

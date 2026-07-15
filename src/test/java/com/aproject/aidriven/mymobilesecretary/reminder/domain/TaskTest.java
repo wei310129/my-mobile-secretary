@@ -54,6 +54,36 @@ class TaskTest {
                 .hasFieldOrPropertyWithValue("code", "INVALID_STATE_TRANSITION");
     }
 
+    /** 改期限:未結案任務可改(含清空),已結案不可。 */
+    @Test
+    void changeDueAtOnOpenTaskUpdatesDueAndTimestamp() {
+        Task task = Task.create("拿包裹", null, TaskPriority.NORMAL, T0, T0);
+        Instant newDue = Instant.parse("2026-07-09T11:00:00Z");
+
+        task.changeDueAt(newDue, T1);
+
+        assertThat(task.getDueAt()).isEqualTo(newDue);
+        assertThat(task.getUpdatedAt()).isEqualTo(T1);
+
+        task.changeDueAt(null, T1);
+        assertThat(task.getDueAt()).isNull();
+    }
+
+    @Test
+    void changeDueAtOnClosedTaskIsRejected() {
+        Task confirmed = Task.create("拿包裹", null, TaskPriority.NORMAL, T0, T0);
+        confirmed.confirm(T1);
+        Task canceled = Task.create("買醬油", null, TaskPriority.NORMAL, T0, T0);
+        canceled.cancel(T1);
+
+        assertThatThrownBy(() -> confirmed.changeDueAt(T1, T1))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "INVALID_STATE_TRANSITION");
+        assertThatThrownBy(() -> canceled.changeDueAt(T1, T1))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "INVALID_STATE_TRANSITION");
+    }
+
     /** 提醒後可升級,且可重複升級(第 2、3 次催促)。 */
     @Test
     void escalateAfterRemindAndRepeatedly() {

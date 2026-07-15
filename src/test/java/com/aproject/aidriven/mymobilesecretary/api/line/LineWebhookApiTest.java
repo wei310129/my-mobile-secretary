@@ -64,7 +64,7 @@ class LineWebhookApiTest extends IntegrationTestBase {
     void validSignatureProcessesTextMessage() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_TASK, "LINE webhook 測試任務", null, null, null, null, "NORMAL", null,
-                null, null, null));
+                null, null, null, null));
         byte[] body = textMessageEvent("幫我記一下");
 
         mockMvc.perform(post("/api/line/webhook")

@@ -105,4 +105,19 @@ public class TaskService {
         task.cancel(Instant.now(clock));
         return task;
     }
+
+    /**
+     * 改任務期限,並同步到期提醒排程:
+     * 有新期限 → 重排(同任務排程只更新時間);清空期限 → 移除排程,否則會在舊時間亂響。
+     */
+    public Task changeDueDate(Long taskId, Instant newDueAt) {
+        Task task = getTask(taskId);
+        task.changeDueAt(newDueAt, Instant.now(clock));
+        if (newDueAt != null) {
+            scheduleService.scheduleDueReminder(taskId, newDueAt);
+        } else {
+            scheduleService.removeDueReminder(taskId);
+        }
+        return task;
+    }
 }

@@ -9,11 +9,11 @@ import java.time.Instant;
 public interface IntentInterpreter {
 
     /**
-     * 解析使用者的一句話。
+     * 解析使用者的一句話;一句多操作依序回傳多個 command(單操作 = 長度 1)。
      *
      * @param text 使用者原文(打字/之後的 Siri/LINE 轉傳)
      * @param now  現在時間(「明天 11 點」這類相對時間的解析基準)
      * @throws RuntimeException 解析失敗(呼叫端必須 fallback,不得讓核心不可用)
      */
-    IntentCommand interpret(String text, Instant now);
+    IntentScript interpret(String text, Instant now);
 }

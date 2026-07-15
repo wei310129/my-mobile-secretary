@@ -17,6 +17,7 @@ package com.aproject.aidriven.mymobilesecretary.intent.application;
  * @param onTime         RECORD_OUTCOME:是否準時(說「準時/順利結束」= true)
  * @param overrunMinutes RECORD_OUTCOME:超時分鐘數(「晚了半小時」= 30)
  * @param outcomeReason  RECORD_OUTCOME:MEETING_OVERRUN/TRAFFIC_INCIDENT/RUSH_HOUR/OTHER(聽得出才填)
+ * @param windowHours    SUGGEST_NEARBY:使用者明講的時間長度(小時);沒講就空,不要猜
  */
 public record IntentCommand(
         Type type,
@@ -29,7 +30,8 @@ public record IntentCommand(
         String reason,
         Boolean onTime,
         Integer overrunMinutes,
-        String outcomeReason
+        String outcomeReason,
+        Integer windowHours
 ) {
 
     public enum Type {
@@ -39,6 +41,12 @@ public record IntentCommand(
         CREATE_SCHEDULE,
         /** 回報任務做完了(「牛奶買到了」);title 放任務關鍵字,配對由 Java 規則做。 */
         COMPLETE_TASK,
+        /** 取消待辦(「取消買排骨」);title 放關鍵字。 */
+        CANCEL_TASK,
+        /** 改待辦期限(「拿包裹改成今天11點」);title 關鍵字 + dueAt 新期限。 */
+        RESCHEDULE_TASK,
+        /** 問已知地點的資訊(「全聯是指哪一間?」);placeName 放地點名。 */
+        ASK_PLACE,
         /** 查詢未完成的待辦(「還有什麼要做」)。 */
         LIST_TASKS,
         /** 查詢接下來的行程(「今天有什麼行程」)。 */

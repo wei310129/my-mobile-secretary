@@ -66,10 +66,20 @@ public class NearbySuggestionService {
         this.clock = clock;
     }
 
-    /** 產生「待會順便做」建議訊息;一定回傳可讀文字,不丟例外。 */
+    /** 預設時窗(使用者沒講多久時,回問所附參考建議用這個)。 */
+    public java.time.Duration defaultWindow() {
+        return properties.window();
+    }
+
+    /** 以預設時窗產生建議。 */
     public String suggest() {
+        return suggest(properties.window());
+    }
+
+    /** 產生「待會順便做」建議訊息;一定回傳可讀文字,不丟例外。 */
+    public String suggest(java.time.Duration window) {
         Instant now = Instant.now(clock);
-        Instant windowEnd = now.plus(properties.window());
+        Instant windowEnd = now.plus(window);
 
         Optional<LocationEvent> lastLocation = locationEventRepository.findTopByOrderByOccurredAtDesc();
         if (lastLocation.isEmpty()) {
@@ -78,7 +88,7 @@ public class NearbySuggestionService {
         double lat = lastLocation.get().getLatitude();
         double lon = lastLocation.get().getLongitude();
 
-        StringBuilder message = new StringBuilder(header(now, windowEnd));
+        StringBuilder message = new StringBuilder(header(now, windowEnd, window));
 
         List<TaskAtPlace> nearby = nearbyTasks(lat, lon);
         if (nearby.isEmpty()) {
@@ -99,8 +109,8 @@ public class NearbySuggestionService {
     }
 
     /** 時間窗開頭:先講清楚有多少空檔,建議才有依據。 */
-    private String header(Instant now, Instant windowEnd) {
-        long windowHours = properties.window().toHours();
+    private String header(Instant now, Instant windowEnd, java.time.Duration window) {
+        long windowHours = window.toHours();
         Optional<ScheduleItem> next = scheduleItemRepository
                 .findByStatusOrderByStartAtAsc(ScheduleStatus.CONFIRMED).stream()
                 .filter(item -> item.getStartAt().isAfter(now) && item.getStartAt().isBefore(windowEnd))

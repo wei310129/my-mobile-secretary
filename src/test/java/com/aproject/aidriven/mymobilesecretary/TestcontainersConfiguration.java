@@ -2,6 +2,7 @@ package com.aproject.aidriven.mymobilesecretary;
 
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentInterpreter;
+import com.aproject.aidriven.mymobilesecretary.intent.application.IntentScript;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ReceiptCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ReceiptInterpreter;
 import java.time.Instant;
@@ -43,20 +44,25 @@ public class TestcontainersConfiguration {
      */
     public static class StubIntentInterpreter implements IntentInterpreter {
 
-        private final AtomicReference<IntentCommand> next = new AtomicReference<>();
+        private final AtomicReference<IntentScript> next = new AtomicReference<>();
 
-        /** 測試呼叫:設定下一次 interpret 的回傳。 */
+        /** 測試呼叫:設定下一次 interpret 的回傳(單操作)。 */
         public void nextCommand(IntentCommand command) {
-            next.set(command);
+            next.set(IntentScript.of(command));
+        }
+
+        /** 測試呼叫:設定下一次 interpret 的回傳(一句多操作)。 */
+        public void nextCommands(IntentCommand... commands) {
+            next.set(new IntentScript(java.util.List.of(commands)));
         }
 
         @Override
-        public IntentCommand interpret(String text, Instant now) {
-            IntentCommand command = next.getAndSet(null);
-            if (command == null) {
+        public IntentScript interpret(String text, Instant now) {
+            IntentScript script = next.getAndSet(null);
+            if (script == null) {
                 throw new IllegalStateException("stub has no command (simulates LLM failure)");
             }
-            return command;
+            return script;
         }
     }
 

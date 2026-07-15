@@ -34,6 +34,11 @@ public class ReminderScheduleService {
         redis.opsForZSet().add(QUEUE_KEY, "DUE:" + taskId, dueAt.toEpochMilli());
     }
 
+    /** 移除任務的到期提醒排程(任務改成沒有期限時)。 */
+    public void removeDueReminder(Long taskId) {
+        redis.opsForZSet().remove(QUEUE_KEY, "DUE:" + taskId);
+    }
+
     /** 排入第 attempt 次升級催促。 */
     public void scheduleEscalation(Long reminderId, int attempt, Instant when) {
         redis.opsForZSet().add(QUEUE_KEY, "ESC:" + reminderId + ":" + attempt, when.toEpochMilli());

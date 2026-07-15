@@ -28,9 +28,13 @@ public record IntentResult(
     public enum Action {
         TASK_CREATED,
         TASK_COMPLETED,
+        TASK_CANCELED,
+        TASK_RESCHEDULED,
         TASKS_LISTED,
         SCHEDULES_LISTED,
         SUGGESTION_MADE,
+        PLACE_INFO,
+        BATCH_EXECUTED,
         SCHEDULE_CONFIRMED,
         SCHEDULE_NEEDS_DECISION,
         OUTCOME_RECORDED,
@@ -103,6 +107,37 @@ public record IntentResult(
 
     static IntentResult suggestionMade(String message) {
         return new IntentResult(Action.SUGGESTION_MADE, message, null, null);
+    }
+
+    static IntentResult taskCanceled(Task task) {
+        return new IntentResult(Action.TASK_CANCELED,
+                "「%s」已取消,不再追蹤提醒".formatted(task.getTitle()), task, null);
+    }
+
+    static IntentResult taskRescheduled(Task task) {
+        return new IntentResult(Action.TASK_RESCHEDULED,
+                "「%s」期限改到 %s".formatted(task.getTitle(),
+                        ZonedDateTime.ofInstant(task.getDueAt(), TAIPEI).format(LIST_TIME)),
+                task, null);
+    }
+
+    static IntentResult placeInfo(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
+        String location = place.getAddress() == null || place.getAddress().isBlank()
+                ? "座標 (%.5f, %.5f)".formatted(place.getLatitude(), place.getLongitude())
+                : place.getAddress();
+        String type = place.getType() == null || place.getType().isBlank()
+                ? "" : "(%s)".formatted(place.getType());
+        return new IntentResult(Action.PLACE_INFO,
+                "「%s」%s:%s".formatted(place.getName(), type, location), null, null);
+    }
+
+    /** 一句多操作的合併回覆:逐項列出各自結果。 */
+    static IntentResult batchExecuted(List<String> lines) {
+        StringBuilder message = new StringBuilder("一次處理 %d 件:".formatted(lines.size()));
+        for (int i = 0; i < lines.size(); i++) {
+            message.append("\n%d. %s".formatted(i + 1, lines.get(i)));
+        }
+        return new IntentResult(Action.BATCH_EXECUTED, message.toString(), null, null);
     }
 
     static IntentResult taskCompleted(Task task) {

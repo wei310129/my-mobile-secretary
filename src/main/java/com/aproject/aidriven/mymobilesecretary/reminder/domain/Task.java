@@ -83,6 +83,20 @@ public class Task {
     }
 
     /**
+     * 改期限(使用者「拿包裹改成今天11點」)。
+     * 已結案(CONFIRMED/CANCELED)的任務改期限沒有意義,一律拒絕。
+     */
+    public void changeDueAt(Instant newDueAt, Instant now) {
+        if (status == TaskStatus.CONFIRMED || status == TaskStatus.CANCELED) {
+            throw new BusinessException(
+                    "INVALID_STATE_TRANSITION",
+                    "Task %d is closed (%s), dueAt cannot change".formatted(id, status));
+        }
+        this.dueAt = newDueAt;
+        this.updatedAt = now;
+    }
+
+    /**
      * 已對使用者送出提醒 → REMINDED。
      * REMINDED → REMINDED 合法(debounce 視窗過後的重新提醒)。
      */

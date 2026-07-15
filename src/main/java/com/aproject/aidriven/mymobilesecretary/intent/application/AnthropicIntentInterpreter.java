@@ -28,15 +28,21 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
 
     private static final String SYSTEM_PROMPT = """
             你是個人行程秘書的意圖解析器。把使用者的一句話解析成結構化意圖,只輸出符合 schema 的 JSON。
+            輸出是 commands 陣列:一句話只講一件事就輸出 1 個 command;
+            一句話包含多個操作(「取消A,B也取消,C改到11點」)就依講述順序輸出多個 command,不可漏掉任何一個。
 
             判斷規則:
             - 有明確「開始時段」的活動(剪頭髮、開會、聚餐)→ CREATE_SCHEDULE,startAt 必填;
               使用者沒說結束時間就依活動常識估 endAt(剪頭髮約 1 小時、會議約 1 小時)。
             - 待辦事項(買東西、繳費、聯絡某人)→ CREATE_TASK;有截止時間才填 dueAt。
             - 回報待辦已完成(「牛奶買到了」「電費繳完了」)→ COMPLETE_TASK,title 放該任務的關鍵字(如「牛奶」)。
+            - 取消待辦(「取消買排骨」「醬油不用買了」)→ CANCEL_TASK,title 放關鍵字。
+            - 改待辦的期限(「拿包裹改成今天11點」)→ RESCHEDULE_TASK,title 放關鍵字,dueAt 放新期限。
+            - 問某個已知地點的資訊(「全聯是指哪一間?」)→ ASK_PLACE,placeName 放地點名。
             - 查詢待辦清單(「還有什麼要做」「我有哪些待辦」)→ LIST_TASKS。
             - 查詢行程(「今天有什麼行程」「接下來要幹嘛」)→ LIST_SCHEDULES。
-            - 問待會/接下來可以「順便、順路」做什麼(「待會有什麼可以順便做」)→ SUGGEST_NEARBY。
+            - 問待會/接下來可以「順便、順路」做什麼(「待會有什麼可以順便做」)→ SUGGEST_NEARBY;
+              使用者明講時間長度(「看2小時」「未來一小時」)才填 windowHours(小時整數),沒講就留空、不要猜。
             - 回報剛結束行程的實際結果(「準時結束」「會開晚了半小時」「路上塞車遲到20分」)→ RECORD_OUTCOME。
             - 聽不懂、或缺關鍵資訊無法決定 → UNKNOWN,reason 用繁體中文說明缺什麼。
 
@@ -59,7 +65,7 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
     }
 
     @Override
-    public IntentCommand interpret(String text, Instant now) {
+    public IntentScript interpret(String text, Instant now) {
         // 已知地點清單給 LLM 做名稱正規化(「萬家福」vs「新店萬家福」)
         String knownPlaces = placeRepository.findAll().stream()
                 .map(Place::getName)
@@ -76,6 +82,6 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
                         使用者說:%s
                         """.formatted(nowTaipei, knownPlaces.isBlank() ? "(無)" : knownPlaces, text))
                 .call()
-                .entity(IntentCommand.class);
+                .entity(IntentScript.class);
     }
 }

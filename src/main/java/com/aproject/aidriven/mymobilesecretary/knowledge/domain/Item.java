@@ -38,6 +38,17 @@ public class Item {
     @Column(nullable = false)
     private Instant createdAt;
 
+    /** 家中現有數量;不知道時維持 0。 */
+    @Column(nullable = false)
+    private int inventoryQuantity;
+
+    /** 是否在目前購物清單中。 */
+    @Column(nullable = false)
+    private boolean shoppingNeeded;
+
+    @Column(nullable = false)
+    private Instant updatedAt;
+
     /** JPA 專用。 */
     protected Item() {
     }
@@ -45,7 +56,10 @@ public class Item {
     private Item(String name, Set<Long> placeIds, Instant now) {
         this.name = name;
         this.placeIds = new LinkedHashSet<>(placeIds);
+        this.inventoryQuantity = 0;
+        this.shoppingNeeded = false;
         this.createdAt = now;
+        this.updatedAt = now;
     }
 
     /** 建立品項知識。名稱唯一性與地點存在性由 application 層把關。 */
@@ -55,7 +69,27 @@ public class Item {
 
     /** 任務標題是否提到這個品項(中文無斷詞,包含即視為提到)。 */
     public boolean isMentionedIn(String text) {
-        return text != null && text.contains(name);
+        return text != null && text.toLowerCase().contains(name.toLowerCase());
+    }
+
+    public void markShoppingNeeded(Instant now) {
+        this.shoppingNeeded = true;
+        this.updatedAt = now;
+    }
+
+    public void removeFromShoppingList(Instant now) {
+        this.shoppingNeeded = false;
+        this.updatedAt = now;
+    }
+
+    public void setInventoryQuantity(int quantity, Instant now) {
+        this.inventoryQuantity = Math.max(quantity, 0);
+        this.updatedAt = now;
+    }
+
+    public void addPlace(Long placeId, Instant now) {
+        this.placeIds.add(placeId);
+        this.updatedAt = now;
     }
 
     public Long getId() {
@@ -72,5 +106,17 @@ public class Item {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public int getInventoryQuantity() {
+        return inventoryQuantity;
+    }
+
+    public boolean isShoppingNeeded() {
+        return shoppingNeeded;
+    }
+
+    public Instant getUpdatedAt() {
+        return updatedAt;
     }
 }

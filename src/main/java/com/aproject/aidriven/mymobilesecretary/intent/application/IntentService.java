@@ -41,6 +41,9 @@ public class IntentService {
     private final com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService placeService;
     private final com.aproject.aidriven.mymobilesecretary.geo.application.GeofenceRuleService geofenceRuleService;
     private final com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService priceRecordService;
+    private final LifestyleIntentService lifestyleIntentService;
+    private final ConversationContextService conversationContextService;
+    private final com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService placeAliasService;
     private final int bindRadiusMeters;
     private final Clock clock;
 
@@ -54,6 +57,9 @@ public class IntentService {
                          com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService placeService,
                          com.aproject.aidriven.mymobilesecretary.geo.application.GeofenceRuleService geofenceRuleService,
                          com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService priceRecordService,
+                         LifestyleIntentService lifestyleIntentService,
+                         ConversationContextService conversationContextService,
+                         com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService placeAliasService,
                          @org.springframework.beans.factory.annotation.Value(
                                  "${app.knowledge.auto-bind-radius-meters:200}") int bindRadiusMeters,
                          Clock clock) {
@@ -67,6 +73,9 @@ public class IntentService {
         this.placeService = placeService;
         this.geofenceRuleService = geofenceRuleService;
         this.priceRecordService = priceRecordService;
+        this.lifestyleIntentService = lifestyleIntentService;
+        this.conversationContextService = conversationContextService;
+        this.placeAliasService = placeAliasService;
         this.bindRadiusMeters = bindRadiusMeters;
         this.clock = clock;
     }
@@ -75,6 +84,7 @@ public class IntentService {
     public IntentResult handle(String text) {
         IntentResult result = doHandle(text);
         recordIssueIfUnresolved(text, result);
+        conversationContextService.rememberExchange(text, result);
         return result;
     }
 
@@ -85,7 +95,7 @@ public class IntentService {
             return fallbackTask(text, "意圖解析未啟用");
         }
         try {
-            script = interpreter.interpret(text, Instant.now(clock));
+            script = interpreter.interpret(text, Instant.now(clock), conversationContextService.snapshot());
         } catch (Exception e) {
             log.warn("Intent interpretation failed, falling back to plain task", e);
             return fallbackTask(text, "AI 暫時無法使用");
@@ -134,6 +144,15 @@ public class IntentService {
             throw new IllegalArgumentException("missing type");
         }
         return switch (command.type()) {
+            case ADD_SCHEDULE_REMINDER, SUGGEST_FREE_SLOT, CREATE_RELATIVE_SCHEDULE,
+                    LIST_AGENDA, ASK_TASK_INFO, ASK_AVAILABILITY, LIST_RECENT,
+                    SUGGEST_ROUTE_TASKS, SET_PLACE_ALIAS, ADD_SHOPPING_ITEMS,
+                    REMOVE_SHOPPING_ITEM, LIST_SHOPPING_ITEMS, SET_INVENTORY,
+                    ASK_PRICE_COMPARISON, ASK_WEATHER, CREATE_WEATHER_REMINDER,
+                    ASK_TRAVEL_TIME, ASK_DEPARTURE_TIME, CREATE_TRAFFIC_WATCH,
+                    CHECK_FEASIBILITY, SET_PLANNING_BUFFER, ACCEPT_CONTEXT,
+                    SHIFT_CONTEXT_LATER, CANCEL_CONTEXT, SET_CONTEXT_PLACE,
+                    COPY_CONTEXT, SOCIAL -> lifestyleIntentService.execute(text, command);
             case CREATE_TASK -> {
                 requireText(command.title(), "title");
                 // 防重複(使用者實際踩過:「拿包裹」被建了兩次):同名未結案任務存在就回問
@@ -144,10 +163,21 @@ public class IntentService {
                             "已經有「%s」這件未完成待辦了,不再重複建立;要改時間或地點直接說。"
                                     .formatted(command.title()));
                 }
+                IntentOptions options = command.safeOptions();
                 Task task = taskService.createTask(
                         command.title(), null, parsePriority(command.priority()),
-                        parseTime(command.dueAt()));
-                yield IntentResult.taskCreated(task);
+                        parseTime(command.dueAt()), parseCategory(options.category()),
+                        parseRecurrence(options.recurrence()), parseCondition(options.condition()), null);
+                if (command.placeName() != null && !command.placeName().isBlank()) {
+                    Place place = resolvePlace(command.placeName())
+                            .orElseGet(() -> placeService.createPlace(command.placeName(), null, null, null, null));
+                    var trigger = parseTrigger(options.triggerType());
+                    if (!geofenceRuleService.ruleExists(task.getId(), place.getId(), trigger)) {
+                        geofenceRuleService.createRule(task.getId(), place.getId(),
+                                positive(options.radiusMeters(), bindRadiusMeters), trigger);
+                    }
+                }
+                yield IntentResult.taskCreated(task, options.clarificationQuestion());
             }
             case CREATE_SCHEDULE -> {
                 requireText(command.title(), "title");
@@ -163,41 +193,36 @@ public class IntentService {
                 yield IntentResult.scheduleDecided(decision);
             }
             case COMPLETE_TASK -> {
-                requireText(command.title(), "title");
-                TaskMatch match = matchOpenTask(command.title(), "劃");
+                TaskMatch match = matchOpenTask(command, "劃");
                 yield match.failure() != null ? match.failure()
                         : IntentResult.taskCompleted(taskService.confirmTask(match.task().getId()));
             }
             case CANCEL_TASK -> {
-                requireText(command.title(), "title");
-                TaskMatch match = matchOpenTask(command.title(), "取消");
+                TaskMatch match = matchOpenTask(command, "取消");
                 yield match.failure() != null ? match.failure()
                         : IntentResult.taskCanceled(taskService.cancelTask(match.task().getId()));
             }
             case CANCEL_ALL_TASKS -> IntentResult.allTasksCanceled(taskService.cancelAllOpenTasks());
             case RESCHEDULE_TASK -> {
-                requireText(command.title(), "title");
                 Instant newDueAt = parseTime(command.dueAt());
                 if (newDueAt == null) {
                     throw new IllegalArgumentException("reschedule missing dueAt");
                 }
-                TaskMatch match = matchOpenTask(command.title(), "改");
+                TaskMatch match = matchOpenTask(command, "改");
                 yield match.failure() != null ? match.failure()
                         : IntentResult.taskRescheduled(taskService.changeDueDate(match.task().getId(), newDueAt));
             }
             case CANCEL_SCHEDULE -> {
-                requireText(command.title(), "title");
-                ScheduleMatch match = matchCancelableSchedule(command.title(), "取消");
+                ScheduleMatch match = matchCancelableSchedule(command, "取消");
                 yield match.failure() != null ? match.failure()
                         : IntentResult.scheduleCanceled(scheduleService.cancelSchedule(match.item().getId()));
             }
             case RESCHEDULE_SCHEDULE -> {
-                requireText(command.title(), "title");
                 Instant newStartAt = parseTime(command.startAt());
                 if (newStartAt == null) {
                     throw new IllegalArgumentException("schedule reschedule missing startAt");
                 }
-                ScheduleMatch match = matchReschedulableSchedule(command.title(), "改");
+                ScheduleMatch match = matchReschedulableSchedule(command, "改");
                 if (match.failure() != null) {
                     yield match.failure();
                 }
@@ -251,9 +276,8 @@ public class IntentService {
                         command.placeName(), null, null, null, null));
             }
             case BIND_TASK_PLACE -> {
-                requireText(command.title(), "title");
                 requireText(command.placeName(), "placeName");
-                TaskMatch match = matchOpenTask(command.title(), "綁");
+                TaskMatch match = matchOpenTask(command, "綁");
                 if (match.failure() != null) {
                     yield match.failure();
                 }
@@ -261,16 +285,15 @@ public class IntentService {
                 Place place = resolvePlace(command.placeName())
                         .orElseGet(() -> placeService.createPlace(
                                 command.placeName(), null, null, null, null));
-                if (!geofenceRuleService.ruleExists(match.task().getId(), place.getId(),
-                        com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType.ENTER)) {
+                var trigger = parseTrigger(command.safeOptions().triggerType());
+                if (!geofenceRuleService.ruleExists(match.task().getId(), place.getId(), trigger)) {
                     geofenceRuleService.createRule(match.task().getId(), place.getId(),
-                            bindRadiusMeters, com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType.ENTER);
+                            positive(command.safeOptions().radiusMeters(), bindRadiusMeters), trigger);
                 }
                 yield IntentResult.taskPlaceBound(match.task(), place);
             }
             case ASK_TASK_PLACE -> {
-                requireText(command.title(), "title");
-                TaskMatch match = matchOpenTask(command.title(), "查");
+                TaskMatch match = matchOpenTask(command, "查");
                 if (match.failure() != null) {
                     yield match.failure();
                 }
@@ -280,12 +303,12 @@ public class IntentService {
                         .toList();
                 yield IntentResult.taskPlaceInfo(match.task(), places);
             }
-            case FEEDBACK -> IntentResult.feedbackReceived();
+            case FEEDBACK -> handleFeedback(command);
             case LIST_TASKS -> {
                 var open = taskService.listOpenTasks();
-                yield IntentResult.tasksListed(open, taskListAdvice(open));
+                yield lifestyleIntentService.listTasks(command, taskListAdvice(open));
             }
-            case LIST_SCHEDULES -> IntentResult.schedulesListed(upcomingConfirmedSchedules());
+            case LIST_SCHEDULES -> lifestyleIntentService.listSchedules(command);
             case SUGGEST_NEARBY -> {
                 // 使用者 2026-07-15 更正:沒明講多久就不能直接認定——先回問,同時附預設時窗的參考
                 if (command.windowHours() != null && command.windowHours() > 0) {
@@ -424,6 +447,24 @@ public class IntentService {
         return new TaskMatch(matches.get(0), null);
     }
 
+    /** 有標題走關鍵字;省略標題時以「上一個／清單第 N 個」上下文解析。 */
+    private TaskMatch matchOpenTask(IntentCommand command, String actionVerb) {
+        if (command.title() != null && !command.title().isBlank()) {
+            return matchOpenTask(command.title(), actionVerb);
+        }
+        Long id = conversationContextService.taskIdAt(command.safeOptions().ordinal());
+        if (id == null) {
+            return new TaskMatch(null, IntentResult.clarificationNeeded(
+                    "目前沒有可指代的待辦,請說名稱或先列出待辦。"));
+        }
+        Task task = taskService.getTask(id);
+        if (!taskService.listOpenTasks().stream().map(Task::getId).toList().contains(id)) {
+            return new TaskMatch(null, IntentResult.clarificationNeeded(
+                    "「%s」已經結案,不能再%s。".formatted(task.getTitle(), actionVerb)));
+        }
+        return new TaskMatch(task, null);
+    }
+
     /** 關鍵字配對結果:task 與 failure 恰有一個非空。 */
     private record TaskMatch(Task task, IntentResult failure) {
     }
@@ -433,9 +474,33 @@ public class IntentService {
         return uniqueScheduleMatch(scheduleService.findCancelableSchedulesMatching(keyword), keyword, actionVerb);
     }
 
+    private ScheduleMatch matchCancelableSchedule(IntentCommand command, String actionVerb) {
+        if (command.title() != null && !command.title().isBlank()) {
+            return matchCancelableSchedule(command.title(), actionVerb);
+        }
+        return contextSchedule(command.safeOptions().ordinal(), actionVerb);
+    }
+
     /** 改期可處理 PROPOSED、CONFIRMED 與 PENDING 行程;改後一律重新驗算。 */
     private ScheduleMatch matchReschedulableSchedule(String keyword, String actionVerb) {
         return uniqueScheduleMatch(scheduleService.findReschedulableSchedulesMatching(keyword), keyword, actionVerb);
+    }
+
+    private ScheduleMatch matchReschedulableSchedule(IntentCommand command, String actionVerb) {
+        if (command.title() != null && !command.title().isBlank()) {
+            return matchReschedulableSchedule(command.title(), actionVerb);
+        }
+        return contextSchedule(command.safeOptions().ordinal(), actionVerb);
+    }
+
+    private ScheduleMatch contextSchedule(Integer ordinal, String actionVerb) {
+        Long id = conversationContextService.scheduleIdAt(ordinal);
+        if (id == null) {
+            return new ScheduleMatch(null, IntentResult.clarificationNeeded(
+                    "目前沒有可指代的行程,請說名稱或先列出行程。"));
+        }
+        ScheduleItem item = scheduleService.getSchedule(id);
+        return new ScheduleMatch(item, null);
     }
 
     private ScheduleMatch uniqueScheduleMatch(java.util.List<ScheduleItem> matches,
@@ -470,18 +535,7 @@ public class IntentService {
 
     /** 地點名稱解析:先精確比對,再包含比對(規則式;不讓 LLM 決定 id)。 */
     private Optional<Place> resolvePlace(String placeName) {
-        if (placeName == null || placeName.isBlank()) {
-            return Optional.empty();
-        }
-        var places = placeRepository.findAll();
-        Optional<Place> exact = places.stream()
-                .filter(p -> p.getName().equals(placeName)).findFirst();
-        if (exact.isPresent()) {
-            return exact;
-        }
-        return places.stream()
-                .filter(p -> p.getName().contains(placeName) || placeName.contains(p.getName()))
-                .findFirst();
+        return placeAliasService.resolve(placeName);
     }
 
     private static void requireText(String value, String field) {
@@ -522,5 +576,70 @@ public class IntentService {
         } catch (IllegalArgumentException e) {
             return TaskPriority.NORMAL;
         }
+    }
+
+    private static Task.Category parseCategory(String value) {
+        try {
+            return Task.Category.valueOf(value == null ? "OTHER" : value.toUpperCase());
+        } catch (Exception e) {
+            return Task.Category.OTHER;
+        }
+    }
+
+    private static Task.Recurrence parseRecurrence(String value) {
+        try {
+            return Task.Recurrence.valueOf(value == null ? "NONE" : value.toUpperCase());
+        } catch (Exception e) {
+            return Task.Recurrence.NONE;
+        }
+    }
+
+    private static Task.ConditionType parseCondition(String value) {
+        try {
+            return Task.ConditionType.valueOf(value == null ? "NONE" : value.toUpperCase());
+        } catch (Exception e) {
+            return Task.ConditionType.NONE;
+        }
+    }
+
+    private static com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType parseTrigger(String value) {
+        try {
+            return com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType.valueOf(
+                    value == null ? "ENTER" : value.toUpperCase());
+        } catch (Exception e) {
+            return com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType.ENTER;
+        }
+    }
+
+    private static int positive(Integer value, int fallback) {
+        return value == null || value <= 0 ? fallback : value;
+    }
+
+    private IntentResult handleFeedback(IntentCommand command) {
+        String reason = command.reason() == null ? "" : command.reason().toUpperCase();
+        if (reason.contains("DUPLICATE") || reason.contains("重複")) {
+            var duplicates = taskService.listOpenTasks().stream()
+                    .collect(java.util.stream.Collectors.groupingBy(
+                            task -> task.getTitle().strip().toLowerCase()))
+                    .values().stream().filter(group -> group.size() > 1).toList();
+            String detail = duplicates.isEmpty()
+                    ? "我檢查了目前未完成待辦,沒有完全同名的重複項目。"
+                    : "目前有重複候選:" + duplicates.stream()
+                    .map(group -> group.stream().map(Task::getTitle).distinct()
+                            .collect(java.util.stream.Collectors.joining("／"))
+                            + " × " + group.size())
+                    .collect(java.util.stream.Collectors.joining("、"));
+            return IntentResult.message(IntentResult.Action.FEEDBACK_RECEIVED,
+                    "你提醒得對,不應該重複建立。" + detail + "要刪掉多出的項目時告訴我名稱即可。");
+        }
+        if (reason.contains("MISSING_PLACE") || reason.contains("地點")) {
+            Long id = conversationContextService.taskIdAt(null);
+            if (id != null) {
+                Task task = taskService.getTask(id);
+                return IntentResult.message(IntentResult.Action.FEEDBACK_RECEIVED,
+                        "你說得對,我應該接著問。『%s』要在哪裡做?".formatted(task.getTitle()));
+            }
+        }
+        return IntentResult.feedbackReceived();
     }
 }

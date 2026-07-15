@@ -7,6 +7,8 @@ import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskReposito
 import com.aproject.aidriven.mymobilesecretary.shared.error.NotFoundException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.util.EnumSet;
 import java.util.List;
 import org.springframework.context.ApplicationEventPublisher;
@@ -20,6 +22,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional
 public class TaskService {
+
+    private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
 
     private final TaskRepository taskRepository;
     private final ReminderScheduleService scheduleService;
@@ -43,7 +47,22 @@ public class TaskService {
      * @param priority 呼叫端未指定時由 API 層預設 NORMAL
      */
     public Task createTask(String title, String description, TaskPriority priority, Instant dueAt) {
-        Task task = taskRepository.save(Task.create(title, description, priority, dueAt, Instant.now(clock)));
+        return createTask(title, description, priority, dueAt,
+                Task.Category.OTHER, Task.Recurrence.NONE, Task.ConditionType.NONE, null);
+    }
+
+    /** 建立含分類、週期與條件的任務。 */
+    public Task createTask(String title, String description, TaskPriority priority, Instant dueAt,
+                           Task.Category category, Task.Recurrence recurrence,
+                           Task.ConditionType conditionType, String conditionPayload) {
+        if (recurrence != null && recurrence != Task.Recurrence.NONE && dueAt == null) {
+            throw new IllegalArgumentException("recurring task requires dueAt");
+        }
+        if (conditionType != null && conditionType != Task.ConditionType.NONE && dueAt == null) {
+            throw new IllegalArgumentException("conditional task requires dueAt");
+        }
+        Task task = taskRepository.save(Task.create(title, description, priority, dueAt,
+                category, recurrence, conditionType, conditionPayload, Instant.now(clock)));
         if (dueAt != null) {
             scheduleService.scheduleDueReminder(task.getId(), dueAt);
         }
@@ -108,6 +127,20 @@ public class TaskService {
     /** 確認任務完成。非法狀態轉換由 domain 丟 BusinessException(422)。 */
     public Task confirmTask(Long taskId) {
         Task task = getTask(taskId);
+        if (task.getRecurrence() != Task.Recurrence.NONE) {
+            Instant now = Instant.now(clock);
+            // The due worker advances a recurring task as soon as an occurrence is delivered.
+            // A later "done" acknowledgement must not skip the already-scheduled next occurrence.
+            if (task.getStatus() == TaskStatus.SCHEDULED
+                    && task.getDueAt() != null
+                    && task.getDueAt().isAfter(now)) {
+                return task;
+            }
+            Instant next = nextOccurrence(task, now);
+            task.advanceOccurrence(next, now);
+            scheduleService.scheduleDueReminder(taskId, next);
+            return task;
+        }
         task.confirm(Instant.now(clock));
         return task;
     }
@@ -132,5 +165,55 @@ public class TaskService {
             scheduleService.removeDueReminder(taskId);
         }
         return task;
+    }
+
+    /**
+     * 週期任務本輪提醒送出後先排下一輪。一般任務不動。
+     * 這能避免使用者漏按完成後,隔天／隔週的固定提醒整條消失。
+     */
+    public Task scheduleNextRecurringOccurrence(Long taskId) {
+        Task task = getTask(taskId);
+        if (task.getRecurrence() == Task.Recurrence.NONE) {
+            return task;
+        }
+        Instant now = Instant.now(clock);
+        Instant next = nextOccurrence(task, now);
+        task.advanceOccurrence(next, now);
+        scheduleService.scheduleDueReminder(taskId, next);
+        return task;
+    }
+
+    /** 條件不成立時結束單次條件任務,避免之後被當成一般待辦催促。 */
+    public Task skipConditionalTask(Long taskId) {
+        Task task = getTask(taskId);
+        if (task.getConditionType() != Task.ConditionType.NONE
+                && task.getStatus() != TaskStatus.CANCELED
+                && task.getStatus() != TaskStatus.CONFIRMED) {
+            task.cancel(Instant.now(clock));
+        }
+        return task;
+    }
+
+    private Instant nextOccurrence(Task task, Instant now) {
+        ZonedDateTime base = ZonedDateTime.ofInstant(
+                task.getDueAt() == null ? now : task.getDueAt(), TAIPEI);
+        ZonedDateTime next = switch (task.getRecurrence()) {
+            case DAILY -> base.plusDays(1);
+            case WEEKLY -> base.plusWeeks(1);
+            case MONTHLY -> base.plusMonths(1);
+            case NONE -> base;
+        };
+        while (!next.toInstant().isAfter(now)) {
+            next = switch (task.getRecurrence()) {
+                case DAILY -> next.plusDays(1);
+                case WEEKLY -> next.plusWeeks(1);
+                case MONTHLY -> next.plusMonths(1);
+                case NONE -> next;
+            };
+            if (task.getRecurrence() == Task.Recurrence.NONE) {
+                break;
+            }
+        }
+        return next.toInstant();
     }
 }

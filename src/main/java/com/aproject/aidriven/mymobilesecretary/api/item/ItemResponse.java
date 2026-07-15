@@ -9,11 +9,15 @@ public record ItemResponse(
         Long id,
         String name,
         Set<Long> placeIds,
+        int inventoryQuantity,
+        boolean shoppingNeeded,
+        Instant updatedAt,
         Instant createdAt
 ) {
 
     /** 由 domain 轉成回應 DTO。 */
     public static ItemResponse from(Item item) {
-        return new ItemResponse(item.getId(), item.getName(), item.getPlaceIds(), item.getCreatedAt());
+        return new ItemResponse(item.getId(), item.getName(), item.getPlaceIds(),
+                item.getInventoryQuantity(), item.isShoppingNeeded(), item.getUpdatedAt(), item.getCreatedAt());
     }
 }

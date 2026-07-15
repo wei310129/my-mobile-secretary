@@ -48,4 +48,22 @@ public class PriceRecordService {
         }
         return priceRecordRepository.findByItemNameContainingOrderByPurchasedAtDescIdDesc(itemName.strip());
     }
+
+    /** 每家店取最低歷史價,由低到高排列。 */
+    @Transactional(readOnly = true)
+    public List<StorePrice> compareStores(String itemName) {
+        return list(itemName).stream()
+                .filter(record -> record.getStoreName() != null && !record.getStoreName().isBlank())
+                .collect(java.util.stream.Collectors.groupingBy(PriceRecord::getStoreName))
+                .entrySet().stream()
+                .map(entry -> entry.getValue().stream()
+                        .min(java.util.Comparator.comparingInt(PriceRecord::getPriceTwd))
+                        .map(record -> new StorePrice(entry.getKey(), record.getPriceTwd(),
+                                record.getPurchasedAt())).orElseThrow())
+                .sorted(java.util.Comparator.comparingInt(StorePrice::priceTwd))
+                .toList();
+    }
+
+    public record StorePrice(String storeName, int priceTwd, LocalDate purchasedAt) {
+    }
 }

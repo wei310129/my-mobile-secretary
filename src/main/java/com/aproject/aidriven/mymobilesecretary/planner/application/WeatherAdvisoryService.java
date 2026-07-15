@@ -32,16 +32,11 @@ public class WeatherAdvisoryService {
      * 取得目前天氣建議;沒有需要提醒的天氣風險、或查詢失敗時回 empty。
      */
     public Optional<String> currentAdvisory() {
-        if (!properties.enabled()) {
+        Optional<WeatherForecast> current = currentForecast();
+        if (current.isEmpty()) {
             return Optional.empty();
         }
-        WeatherForecast forecast;
-        try {
-            forecast = weatherClient.getForecast(properties.county());
-        } catch (Exception e) {
-            log.warn("Weather advisory skipped: forecast unavailable", e);
-            return Optional.empty();
-        }
+        WeatherForecast forecast = current.get();
 
         List<String> tips = new ArrayList<>();
         if (forecast.rainProbabilityPercent() >= properties.rainProbabilityThreshold()) {
@@ -51,5 +46,29 @@ public class WeatherAdvisoryService {
             tips.add("高溫 %d 度,生鮮早點買、盡快回家冰".formatted(forecast.maxTemp()));
         }
         return tips.isEmpty() ? Optional.empty() : Optional.of(String.join(";", tips));
+    }
+
+    /** 給對話查詢與條件提醒共用的安全預報入口。 */
+    public Optional<WeatherForecast> currentForecast() {
+        if (!properties.enabled()) {
+            return Optional.empty();
+        }
+        try {
+            return Optional.of(weatherClient.getForecast(properties.county()));
+        } catch (Exception e) {
+            log.warn("Weather forecast unavailable", e);
+            return Optional.empty();
+        }
+    }
+
+    public Optional<String> describeCurrentForecast() {
+        return currentForecast().map(f -> "%s目前預報:%s,降雨機率 %d%%,氣溫 %d–%d°C。"
+                .formatted(f.county(), f.description(), f.rainProbabilityPercent(),
+                        f.minTemp(), f.maxTemp()));
+    }
+
+    public Optional<Boolean> isRainy() {
+        return currentForecast().map(f ->
+                f.rainProbabilityPercent() >= properties.rainProbabilityThreshold());
     }
 }

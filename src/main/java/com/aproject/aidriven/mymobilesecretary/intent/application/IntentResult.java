@@ -49,7 +49,28 @@ public record IntentResult(
         SCHEDULE_NEEDS_DECISION,
         OUTCOME_RECORDED,
         CLARIFICATION_NEEDED,
-        FALLBACK_TASK_CREATED
+        FALLBACK_TASK_CREATED,
+        SCHEDULE_REMINDER_CREATED,
+        FREE_SLOTS_SUGGESTED,
+        AGENDA_LISTED,
+        TASK_INFO,
+        AVAILABILITY_CHECKED,
+        RECENT_ACTIVITY_LISTED,
+        ROUTE_SUGGESTED,
+        PLACE_ALIAS_SET,
+        SHOPPING_ITEMS_ADDED,
+        SHOPPING_ITEM_REMOVED,
+        SHOPPING_LISTED,
+        INVENTORY_UPDATED,
+        PRICE_COMPARISON,
+        WEATHER_INFO,
+        WEATHER_REMINDER_CREATED,
+        TRAVEL_INFO,
+        TRAFFIC_WATCH_CREATED,
+        CONNECTION_CHECKED,
+        PLANNING_PREFERENCE_SET,
+        CONTEXT_UPDATED,
+        SOCIAL_REPLIED
     }
 
     /** 清單訊息共用:最多列 10 筆,其餘以「…等 N 件」收尾。 */
@@ -60,6 +81,18 @@ public record IntentResult(
     static IntentResult taskCreated(Task task) {
         return new IntentResult(Action.TASK_CREATED,
                 "已建立任務「%s」".formatted(task.getTitle()), task, null);
+    }
+
+    static IntentResult taskCreated(Task task, String followUp) {
+        String message = "已建立任務「%s」".formatted(task.getTitle());
+        if (followUp != null && !followUp.isBlank()) {
+            message += "。" + followUp;
+        }
+        return new IntentResult(Action.TASK_CREATED, message, task, null);
+    }
+
+    static IntentResult message(Action action, String message) {
+        return new IntentResult(action, message, null, null);
     }
 
     static IntentResult scheduleDecided(ScheduleDecision decision) {

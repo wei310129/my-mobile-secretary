@@ -110,6 +110,17 @@ public class ScheduleService {
         return gate(item, now);
     }
 
+    /** 修改地點並重新走可行性關卡。 */
+    public ScheduleDecision changePlace(Long scheduleId, Long placeId) {
+        if (placeId != null) {
+            placeService.getPlace(placeId);
+        }
+        ScheduleItem item = getSchedule(scheduleId);
+        Instant now = Instant.now(clock);
+        item.changePlace(placeId, now);
+        return gate(item, now);
+    }
+
     /** 「要可行才放行」的共同關卡。 */
     private ScheduleDecision gate(ScheduleItem item, Instant now) {
         FeasibilityResult result = feasibilityService.check(item);

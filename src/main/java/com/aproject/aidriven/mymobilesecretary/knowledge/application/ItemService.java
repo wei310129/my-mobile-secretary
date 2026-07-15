@@ -58,4 +58,56 @@ public class ItemService {
                 .filter(item -> item.isMentionedIn(text))
                 .toList();
     }
+
+    /** 加入購物清單。名稱比對不分大小寫且天然去重。 */
+    public List<Item> addShoppingItems(List<String> names) {
+        Instant now = Instant.now(clock);
+        return names.stream()
+                .filter(name -> name != null && !name.isBlank())
+                .map(String::strip)
+                .distinct()
+                .map(name -> {
+                    Item item = itemRepository.findByNameIgnoreCase(name)
+                            .orElseGet(() -> itemRepository.save(Item.create(name, Set.of(), now)));
+                    item.markShoppingNeeded(now);
+                    return item;
+                })
+                .toList();
+    }
+
+    /** 從購物清單移除;找不到時回 empty,讓對話層友善回覆。 */
+    public java.util.Optional<Item> removeShoppingItem(String name) {
+        return itemRepository.findByNameIgnoreCase(name.strip())
+                .map(item -> {
+                    item.removeFromShoppingList(Instant.now(clock));
+                    return item;
+                });
+    }
+
+    @Transactional(readOnly = true)
+    public List<Item> listShoppingItems() {
+        return itemRepository.findByShoppingNeededTrueOrderByNameAsc();
+    }
+
+    /** 更新家中庫存;品項不存在時一併建立。 */
+    public Item setInventory(String name, int quantity) {
+        Instant now = Instant.now(clock);
+        Item item = itemRepository.findByNameIgnoreCase(name.strip())
+                .orElseGet(() -> itemRepository.save(Item.create(name.strip(), Set.of(), now)));
+        item.setInventoryQuantity(quantity, now);
+        if (quantity > 0) {
+            item.removeFromShoppingList(now);
+        }
+        return item;
+    }
+
+    /** 記住品項可在哪裡買;兩端都驗證且關聯去重。 */
+    public Item bindItemToPlace(String name, Long placeId) {
+        placeService.getPlace(placeId);
+        Instant now = Instant.now(clock);
+        Item item = itemRepository.findByNameIgnoreCase(name.strip())
+                .orElseGet(() -> itemRepository.save(Item.create(name.strip(), Set.of(), now)));
+        item.addPlace(placeId, now);
+        return item;
+    }
 }

@@ -2,6 +2,12 @@ package com.aproject.aidriven.mymobilesecretary.intent.application;
 
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
+import com.aproject.aidriven.mymobilesecretary.knowledge.persistence.ItemRepository;
+import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskStatus;
+import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
+import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
+import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItemRepository;
+import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -10,6 +16,7 @@ import java.util.stream.Collectors;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
+import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 /**
@@ -80,32 +87,97 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               上下班尖峰塞車=RUSH_HOUR、其他=OTHER。
             """;
 
+    private static final String LIFESTYLE_RULES = """
+
+            生活化對話擴充規則:
+            - 你會收到短期上下文、未完成待辦、近期行程、已知地點與購物品項。只有資料能唯一指向時,
+              才能解析「上一個、第二個、那件事、她」;否則輸出 UNKNOWN 回問。
+            - options 可填:filter、ordinal、durationMinutes、leadMinutes、radiusMeters、triggerType、
+              recurrence、category、itemNames、quantity、referenceTitle、referenceKind、timeOfDay、
+              keepTime、shiftMinutes、condition、fromPlaceName、bufferMinutes、clarificationQuestion、alias。
+            - CREATE_TASK 可同時填 dueAt、placeName 與 options。重複提醒填 options.recurrence;
+              天氣條件提醒用 CREATE_WEATHER_REMINDER,不要把「如果」忽略。
+            - 「今天有什麼事」是 LIST_AGENDA+filter TODAY,不能退化成列全部未完成待辦。
+            - 序號操作一定填 options.ordinal;省略名稱的承接操作不要自行虛構 title。
+            - 純致謝、結束語輸出 SOCIAL;抱怨輸出 FEEDBACK,絕不可 fallback 建成待辦。
+            - 下方能力目錄是規範性 few-shot。A+B 代表輸出兩個 command,不是不存在的 type;
+              RECEIPT_IMAGE 表示文字 intent 不處理圖片;FOLLOW_UP 表示依上下文輸出實際待補的 command。
+            """;
+
     private final ChatClient chatClient;
     private final PlaceRepository placeRepository;
+    private final TaskRepository taskRepository;
+    private final ScheduleItemRepository scheduleRepository;
+    private final ItemRepository itemRepository;
+    private final String capabilityCatalog;
 
-    public AnthropicIntentInterpreter(ChatModel chatModel, PlaceRepository placeRepository) {
+    public AnthropicIntentInterpreter(ChatModel chatModel, PlaceRepository placeRepository,
+                                      TaskRepository taskRepository,
+                                      ScheduleItemRepository scheduleRepository,
+                                      ItemRepository itemRepository) {
         this.chatClient = ChatClient.create(chatModel);
         this.placeRepository = placeRepository;
+        this.taskRepository = taskRepository;
+        this.scheduleRepository = scheduleRepository;
+        this.itemRepository = itemRepository;
+        this.capabilityCatalog = readCapabilityCatalog();
     }
 
     @Override
     public IntentScript interpret(String text, Instant now) {
+        return interpret(text, now, ConversationSnapshot.empty());
+    }
+
+    @Override
+    public IntentScript interpret(String text, Instant now, ConversationSnapshot context) {
         // 已知地點清單給 LLM 做名稱正規化(「萬家福」vs「新店萬家福」)
         String knownPlaces = placeRepository.findAll().stream()
                 .map(Place::getName)
                 .collect(Collectors.joining("、"));
         String nowTaipei = ZonedDateTime.ofInstant(now, TAIPEI)
                 .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm (EEEE)"));
+        String openTasks = taskRepository.findByStatusIn(java.util.EnumSet.of(
+                        TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.REMINDED, TaskStatus.ESCALATED))
+                .stream().map(task -> "%d:%s%s".formatted(task.getId(), task.getTitle(),
+                        task.getDueAt() == null ? "" : "@" + task.getDueAt()))
+                .collect(Collectors.joining("、"));
+        String schedules = scheduleRepository.findByStatusInOrderByStartAtAsc(java.util.EnumSet.of(
+                        ScheduleStatus.PROPOSED, ScheduleStatus.CONFIRMED, ScheduleStatus.PENDING))
+                .stream().limit(30).map(item -> "%d:%s@%s".formatted(
+                        item.getId(), item.getTitle(), item.getStartAt()))
+                .collect(Collectors.joining("、"));
+        String shopping = itemRepository.findAll().stream()
+                .filter(item -> item.isShoppingNeeded() || item.getInventoryQuantity() > 0)
+                .map(item -> "%s(庫存%d%s)".formatted(item.getName(), item.getInventoryQuantity(),
+                        item.isShoppingNeeded() ? ",待買" : ""))
+                .collect(Collectors.joining("、"));
 
         return chatClient.prompt()
-                .system(SYSTEM_PROMPT)
+                .system(SYSTEM_PROMPT + LIFESTYLE_RULES + "\n能力目錄:\n" + capabilityCatalog)
                 .user("""
                         現在時間(台北):%s
                         已知地點:%s
+                        未完成待辦:%s
+                        可操作行程:%s
+                        物品狀態:%s
+                        短期上下文:%s
 
                         使用者說:%s
-                        """.formatted(nowTaipei, knownPlaces.isBlank() ? "(無)" : knownPlaces, text))
+                        """.formatted(nowTaipei, knownPlaces.isBlank() ? "(無)" : knownPlaces,
+                        openTasks.isBlank() ? "(無)" : openTasks,
+                        schedules.isBlank() ? "(無)" : schedules,
+                        shopping.isBlank() ? "(無)" : shopping,
+                        context, text))
                 .call()
                 .entity(IntentScript.class);
+    }
+
+    private static String readCapabilityCatalog() {
+        try {
+            return new ClassPathResource("conversation-capabilities.txt")
+                    .getContentAsString(StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            throw new IllegalStateException("conversation capability catalog missing", e);
+        }
     }
 }

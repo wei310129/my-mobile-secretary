@@ -10,6 +10,7 @@ import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.LocationEventRepository;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.BufferRuleService;
+import com.aproject.aidriven.mymobilesecretary.knowledge.application.PlanningPreferenceService;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityResult;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
@@ -52,6 +53,9 @@ class FeasibilityServiceTest {
     @Mock
     private BufferRuleService bufferRuleService;
 
+    @Mock
+    private PlanningPreferenceService planningPreferenceService;
+
     private FeasibilityService service;
 
     @BeforeEach
@@ -61,10 +65,12 @@ class FeasibilityServiceTest {
                 scheduleItemRepository, placeRepository, locationEventRepository,
                 new StraightLineTravelTimeEstimator(new FeasibilityProperties(25, Duration.ofMinutes(10))),
                 bufferRuleService,
+                planningPreferenceService,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         // 預設沒有緩衝習慣;個別測試再覆寫
         lenient().when(bufferRuleService.recommendedBuffer(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Duration.ZERO);
+        lenient().when(planningPreferenceService.extraTransferBuffer()).thenReturn(Duration.ZERO);
     }
 
     /** 建立有 id 的行程(排除自身邏輯需要 id)。 */

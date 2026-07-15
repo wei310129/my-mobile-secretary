@@ -9,4 +9,8 @@ public interface ItemRepository extends JpaRepository<Item, Long> {
     boolean existsByName(String name);
 
     java.util.Optional<Item> findByName(String name);
+
+    java.util.Optional<Item> findByNameIgnoreCase(String name);
+
+    java.util.List<Item> findByShoppingNeededTrueOrderByNameAsc();
 }

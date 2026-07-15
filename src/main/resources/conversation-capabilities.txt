@@ -1,0 +1,100 @@
+001|幫我記得買牛奶|CREATE_TASK|title=買牛奶;category=SHOPPING
+002|我等等要打電話給媽媽|CREATE_TASK|title=打電話給媽媽;時間模糊時附 clarificationQuestion
+003|明天之前要把報告交掉|CREATE_TASK|title=交報告;dueAt=明天期限;category=WORK
+004|欸，牙膏快沒了|UNKNOWN|reason=要幫你加進購物清單嗎
+005|記一下：去郵局領掛號|CREATE_TASK|title=去郵局領掛號
+006|有件事，週五前要繳電費|CREATE_TASK|title=繳電費;dueAt=週五;category=FINANCE
+007|拜託提醒我回王小姐|CREATE_TASK|title=回王小姐;clarificationQuestion=想在什麼時候提醒
+008|我怕忘記帶健保卡|UNKNOWN|reason=要在什麼時間或到哪裡時提醒
+009|下班要去拿衣服|CREATE_TASK|title=拿衣服;無法確定下班時間時回問
+010|這週找一天整理房間|CREATE_TASK|title=整理房間;並可另輸出 SUGGEST_FREE_SLOT
+011|半小時後叫我關火|CREATE_TASK|title=關火;dueAt=現在加30分鐘
+012|明早七點叫我起床|CREATE_TASK|title=起床;dueAt=明日07:00
+013|每月五號提醒我繳房租|CREATE_TASK|title=繳房租;options.recurrence=MONTHLY;dueAt=下一個五號
+014|藥每天晚餐後吃|CREATE_TASK|title=吃藥;options.recurrence=DAILY;dueAt=下一個晚餐預設時間並說明
+015|會議前十分鐘提醒我|ADD_SCHEDULE_REMINDER|options.leadMinutes=10;用上下文或會議名稱
+016|週六下午提醒我買菜|CREATE_TASK|title=買菜;下午不夠精確時 clarificationQuestion
+017|到兩點還沒回信就再提醒我|CREATE_TASK|title=確認是否回信;dueAt=14:00;完成後自然不提醒
+018|今天沒做完，明早再叫我|RESCHEDULE_TASK|用上一個待辦;dueAt=明早
+019|一小時後再跟我說一次|SHIFT_CONTEXT_LATER|options.referenceKind=TASK;options.shiftMinutes=60
+020|晚點提醒我一下|UNKNOWN|reason=要提醒什麼、幾點
+021|明天下午三點跟小陳開會|CREATE_SCHEDULE|title=跟小陳開會;估合理時長
+022|幫我排週五晚上剪頭髮|CREATE_SCHEDULE|title=剪頭髮;晚上太模糊時回問或提出空檔
+023|下週二九點到十一點上課|CREATE_SCHEDULE|title=上課;明確區間
+024|星期天跟爸媽吃飯，大概中午|CREATE_SCHEDULE|title=跟爸媽吃飯;中午用暫定時間並在回覆標明
+025|7月20號下午兩點看牙醫|CREATE_SCHEDULE|title=看牙醫;估合理時長
+026|今晚八點線上讀書會，不用留交通時間|CREATE_SCHEDULE|title=線上讀書會;placeName留空
+027|明早去銀行，抓一小時|CREATE_SCHEDULE|title=去銀行;duration=60分鐘
+028|下午兩點開會，應該半小時|CREATE_SCHEDULE|title=開會;duration=30分鐘
+029|下週找個沒行程的晚上去健身|SUGGEST_FREE_SLOT|options.timeOfDay=EVENING;options.durationMinutes=60;只提候選
+030|把採買塞在接小孩之前|CREATE_RELATIVE_SCHEDULE|title=採買;options.referenceTitle=接小孩;referenceKind=BEFORE
+031|今天有什麼事|LIST_AGENDA|options.filter=TODAY
+032|我等等要幹嘛|LIST_AGENDA|options.filter=NEXT
+033|這週哪天最空|SUGGEST_FREE_SLOT|options.filter=FREEST_DAY;startAt/endAt=本週
+034|還有哪些待辦沒做|LIST_TASKS|options.filter=ALL
+035|有什麼快到期|LIST_TASKS|options.filter=UPCOMING_DUE
+036|明天第一個行程是什麼|LIST_SCHEDULES|options.filter=TOMORROW_FIRST
+037|我的拿包裹排幾點|ASK_TASK_INFO|title=拿包裹
+038|週五下午有空嗎|ASK_AVAILABILITY|startAt/endAt=週五下午時間窗
+039|剛剛新增了什麼|LIST_RECENT|列最近五筆
+040|今天只列工作相關的|LIST_AGENDA|options.filter=WORK_TODAY;category=WORK
+041|牛奶買到了|COMPLETE_TASK|title=牛奶
+042|電費繳好了|COMPLETE_TASK|title=電費
+043|那個牙醫取消|CANCEL_SCHEDULE|使用上下文;沒有上下文才回問
+044|明天的會議改四點|RESCHEDULE_SCHEDULE|title=會議;startAt=明天16:00
+045|拿包裹延到後天|RESCHEDULE_TASK|title=拿包裹;dueAt=後天
+046|不用提醒我回王小姐了|CANCEL_TASK|title=回王小姐
+047|全部待辦都取消|CANCEL_ALL_TASKS|不得要求逐筆關鍵字
+048|只取消第二個|CANCEL_TASK|options.ordinal=2;依上一份待辦清單
+049|不是三點，是四點半|RESCHEDULE_TASK|省略 title 時使用上一個待辦;dueAt=16:30
+050|剪頭髮改星期六，時間不變|RESCHEDULE_SCHEDULE|title=剪頭髮;保留原本時分與時長
+051|到公司提醒我交報告|BIND_TASK_PLACE|title=交報告;placeName=公司;triggerType=ENTER
+052|離開家提醒我帶垃圾|BIND_TASK_PLACE|title=帶垃圾;placeName=家;triggerType=EXIT
+053|經過全聯叫我買牛奶|BIND_TASK_PLACE|title=買牛奶;placeName=全聯;triggerType=ENTER
+054|拿包裹是在蝦皮中興二店|BIND_TASK_PLACE|title=拿包裹;placeName=蝦皮中興二店;絕不另建任務
+055|幫我記住，全聯是中興路那間|SET_PLACE_ALIAS|options.alias=全聯;placeName=中興路那間
+056|到醫院附近就提醒我掛號|BIND_TASK_PLACE|title=掛號;placeName=醫院;triggerType=ENTER
+057|離健身房五百公尺再提醒我|BIND_TASK_PLACE|placeName=健身房;triggerType=EXIT;radiusMeters=500
+058|回到家再跟我說|SET_CONTEXT_PLACE|placeName=家;referenceKind=TASK;triggerType=ENTER
+059|這件事綁在公司|SET_CONTEXT_PLACE|placeName=公司;referenceKind=TASK
+060|包裹要去哪裡拿|ASK_TASK_PLACE|title=包裹
+061|購物清單加雞蛋跟牛奶|ADD_SHOPPING_ITEMS|itemNames=[雞蛋,牛奶]
+062|牛奶不用買了|REMOVE_SHOPPING_ITEM|itemNames=[牛奶]
+063|我還缺什麼|LIST_SHOPPING_ITEMS|列 shoppingNeeded=true
+064|同樣的東西不要重複加|SOCIAL|回覆購物清單已天然去重
+065|這張發票幫我記一下|RECEIPT_IMAGE|走 LINE 圖片收據解析，不進文字 intent
+066|這次全聯的牛奶多少錢|ASK_PRICE_HISTORY|title=牛奶
+067|哪裡買洗衣精比較便宜|ASK_PRICE_COMPARISON|title=洗衣精
+068|醬油快用完了，提醒我補貨|ADD_SHOPPING_ITEMS+CREATE_TASK|itemNames=[醬油];建立補貨待辦
+069|家裡還有兩包衛生紙|SET_INVENTORY|itemNames=[衛生紙];quantity=2
+070|下次去Costco提醒買咖啡豆|ADD_SHOPPING_ITEMS+CREATE_TASK|itemNames=[咖啡豆];再綁 Costco ENTER
+071|我附近有什麼可以順便做|SUGGEST_NEARBY|使用預設時窗並說明
+072|接下來兩小時能做什麼|SUGGEST_NEARBY|windowHours=2
+073|下班回家路上能順便辦哪些事|SUGGEST_ROUTE_TASKS|placeName=家
+074|明天會下雨嗎|ASK_WEATHER|回目前可取得的預報時段並誠實說明
+075|如果會下雨就提醒我帶傘|CREATE_WEATHER_REMINDER|title=帶傘;dueAt=明日出門時段;condition=RAIN
+076|去台北車站要多久|ASK_TRAVEL_TIME|placeName=台北車站;從最後位置估算
+077|幾點出門才不會遲到|ASK_DEPARTURE_TIME|用目前行程上下文或明講目的地/抵達時間
+078|路上塞車的話提早提醒我|CREATE_TRAFFIC_WATCH|用下一行程地點;leadMinutes=30
+079|這兩個行程來得及嗎|CHECK_FEASIBILITY|title與referenceTitle放兩個行程
+080|幫我留吃飯跟交通時間|SET_PLANNING_BUFFER|bufferMinutes=交通;durationMinutes=用餐
+081|好，就這樣|ACCEPT_CONTEXT|確認上一個 PROPOSED 行程
+082|可以，幫我排|ACCEPT_CONTEXT|確認上一個提案
+083|不要，換晚一點|SHIFT_CONTEXT_LATER|referenceKind=SCHEDULE;shiftMinutes=60
+084|那地點呢|ASK_TASK_PLACE|依 lastAction 判斷待辦或行程，無法判斷才回問
+085|改成我公司|SET_CONTEXT_PLACE|placeName=公司;referenceKind依上下文
+086|還是算了|CANCEL_CONTEXT|放棄上一個提案，不建立待辦
+087|也加一個提醒|ADD_SCHEDULE_REMINDER|使用上一個行程;leadMinutes預設10
+088|提前半小時|RESCHEDULE_TASK|使用上一個提醒待辦;dueAt=原時間減30分鐘
+089|她改到星期五|RESCHEDULE_SCHEDULE|只有上下文能唯一辨識「她」才改，否則 UNKNOWN
+090|跟上一個一樣|COPY_CONTEXT|複製上一個設定，新標題或日期缺少時回問
+091|取消買排骨，醬油也不用買，拿包裹改六點|CANCEL_TASK+CANCEL_TASK+RESCHEDULE_TASK|依語句順序輸出三個 command
+092|明天下午三點提醒拿包裹，地點是蝦皮中興二店|CREATE_TASK|dueAt與placeName同時填;建立後綁 ENTER
+093|幫我排週五聚餐，然後前一天提醒訂位|CREATE_SCHEDULE+CREATE_TASK|兩個 command，提醒 dueAt=行程前一天
+094|牛奶買到了，再把雞蛋加進清單|COMPLETE_TASK+ADD_SHOPPING_ITEMS|依順序執行
+095|明天三點提醒我|UNKNOWN|保留 dueAt 並回問提醒內容，不建立空標題任務
+096|下午找我一下|UNKNOWN|回問日期、時間與事項
+097|下週五|FOLLOW_UP|必須結合 lastAssistantText 的缺欄位；沒有待補問題就 UNKNOWN
+098|你怎麼又建立重複任務了|FEEDBACK|reason=DUPLICATE;列出重複候選並詢問是否清理
+099|你沒問我要去哪裡|FEEDBACK|reason=MISSING_PLACE;承認後立即針對上一個待辦追問地點
+100|謝謝，今天先這樣|SOCIAL|友善結束，不得建立任務

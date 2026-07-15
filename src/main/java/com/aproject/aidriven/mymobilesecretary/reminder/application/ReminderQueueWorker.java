@@ -21,15 +21,21 @@ public class ReminderQueueWorker {
     private final ReminderScheduleService scheduleService;
     private final ReminderTriggerService triggerService;
     private final ReminderEscalationService escalationService;
+    private final ReminderConditionService conditionService;
+    private final TaskService taskService;
     private final Clock clock;
 
     public ReminderQueueWorker(ReminderScheduleService scheduleService,
                                ReminderTriggerService triggerService,
                                ReminderEscalationService escalationService,
+                               ReminderConditionService conditionService,
+                               TaskService taskService,
                                Clock clock) {
         this.scheduleService = scheduleService;
         this.triggerService = triggerService;
         this.escalationService = escalationService;
+        this.conditionService = conditionService;
+        this.taskService = taskService;
         this.clock = clock;
     }
 
@@ -50,13 +56,22 @@ public class ReminderQueueWorker {
             try {
                 switch (entry.kind()) {
                     // 任務到期:交給觸發服務(狀態與 debounce 守門在裡面)
-                    case DUE -> triggerService.tryTrigger(entry.id(), "任務到期");
+                    case DUE -> processDue(entry.id(), now);
                     // 升級催促:交給升級服務(確認狀態檢查在裡面)
                     case ESCALATION -> escalationService.escalate(entry.id(), entry.attempt());
                 }
             } catch (Exception e) {
                 log.error("Failed to process schedule entry [{}]", entry, e);
             }
+        }
+    }
+
+    private void processDue(long taskId, Instant now) {
+        switch (conditionService.evaluate(taskId)) {
+            case TRIGGER -> triggerService.tryTrigger(taskId, "任務到期")
+                    .ifPresent(ignored -> taskService.scheduleNextRecurringOccurrence(taskId));
+            case SKIP -> taskService.skipConditionalTask(taskId);
+            case RETRY -> scheduleService.scheduleDueReminder(taskId, now.plusSeconds(15 * 60));
         }
     }
 }

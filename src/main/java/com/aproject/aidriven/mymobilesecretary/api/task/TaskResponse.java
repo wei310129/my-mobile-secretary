@@ -12,6 +12,9 @@ public record TaskResponse(
         String description,
         TaskStatus status,
         TaskPriority priority,
+        Task.Category category,
+        Task.Recurrence recurrence,
+        Task.ConditionType conditionType,
         Instant dueAt,
         Instant createdAt,
         Instant updatedAt
@@ -25,6 +28,9 @@ public record TaskResponse(
                 task.getDescription(),
                 task.getStatus(),
                 task.getPriority(),
+                task.getCategory(),
+                task.getRecurrence(),
+                task.getConditionType(),
                 task.getDueAt(),
                 task.getCreatedAt(),
                 task.getUpdatedAt());

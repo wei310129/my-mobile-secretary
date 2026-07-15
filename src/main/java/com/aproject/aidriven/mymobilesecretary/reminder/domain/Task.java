@@ -36,6 +36,25 @@ public class Task {
     @Column(nullable = false, length = 10)
     private TaskPriority priority;
 
+    /** 生活領域分類,供「今天只列工作相關」等查詢使用。 */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Category category = Category.OTHER;
+
+    /** 待辦／提醒的重複週期。 */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Recurrence recurrence = Recurrence.NONE;
+
+    /** 到期時是否還要先檢查外部條件。 */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private ConditionType conditionType = ConditionType.NONE;
+
+    /** 條件參數。格式由 application 層建立與解讀,domain 只保存。 */
+    @Column(length = 1000)
+    private String conditionPayload;
+
     private Instant dueAt;
 
     @Column(nullable = false)
@@ -49,10 +68,21 @@ public class Task {
     }
 
     private Task(String title, String description, TaskPriority priority, Instant dueAt, Instant now) {
+        this(title, description, priority, dueAt, Category.OTHER, Recurrence.NONE,
+                ConditionType.NONE, null, now);
+    }
+
+    private Task(String title, String description, TaskPriority priority, Instant dueAt,
+                 Category category, Recurrence recurrence,
+                 ConditionType conditionType, String conditionPayload, Instant now) {
         this.title = title;
         this.description = description;
         this.status = TaskStatus.CREATED;
         this.priority = priority;
+        this.category = category == null ? Category.OTHER : category;
+        this.recurrence = recurrence == null ? Recurrence.NONE : recurrence;
+        this.conditionType = conditionType == null ? ConditionType.NONE : conditionType;
+        this.conditionPayload = conditionPayload;
         this.dueAt = dueAt;
         this.createdAt = now;
         this.updatedAt = now;
@@ -65,6 +95,36 @@ public class Task {
      */
     public static Task create(String title, String description, TaskPriority priority, Instant dueAt, Instant now) {
         return new Task(title, description, priority, dueAt, now);
+    }
+
+    /** 建立含分類、週期或外部條件的任務。 */
+    public static Task create(String title, String description, TaskPriority priority, Instant dueAt,
+                              Category category, Recurrence recurrence,
+                              ConditionType conditionType, String conditionPayload, Instant now) {
+        return new Task(title, description, priority, dueAt, category, recurrence,
+                conditionType, conditionPayload, now);
+    }
+
+    public enum Category {
+        WORK,
+        PERSONAL,
+        SHOPPING,
+        HEALTH,
+        FINANCE,
+        OTHER
+    }
+
+    public enum Recurrence {
+        NONE,
+        DAILY,
+        WEEKLY,
+        MONTHLY
+    }
+
+    public enum ConditionType {
+        NONE,
+        RAIN,
+        TRAFFIC
     }
 
     /**
@@ -93,6 +153,23 @@ public class Task {
                     "Task %d is closed (%s), dueAt cannot change".formatted(id, status));
         }
         this.dueAt = newDueAt;
+        this.updatedAt = now;
+    }
+
+    /**
+     * 重複任務完成一輪或送出本輪提醒後,移到下一次並保持開啟。
+     * 這不是一般狀態轉換:它代表同一條週期規則的新 occurrence。
+     */
+    public void advanceOccurrence(Instant nextDueAt, Instant now) {
+        if (recurrence == Recurrence.NONE) {
+            throw new BusinessException("TASK_NOT_RECURRING", "Task %d is not recurring".formatted(id));
+        }
+        if (status == TaskStatus.CANCELED || status == TaskStatus.CONFIRMED) {
+            throw new BusinessException("INVALID_STATE_TRANSITION",
+                    "Task %d is closed (%s), cannot advance recurrence".formatted(id, status));
+        }
+        this.dueAt = nextDueAt;
+        this.status = TaskStatus.SCHEDULED;
         this.updatedAt = now;
     }
 
@@ -151,6 +228,22 @@ public class Task {
 
     public TaskPriority getPriority() {
         return priority;
+    }
+
+    public Category getCategory() {
+        return category;
+    }
+
+    public Recurrence getRecurrence() {
+        return recurrence;
+    }
+
+    public ConditionType getConditionType() {
+        return conditionType;
+    }
+
+    public String getConditionPayload() {
+        return conditionPayload;
     }
 
     public Instant getDueAt() {

@@ -33,10 +33,51 @@ public record IntentCommand(
         Integer overrunMinutes,
         String outcomeReason,
         Integer windowHours,
-        Boolean recurring
+        Boolean recurring,
+        IntentOptions options
 ) {
 
+    /** 舊的 13 欄 command 仍可用;新增能力才需要 options。 */
+    public IntentCommand(Type type, String title, String dueAt, String startAt, String endAt,
+                         String placeName, String priority, String reason, Boolean onTime,
+                         Integer overrunMinutes, String outcomeReason, Integer windowHours,
+                         Boolean recurring) {
+        this(type, title, dueAt, startAt, endAt, placeName, priority, reason, onTime,
+                overrunMinutes, outcomeReason, windowHours, recurring, null);
+    }
+
+    public IntentOptions safeOptions() {
+        return options == null ? IntentOptions.empty() : options;
+    }
+
     public enum Type {
+        ADD_SCHEDULE_REMINDER,
+        SUGGEST_FREE_SLOT,
+        CREATE_RELATIVE_SCHEDULE,
+        LIST_AGENDA,
+        ASK_TASK_INFO,
+        ASK_AVAILABILITY,
+        LIST_RECENT,
+        SUGGEST_ROUTE_TASKS,
+        SET_PLACE_ALIAS,
+        ADD_SHOPPING_ITEMS,
+        REMOVE_SHOPPING_ITEM,
+        LIST_SHOPPING_ITEMS,
+        SET_INVENTORY,
+        ASK_PRICE_COMPARISON,
+        ASK_WEATHER,
+        CREATE_WEATHER_REMINDER,
+        ASK_TRAVEL_TIME,
+        ASK_DEPARTURE_TIME,
+        CREATE_TRAFFIC_WATCH,
+        CHECK_FEASIBILITY,
+        SET_PLANNING_BUFFER,
+        ACCEPT_CONTEXT,
+        SHIFT_CONTEXT_LATER,
+        CANCEL_CONTEXT,
+        SET_CONTEXT_PLACE,
+        COPY_CONTEXT,
+        SOCIAL,
         /** 建任務(待辦,無固定時段;可有期限)。 */
         CREATE_TASK,
         /** 建行程(有明確開始/結束時段的承諾)。 */

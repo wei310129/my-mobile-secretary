@@ -138,6 +138,12 @@ public class ScheduleItem {
         this.endAt = newEndAt;
     }
 
+    /** 修改行程地點後要重新驗算交通可行性,因此回到 PROPOSED。 */
+    public void changePlace(Long newPlaceId, Instant now) {
+        transitionTo(ScheduleStatus.PROPOSED, now);
+        this.placeId = newPlaceId;
+    }
+
     private void transitionTo(ScheduleStatus target, Instant now) {
         if (!status.canTransitionTo(target)) {
             throw new BusinessException(

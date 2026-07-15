@@ -16,4 +16,12 @@ public interface IntentInterpreter {
      * @throws RuntimeException 解析失敗(呼叫端必須 fallback,不得讓核心不可用)
      */
     IntentScript interpret(String text, Instant now);
+
+    /**
+     * 帶短期對話上下文的解析。既有 stub/替代實作不用修改;
+     * 真實解析器可覆寫以理解「上一個、第二個、那件事」。
+     */
+    default IntentScript interpret(String text, Instant now, ConversationSnapshot context) {
+        return interpret(text, now);
+    }
 }

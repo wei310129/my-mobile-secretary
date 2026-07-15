@@ -4,6 +4,7 @@ import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.LocationEventRepository;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.BufferRuleService;
+import com.aproject.aidriven.mymobilesecretary.knowledge.application.PlanningPreferenceService;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityResult;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
@@ -44,6 +45,7 @@ public class FeasibilityService {
     private final LocationEventRepository locationEventRepository;
     private final TravelTimeEstimator travelTimeEstimator;
     private final BufferRuleService bufferRuleService;
+    private final PlanningPreferenceService planningPreferenceService;
     private final Clock clock;
 
     public FeasibilityService(ScheduleItemRepository scheduleItemRepository,
@@ -51,12 +53,14 @@ public class FeasibilityService {
                               LocationEventRepository locationEventRepository,
                               TravelTimeEstimator travelTimeEstimator,
                               BufferRuleService bufferRuleService,
+                              PlanningPreferenceService planningPreferenceService,
                               Clock clock) {
         this.scheduleItemRepository = scheduleItemRepository;
         this.placeRepository = placeRepository;
         this.locationEventRepository = locationEventRepository;
         this.travelTimeEstimator = travelTimeEstimator;
         this.bufferRuleService = bufferRuleService;
+        this.planningPreferenceService = planningPreferenceService;
         this.clock = clock;
     }
 
@@ -145,7 +149,9 @@ public class FeasibilityService {
             ScheduleItem prev = previous.get();
             // 緩衝規則:前一行程的地點若有超時習慣,實際能動身的時間比表定 endAt 晚
             Duration overrunBuffer = bufferRuleService.recommendedBuffer(prev.getPlaceId());
-            Duration gap = Duration.between(prev.getEndAt(), candidate.getStartAt()).minus(overrunBuffer);
+            Duration preferenceBuffer = planningPreferenceService.extraTransferBuffer();
+            Duration gap = Duration.between(prev.getEndAt(), candidate.getStartAt())
+                    .minus(overrunBuffer).minus(preferenceBuffer);
             return () -> {
                 Duration need = travelTimeEstimator.estimate(
                         prevPlace.getLatitude(), prevPlace.getLongitude(),
@@ -205,7 +211,9 @@ public class FeasibilityService {
         }
         // 緩衝規則:候選行程自己的地點若有超時習慣,實際結束比表定 endAt 晚
         Duration overrunBuffer = bufferRuleService.recommendedBuffer(candidate.getPlaceId());
-        Duration gap = Duration.between(candidate.getEndAt(), next.getStartAt()).minus(overrunBuffer);
+        Duration preferenceBuffer = planningPreferenceService.extraTransferBuffer();
+        Duration gap = Duration.between(candidate.getEndAt(), next.getStartAt())
+                .minus(overrunBuffer).minus(preferenceBuffer);
         return () -> {
             Duration need = travelTimeEstimator.estimate(
                     candidatePlace.getLatitude(), candidatePlace.getLongitude(),

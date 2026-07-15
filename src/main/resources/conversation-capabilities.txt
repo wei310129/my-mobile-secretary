@@ -178,3 +178,13 @@
 178|接下來早上的行程有哪些|LIST_SCHEDULES|options.filter=MORNING
 179|今天的行程有撞時間嗎|CHECK_SCHEDULE_CONFLICTS|options.filter=TODAY
 180|幫我檢查這週行程衝突|CHECK_SCHEDULE_CONFLICTS|options.filter=WEEK
+181|我現在先做哪件事|SUGGEST_NEXT_TASK|固定規則：逾期、今天到期、優先級、期限
+182|目前最急的是什麼|SUGGEST_NEXT_TASK|同一批資料必須得到可重現建議
+183|把我的待辦按分類整理|GROUP_TASKS_BY_CATEGORY|列工作、個人、購物、健康、財務、其他
+184|各分類還有幾件事情|GROUP_TASKS_BY_CATEGORY|同時回各分類數量與項目
+185|我今天的待辦完成進度如何|ASK_TASK_PROGRESS|options.filter=TODAY
+186|這週待辦完成幾成了|ASK_TASK_PROGRESS|options.filter=WEEK;以台北時區本週一到週日計算
+187|哪些高優先待辦快到期|LIST_TASKS|options.filter=HIGH_AND_DUE;未來三天
+188|哪些待辦是固定提醒|LIST_TASKS|options.filter=RECURRING
+189|哪些固定提醒目前暫停中|LIST_TASKS|options.filter=PAUSED_RECURRING
+190|下一件工作待辦是什麼|SUGGEST_NEXT_TASK|options.category=WORK

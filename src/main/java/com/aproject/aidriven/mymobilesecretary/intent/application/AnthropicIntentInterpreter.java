@@ -123,6 +123,10 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 問下一個行程與倒數用 ASK_NEXT_SCHEDULE;問兩行程純時間間隔用 ASK_SCHEDULE_GAP。
               按日期整理用 GROUP_SCHEDULES_BY_DAY;找已確認行程重疊用 CHECK_SCHEDULE_CONFLICTS。
               LIST_SCHEDULES 可搭配 WEEKEND、MORNING、AFTERNOON、EVENING、WITH_PLACE、NO_PLACE filter。
+            - 問「現在先做什麼／最急的是什麼」用 SUGGEST_NEXT_TASK;只問某分類時填 options.category。
+              按分類整理或統計用 GROUP_TASKS_BY_CATEGORY;問今日／本週完成進度用 ASK_TASK_PROGRESS,
+              今日填 filter=TODAY、本週填 filter=WEEK。LIST_TASKS 可搭配 HIGH_AND_DUE、RECURRING、
+              PAUSED_RECURRING filter;這些都是查詢,不可改動待辦。
             - 行程只改長度／結束時間用 RESIZE_SCHEDULE;durationMinutes 是新總時長,
               shiftMinutes 是結束時間增減分鐘(縮短可為負數)。
             - 下方能力目錄是規範性 few-shot。A+B 代表輸出兩個 command,不是不存在的 type;

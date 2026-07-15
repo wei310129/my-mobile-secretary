@@ -14,6 +14,7 @@ import com.aproject.aidriven.mymobilesecretary.planner.application.RouteSuggesti
 import com.aproject.aidriven.mymobilesecretary.planner.application.TravelPlanningService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.WeatherAdvisoryService;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
+import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskInsightService;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.ReminderPreferenceService;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.ReminderPreference;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
@@ -58,6 +59,7 @@ public class LifestyleIntentService {
     private final ConversationContextService contextService;
     private final ReminderPreferenceService reminderPreferenceService;
     private final ScheduleInsightService scheduleInsightService;
+    private final TaskInsightService taskInsightService;
     private final Clock clock;
 
     public LifestyleIntentService(TaskService taskService, ScheduleService scheduleService,
@@ -71,6 +73,7 @@ public class LifestyleIntentService {
                                   ConversationContextService contextService,
                                   ReminderPreferenceService reminderPreferenceService,
                                   ScheduleInsightService scheduleInsightService,
+                                  TaskInsightService taskInsightService,
                                   Clock clock) {
         this.taskService = taskService;
         this.scheduleService = scheduleService;
@@ -87,6 +90,7 @@ public class LifestyleIntentService {
         this.contextService = contextService;
         this.reminderPreferenceService = reminderPreferenceService;
         this.scheduleInsightService = scheduleInsightService;
+        this.taskInsightService = taskInsightService;
         this.clock = clock;
     }
 
@@ -161,6 +165,9 @@ public class LifestyleIntentService {
             case ASK_SCHEDULE_GAP -> scheduleGap(command, o);
             case GROUP_SCHEDULES_BY_DAY -> groupSchedules(o);
             case CHECK_SCHEDULE_CONFLICTS -> checkScheduleConflicts(o);
+            case SUGGEST_NEXT_TASK -> suggestNextTask(o);
+            case GROUP_TASKS_BY_CATEGORY -> groupTasksByCategory();
+            case ASK_TASK_PROGRESS -> taskProgress(o);
             default -> throw new IllegalArgumentException("not a lifestyle command: " + command.type());
         };
     }
@@ -693,6 +700,66 @@ public class LifestyleIntentService {
         return IntentResult.message(IntentResult.Action.SCHEDULE_CONFLICTS_CHECKED, message);
     }
 
+    private IntentResult suggestNextTask(IntentOptions o) {
+        Task.Category category = o.category() == null ? null : parseCategory(o.category());
+        Optional<Task> found = taskInsightService.recommendNext(category);
+        if (found.isEmpty()) {
+            return IntentResult.message(IntentResult.Action.NEXT_TASK_SUGGESTED,
+                    category == null ? "目前沒有未完成待辦。" : "目前沒有這個分類的未完成待辦。");
+        }
+        Task task = found.get();
+        contextService.rememberTask(task);
+        String reason;
+        Instant now = Instant.now(clock);
+        if (task.getDueAt() != null && task.getDueAt().isBefore(now)) {
+            reason = "已逾期";
+        } else if (task.getDueAt() != null
+                && LocalDate.ofInstant(task.getDueAt(), TAIPEI)
+                .equals(LocalDate.ofInstant(now, TAIPEI))) {
+            reason = "今天到期";
+        } else if (task.getPriority() == TaskPriority.HIGH) {
+            reason = "高優先";
+        } else if (task.getDueAt() != null) {
+            reason = "期限最接近";
+        } else {
+            reason = "建立時間最早";
+        }
+        return IntentResult.message(IntentResult.Action.NEXT_TASK_SUGGESTED,
+                "建議先做「%s」：%s%s。".formatted(task.getTitle(), reason,
+                        task.getDueAt() == null ? "" : "，期限 " + format(task.getDueAt())));
+    }
+
+    private IntentResult groupTasksByCategory() {
+        var groups = taskInsightService.groupOpenByCategory();
+        if (groups.isEmpty()) {
+            return IntentResult.message(IntentResult.Action.TASKS_GROUPED_BY_CATEGORY,
+                    "目前沒有未完成待辦。 ");
+        }
+        List<Task> all = groups.values().stream().flatMap(List::stream).toList();
+        contextService.rememberTaskList(all);
+        String message = groups.entrySet().stream()
+                .map(entry -> "%s（%d）\n%s".formatted(categoryLabel(entry.getKey()),
+                        entry.getValue().size(), entry.getValue().stream()
+                                .map(task -> "- " + task.getTitle())
+                                .collect(java.util.stream.Collectors.joining("\n"))))
+                .collect(java.util.stream.Collectors.joining("\n"));
+        return IntentResult.message(IntentResult.Action.TASKS_GROUPED_BY_CATEGORY, message);
+    }
+
+    private IntentResult taskProgress(IntentOptions o) {
+        boolean week = "WEEK".equalsIgnoreCase(o.filter());
+        var progress = taskInsightService.progress(week
+                ? TaskInsightService.Scope.THIS_WEEK : TaskInsightService.Scope.TODAY);
+        if (progress.total() == 0) {
+            return IntentResult.message(IntentResult.Action.TASK_PROGRESS_INFO,
+                    week ? "本週沒有可計算進度的待辦。" : "今天沒有可計算進度的待辦。");
+        }
+        return IntentResult.message(IntentResult.Action.TASK_PROGRESS_INFO,
+                "%s進度 %d/%d（%d%%），還有 %d 件。".formatted(
+                        week ? "本週" : "今天", progress.completed(), progress.total(),
+                        progress.percentage(), progress.remaining()));
+    }
+
     private IntentResult listShoppingAt(IntentCommand command) {
         Place place = resolvePlace(command.placeName()).orElseThrow(() ->
                 new IllegalArgumentException("unknown destination place"));
@@ -930,7 +997,7 @@ public class LifestyleIntentService {
                         && LocalDate.ofInstant(t.getDueAt(), TAIPEI).equals(today);
                 case "TOMORROW" -> t.getDueAt() != null
                         && LocalDate.ofInstant(t.getDueAt(), TAIPEI).equals(today.plusDays(1));
-                case "UPCOMING_DUE" -> t.getDueAt() != null && !t.getDueAt().isBefore(now)
+                case "UPCOMING_DUE", "HIGH_AND_DUE" -> t.getDueAt() != null && !t.getDueAt().isBefore(now)
                         && t.getDueAt().isBefore(now.plus(Duration.ofDays(3)));
                 case "WEEK" -> t.getDueAt() != null && !t.getDueAt().isBefore(now)
                         && !LocalDate.ofInstant(t.getDueAt(), TAIPEI).isAfter(today.plusDays(7));
@@ -941,8 +1008,15 @@ public class LifestyleIntentService {
             Task.Category wanted = parseCategory(o.category());
             boolean category = o.category() == null || wanted == t.getCategory();
             if ("WORK_TODAY".equals(filter)) category = t.getCategory() == Task.Category.WORK;
-            boolean priority = !"HIGH_PRIORITY".equals(filter) || t.getPriority() == TaskPriority.HIGH;
-            return date && category && priority;
+            boolean priority = !("HIGH_PRIORITY".equals(filter) || "HIGH_AND_DUE".equals(filter))
+                    || t.getPriority() == TaskPriority.HIGH;
+            boolean recurrence = switch (filter) {
+                case "RECURRING" -> t.getRecurrence() != Task.Recurrence.NONE;
+                case "PAUSED_RECURRING" -> t.getRecurrence() != Task.Recurrence.NONE
+                        && t.isRecurrencePaused();
+                default -> true;
+            };
+            return date && category && priority && recurrence;
         }).toList();
     }
 
@@ -1027,6 +1101,17 @@ public class LifestyleIntentService {
     private static Task.Category parseCategory(String value) {
         try { return Task.Category.valueOf(value == null ? "OTHER" : value.toUpperCase()); }
         catch (Exception e) { return Task.Category.OTHER; }
+    }
+
+    private static String categoryLabel(Task.Category category) {
+        return switch (category) {
+            case WORK -> "工作";
+            case PERSONAL -> "個人";
+            case SHOPPING -> "購物";
+            case HEALTH -> "健康";
+            case FINANCE -> "財務";
+            case OTHER -> "其他";
+        };
     }
 
     private static int positive(Integer value, int fallback) {

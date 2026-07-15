@@ -98,7 +98,10 @@ public record IntentResult(
         NEXT_SCHEDULE_INFO,
         SCHEDULE_GAP_INFO,
         SCHEDULES_GROUPED_BY_DAY,
-        SCHEDULE_CONFLICTS_CHECKED
+        SCHEDULE_CONFLICTS_CHECKED,
+        NEXT_TASK_SUGGESTED,
+        TASKS_GROUPED_BY_CATEGORY,
+        TASK_PROGRESS_INFO
     }
 
     /** 清單訊息共用:最多列 10 筆,其餘以「…等 N 件」收尾。 */

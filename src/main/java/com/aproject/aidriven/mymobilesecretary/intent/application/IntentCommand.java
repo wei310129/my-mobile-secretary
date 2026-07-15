@@ -109,6 +109,9 @@ public record IntentCommand(
         ASK_SCHEDULE_GAP,
         GROUP_SCHEDULES_BY_DAY,
         CHECK_SCHEDULE_CONFLICTS,
+        SUGGEST_NEXT_TASK,
+        GROUP_TASKS_BY_CATEGORY,
+        ASK_TASK_PROGRESS,
         /** 建任務(待辦,無固定時段;可有期限)。 */
         CREATE_TASK,
         /** 建行程(有明確開始/結束時段的承諾)。 */

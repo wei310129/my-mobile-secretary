@@ -11,14 +11,14 @@ import org.springframework.core.io.ClassPathResource;
 class ConversationCapabilityCatalogTest {
 
     @Test
-    void catalogContainsOneHundredFortyFiveNumberedAndRecognizedScenarios() throws Exception {
+    void catalogContainsOneHundredFiftyFiveNumberedAndRecognizedScenarios() throws Exception {
         var lines = new ClassPathResource("conversation-capabilities.txt")
                 .getContentAsString(StandardCharsets.UTF_8)
                 .lines()
                 .filter(line -> !line.isBlank())
                 .toList();
 
-        assertThat(lines).hasSize(145);
+        assertThat(lines).hasSize(155);
         Set<String> commandTypes = Arrays.stream(IntentCommand.Type.values())
                 .map(Enum::name)
                 .collect(java.util.stream.Collectors.toSet());

@@ -30,6 +30,7 @@ public class ReminderEscalationService {
     private final TaskRepository taskRepository;
     private final ReminderDeliveryService deliveryService;
     private final ReminderScheduleService scheduleService;
+    private final ReminderPreferenceService preferenceService;
     private final ReminderProperties properties;
     private final Clock clock;
 
@@ -37,12 +38,14 @@ public class ReminderEscalationService {
                                      TaskRepository taskRepository,
                                      ReminderDeliveryService deliveryService,
                                      ReminderScheduleService scheduleService,
+                                     ReminderPreferenceService preferenceService,
                                      ReminderProperties properties,
                                      Clock clock) {
         this.reminderRepository = reminderRepository;
         this.taskRepository = taskRepository;
         this.deliveryService = deliveryService;
         this.scheduleService = scheduleService;
+        this.preferenceService = preferenceService;
         this.properties = properties;
         this.clock = clock;
     }
@@ -66,6 +69,11 @@ public class ReminderEscalationService {
         }
 
         Instant now = Instant.now(clock);
+        Optional<Instant> deferred = preferenceService.deferUntil(task, now);
+        if (deferred.isPresent()) {
+            scheduleService.scheduleEscalation(reminderId, attempt, deferred.get());
+            return Optional.empty();
+        }
         reminder.escalate(now);
         task.escalate(now);
 

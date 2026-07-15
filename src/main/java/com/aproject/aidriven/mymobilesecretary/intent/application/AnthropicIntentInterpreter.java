@@ -5,6 +5,7 @@ import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.persistence.ItemRepository;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskStatus;
 import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
+import com.aproject.aidriven.mymobilesecretary.reminder.persistence.ReminderPreferenceRepository;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItemRepository;
 import java.nio.charset.StandardCharsets;
@@ -96,7 +97,7 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - options 可填:filter、ordinal、durationMinutes、leadMinutes、radiusMeters、triggerType、
               recurrence、category、itemNames、quantity、referenceTitle、referenceKind、timeOfDay、
               keepTime、shiftMinutes、condition、fromPlaceName、bufferMinutes、clarificationQuestion、alias。
-              第二波欄位還有 newTitle、description。
+              第二波欄位還有 newTitle、description、quietStart、quietEnd、allowHighPriority。
             - CREATE_TASK 可同時填 dueAt、placeName 與 options。重複提醒填 options.recurrence;
               天氣條件提醒用 CREATE_WEATHER_REMINDER,不要把「如果」忽略。
             - 「今天有什麼事」是 LIST_AGENDA+filter TODAY,不能退化成列全部未完成待辦。
@@ -113,6 +114,9 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               這和把待辦綁 geofence 的 BIND_TASK_PLACE 不同。
             - 「快用完」只根據已盤點且仍大於 0 的數量;LIST_INVENTORY/RESTOCK_LOW_INVENTORY
               用 options.quantity 當上限,不可把從未盤點的 0 猜成缺貨。
+            - 每日固定勿擾用 SET_QUIET_HOURS,quietStart/quietEnd 填 HH:mm;
+              臨時暫停到某時用 MUTE_REMINDERS 並把恢復時間放 dueAt。RESUME_REMINDERS 只取消臨時靜音,
+              CLEAR_QUIET_HOURS 才取消每日固定時段。allowHighPriority 依使用者是否允許緊急提醒。
             - 行程只改長度／結束時間用 RESIZE_SCHEDULE;durationMinutes 是新總時長,
               shiftMinutes 是結束時間增減分鐘(縮短可為負數)。
             - 下方能力目錄是規範性 few-shot。A+B 代表輸出兩個 command,不是不存在的 type;
@@ -124,17 +128,20 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
     private final TaskRepository taskRepository;
     private final ScheduleItemRepository scheduleRepository;
     private final ItemRepository itemRepository;
+    private final ReminderPreferenceRepository reminderPreferenceRepository;
     private final String capabilityCatalog;
 
     public AnthropicIntentInterpreter(ChatModel chatModel, PlaceRepository placeRepository,
                                       TaskRepository taskRepository,
                                       ScheduleItemRepository scheduleRepository,
-                                      ItemRepository itemRepository) {
+                                      ItemRepository itemRepository,
+                                      ReminderPreferenceRepository reminderPreferenceRepository) {
         this.chatClient = ChatClient.create(chatModel);
         this.placeRepository = placeRepository;
         this.taskRepository = taskRepository;
         this.scheduleRepository = scheduleRepository;
         this.itemRepository = itemRepository;
+        this.reminderPreferenceRepository = reminderPreferenceRepository;
         this.capabilityCatalog = readCapabilityCatalog();
     }
 
@@ -166,6 +173,10 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
                 .map(item -> "%s(庫存%d%s)".formatted(item.getName(), item.getInventoryQuantity(),
                         item.isShoppingNeeded() ? ",待買" : ""))
                 .collect(Collectors.joining("、"));
+        String reminderPreference = reminderPreferenceRepository.findById(1)
+                .map(p -> "勿擾=%s-%s,緊急例外=%s,靜音到=%s".formatted(
+                        p.getQuietStart(), p.getQuietEnd(), p.isAllowHighPriority(), p.getMutedUntil()))
+                .orElse("(無)");
 
         return chatClient.prompt()
                 .system(SYSTEM_PROMPT + LIFESTYLE_RULES + "\n能力目錄:\n" + capabilityCatalog)
@@ -175,6 +186,7 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
                         未完成待辦:%s
                         可操作行程:%s
                         物品狀態:%s
+                        提醒偏好:%s
                         短期上下文:%s
 
                         使用者說:%s
@@ -182,7 +194,7 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
                         openTasks.isBlank() ? "(無)" : openTasks,
                         schedules.isBlank() ? "(無)" : schedules,
                         shopping.isBlank() ? "(無)" : shopping,
-                        context, text))
+                        reminderPreference, context, text))
                 .call()
                 .entity(IntentScript.class);
     }

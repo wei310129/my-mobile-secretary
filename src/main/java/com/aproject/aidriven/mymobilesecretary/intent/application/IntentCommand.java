@@ -95,6 +95,11 @@ public record IntentCommand(
         LIST_ITEMS_BY_PLACE,
         GROUP_SHOPPING_BY_PLACE,
         RESTOCK_LOW_INVENTORY,
+        SET_QUIET_HOURS,
+        CLEAR_QUIET_HOURS,
+        MUTE_REMINDERS,
+        RESUME_REMINDERS,
+        ASK_REMINDER_PREFERENCES,
         /** 建任務(待辦,無固定時段;可有期限)。 */
         CREATE_TASK,
         /** 建行程(有明確開始/結束時段的承諾)。 */

@@ -7,6 +7,7 @@ import static org.mockito.ArgumentMatchers.anyLong;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.contains;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -50,14 +51,20 @@ class ReminderEscalationServiceTest {
     @Mock
     private ReminderScheduleService scheduleService;
 
+    @Mock
+    private ReminderPreferenceService preferenceService;
+
     private ReminderEscalationService service;
 
     @BeforeEach
     void setUp() {
         service = new ReminderEscalationService(
                 reminderRepository, taskRepository, deliveryService, scheduleService,
+                preferenceService,
                 new ReminderProperties(Duration.ofMinutes(10), INTERVAL, MAX),
                 Clock.fixed(NOW, ZoneOffset.UTC));
+        lenient().when(preferenceService.deferUntil(any(Task.class), any(Instant.class)))
+                .thenReturn(Optional.empty());
     }
 
     /** 建立「已提醒未確認」的標準場景。 */
@@ -83,6 +90,21 @@ class ReminderEscalationServiceTest {
         verify(deliveryService).deliver(any(Reminder.class), any(Task.class), contains("第 1 次催促"));
         // 未催滿 → 排下一輪
         verify(scheduleService).scheduleEscalation(10L, 2, NOW.plus(INTERVAL));
+    }
+
+    @Test
+    void quietHoursKeepSameAttemptAndDeferEscalation() {
+        Task task = Task.create("買排骨", null, TaskPriority.NORMAL, null, NOW);
+        task.remind(NOW);
+        Reminder reminder = remindedScenario(task);
+        Instant allowedAt = NOW.plus(Duration.ofHours(8));
+        when(preferenceService.deferUntil(task, NOW)).thenReturn(Optional.of(allowedAt));
+
+        assertThat(service.escalate(10L, 2)).isEmpty();
+
+        assertThat(reminder.getStatus()).isEqualTo(ReminderStatus.TRIGGERED);
+        verify(scheduleService).scheduleEscalation(10L, 2, allowedAt);
+        verify(deliveryService, never()).deliver(any(), any(), anyString());
     }
 
     /** 催滿上限 → 通知照送,但不再排下一輪。 */

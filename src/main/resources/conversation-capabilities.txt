@@ -143,3 +143,13 @@
 143|記一下，濾芯在特力屋買|BIND_ITEM_PLACE|title=濾芯;placeName=特力屋;品項不存在時建立
 144|把已知庫存由少到多列出來|LIST_INVENTORY|依數量升冪
 145|庫存三個以下都列為要補貨|RESTOCK_LOW_INVENTORY|options.quantity=3
+146|每天晚上十一點到早上七點不要提醒|SET_QUIET_HOURS|options.quietStart=23:00;quietEnd=07:00;allowHighPriority=true
+147|勿擾改成晚上十點半到六點半|SET_QUIET_HOURS|options.quietStart=22:30;quietEnd=06:30
+148|勿擾時段如果很急還是要叫我|SET_QUIET_HOURS|沿用時段;allowHighPriority=true;時段無上下文則回問
+149|睡覺時連緊急的也不要吵|SET_QUIET_HOURS|沿用時段;allowHighPriority=false;時段無上下文則回問
+150|到明天早上八點前先不要提醒|MUTE_REMINDERS|dueAt=明日08:00
+151|接下來兩小時先安靜|MUTE_REMINDERS|dueAt=現在加2小時
+152|現在恢復提醒|RESUME_REMINDERS|只取消臨時靜音
+153|我現在的勿擾設定是什麼|ASK_REMINDER_PREFERENCES|列固定時段、緊急例外與臨時靜音
+154|取消每天的勿擾時段|CLEAR_QUIET_HOURS|臨時靜音不受影響
+155|午休十二點到一點也不要提醒|SET_QUIET_HOURS|options.quietStart=12:00;quietEnd=13:00;目前單一固定時段會取代舊設定

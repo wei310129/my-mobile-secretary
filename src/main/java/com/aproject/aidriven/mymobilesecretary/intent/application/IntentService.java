@@ -159,7 +159,9 @@ public class IntentService {
                     AGENDA_SUMMARY, RESIZE_SCHEDULE, ADJUST_INVENTORY,
                     LIST_INVENTORY, ASK_ITEM_PLACES, BIND_ITEM_PLACE,
                     LIST_ITEMS_BY_PLACE, GROUP_SHOPPING_BY_PLACE,
-                    RESTOCK_LOW_INVENTORY -> lifestyleIntentService.execute(text, command);
+                    RESTOCK_LOW_INVENTORY, SET_QUIET_HOURS, CLEAR_QUIET_HOURS,
+                    MUTE_REMINDERS, RESUME_REMINDERS,
+                    ASK_REMINDER_PREFERENCES -> lifestyleIntentService.execute(text, command);
             case CREATE_TASK -> {
                 requireText(command.title(), "title");
                 // 防重複(使用者實際踩過:「拿包裹」被建了兩次):同名未結案任務存在就回問

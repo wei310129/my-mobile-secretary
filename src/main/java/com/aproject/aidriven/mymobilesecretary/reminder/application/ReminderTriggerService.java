@@ -27,6 +27,7 @@ public class ReminderTriggerService {
     private final ReminderRepository reminderRepository;
     private final ReminderDeliveryService deliveryService;
     private final ReminderScheduleService scheduleService;
+    private final ReminderPreferenceService preferenceService;
     private final ReminderProperties properties;
     private final Clock clock;
 
@@ -34,12 +35,14 @@ public class ReminderTriggerService {
                                   ReminderRepository reminderRepository,
                                   ReminderDeliveryService deliveryService,
                                   ReminderScheduleService scheduleService,
+                                  ReminderPreferenceService preferenceService,
                                   ReminderProperties properties,
                                   Clock clock) {
         this.taskRepository = taskRepository;
         this.reminderRepository = reminderRepository;
         this.deliveryService = deliveryService;
         this.scheduleService = scheduleService;
+        this.preferenceService = preferenceService;
         this.properties = properties;
         this.clock = clock;
     }
@@ -60,6 +63,13 @@ public class ReminderTriggerService {
         }
 
         Instant now = Instant.now(clock);
+
+        // 勿擾不等於丟掉提醒:同一 task 的 DUE member 改排到最早允許時間。
+        Optional<Instant> deferred = preferenceService.deferUntil(task, now);
+        if (deferred.isPresent()) {
+            scheduleService.scheduleDueReminder(taskId, deferred.get());
+            return Optional.empty();
+        }
 
         // 守門 2:debounce——視窗內已提醒過就跳過
         Instant windowStart = now.minus(properties.debounceWindow());

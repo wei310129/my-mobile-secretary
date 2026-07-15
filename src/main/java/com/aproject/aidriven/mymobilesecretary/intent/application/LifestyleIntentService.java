@@ -14,6 +14,8 @@ import com.aproject.aidriven.mymobilesecretary.planner.application.RouteSuggesti
 import com.aproject.aidriven.mymobilesecretary.planner.application.TravelPlanningService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.WeatherAdvisoryService;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
+import com.aproject.aidriven.mymobilesecretary.reminder.application.ReminderPreferenceService;
+import com.aproject.aidriven.mymobilesecretary.reminder.domain.ReminderPreference;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskPriority;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
@@ -53,6 +55,7 @@ public class LifestyleIntentService {
     private final WeatherAdvisoryService weatherService;
     private final PlanningPreferenceService preferenceService;
     private final ConversationContextService contextService;
+    private final ReminderPreferenceService reminderPreferenceService;
     private final Clock clock;
 
     public LifestyleIntentService(TaskService taskService, ScheduleService scheduleService,
@@ -63,7 +66,9 @@ public class LifestyleIntentService {
                                   TravelPlanningService travelPlanningService,
                                   WeatherAdvisoryService weatherService,
                                   PlanningPreferenceService preferenceService,
-                                  ConversationContextService contextService, Clock clock) {
+                                  ConversationContextService contextService,
+                                  ReminderPreferenceService reminderPreferenceService,
+                                  Clock clock) {
         this.taskService = taskService;
         this.scheduleService = scheduleService;
         this.itemService = itemService;
@@ -77,6 +82,7 @@ public class LifestyleIntentService {
         this.weatherService = weatherService;
         this.preferenceService = preferenceService;
         this.contextService = contextService;
+        this.reminderPreferenceService = reminderPreferenceService;
         this.clock = clock;
     }
 
@@ -137,6 +143,11 @@ public class LifestyleIntentService {
             case LIST_ITEMS_BY_PLACE -> listItemsAt(command);
             case GROUP_SHOPPING_BY_PLACE -> groupShoppingByPlace();
             case RESTOCK_LOW_INVENTORY -> restockLowInventory(o);
+            case SET_QUIET_HOURS -> setQuietHours(o);
+            case CLEAR_QUIET_HOURS -> clearQuietHours();
+            case MUTE_REMINDERS -> muteReminders(command);
+            case RESUME_REMINDERS -> resumeReminders();
+            case ASK_REMINDER_PREFERENCES -> reminderPreferences();
             default -> throw new IllegalArgumentException("not a lifestyle command: " + command.type());
         };
     }
@@ -478,6 +489,64 @@ public class LifestyleIntentService {
                 items.isEmpty() ? "沒有已盤點且低於門檻的庫存。"
                         : "已把低庫存加入購物清單:%s。".formatted(items.stream().map(Item::getName)
                         .collect(java.util.stream.Collectors.joining("、"))));
+    }
+
+    private IntentResult setQuietHours(IntentOptions o) {
+        require(o.quietStart(), "quietStart");
+        require(o.quietEnd(), "quietEnd");
+        java.time.LocalTime start;
+        java.time.LocalTime end;
+        try {
+            start = java.time.LocalTime.parse(o.quietStart());
+            end = java.time.LocalTime.parse(o.quietEnd());
+        } catch (Exception e) {
+            throw new IllegalArgumentException("bad quiet hours");
+        }
+        boolean allowHigh = o.allowHighPriority() == null || o.allowHighPriority();
+        reminderPreferenceService.setQuietHours(start, end, allowHigh);
+        return IntentResult.message(IntentResult.Action.REMINDER_PREFERENCE_UPDATED,
+                "已設定每日 %s–%s 勿擾;%s。".formatted(start, end,
+                        allowHigh ? "緊急待辦仍會提醒" : "緊急待辦也會延後"));
+    }
+
+    private IntentResult clearQuietHours() {
+        reminderPreferenceService.clearQuietHours();
+        return IntentResult.message(IntentResult.Action.REMINDER_PREFERENCE_UPDATED,
+                "已取消固定勿擾時段。 ");
+    }
+
+    private IntentResult muteReminders(IntentCommand command) {
+        Instant until = requiredTime(command.dueAt(), "dueAt");
+        if (!until.isAfter(Instant.now(clock))) {
+            throw new IllegalArgumentException("mute time must be future");
+        }
+        ReminderPreference preference = reminderPreferenceService.muteUntil(until);
+        return IntentResult.message(IntentResult.Action.REMINDER_PREFERENCE_UPDATED,
+                "一般提醒已暫停到 %s;到時會自動恢復%s。".formatted(format(until),
+                        preference.isAllowHighPriority() ? "，緊急待辦仍會提醒" : ""));
+    }
+
+    private IntentResult resumeReminders() {
+        reminderPreferenceService.resumeNow();
+        return IntentResult.message(IntentResult.Action.REMINDER_PREFERENCE_UPDATED,
+                "已取消臨時靜音;固定勿擾時段仍照原設定。 ");
+    }
+
+    private IntentResult reminderPreferences() {
+        Optional<ReminderPreference> found = reminderPreferenceService.preference();
+        if (found.isEmpty()) {
+            return IntentResult.message(IntentResult.Action.REMINDER_PREFERENCE_INFO,
+                    "目前沒有固定勿擾或臨時靜音設定。 ");
+        }
+        ReminderPreference preference = found.get();
+        String quiet = preference.getQuietStart() == null ? "無固定勿擾"
+                : "每日 %s–%s 勿擾(%s緊急提醒)".formatted(
+                preference.getQuietStart(), preference.getQuietEnd(),
+                preference.isAllowHighPriority() ? "保留" : "包含");
+        String mute = preference.getMutedUntil() != null
+                && preference.getMutedUntil().isAfter(Instant.now(clock))
+                ? "，臨時靜音到 " + format(preference.getMutedUntil()) : "";
+        return IntentResult.message(IntentResult.Action.REMINDER_PREFERENCE_INFO, quiet + mute + "。");
     }
 
     private IntentResult listShoppingAt(IntentCommand command) {

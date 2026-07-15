@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -47,14 +48,20 @@ class ReminderTriggerServiceTest {
     @Mock
     private ReminderScheduleService scheduleService;
 
+    @Mock
+    private ReminderPreferenceService preferenceService;
+
     private ReminderTriggerService service;
 
     @BeforeEach
     void setUp() {
         service = new ReminderTriggerService(
                 taskRepository, reminderRepository, deliveryService, scheduleService,
+                preferenceService,
                 new ReminderProperties(WINDOW, ESCALATION_INTERVAL, 3),
                 Clock.fixed(NOW, ZoneOffset.UTC));
+        lenient().when(preferenceService.deferUntil(any(Task.class), any(Instant.class)))
+                .thenReturn(Optional.empty());
     }
 
     @Test
@@ -89,6 +96,19 @@ class ReminderTriggerServiceTest {
 
         assertThat(result).isEmpty();
         assertThat(task.getStatus()).isEqualTo(TaskStatus.CREATED);
+        verify(reminderRepository, never()).save(any());
+    }
+
+    @Test
+    void quietHoursDeferInsteadOfDroppingReminder() {
+        Task task = Task.create("買排骨", null, TaskPriority.NORMAL, null, NOW);
+        when(taskRepository.findById(1L)).thenReturn(Optional.of(task));
+        Instant allowedAt = NOW.plus(Duration.ofHours(8));
+        when(preferenceService.deferUntil(task, NOW)).thenReturn(Optional.of(allowedAt));
+
+        assertThat(service.tryTrigger(1L, "任務到期")).isEmpty();
+
+        verify(scheduleService).scheduleDueReminder(1L, allowedAt);
         verify(reminderRepository, never()).save(any());
     }
 

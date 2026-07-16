@@ -97,7 +97,7 @@ public class LineWebhookController {
             if ((event.isTextMessage() || event.isImageMessage())
                     && !ownerGuard.allows(event.sourceUserId())) {
                 messageLogService.recordSafely(LineMessageLog.Direction.IN, "BLOCKED",
-                        "[非擁有者 %s] %s".formatted(event.sourceUserId(),
+                        "[未授權來源 %s] %s".formatted(event.sourceUserId(),
                                 event.isTextMessage() ? event.message().text() : "(圖片)"));
                 continue;
             }

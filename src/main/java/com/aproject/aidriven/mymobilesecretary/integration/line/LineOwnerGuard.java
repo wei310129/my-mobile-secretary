@@ -10,7 +10,8 @@ import org.springframework.stereotype.Component;
  *
  * 規則:
  * - 已設定 owner-user-id → 只放行擁有者,其他人一律忽略(不回覆,避免與陌生人互動)。
- * - 未設定 → 放行但每次記 warn(附上發訊者 userId,讓擁有者從 log 抄自己的 id 來設定)。
+ * - 未設定 → 全部拒絕(fail-closed),事件仍由 webhook 記成 BLOCKED,
+ *   讓擁有者從紀錄取得自己的 userId 後設定。
  */
 @Component
 public class LineOwnerGuard {
@@ -26,9 +27,9 @@ public class LineOwnerGuard {
     /** 這位發訊者可否使用本系統。 */
     public boolean allows(String sourceUserId) {
         if (properties.ownerUserId().isBlank()) {
-            log.warn("LINE owner-user-id not configured; accepting message from userId={} "
-                    + "(set app.integration.line.owner-user-id in secrets.yaml to lock down)", sourceUserId);
-            return true;
+            log.error("LINE owner-user-id not configured; blocking message from userId={} "
+                    + "until app.integration.line.owner-user-id is set", sourceUserId);
+            return false;
         }
         boolean allowed = properties.ownerUserId().equals(sourceUserId);
         if (!allowed) {

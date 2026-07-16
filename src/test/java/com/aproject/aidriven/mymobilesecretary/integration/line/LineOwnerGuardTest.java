@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 
 /**
  * 擁有者守門測試:設定後只放行擁有者(隱私洩漏的封口);
- * 未設定維持現狀放行(向下相容,靠 log 引導設定)。
+ * 未設定也拒絕(fail-closed),避免任何陌生人碰到全域資料。
  */
 class LineOwnerGuardTest {
 
@@ -27,12 +27,12 @@ class LineOwnerGuardTest {
         assertThat(guard.allows(null)).isFalse();
     }
 
-    /** 未設定 → 放行(升級相容),由 log 引導擁有者設定。 */
+    /** 未設定 → 全擋,由 BLOCKED 紀錄引導擁有者設定。 */
     @Test
-    void unconfiguredOwnerAllowsAll() {
+    void unconfiguredOwnerBlocksAll() {
         LineOwnerGuard guard = guard("");
 
-        assertThat(guard.allows("U-anyone")).isTrue();
-        assertThat(guard.allows(null)).isTrue();
+        assertThat(guard.allows("U-anyone")).isFalse();
+        assertThat(guard.allows(null)).isFalse();
     }
 }

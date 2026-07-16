@@ -411,24 +411,51 @@ public class IntentService {
      */
     private String taskListAdvice(java.util.List<Task> tasks) {
         StringBuilder advice = new StringBuilder();
+        Instant now = Instant.now(clock);
+
+        var overdue = tasks.stream()
+                .filter(t -> t.getDueAt() != null && t.getDueAt().isBefore(now))
+                .limit(3).toList();
+        if (!overdue.isEmpty()) {
+            advice.append("\n\n已逾期：%s。請直接說「%s改到明天下午三點」，或告訴我已完成。"
+                    .formatted(overdue.stream().map(t -> "「" + t.getTitle() + "」")
+                                    .collect(java.util.stream.Collectors.joining("、")),
+                            overdue.getFirst().getTitle()));
+        }
 
         var missing = tasks.stream().filter(t -> t.getDueAt() == null).limit(3).toList();
         if (!missing.isEmpty()) {
-            // 段落間空一行(使用者 2026-07-15 的格式範例)
-            advice.append("\n\n%s還沒有時間或地點,補一句(例:「%s這週六早上處理」)我才能主動提醒。"
+            advice.append("\n\n未設定期限：%s。補一句（例如「%s這週六早上處理」），我才能按時提醒。"
                     .formatted(
                             missing.stream().map(t -> "「" + t.getTitle() + "」")
                                     .collect(java.util.stream.Collectors.joining("、")),
                             missing.get(0).getTitle()));
         }
 
-        Instant now = Instant.now(clock);
+        var missingPlace = tasks.stream()
+                .filter(t -> looksLocationBased(t.getTitle()))
+                .filter(t -> geofenceRuleService.listRulesForTask(t.getId()).isEmpty())
+                .limit(3).toList();
+        if (!missingPlace.isEmpty()) {
+            advice.append("\n\n可能需要地點但尚未設定：%s。可以說「%s是在蝦皮店到店領」。"
+                    .formatted(missingPlace.stream().map(t -> "「" + t.getTitle() + "」")
+                                    .collect(java.util.stream.Collectors.joining("、")),
+                            missingPlace.getFirst().getTitle()));
+        }
+
         tasks.stream()
                 .filter(t -> t.getDueAt() != null && t.getDueAt().isAfter(now))
                 .findFirst()
                 .flatMap(t -> suggestSlotBefore(t, now))
                 .ifPresent(advice::append);
         return advice.toString();
+    }
+
+    static boolean looksLocationBased(String title) {
+        if (title == null) return false;
+        String value = title.toLowerCase(java.util.Locale.ROOT);
+        return java.util.List.of("拿", "領", "取", "買", "送", "寄", "繳", "pickup", "buy", "deliver")
+                .stream().anyMatch(value::contains);
     }
 
     /**

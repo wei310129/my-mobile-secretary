@@ -47,6 +47,7 @@ public class IntentService {
     private final DailyScheduleOverviewService dailyScheduleOverviewService;
     private final ReminderTimingAnswerService reminderTimingAnswerService;
     private final ScheduleTaskConflictAnswerService scheduleTaskConflictAnswerService;
+    private final TaskDetailAnswerService taskDetailAnswerService;
     private final ConversationContextService conversationContextService;
     private final com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService placeAliasService;
     private final int bindRadiusMeters;
@@ -66,6 +67,7 @@ public class IntentService {
                          DailyScheduleOverviewService dailyScheduleOverviewService,
                          ReminderTimingAnswerService reminderTimingAnswerService,
                          ScheduleTaskConflictAnswerService scheduleTaskConflictAnswerService,
+                         TaskDetailAnswerService taskDetailAnswerService,
                          ConversationContextService conversationContextService,
                          com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService placeAliasService,
                          @org.springframework.beans.factory.annotation.Value(
@@ -85,6 +87,7 @@ public class IntentService {
         this.dailyScheduleOverviewService = dailyScheduleOverviewService;
         this.reminderTimingAnswerService = reminderTimingAnswerService;
         this.scheduleTaskConflictAnswerService = scheduleTaskConflictAnswerService;
+        this.taskDetailAnswerService = taskDetailAnswerService;
         this.conversationContextService = conversationContextService;
         this.placeAliasService = placeAliasService;
         this.bindRadiusMeters = bindRadiusMeters;
@@ -107,6 +110,10 @@ public class IntentService {
         Optional<IntentResult> reminderTiming = reminderTimingAnswerService.answer(text);
         if (reminderTiming.isPresent()) {
             return reminderTiming.get();
+        }
+        Optional<IntentResult> taskDetail = taskDetailAnswerService.answer(text);
+        if (taskDetail.isPresent()) {
+            return taskDetail.get();
         }
         Optional<LocalDate> overviewDate = dailyScheduleDate(text, clock);
         if (overviewDate.isPresent()) {
@@ -294,16 +301,17 @@ public class IntentService {
                         command.title(), null, parsePriority(command.priority()),
                         parseTime(command.dueAt()), parseCategory(options.category()),
                         parseRecurrence(options.recurrence()), parseCondition(options.condition()), null);
+                Place taskPlace = null;
                 if (command.placeName() != null && !command.placeName().isBlank()) {
-                    Place place = resolvePlace(command.placeName())
+                    taskPlace = resolvePlace(command.placeName())
                             .orElseGet(() -> placeService.createPlace(command.placeName(), null, null, null, null));
                     var trigger = parseTrigger(options.triggerType());
-                    if (!geofenceRuleService.ruleExists(task.getId(), place.getId(), trigger)) {
-                        geofenceRuleService.createRule(task.getId(), place.getId(),
+                    if (!geofenceRuleService.ruleExists(task.getId(), taskPlace.getId(), trigger)) {
+                        geofenceRuleService.createRule(task.getId(), taskPlace.getId(),
                                 positive(options.radiusMeters(), bindRadiusMeters), trigger);
                     }
                 }
-                yield IntentResult.taskCreated(task, options.clarificationQuestion());
+                yield IntentResult.taskCreated(task, options.clarificationQuestion(), taskPlace);
             }
             case CREATE_SCHEDULE -> {
                 requireText(command.title(), "title");

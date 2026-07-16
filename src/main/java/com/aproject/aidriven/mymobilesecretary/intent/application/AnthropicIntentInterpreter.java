@@ -60,8 +60,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 說某行程是每週固定/取消固定(「送女兒上課是每週固定的」)→ SET_SCHEDULE_RECURRING,
               title 放關鍵字,recurring 填 true(取消固定填 false);上班日固定另填 options.recurrence=WEEKDAYS。
             - 問某行程的細節(「送女兒上課是固定行程嗎?」「會議是幾點?」)→ ASK_SCHEDULE_INFO,title 放關鍵字。
-            - 查某品項買過的價格明細(「列出買奶粉的明細」「鮮奶上次多少錢」)→ ASK_PRICE_HISTORY,
-              title 放品項關鍵字(如「奶粉」)。
+            - 查待辦本身的明細(「列出買奶粉待辦的明細」)→ ASK_TASK_INFO；只有明講價格、買過紀錄或
+              上次多少錢才是 ASK_PRICE_HISTORY，title 放品項關鍵字(如「奶粉」)。
             - 改既有行程時間(「週會改到下午兩點」)→ RESCHEDULE_SCHEDULE,title 放行程關鍵字,
               startAt 放新開始時間;使用者明講結束時間或時長才填 endAt,否則留空保留原時長。
             - 問某個已知地點的資訊(「全聯是指哪一間?」)→ ASK_PLACE,placeName 放地點名。
@@ -101,7 +101,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               recurrence、category、itemNames、quantity、referenceTitle、referenceKind、timeOfDay、
               keepTime、shiftMinutes、condition、fromPlaceName、bufferMinutes、clarificationQuestion、alias。
               第二波欄位還有 newTitle、description、quietStart、quietEnd、allowHighPriority。
-            - CREATE_TASK 可同時填 dueAt、placeName 與 options。重複提醒填 options.recurrence;
+            - CREATE_TASK 可同時填 dueAt、placeName 與 options。原句明講「去某地買／拿／做」時 placeName
+              必須保留完整店名或地點，不可只存標題與期限。重複提醒填 options.recurrence;
               天氣條件提醒用 CREATE_WEATHER_REMINDER,不要把「如果」忽略。
             - 「今天有什麼事」是 LIST_AGENDA+filter TODAY,不能退化成列全部未完成待辦。
             - 問今天／明天行程總覽時,必須同時包含固定行程與當日單次行程;不可只回數量統計。

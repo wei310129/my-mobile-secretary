@@ -140,6 +140,29 @@ public record IntentResult(
         return new IntentResult(Action.TASK_CREATED, message, task, null);
     }
 
+    /** 建立後回顯真正存下的關鍵欄位，讓使用者立即看出期限或地點是否漏抓。 */
+    static IntentResult taskCreated(
+            Task task,
+            String followUp,
+            com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
+        String due = task.getDueAt() == null ? "尚未設定"
+                : ZonedDateTime.ofInstant(task.getDueAt(), TAIPEI).format(LIST_TIME);
+        String priority = switch (task.getPriority()) {
+            case HIGH -> "高";
+            case NORMAL -> "一般";
+            case LOW -> "低";
+        };
+        String location = place == null ? "尚未綁定" : place.getName();
+        StringBuilder message = new StringBuilder("已建立任務「%s」:".formatted(task.getTitle()))
+                .append("\n- 期限｜").append(due)
+                .append("\n- 優先度｜").append(priority)
+                .append("\n- 地點｜").append(location);
+        if (followUp != null && !followUp.isBlank()) {
+            message.append("\n\n").append(followUp);
+        }
+        return new IntentResult(Action.TASK_CREATED, message.toString(), task, null);
+    }
+
     static IntentResult message(Action action, String message) {
         return new IntentResult(action, message, null, null);
     }

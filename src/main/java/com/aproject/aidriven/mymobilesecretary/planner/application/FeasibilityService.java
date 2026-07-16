@@ -13,6 +13,9 @@ import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItem
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -39,6 +42,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional(readOnly = true)
 public class FeasibilityService {
+    private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
+    private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("MM/dd HH:mm");
 
     private final ScheduleItemRepository scheduleItemRepository;
     private final PlaceRepository placeRepository;
@@ -88,12 +93,30 @@ public class FeasibilityService {
             boolean overlaps = candidate.getStartAt().isBefore(other.getEndAt())
                     && other.getStartAt().isBefore(candidate.getEndAt());
             if (overlaps) {
+                Instant overlapStart = candidate.getStartAt().isAfter(other.getStartAt())
+                        ? candidate.getStartAt() : other.getStartAt();
+                Instant overlapEnd = candidate.getEndAt().isBefore(other.getEndAt())
+                        ? candidate.getEndAt() : other.getEndAt();
                 issues.add(new FeasibilityIssue(
                         FeasibilityIssue.Type.TIME_OVERLAP,
-                        "與「%s」時間重疊。可改時間,或取消其一。".formatted(other.getTitle()),
+                        "「%s」%s–%s 與「%s」%s–%s 衝突；重疊區間 %s–%s（%d 分鐘）。"
+                                .formatted(candidate.getTitle(), format(candidate.getStartAt()),
+                                        formatTime(candidate.getEndAt()), other.getTitle(),
+                                        format(other.getStartAt()), formatTime(other.getEndAt()),
+                                        format(overlapStart), formatTime(overlapEnd),
+                                        Duration.between(overlapStart, overlapEnd).toMinutes()),
                         other.getId()));
             }
         }
+    }
+
+    private static String format(Instant instant) {
+        return ZonedDateTime.ofInstant(instant, TAIPEI).format(TIME);
+    }
+
+    private static String formatTime(Instant instant) {
+        return ZonedDateTime.ofInstant(instant, TAIPEI)
+                .format(DateTimeFormatter.ofPattern("HH:mm"));
     }
 
     /**

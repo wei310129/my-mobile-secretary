@@ -121,6 +121,11 @@ public record IntentCommand(
         ASK_LAST_PURCHASE,
         ASK_PRICE_SUMMARY,
         ASK_FREQUENT_STORE,
+        ASK_INVENTORY_EXTREMES,
+        CHECK_SHOPPING_INVENTORY,
+        LIST_UNPLACED_ITEMS,
+        ASK_ITEM_KNOWLEDGE_SUMMARY,
+        ASK_SCHEDULE_REMINDER,
         /** 建任務(待辦,無固定時段;可有期限)。 */
         CREATE_TASK,
         /** 建行程(有明確開始/結束時段的承諾)。 */

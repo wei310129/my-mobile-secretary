@@ -110,7 +110,12 @@ public record IntentResult(
         SCHEDULES_GROUPED_BY_PLACE,
         LAST_PURCHASE_INFO,
         PRICE_SUMMARY_INFO,
-        FREQUENT_STORE_INFO
+        FREQUENT_STORE_INFO,
+        INVENTORY_EXTREMES_INFO,
+        SHOPPING_INVENTORY_CHECKED,
+        UNPLACED_ITEMS_LISTED,
+        ITEM_KNOWLEDGE_SUMMARY,
+        SCHEDULE_REMINDER_INFO
     }
 
     /** 清單訊息共用:最多列 10 筆,其餘以「…等 N 件」收尾。 */
@@ -145,11 +150,15 @@ public record IntentResult(
 
     static IntentResult scheduleDecided(ScheduleDecision decision) {
         boolean feasible = decision.feasibility().feasible();
+        String issues = decision.feasibility().issues().stream()
+                .map(issue -> "- " + issue.message())
+                .collect(Collectors.joining("\n"));
         return new IntentResult(
                 feasible ? Action.SCHEDULE_CONFIRMED : Action.SCHEDULE_NEEDS_DECISION,
                 feasible
                         ? "行程「%s」可行,已確認".formatted(decision.item().getTitle())
-                        : "行程「%s」有問題,需要你決定".formatted(decision.item().getTitle()),
+                        : "行程「%s」尚未確認：\n%s\n請告訴我要改哪個行程或指定新時間；我不會自行確認。"
+                                .formatted(decision.item().getTitle(), issues),
                 null, decision);
     }
 

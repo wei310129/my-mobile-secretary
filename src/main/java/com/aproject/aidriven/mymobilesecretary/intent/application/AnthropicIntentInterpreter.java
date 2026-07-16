@@ -123,6 +123,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 問下一個行程與倒數用 ASK_NEXT_SCHEDULE;問兩行程純時間間隔用 ASK_SCHEDULE_GAP。
               按日期整理用 GROUP_SCHEDULES_BY_DAY;找已確認行程重疊用 CHECK_SCHEDULE_CONFLICTS。
               LIST_SCHEDULES 可搭配 WEEKEND、MORNING、AFTERNOON、EVENING、WITH_PLACE、NO_PLACE filter。
+              問特定行程是否衝突或追問「和誰衝突」時,一定把該行程名稱放 title,不可套 TODAY filter。
+              問某行程何時會提醒用 ASK_SCHEDULE_REMINDER,不可退化成 ASK_SCHEDULE_INFO。
             - 問「現在先做什麼／最急的是什麼」用 SUGGEST_NEXT_TASK;只問某分類時填 options.category。
               按分類整理或統計用 GROUP_TASKS_BY_CATEGORY;問今日／本週完成進度用 ASK_TASK_PROGRESS,
               今日填 filter=TODAY、本週填 filter=WEEK。LIST_TASKS 可搭配 HIGH_AND_DUE、RECURRING、
@@ -135,6 +137,10 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 問某品項上次何時／哪裡／多少錢買用 ASK_LAST_PURCHASE;問平均、高低價、價差、
               最近漲跌或紀錄筆數用 ASK_PRICE_SUMMARY;問最常在哪家店買用 ASK_FREQUENT_STORE。
               價格紀錄沒有購買數量,不可把單價加總成支出；使用者問支出時要 UNKNOWN 說明資料不足。
+            - 問正庫存最多／最少／範圍用 ASK_INVENTORY_EXTREMES,filter 填 HIGH/LOW/RANGE;
+              查購物清單中仍有庫存用 CHECK_SHOPPING_INVENTORY;查未設定購買地點品項用 LIST_UNPLACED_ITEMS;
+              問品項知識總覽用 ASK_ITEM_KNOWLEDGE_SUMMARY。LIST_INVENTORY 可搭配 AT_LEAST/EXACT filter
+              與 options.quantity。庫存 0 可能未盤點,不可解讀為缺貨。
             - 行程只改長度／結束時間用 RESIZE_SCHEDULE;durationMinutes 是新總時長,
               shiftMinutes 是結束時間增減分鐘(縮短可為負數)。
             - 下方能力目錄是規範性 few-shot。A+B 代表輸出兩個 command,不是不存在的 type;

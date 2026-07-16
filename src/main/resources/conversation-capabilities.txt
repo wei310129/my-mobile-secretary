@@ -218,3 +218,17 @@
 218|我最常在哪裡買牛奶|ASK_FREQUENT_STORE|title=牛奶;按含店家紀錄次數
 219|醬油在哪間店的紀錄最多|ASK_FREQUENT_STORE|title=醬油;同次數取最近購買店家
 220|咖啡有幾筆價格紀錄|ASK_PRICE_SUMMARY|title=咖啡
+221|哪些庫存至少還有三個|LIST_INVENTORY|options.filter=AT_LEAST;options.quantity=3
+222|哪些東西庫存剛好兩個|LIST_INVENTORY|options.filter=EXACT;options.quantity=2
+223|目前哪個品項庫存最多|ASK_INVENTORY_EXTREMES|options.filter=HIGH;只比較正庫存
+224|已知庫存最少的是什麼|ASK_INVENTORY_EXTREMES|options.filter=LOW;不把0當缺貨
+225|我的庫存數量範圍如何|ASK_INVENTORY_EXTREMES|options.filter=RANGE;提醒品項單位可能不同
+226|購物清單裡哪些家裡其實還有|CHECK_SHOPPING_INVENTORY|只列庫存大於0
+227|幫我檢查購物清單有沒有重複囤貨|CHECK_SHOPPING_INVENTORY|不自動刪除清單
+228|哪些品項還不知道去哪裡買|LIST_UNPLACED_ITEMS|列沒有任何placeId的品項
+229|還有哪些東西沒設定購買地點|LIST_UNPLACED_ITEMS|只讀，不猜店家
+230|你目前記得多少品項資料|ASK_ITEM_KNOWLEDGE_SUMMARY|回品項、正庫存、待買、有地點數
+231|簡報排練有沒有跟其他行程衝突|CHECK_SCHEDULE_CONFLICTS|title=簡報排練;特定行程不可套TODAY
+232|它和誰衝突，兩個時段都列出來|CHECK_SCHEDULE_CONFLICTS|從上下文填title;回雙方時段與重疊區間
+233|這個衝突建議怎麼改|CHECK_SCHEDULE_CONFLICTS|回兩個保留原時長的選項，不自行確認
+234|你會在什麼時機提醒我簡報排練|ASK_SCHEDULE_REMINDER|title=簡報排練;未設定時明說並提供設定語句

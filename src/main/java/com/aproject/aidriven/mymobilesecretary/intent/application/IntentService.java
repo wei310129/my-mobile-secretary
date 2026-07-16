@@ -172,7 +172,10 @@ public class IntentService {
                     ASK_LONGEST_SCHEDULE,
                     GROUP_SCHEDULES_BY_PLACE, ASK_LAST_PURCHASE,
                     ASK_PRICE_SUMMARY,
-                    ASK_FREQUENT_STORE -> lifestyleIntentService.execute(text, command);
+                    ASK_FREQUENT_STORE, ASK_INVENTORY_EXTREMES,
+                    CHECK_SHOPPING_INVENTORY, LIST_UNPLACED_ITEMS,
+                    ASK_ITEM_KNOWLEDGE_SUMMARY,
+                    ASK_SCHEDULE_REMINDER -> lifestyleIntentService.execute(text, command);
             case CREATE_TASK -> {
                 requireText(command.title(), "title");
                 // 防重複(使用者實際踩過:「拿包裹」被建了兩次):同名未結案任務存在就回問

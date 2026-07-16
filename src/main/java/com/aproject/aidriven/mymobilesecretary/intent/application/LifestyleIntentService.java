@@ -6,6 +6,7 @@ import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.ItemService;
+import com.aproject.aidriven.mymobilesecretary.knowledge.application.ItemInsightService;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PlanningPreferenceService;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceInsightService;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService;
@@ -48,6 +49,7 @@ public class LifestyleIntentService {
     private final TaskService taskService;
     private final ScheduleService scheduleService;
     private final ItemService itemService;
+    private final ItemInsightService itemInsightService;
     private final PriceRecordService priceService;
     private final PriceInsightService priceInsightService;
     private final PlaceAliasService placeAliasService;
@@ -65,7 +67,8 @@ public class LifestyleIntentService {
     private final Clock clock;
 
     public LifestyleIntentService(TaskService taskService, ScheduleService scheduleService,
-                                  ItemService itemService, PriceRecordService priceService,
+                                  ItemService itemService, ItemInsightService itemInsightService,
+                                  PriceRecordService priceService,
                                   PriceInsightService priceInsightService,
                                   PlaceAliasService placeAliasService, PlaceService placeService,
                                   GeofenceRuleService geofenceService, FreeSlotService freeSlotService,
@@ -81,6 +84,7 @@ public class LifestyleIntentService {
         this.taskService = taskService;
         this.scheduleService = scheduleService;
         this.itemService = itemService;
+        this.itemInsightService = itemInsightService;
         this.priceService = priceService;
         this.priceInsightService = priceInsightService;
         this.placeAliasService = placeAliasService;
@@ -168,7 +172,7 @@ public class LifestyleIntentService {
             case ASK_NEXT_SCHEDULE -> nextSchedule();
             case ASK_SCHEDULE_GAP -> scheduleGap(command, o);
             case GROUP_SCHEDULES_BY_DAY -> groupSchedules(o);
-            case CHECK_SCHEDULE_CONFLICTS -> checkScheduleConflicts(o);
+            case CHECK_SCHEDULE_CONFLICTS -> checkScheduleConflicts(command, o);
             case SUGGEST_NEXT_TASK -> suggestNextTask(o);
             case GROUP_TASKS_BY_CATEGORY -> groupTasksByCategory();
             case ASK_TASK_PROGRESS -> taskProgress(o);
@@ -181,6 +185,11 @@ public class LifestyleIntentService {
             case ASK_LAST_PURCHASE -> lastPurchase(command);
             case ASK_PRICE_SUMMARY -> priceSummary(command);
             case ASK_FREQUENT_STORE -> frequentStore(command);
+            case ASK_INVENTORY_EXTREMES -> inventoryExtremes(o);
+            case CHECK_SHOPPING_INVENTORY -> checkShoppingInventory();
+            case LIST_UNPLACED_ITEMS -> listUnplacedItems();
+            case ASK_ITEM_KNOWLEDGE_SUMMARY -> itemKnowledgeSummary();
+            case ASK_SCHEDULE_REMINDER -> askScheduleReminder(command, o);
             default -> throw new IllegalArgumentException("not a lifestyle command: " + command.type());
         };
     }
@@ -208,6 +217,25 @@ public class LifestyleIntentService {
         return IntentResult.message(IntentResult.Action.SCHEDULE_REMINDER_CREATED,
                 "已設定「%s」開始前 %d 分鐘提醒(%s)。".formatted(
                         item.getTitle(), lead, format(due)));
+    }
+
+    private IntentResult askScheduleReminder(IntentCommand command, IntentOptions o) {
+        ScheduleItem item = scheduleTarget(command, o);
+        String reminderTitle = "提醒:" + item.getTitle();
+        List<Task> reminders = taskService.listOpenTasks().stream()
+                .filter(task -> task.getTitle().equalsIgnoreCase(reminderTitle))
+                .filter(task -> task.getDueAt() != null)
+                .toList();
+        if (reminders.isEmpty()) {
+            return IntentResult.message(IntentResult.Action.SCHEDULE_REMINDER_INFO,
+                    "「%s」是 %s–%s，目前沒有設定行程提醒。你可以說「開始前 10 分鐘提醒我」；我不會自己加。"
+                            .formatted(item.getTitle(), format(item.getStartAt()), time(item.getEndAt())));
+        }
+        String times = reminders.stream().map(task -> format(task.getDueAt()))
+                .collect(java.util.stream.Collectors.joining("、"));
+        return IntentResult.message(IntentResult.Action.SCHEDULE_REMINDER_INFO,
+                "「%s」是 %s–%s；目前會在 %s 提醒。".formatted(
+                        item.getTitle(), format(item.getStartAt()), time(item.getEndAt()), times));
     }
 
     private IntentResult suggestFreeSlot(IntentCommand command, IntentOptions o) {
@@ -451,10 +479,58 @@ public class LifestyleIntentService {
         Integer maximum = "LOW".equalsIgnoreCase(o.filter())
                 ? (o.quantity() == null ? 1 : o.quantity()) : null;
         List<Item> items = itemService.listInventory(maximum);
+        if ("AT_LEAST".equalsIgnoreCase(o.filter()) && o.quantity() != null) {
+            items = itemService.listInventory(null).stream()
+                    .filter(item -> item.getInventoryQuantity() >= o.quantity()).toList();
+        } else if ("EXACT".equalsIgnoreCase(o.filter()) && o.quantity() != null) {
+            items = itemService.listInventory(null).stream()
+                    .filter(item -> item.getInventoryQuantity() == o.quantity()).toList();
+        }
         String message = items.isEmpty() ? (maximum == null ? "目前沒有大於 0 的庫存紀錄。" : "沒有已知的低庫存品項。")
                 : items.stream().map(item -> "%s｜%d".formatted(item.getName(), item.getInventoryQuantity()))
                 .collect(java.util.stream.Collectors.joining("\n"));
         return IntentResult.message(IntentResult.Action.INVENTORY_LISTED, message);
+    }
+
+    private IntentResult inventoryExtremes(IntentOptions o) {
+        return itemInsightService.inventoryExtremes().map(extremes -> {
+            Item selected = "LOW".equalsIgnoreCase(o.filter())
+                    ? extremes.lowest() : extremes.highest();
+            String message = "RANGE".equalsIgnoreCase(o.filter())
+                    ? "已知正庫存從「%s」%d 到「%s」%d；不同品項單位可能不同。".formatted(
+                            extremes.lowest().getName(), extremes.lowest().getInventoryQuantity(),
+                            extremes.highest().getName(), extremes.highest().getInventoryQuantity())
+                    : "已知正庫存%s的是「%s」，數量 %d；不同品項單位可能不同。".formatted(
+                            "LOW".equalsIgnoreCase(o.filter()) ? "最少" : "最多",
+                            selected.getName(), selected.getInventoryQuantity());
+            return IntentResult.message(IntentResult.Action.INVENTORY_EXTREMES_INFO, message);
+        }).orElseGet(() -> IntentResult.message(IntentResult.Action.INVENTORY_EXTREMES_INFO,
+                "目前沒有大於 0 的庫存紀錄；數量 0 可能是尚未盤點，不能當成缺貨。"));
+    }
+
+    private IntentResult checkShoppingInventory() {
+        List<Item> items = itemInsightService.shoppingItemsWithStock();
+        String message = items.isEmpty() ? "購物清單中沒有同時具有正庫存紀錄的品項。"
+                : "購物清單中這些品項仍有已知庫存：%s。".formatted(items.stream()
+                .map(item -> "%s %d".formatted(item.getName(), item.getInventoryQuantity()))
+                .collect(java.util.stream.Collectors.joining("、")));
+        return IntentResult.message(IntentResult.Action.SHOPPING_INVENTORY_CHECKED, message);
+    }
+
+    private IntentResult listUnplacedItems() {
+        List<Item> items = itemInsightService.itemsWithoutPlace();
+        return IntentResult.message(IntentResult.Action.UNPLACED_ITEMS_LISTED,
+                items.isEmpty() ? "所有已知品項都至少有一個購買地點。"
+                        : "還沒記錄購買地點：%s。".formatted(items.stream().map(Item::getName)
+                        .collect(java.util.stream.Collectors.joining("、"))));
+    }
+
+    private IntentResult itemKnowledgeSummary() {
+        var summary = itemInsightService.summary();
+        return IntentResult.message(IntentResult.Action.ITEM_KNOWLEDGE_SUMMARY,
+                "共記得 %d 個品項：%d 個有正庫存、%d 個在購物清單、%d 個有購買地點。"
+                        .formatted(summary.knownItems(), summary.inventoriedItems(),
+                                summary.shoppingItems(), summary.itemsWithPlace()));
     }
 
     private IntentResult askItemPlaces(IntentCommand command) {
@@ -703,14 +779,50 @@ public class LifestyleIntentService {
         return IntentResult.message(IntentResult.Action.SCHEDULES_GROUPED_BY_DAY, message);
     }
 
-    private IntentResult checkScheduleConflicts(IntentOptions o) {
-        List<ScheduleItem> items = filterSchedules(scheduleInsightService.upcoming(), o);
-        var conflicts = scheduleInsightService.conflicts(items);
-        String message = conflicts.isEmpty() ? "指定範圍內沒有時間重疊的已確認行程。"
-                : conflicts.stream().map(gap -> "「%s」↔「%s」重疊 %d 分鐘".formatted(
-                        gap.first().getTitle(), gap.second().getTitle(), Math.abs(gap.duration().toMinutes())))
-                .collect(java.util.stream.Collectors.joining("\n"));
+    private IntentResult checkScheduleConflicts(IntentCommand command, IntentOptions o) {
+        List<ScheduleInsightService.Gap> conflicts;
+        ScheduleItem target = null;
+        if (command.title() != null && !command.title().isBlank()) {
+            target = uniqueSchedule(command.title());
+            ScheduleItem selected = target;
+            conflicts = scheduleInsightService.upcoming().stream()
+                    .filter(other -> !java.util.Objects.equals(other.getId(), selected.getId()))
+                    .map(other -> scheduleInsightService.gap(selected, other))
+                    .filter(ScheduleInsightService.Gap::overlapping)
+                    .toList();
+        } else {
+            List<ScheduleItem> items = filterSchedules(scheduleInsightService.upcoming(), o);
+            conflicts = scheduleInsightService.conflicts(items);
+        }
+        String message = conflicts.isEmpty()
+                ? target == null ? "指定範圍內沒有時間重疊的已確認行程。"
+                : "「%s」沒有和其他已確認行程重疊。".formatted(target.getTitle())
+                : conflicts.stream().map(this::describeConflict)
+                .collect(java.util.stream.Collectors.joining("\n"))
+                + "\n我不會自行修改或確認；請告訴我要改哪個行程，或直接指定新時間。";
         return IntentResult.message(IntentResult.Action.SCHEDULE_CONFLICTS_CHECKED, message);
+    }
+
+    private String describeConflict(ScheduleInsightService.Gap gap) {
+        ScheduleItem first = gap.first();
+        ScheduleItem second = gap.second();
+        Instant overlapStart = first.getStartAt().isAfter(second.getStartAt())
+                ? first.getStartAt() : second.getStartAt();
+        Instant overlapEnd = first.getEndAt().isBefore(second.getEndAt())
+                ? first.getEndAt() : second.getEndAt();
+        Duration duration = Duration.between(overlapStart, overlapEnd);
+        Duration firstDuration = Duration.between(first.getStartAt(), first.getEndAt());
+        Duration secondDuration = Duration.between(second.getStartAt(), second.getEndAt());
+        Instant firstEarlierStart = second.getStartAt().minus(firstDuration);
+        Instant secondLaterEnd = first.getEndAt().plus(secondDuration);
+        return "「%s」%s–%s 與「%s」%s–%s；重疊 %s–%s（%d 分鐘）。"
+                .formatted(
+                first.getTitle(), format(first.getStartAt()), time(first.getEndAt()),
+                second.getTitle(), format(second.getStartAt()), time(second.getEndAt()),
+                format(overlapStart), time(overlapEnd), duration.toMinutes())
+                + "\n可考慮：A.「%s」改到 %s–%s；B.「%s」改到 %s–%s。選定後我會再檢查其他衝突。"
+                .formatted(first.getTitle(), format(firstEarlierStart), time(second.getStartAt()),
+                        second.getTitle(), format(first.getEndAt()), time(secondLaterEnd));
     }
 
     private IntentResult suggestNextTask(IntentOptions o) {
@@ -1302,6 +1414,11 @@ public class LifestyleIntentService {
 
     private static String format(Instant instant) {
         return ZonedDateTime.ofInstant(instant, TAIPEI).format(DATE_TIME);
+    }
+
+    private static String time(Instant instant) {
+        return ZonedDateTime.ofInstant(instant, TAIPEI)
+                .format(DateTimeFormatter.ofPattern("HH:mm"));
     }
 
     private static String clarificationFor(String detail) {

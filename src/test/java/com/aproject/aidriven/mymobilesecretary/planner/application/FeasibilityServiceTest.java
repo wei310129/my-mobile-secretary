@@ -114,6 +114,8 @@ class FeasibilityServiceTest {
         assertThat(result.issues()).extracting(FeasibilityIssue::type)
                 .containsExactly(FeasibilityIssue.Type.TIME_OVERLAP);
         assertThat(result.issues().get(0).relatedScheduleId()).isEqualTo(2L);
+        assertThat(result.issues().get(0).message())
+                .contains("「剪頭髮」", "「開會」", "重疊區間", "60 分鐘");
     }
 
     /** 使用者的原始案例:人在高雄,2 小時後台北的預約 → 擋下。 */

@@ -232,3 +232,5 @@
 232|它和誰衝突，兩個時段都列出來|CHECK_SCHEDULE_CONFLICTS|從上下文填title;回雙方時段與重疊區間
 233|這個衝突建議怎麼改|CHECK_SCHEDULE_CONFLICTS|回兩個保留原時長的選項，不自行確認
 234|你會在什麼時機提醒我簡報排練|ASK_SCHEDULE_REMINDER|title=簡報排練;未設定時明說並提供設定語句
+235|拿包裹有兩筆的話列編號給我選|ASK_TASK_PLACE|title=拿包裹;多筆回編號、期限、分類並保存上下文
+236|第一個拿包裹要去哪裡|ASK_TASK_PLACE|options.ordinal=1;ordinal優先於重複title

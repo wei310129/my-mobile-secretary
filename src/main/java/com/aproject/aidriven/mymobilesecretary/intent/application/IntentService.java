@@ -460,18 +460,33 @@ public class IntentService {
                     "找不到跟「%s」有關的未完成任務。".formatted(keyword)));
         }
         if (matches.size() > 1) {
-            String titles = matches.stream().limit(5)
-                    .map(t -> "「" + t.getTitle() + "」")
-                    .collect(java.util.stream.Collectors.joining("、"));
+            conversationContextService.rememberTaskList(matches);
+            String titles = java.util.stream.IntStream.range(0, Math.min(matches.size(), 5))
+                    .mapToObj(i -> {
+                        Task task = matches.get(i);
+                        String due = task.getDueAt() == null ? "無期限"
+                                : java.time.ZonedDateTime.ofInstant(task.getDueAt(),
+                                java.time.ZoneId.of("Asia/Taipei"))
+                                .format(java.time.format.DateTimeFormatter.ofPattern("MM/dd HH:mm"));
+                        return "%d.「%s」｜%s｜%s".formatted(
+                                i + 1, task.getTitle(), due, task.getCategory());
+                    })
+                    .collect(java.util.stream.Collectors.joining("\n"));
             return new TaskMatch(null, IntentResult.clarificationNeeded(
-                    "有 %d 件任務都符合:%s,說完整一點我才不會%s錯。"
-                            .formatted(matches.size(), titles, actionVerb)));
+                    "有 %d 件任務都符合，請回覆編號（例如「第一個」）：\n%s"
+                            .formatted(matches.size(), titles)));
         }
         return new TaskMatch(matches.get(0), null);
     }
 
     /** 有標題走關鍵字;省略標題時以「上一個／清單第 N 個」上下文解析。 */
     private TaskMatch matchOpenTask(IntentCommand command, String actionVerb) {
+        if (command.safeOptions().ordinal() != null) {
+            Long id = conversationContextService.taskIdAt(command.safeOptions().ordinal());
+            if (id != null) {
+                return openContextTask(id, actionVerb);
+            }
+        }
         if (command.title() != null && !command.title().isBlank()) {
             return matchOpenTask(command.title(), actionVerb);
         }
@@ -480,6 +495,10 @@ public class IntentService {
             return new TaskMatch(null, IntentResult.clarificationNeeded(
                     "目前沒有可指代的待辦,請說名稱或先列出待辦。"));
         }
+        return openContextTask(id, actionVerb);
+    }
+
+    private TaskMatch openContextTask(Long id, String actionVerb) {
         Task task = taskService.getTask(id);
         if (!taskService.listOpenTasks().stream().map(Task::getId).toList().contains(id)) {
             return new TaskMatch(null, IntentResult.clarificationNeeded(

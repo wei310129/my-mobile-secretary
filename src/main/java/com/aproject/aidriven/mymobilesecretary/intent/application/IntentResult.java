@@ -101,7 +101,10 @@ public record IntentResult(
         SCHEDULE_CONFLICTS_CHECKED,
         NEXT_TASK_SUGGESTED,
         TASKS_GROUPED_BY_CATEGORY,
-        TASK_PROGRESS_INFO
+        TASK_PROGRESS_INFO,
+        TASKS_GROUPED_BY_DUE,
+        TASK_LOAD_INFO,
+        BUSIEST_TASK_DAY_INFO
     }
 
     /** 清單訊息共用:最多列 10 筆,其餘以「…等 N 件」收尾。 */

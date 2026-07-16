@@ -57,6 +57,58 @@ public class TaskInsightService {
         return grouped;
     }
 
+    public Map<DueBucket, List<Task>> groupOpenByDue() {
+        Instant now = Instant.now(clock);
+        LocalDate today = LocalDate.ofInstant(now, TAIPEI);
+        Map<DueBucket, List<Task>> grouped = new LinkedHashMap<>();
+        for (DueBucket bucket : DueBucket.values()) {
+            grouped.put(bucket, new ArrayList<>());
+        }
+        taskService.listOpenTasks().forEach(task -> grouped.get(dueBucket(task, now, today)).add(task));
+        grouped.entrySet().removeIf(entry -> entry.getValue().isEmpty());
+        return grouped;
+    }
+
+    public Load load(LoadScope scope) {
+        Instant now = Instant.now(clock);
+        ZonedDateTime localNow = now.atZone(TAIPEI);
+        Instant until = scope == LoadScope.TODAY
+                ? localNow.toLocalDate().plusDays(1).atStartOfDay(TAIPEI).toInstant()
+                : now.plusSeconds(3 * 24 * 60 * 60);
+        List<Task> open = taskService.listOpenTasks();
+        int remaining = (int) open.stream()
+                .filter(task -> task.getDueAt() != null
+                        && !task.getDueAt().isBefore(now) && task.getDueAt().isBefore(until))
+                .count();
+        int overdue = (int) open.stream()
+                .filter(task -> task.getDueAt() != null && task.getDueAt().isBefore(now))
+                .count();
+        int highPriority = (int) open.stream()
+                .filter(task -> task.getPriority() == TaskPriority.HIGH)
+                .filter(task -> task.getDueAt() != null && (task.getDueAt().isBefore(now)
+                        || (!task.getDueAt().isBefore(now) && task.getDueAt().isBefore(until))))
+                .count();
+        return new Load(remaining, overdue, highPriority);
+    }
+
+    public Optional<DayLoad> busiestDueDay() {
+        Instant now = Instant.now(clock);
+        LocalDate today = LocalDate.ofInstant(now, TAIPEI);
+        LocalDate end = today.plusDays(7);
+        Map<LocalDate, Long> counts = taskService.listOpenTasks().stream()
+                .filter(task -> task.getDueAt() != null && !task.getDueAt().isBefore(now))
+                .map(Task::getDueAt)
+                .map(due -> LocalDate.ofInstant(due, TAIPEI))
+                .filter(date -> date.isBefore(end))
+                .collect(java.util.stream.Collectors.groupingBy(date -> date,
+                        java.util.stream.Collectors.counting()));
+        return counts.entrySet().stream()
+                .sorted(Map.Entry.<LocalDate, Long>comparingByValue().reversed()
+                        .thenComparing(Map.Entry.comparingByKey()))
+                .map(entry -> new DayLoad(entry.getKey(), entry.getValue().intValue()))
+                .findFirst();
+    }
+
     public Progress progress(Scope scope) {
         ZonedDateTime now = ZonedDateTime.now(clock.withZone(TAIPEI));
         LocalDate startDate = scope == Scope.TODAY
@@ -95,12 +147,42 @@ public class TaskInsightService {
         };
     }
 
+    private static DueBucket dueBucket(Task task, Instant now, LocalDate today) {
+        if (task.getDueAt() == null) return DueBucket.NO_DUE;
+        if (task.getDueAt().isBefore(now)) return DueBucket.OVERDUE;
+        LocalDate dueDate = LocalDate.ofInstant(task.getDueAt(), TAIPEI);
+        if (dueDate.equals(today)) return DueBucket.TODAY;
+        if (dueDate.equals(today.plusDays(1))) return DueBucket.TOMORROW;
+        if (!dueDate.isAfter(today.plusDays(7))) return DueBucket.NEXT_SEVEN_DAYS;
+        return DueBucket.LATER;
+    }
+
+    public enum DueBucket {
+        OVERDUE,
+        TODAY,
+        TOMORROW,
+        NEXT_SEVEN_DAYS,
+        LATER,
+        NO_DUE
+    }
+
     public enum Scope {
         TODAY,
         THIS_WEEK
     }
 
+    public enum LoadScope {
+        TODAY,
+        NEXT_THREE_DAYS
+    }
+
     public record Progress(int completed, int remaining, int total, int percentage,
                            Instant from, Instant until) {
+    }
+
+    public record Load(int remaining, int overdue, int highPriority) {
+    }
+
+    public record DayLoad(LocalDate date, int count) {
     }
 }

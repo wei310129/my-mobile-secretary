@@ -7,6 +7,7 @@ import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskPriority;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
@@ -80,6 +81,65 @@ class TaskInsightServiceTest {
                         TaskInsightService.Progress::total,
                         TaskInsightService.Progress::percentage)
                 .containsExactly(2, 2, 4, 50);
+    }
+
+    @Test
+    void groupsOpenTasksIntoDueBuckets() {
+        Task overdue = task("逾期", TaskPriority.NORMAL, NOW.minusSeconds(1),
+                Task.Category.OTHER, NOW.minusSeconds(7200));
+        Task today = task("今天", TaskPriority.NORMAL, NOW.plusSeconds(3600),
+                Task.Category.OTHER, NOW.minusSeconds(7200));
+        Task tomorrow = task("明天", TaskPriority.NORMAL, Instant.parse("2030-08-02T02:00:00Z"),
+                Task.Category.OTHER, NOW.minusSeconds(7200));
+        Task soon = task("七天內", TaskPriority.NORMAL, Instant.parse("2030-08-05T02:00:00Z"),
+                Task.Category.OTHER, NOW.minusSeconds(7200));
+        Task later = task("更晚", TaskPriority.NORMAL, Instant.parse("2030-08-20T02:00:00Z"),
+                Task.Category.OTHER, NOW.minusSeconds(7200));
+        Task noDue = task("無期限", TaskPriority.NORMAL, null,
+                Task.Category.OTHER, NOW.minusSeconds(7200));
+        when(taskService.listOpenTasks()).thenReturn(
+                List.of(overdue, today, tomorrow, soon, later, noDue));
+
+        var groups = service.groupOpenByDue();
+
+        assertThat(groups.keySet()).containsExactly(
+                TaskInsightService.DueBucket.OVERDUE,
+                TaskInsightService.DueBucket.TODAY,
+                TaskInsightService.DueBucket.TOMORROW,
+                TaskInsightService.DueBucket.NEXT_SEVEN_DAYS,
+                TaskInsightService.DueBucket.LATER,
+                TaskInsightService.DueBucket.NO_DUE);
+        assertThat(groups.get(TaskInsightService.DueBucket.TODAY)).containsExactly(today);
+    }
+
+    @Test
+    void reportsLoadAndBusiestUpcomingDay() {
+        Task overdueHigh = task("逾期急件", TaskPriority.HIGH, NOW.minusSeconds(60),
+                Task.Category.WORK, NOW.minusSeconds(7200));
+        Task today = task("今天", TaskPriority.NORMAL, NOW.plusSeconds(3600),
+                Task.Category.WORK, NOW.minusSeconds(7200));
+        Task tomorrowHigh = task("明天急件", TaskPriority.HIGH, Instant.parse("2030-08-02T02:00:00Z"),
+                Task.Category.WORK, NOW.minusSeconds(7200));
+        Task tomorrow = task("明天一般", TaskPriority.NORMAL, Instant.parse("2030-08-02T03:00:00Z"),
+                Task.Category.PERSONAL, NOW.minusSeconds(7200));
+        Task later = task("四天後", TaskPriority.NORMAL, Instant.parse("2030-08-05T04:00:00Z"),
+                Task.Category.OTHER, NOW.minusSeconds(7200));
+        when(taskService.listOpenTasks()).thenReturn(
+                List.of(overdueHigh, today, tomorrowHigh, tomorrow, later));
+
+        var todayLoad = service.load(TaskInsightService.LoadScope.TODAY);
+        var threeDayLoad = service.load(TaskInsightService.LoadScope.NEXT_THREE_DAYS);
+
+        assertThat(todayLoad).extracting(TaskInsightService.Load::remaining,
+                        TaskInsightService.Load::overdue, TaskInsightService.Load::highPriority)
+                .containsExactly(1, 1, 1);
+        assertThat(threeDayLoad).extracting(TaskInsightService.Load::remaining,
+                        TaskInsightService.Load::overdue, TaskInsightService.Load::highPriority)
+                .containsExactly(3, 1, 2);
+        assertThat(service.busiestDueDay()).hasValueSatisfying(load -> {
+            assertThat(load.date()).isEqualTo(LocalDate.of(2030, 8, 2));
+            assertThat(load.count()).isEqualTo(2);
+        });
     }
 
     private static Task task(String title, TaskPriority priority, Instant dueAt,

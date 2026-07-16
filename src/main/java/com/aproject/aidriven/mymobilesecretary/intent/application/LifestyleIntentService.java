@@ -168,6 +168,9 @@ public class LifestyleIntentService {
             case SUGGEST_NEXT_TASK -> suggestNextTask(o);
             case GROUP_TASKS_BY_CATEGORY -> groupTasksByCategory();
             case ASK_TASK_PROGRESS -> taskProgress(o);
+            case GROUP_TASKS_BY_DUE -> groupTasksByDue();
+            case ASK_TASK_LOAD -> taskLoad(o);
+            case ASK_BUSY_TASK_DAY -> busiestTaskDay();
             default -> throw new IllegalArgumentException("not a lifestyle command: " + command.type());
         };
     }
@@ -760,6 +763,43 @@ public class LifestyleIntentService {
                         progress.percentage(), progress.remaining()));
     }
 
+    private IntentResult groupTasksByDue() {
+        var groups = taskInsightService.groupOpenByDue();
+        if (groups.isEmpty()) {
+            return IntentResult.message(IntentResult.Action.TASKS_GROUPED_BY_DUE,
+                    "目前沒有未完成待辦。 ");
+        }
+        contextService.rememberTaskList(groups.values().stream().flatMap(List::stream).toList());
+        String message = groups.entrySet().stream().map(entry -> {
+            String titles = entry.getValue().stream().limit(5)
+                    .map(task -> "- " + task.getTitle())
+                    .collect(java.util.stream.Collectors.joining("\n"));
+            String tail = entry.getValue().size() > 5
+                    ? "\n…等 %d 件".formatted(entry.getValue().size()) : "";
+            return "%s（%d）\n%s%s".formatted(dueBucketLabel(entry.getKey()),
+                    entry.getValue().size(), titles, tail);
+        }).collect(java.util.stream.Collectors.joining("\n"));
+        return IntentResult.message(IntentResult.Action.TASKS_GROUPED_BY_DUE, message);
+    }
+
+    private IntentResult taskLoad(IntentOptions o) {
+        boolean nextThreeDays = "NEXT_3_DAYS".equalsIgnoreCase(o.filter());
+        var load = taskInsightService.load(nextThreeDays
+                ? TaskInsightService.LoadScope.NEXT_THREE_DAYS : TaskInsightService.LoadScope.TODAY);
+        return IntentResult.message(IntentResult.Action.TASK_LOAD_INFO,
+                "%s %d 件到期，另有 %d 件已逾期；這些事情中 %d 件是高優先。".formatted(
+                        nextThreeDays ? "未來三天有" : "今天還有", load.remaining(),
+                        load.overdue(), load.highPriority()));
+    }
+
+    private IntentResult busiestTaskDay() {
+        return taskInsightService.busiestDueDay()
+                .map(load -> IntentResult.message(IntentResult.Action.BUSIEST_TASK_DAY_INFO,
+                        "未來七天以 %s 的到期待辦最多，共 %d 件。".formatted(load.date(), load.count())))
+                .orElseGet(() -> IntentResult.message(IntentResult.Action.BUSIEST_TASK_DAY_INFO,
+                        "未來七天沒有設定期限的待辦。"));
+    }
+
     private IntentResult listShoppingAt(IntentCommand command) {
         Place place = resolvePlace(command.placeName()).orElseThrow(() ->
                 new IllegalArgumentException("unknown destination place"));
@@ -1003,6 +1043,13 @@ public class LifestyleIntentService {
                         && !LocalDate.ofInstant(t.getDueAt(), TAIPEI).isAfter(today.plusDays(7));
                 case "OVERDUE" -> t.getDueAt() != null && t.getDueAt().isBefore(now);
                 case "NO_DUE" -> t.getDueAt() == null;
+                case "STALE" -> t.getCreatedAt().isBefore(now.minus(Duration.ofDays(30)));
+                case "MONTH" -> t.getDueAt() != null
+                        && java.time.YearMonth.from(LocalDate.ofInstant(t.getDueAt(), TAIPEI))
+                        .equals(java.time.YearMonth.from(today));
+                case "NEXT_MONTH" -> t.getDueAt() != null
+                        && java.time.YearMonth.from(LocalDate.ofInstant(t.getDueAt(), TAIPEI))
+                        .equals(java.time.YearMonth.from(today).plusMonths(1));
                 default -> true;
             };
             Task.Category wanted = parseCategory(o.category());
@@ -1111,6 +1158,17 @@ public class LifestyleIntentService {
             case HEALTH -> "健康";
             case FINANCE -> "財務";
             case OTHER -> "其他";
+        };
+    }
+
+    private static String dueBucketLabel(TaskInsightService.DueBucket bucket) {
+        return switch (bucket) {
+            case OVERDUE -> "已逾期";
+            case TODAY -> "今天";
+            case TOMORROW -> "明天";
+            case NEXT_SEVEN_DAYS -> "接下來七天";
+            case LATER -> "更晚";
+            case NO_DUE -> "沒有期限";
         };
     }
 

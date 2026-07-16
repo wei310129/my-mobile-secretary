@@ -188,3 +188,13 @@
 188|哪些待辦是固定提醒|LIST_TASKS|options.filter=RECURRING
 189|哪些固定提醒目前暫停中|LIST_TASKS|options.filter=PAUSED_RECURRING
 190|下一件工作待辦是什麼|SUGGEST_NEXT_TASK|options.category=WORK
+191|幫我把待辦按期限整理|GROUP_TASKS_BY_DUE|分成逾期、今天、明天、七天內、更晚、無期限
+192|我的事情都卡在哪些時間|GROUP_TASKS_BY_DUE|回各期限區間數量與項目
+193|未來三天有幾件事情到期|ASK_TASK_LOAD|options.filter=NEXT_3_DAYS;另列逾期與高優先數
+194|今天還剩幾件，另外逾期幾件|ASK_TASK_LOAD|options.filter=TODAY
+195|未來一週哪一天待辦最多|ASK_BUSY_TASK_DAY|只計尚未到期且有期限的待辦
+196|有沒有放超過一個月沒處理的事|LIST_TASKS|options.filter=STALE
+197|列出放很久沒處理的工作待辦|LIST_TASKS|options.filter=STALE;options.category=WORK
+198|這個月有哪些待辦到期|LIST_TASKS|options.filter=MONTH
+199|下個月到期的事情有哪些|LIST_TASKS|options.filter=NEXT_MONTH
+200|哪些待辦沒有設定期限|LIST_TASKS|options.filter=NO_DUE

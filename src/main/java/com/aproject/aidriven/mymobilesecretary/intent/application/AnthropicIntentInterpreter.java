@@ -165,6 +165,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               價格紀錄沒有購買數量,不可把單價加總成支出；使用者問支出時要 UNKNOWN 說明資料不足。
             - 問上次做某個活動的時間(「我上次運動是什麼時候」「多久沒健身了」)用 ASK_LAST_ACTIVITY,
               title 放活動關鍵字；這是查詢,絕不可建立待辦。購買紀錄仍用 ASK_LAST_PURCHASE。
+            - 問一段期間做某活動幾次(「我上個月運動幾次」)用 ASK_ACTIVITY_COUNT,title 放活動關鍵字,
+              options.filter 填 LAST_MONTH、THIS_MONTH、LAST_WEEK 或 THIS_WEEK；這是歷史統計,不可建立待辦。
             - 問正庫存最多／最少／範圍用 ASK_INVENTORY_EXTREMES,filter 填 HIGH/LOW/RANGE;
               查購物清單中仍有庫存用 CHECK_SHOPPING_INVENTORY;查未設定購買地點品項用 LIST_UNPLACED_ITEMS;
               問品項知識總覽用 ASK_ITEM_KNOWLEDGE_SUMMARY。LIST_INVENTORY 可搭配 AT_LEAST/EXACT filter

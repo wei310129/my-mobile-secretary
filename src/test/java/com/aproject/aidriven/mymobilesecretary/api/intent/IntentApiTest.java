@@ -541,4 +541,17 @@ class IntentApiTest extends IntegrationTestBase {
 
         org.assertj.core.api.Assertions.assertThat(taskService.listTasks()).hasSize(before);
     }
+
+    /** 歷史活動次數由本機資料統計，沒有紀錄也不能交給故障 fallback 建待辦。 */
+    @Test
+    void lastMonthExerciseCountNeverFallsBackToTask() throws Exception {
+        int before = taskService.listTasks().size();
+
+        say("我上個月運動幾次？",
+                jsonPath("$.action").value("ACTIVITY_COUNT_INFO"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("總計｜0 次")),
+                jsonPath("$.task").value(org.hamcrest.Matchers.nullValue()));
+
+        org.assertj.core.api.Assertions.assertThat(taskService.listTasks()).hasSize(before);
+    }
 }

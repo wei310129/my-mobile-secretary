@@ -64,6 +64,7 @@ public record IntentResult(
         TASK_INFO,
         AVAILABILITY_CHECKED,
         RECENT_ACTIVITY_LISTED,
+        ACTIVITY_COUNT_INFO,
         ROUTE_SUGGESTED,
         PLACE_ALIAS_SET,
         SHOPPING_ITEMS_ADDED,

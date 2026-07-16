@@ -47,6 +47,7 @@ public class IntentService {
     private final DailyScheduleOverviewService dailyScheduleOverviewService;
     private final ReminderTimingAnswerService reminderTimingAnswerService;
     private final LastActivityAnswerService lastActivityAnswerService;
+    private final ActivityCountAnswerService activityCountAnswerService;
     private final ScheduleTaskConflictAnswerService scheduleTaskConflictAnswerService;
     private final TaskDetailAnswerService taskDetailAnswerService;
     private final RestaurantBookingService restaurantBookingService;
@@ -71,6 +72,7 @@ public class IntentService {
                          DailyScheduleOverviewService dailyScheduleOverviewService,
                          ReminderTimingAnswerService reminderTimingAnswerService,
                          LastActivityAnswerService lastActivityAnswerService,
+                         ActivityCountAnswerService activityCountAnswerService,
                          ScheduleTaskConflictAnswerService scheduleTaskConflictAnswerService,
                          TaskDetailAnswerService taskDetailAnswerService,
                          RestaurantBookingService restaurantBookingService,
@@ -95,6 +97,7 @@ public class IntentService {
         this.dailyScheduleOverviewService = dailyScheduleOverviewService;
         this.reminderTimingAnswerService = reminderTimingAnswerService;
         this.lastActivityAnswerService = lastActivityAnswerService;
+        this.activityCountAnswerService = activityCountAnswerService;
         this.scheduleTaskConflictAnswerService = scheduleTaskConflictAnswerService;
         this.taskDetailAnswerService = taskDetailAnswerService;
         this.restaurantBookingService = restaurantBookingService;
@@ -116,6 +119,10 @@ public class IntentService {
     }
 
     private IntentResult doHandle(String text) {
+        Optional<IntentResult> activityCount = activityCountAnswerService.answer(text);
+        if (activityCount.isPresent()) {
+            return activityCount.get();
+        }
         Optional<IntentResult> lastActivity = lastActivityAnswerService.answer(text);
         if (lastActivity.isPresent()) {
             return lastActivity.get();
@@ -465,6 +472,11 @@ public class IntentService {
             case ASK_LAST_ACTIVITY -> {
                 requireText(command.title(), "title");
                 yield lastActivityAnswerService.answerTopic(command.title());
+            }
+            case ASK_ACTIVITY_COUNT -> {
+                requireText(command.title(), "title");
+                yield activityCountAnswerService.answerTopic(
+                        command.title(), command.safeOptions().filter());
             }
             case ASK_PLACE -> {
                 requireText(command.placeName(), "placeName");

@@ -117,12 +117,12 @@ public class LastActivityAnswerService {
                 || text.contains("多少錢") || text.contains("花多少");
     }
 
-    private static boolean isPastActivity(ScheduleItem item, Instant now) {
+    static boolean isPastActivity(ScheduleItem item, Instant now) {
         return item.getStatus() == ScheduleStatus.COMPLETED
                 || (item.getStatus() == ScheduleStatus.CONFIRMED && !item.getEndAt().isAfter(now));
     }
 
-    private static boolean matchesTopic(String topic, String title) {
+    static boolean matchesTopic(String topic, String title) {
         String normalizedTopic = normalize(topic);
         String normalizedTitle = normalize(title).replaceFirst("^(?:提醒|去|做|進行)", "");
         if (normalizedTopic.isBlank() || normalizedTitle.isBlank()) {

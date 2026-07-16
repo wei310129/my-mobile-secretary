@@ -234,3 +234,9 @@
 234|你會在什麼時機提醒我簡報排練|ASK_SCHEDULE_REMINDER|title=簡報排練;未設定時明說並提供設定語句
 235|拿包裹有兩筆的話列編號給我選|ASK_TASK_PLACE|title=拿包裹;多筆回編號、期限、分類並保存上下文
 236|第一個拿包裹要去哪裡|ASK_TASK_PLACE|options.ordinal=1;ordinal優先於重複title
+237|幫我訂餐廳|BOOK_RESTAURANT|全欄位留空;系統回問料理/餐廳、時間、人數與特殊需求
+238|週五晚上七點訂鼎泰豐,4大1小有寶寶|BOOK_RESTAURANT|placeName=鼎泰豐;startAt=週五19:00;options.quantity=5;options.description=有寶寶同行
+239|想找地方吃日式料理慶生|BOOK_RESTAURANT|title=日式料理;缺時間人數留空由系統回問;慶生線索會附祝賀語
+240|晚上七點訂巷口熱炒,6位有坐輪椅的長輩|BOOK_RESTAURANT|placeName=巷口熱炒;options.quantity=6;options.description=行動不便長輩;回覆要確認無障礙
+241|把下週一到週三的行程都刪掉|BULK_CANCEL_SCHEDULES|startAt=下週一00:00;endAt=下週三24:00;只刪非固定行程並回報固定行程未動
+242|刪掉所有行程|BULK_CANCEL_SCHEDULES|範圍留空;系統回問明確時間段,固定行程要逐一指名刪

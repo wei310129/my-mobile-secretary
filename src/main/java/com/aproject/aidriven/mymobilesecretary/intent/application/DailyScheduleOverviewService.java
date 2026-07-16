@@ -92,6 +92,87 @@ public class DailyScheduleOverviewService {
         return IntentResult.message(IntentResult.Action.SCHEDULES_LISTED, message.toString());
     }
 
+    /**
+     * 使用者拒絕把當日項目併入固定行程(「簡報排練不要併到上班固定行程」)。
+     * 不自行更動任何行程狀態:只把目標當獨立行程回報時段,改期或維持原時間由使用者決定
+     * (使用者明確要求系統不可代替他確定行程)。
+     */
+    public IntentResult rejectMerge(String text) {
+        List<ScheduleItem> visible = scheduleService.listSchedules(null).stream()
+                .filter(item -> VISIBLE_STATUSES.contains(item.getStatus()))
+                .filter(item -> item.getStatus() != ScheduleStatus.COMPLETED)
+                .toList();
+        ScheduleItem target = oneTimeMentionedIn(visible, text)
+                .or(() -> lastContextOneTime())
+                .or(() -> soleNestedOneTime(visible))
+                .orElse(null);
+        if (target == null) {
+            return IntentResult.clarificationNeeded(
+                    "我知道你不要併入，但我不確定是指哪個行程；請連行程名稱一起說（例如「簡報排練不要併入」）。");
+        }
+        // 記住目標,讓「改到八點」「維持原時間」等後續句子能接得上
+        contextService.rememberSchedule(target);
+        LocalDate date = LocalDate.ofInstant(target.getStartAt(), TAIPEI);
+        String container = visible.stream()
+                .filter(item -> item.getRecurrence() != ScheduleItem.Recurrence.NONE)
+                .filter(item -> occursOn(item, date))
+                .filter(item -> contains(project(item, date),
+                        new Occurrence(target, target.getStartAt(), target.getEndAt())))
+                .findFirst()
+                .map(item -> "固定行程「%s」".formatted(item.getTitle()))
+                .orElse("固定行程");
+        return IntentResult.message(IntentResult.Action.CONTEXT_UPDATED,
+                ("好，「%s」不會併入%s，我把它當獨立行程處理：目前排在 %s %s–%s。\n"
+                        + "要改期就直接說新時間；回「維持原時間」我就照原時段確認。不會由我代你決定。")
+                        .formatted(target.getTitle(), container, date.format(DAY),
+                                time(target.getStartAt()), time(target.getEndAt())));
+    }
+
+    /** 句子裡點名的單次行程(取標題最長的命中,避免短標題誤搶)。 */
+    private static java.util.Optional<ScheduleItem> oneTimeMentionedIn(
+            List<ScheduleItem> visible, String text) {
+        String normalized = normalizeForMatch(text);
+        return visible.stream()
+                .filter(item -> item.getRecurrence() == ScheduleItem.Recurrence.NONE)
+                .filter(item -> {
+                    String title = normalizeForMatch(item.getTitle());
+                    return title.length() >= 2 && normalized.contains(title);
+                })
+                .max(Comparator.comparingInt(item -> normalizeForMatch(item.getTitle()).length()));
+    }
+
+    /** 沒點名時退回對話上下文;只接受單次行程,固定行程本身不是「不要併入」的對象。 */
+    private java.util.Optional<ScheduleItem> lastContextOneTime() {
+        Long id = contextService.scheduleIdAt(null);
+        if (id == null) {
+            return java.util.Optional.empty();
+        }
+        ScheduleItem item = scheduleService.getSchedule(id);
+        return item != null && item.getRecurrence() == ScheduleItem.Recurrence.NONE
+                ? java.util.Optional.of(item)
+                : java.util.Optional.empty();
+    }
+
+    /** 最後手段:全系統只有一個「位於固定行程內」的單次行程時,不必再回問。 */
+    private static java.util.Optional<ScheduleItem> soleNestedOneTime(List<ScheduleItem> visible) {
+        List<ScheduleItem> nested = visible.stream()
+                .filter(item -> item.getRecurrence() == ScheduleItem.Recurrence.NONE)
+                .filter(child -> visible.stream()
+                        .filter(parent -> parent.getRecurrence() != ScheduleItem.Recurrence.NONE)
+                        .anyMatch(parent -> {
+                            LocalDate date = LocalDate.ofInstant(child.getStartAt(), TAIPEI);
+                            return occursOn(parent, date) && contains(project(parent, date),
+                                    new Occurrence(child, child.getStartAt(), child.getEndAt()));
+                        }))
+                .toList();
+        return nested.size() == 1 ? java.util.Optional.of(nested.get(0)) : java.util.Optional.empty();
+    }
+
+    private static String normalizeForMatch(String value) {
+        return value == null ? ""
+                : value.replaceAll("[\\s「」『』:：，,。！!？?]", "").toLowerCase(Locale.TAIWAN);
+    }
+
     public IntentResult confirmMerge() {
         Long scheduleId = contextService.scheduleIdAt(null);
         if (scheduleId == null) {

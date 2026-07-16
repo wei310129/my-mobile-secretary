@@ -119,7 +119,9 @@ public record IntentResult(
         SHOPPING_INVENTORY_CHECKED,
         UNPLACED_ITEMS_LISTED,
         ITEM_KNOWLEDGE_SUMMARY,
-        SCHEDULE_REMINDER_INFO
+        SCHEDULE_REMINDER_INFO,
+        RESTAURANT_BOOKING_INFO,
+        SCHEDULES_BULK_CANCELED
     }
 
     /** 清單訊息共用:最多列 10 筆,其餘以「…等 N 件」收尾。 */

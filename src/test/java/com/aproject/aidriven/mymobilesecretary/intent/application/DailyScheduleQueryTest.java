@@ -36,4 +36,25 @@ class DailyScheduleQueryTest {
         assertThat(IntentService.isScheduleMergeConfirmation("確認併入上班固定行程")).isTrue();
         assertThat(IntentService.isScheduleMergeConfirmation("給我明天的行程")).isFalse();
     }
+
+    @Test
+    void mergeRejectionIsRecognizedBeforeConfirmation() {
+        assertThat(IntentService.isScheduleMergeRejection("簡報排練不要併到上班固定行程")).isTrue();
+        assertThat(IntentService.isScheduleMergeRejection("不要併入，你有聽懂嗎？")).isTrue();
+        assertThat(IntentService.isScheduleMergeRejection("取消併入")).isTrue();
+        assertThat(IntentService.isScheduleMergeRejection("確認併入上班固定行程")).isFalse();
+        assertThat(IntentService.isScheduleMergeRejection("給我明天的行程")).isFalse();
+        // 「不要併入固定行程」同時含確認關鍵字,拒絕判斷必須先執行才不會誤確認
+        assertThat(IntentService.isScheduleMergeRejection("不要併入固定行程")).isTrue();
+        assertThat(IntentService.isScheduleMergeConfirmation("不要併入固定行程")).isTrue();
+    }
+
+    @Test
+    void decisionDelegationIsRecognizedDeterministically() {
+        assertThat(IntentService.isDecisionDelegation("你自己看著辦")).isTrue();
+        assertThat(IntentService.isDecisionDelegation("你決定就好")).isTrue();
+        assertThat(IntentService.isDecisionDelegation("隨便你安排")).isTrue();
+        assertThat(IntentService.isDecisionDelegation("給我明天的行程")).isFalse();
+        assertThat(IntentService.isDecisionDelegation("取消簡報排練")).isFalse();
+    }
 }

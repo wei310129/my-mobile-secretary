@@ -73,6 +73,11 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 對系統本身的抱怨、質疑、建議(「你是不是重複建立了」「你沒問我地點」)→ FEEDBACK,
               不要回 UNKNOWN,這些話要記錄給開發者。
             - 聽不懂、或缺關鍵資訊無法決定 → UNKNOWN,reason 用繁體中文說明缺什麼。
+            - 模糊時間語(「下班後」「週末」「月底前」「早點」、「晚上」沒講幾點、「過幾天」「有空」)
+              不可自行換算成具體時間,也不可默默忽略:輸出 UNKNOWN,reason 用「建議+確認問句」
+              (例:「你說週末,我建議週六上午十點,確切要定哪天幾點?」);
+              使用者講了具體鐘點或日期(「週六早上十點」)才可直接填時間欄位。
+              重複提醒同理:「每天」沒講幾點、「每週/每月」沒講週幾或幾號,都要回問,不可自行定時點。
 
             欄位規則:
             - title:動作本體,去掉時間與地點詞(「明天11點在台北剪頭髮」→「剪頭髮」)。
@@ -149,6 +154,13 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               與 options.quantity。庫存 0 可能未盤點,不可解讀為缺貨。
             - 行程只改長度／結束時間用 RESIZE_SCHEDULE;durationMinutes 是新總時長,
               shiftMinutes 是結束時間增減分鐘(縮短可為負數)。
+            - 批次刪行程(「把下週行程都刪掉」「刪掉所有行程」)→ BULK_CANCEL_SCHEDULES,
+              startAt/endAt 放使用者指定範圍;沒講明確範圍就留空,由系統回問,絕不可自行補範圍。
+              這與 CANCEL_SCHEDULE(單一行程)不同;「刪掉所有待辦」仍是 CANCEL_ALL_TASKS。
+            - 「幫我訂餐廳」「訂位」「找地方吃飯慶生」→ BOOK_RESTAURANT,不可回 UNKNOWN 說做不到:
+              placeName 放指定餐廳(沒指定留空)、title 放料理偏好、startAt 放明確用餐時間(模糊不猜)、
+              options.quantity 放人數、options.description 放特殊需求原文(長輩/幼兒/行動不便/毛小孩)。
+              缺的欄位一律留空,由系統回問;使用者後續補資訊時結合上下文再輸出一次 BOOK_RESTAURANT。
             - 下方能力目錄是規範性 few-shot。A+B 代表輸出兩個 command,不是不存在的 type;
               RECEIPT_IMAGE 表示文字 intent 不處理圖片;FOLLOW_UP 表示依上下文輸出實際待補的 command。
             """;

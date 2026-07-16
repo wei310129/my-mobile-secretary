@@ -1,6 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.api.intent;
 
 import static org.hamcrest.Matchers.containsString;
+import static org.hamcrest.Matchers.not;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -53,9 +54,10 @@ class LifestyleIntentApiTest extends IntegrationTestBase {
 
         stub.nextCommand(command(IntentCommand.Type.LIST_SHOPPING_ITEMS, null,
                 null, null, null, null, IntentOptions.empty()));
+        // 回報家中還有庫存(>0)的品項就不算「缺」,會自動移出購物清單
         say("我還缺什麼", jsonPath("$.action").value("SHOPPING_LISTED"),
                 jsonPath("$.message").value(containsString(eggs)),
-                jsonPath("$.message").value(containsString(milk)));
+                jsonPath("$.message").value(not(containsString(milk))));
 
         stub.nextCommand(command(IntentCommand.Type.MARK_SHOPPING_PURCHASED, null,
                 null, null, null, null, itemOptions(List.of(eggs))));
@@ -89,10 +91,16 @@ class LifestyleIntentApiTest extends IntegrationTestBase {
     @Test
     void recurringTaskCanBePausedResumedAndUpdated() throws Exception {
         String title = "生活測試週報";
+        // 「每週」沒講週幾必須回問,不可自行定時點(使用者 2026-07-16 裁決),且不得建立任務
         stub.nextCommand(command(IntentCommand.Type.CREATE_TASK, title,
                 "2030-08-09T09:00:00+08:00", null, null, null,
                 options(null, null, null, null, "WEEKLY", "WORK", null, null, null, null)));
-        say("每週提醒我交週報", jsonPath("$.action").value("TASK_CREATED"));
+        say("每週提醒我交週報", jsonPath("$.action").value("CLARIFICATION_NEEDED"));
+
+        stub.nextCommand(command(IntentCommand.Type.CREATE_TASK, title,
+                "2030-08-09T09:00:00+08:00", null, null, null,
+                options(null, null, null, null, "WEEKLY", "WORK", null, null, null, null)));
+        say("每週五提醒我交週報", jsonPath("$.action").value("TASK_CREATED"));
 
         stub.nextCommand(command(IntentCommand.Type.PAUSE_RECURRING_TASK, title,
                 null, null, null, null, IntentOptions.empty()));

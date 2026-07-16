@@ -97,6 +97,50 @@ class DailyScheduleOverviewServiceTest {
                 .doesNotContain("指定新時間");
     }
 
+    @Test
+    void mergeRejectionByTitleKeepsScheduleAndAsksUserToDecide() {
+        ScheduleItem workday = proposed("上班日通勤與上班",
+                "2026-07-17T07:00:00+08:00", "2026-07-17T19:15:00+08:00");
+        workday.repeat(ScheduleItem.Recurrence.WEEKDAYS, NOW);
+        ScheduleItem rehearsal = proposed("簡報排練",
+                "2026-07-17T14:00:00+08:00", "2026-07-17T15:00:00+08:00");
+        when(scheduleService.listSchedules(null)).thenReturn(List.of(workday, rehearsal));
+
+        IntentResult result = service.rejectMerge("簡報排練不要併到上班固定行程");
+
+        assertThat(result.message())
+                .contains("「簡報排練」不會併入固定行程「上班日通勤與上班」")
+                .contains("14:00–15:00", "維持原時間", "不會由我代你決定");
+        // 拒絕併入不代表取消或確認:任何狀態變更都必須等使用者決定
+        verify(scheduleService, org.mockito.Mockito.never()).confirmSchedule(org.mockito.ArgumentMatchers.any());
+        verify(scheduleService, org.mockito.Mockito.never()).cancelSchedule(org.mockito.ArgumentMatchers.any());
+        verify(contextService).rememberSchedule(rehearsal);
+    }
+
+    @Test
+    void mergeRejectionWithoutTitleFallsBackToContextSchedule() {
+        ScheduleItem rehearsal = proposed("簡報排練",
+                "2026-07-17T14:00:00+08:00", "2026-07-17T15:00:00+08:00");
+        when(scheduleService.listSchedules(null)).thenReturn(List.of(rehearsal));
+        when(contextService.scheduleIdAt(null)).thenReturn(7L);
+        when(scheduleService.getSchedule(7L)).thenReturn(rehearsal);
+
+        IntentResult result = service.rejectMerge("不要併入，你有聽懂嗎？");
+
+        assertThat(result.message()).contains("「簡報排練」不會併入固定行程", "14:00–15:00");
+    }
+
+    @Test
+    void mergeRejectionWithoutAnyTargetAsksWhichSchedule() {
+        when(scheduleService.listSchedules(null)).thenReturn(List.of());
+        when(contextService.scheduleIdAt(null)).thenReturn(null);
+
+        IntentResult result = service.rejectMerge("不要併入");
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.CLARIFICATION_NEEDED);
+        assertThat(result.message()).contains("哪個行程");
+    }
+
     private ScheduleItem proposed(String title, String start, String end) {
         return ScheduleItem.propose(title, Instant.parse(start), Instant.parse(end), null, NOW);
     }

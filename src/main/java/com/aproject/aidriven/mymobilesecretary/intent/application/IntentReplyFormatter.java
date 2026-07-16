@@ -126,6 +126,9 @@ public final class IntentReplyFormatter {
             return "💬";
         }
         String name = action.name();
+        if (name.contains("RESTAURANT")) {
+            return "🍽️";
+        }
         if (name.contains("WEATHER")) {
             return "🌦️";
         }

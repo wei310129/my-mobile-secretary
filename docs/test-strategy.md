@@ -45,6 +45,9 @@
 4. Redis reminder 流程：只有動到 queue member、claim、排程同步或 worker 時，才跑 reminder flow 測試。
 5. Controller／DTO：跑對應 API test；未改 controller 的 service 小修不重跑所有 API。
 6. 外部 API client：只跑該 client 測試，不打真實服務。
+7. 意圖確定性攔截（合併確認/拒絕、模糊時間守門 `VagueTimeGuard`）：跑對應單元測試
+   （`DailyScheduleQueryTest`、`VagueTimeGuardTest`），改到攔截順序時加跑 `IntentApiTest`。
+   注意攔截詞可能出現在任務/行程標題裡的誤攔情境要有測試。
 
 ## 必須跑完整 `mvn test` 的節點
 

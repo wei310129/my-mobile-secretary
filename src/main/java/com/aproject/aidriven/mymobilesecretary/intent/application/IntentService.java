@@ -48,6 +48,9 @@ public class IntentService {
     private final ReminderTimingAnswerService reminderTimingAnswerService;
     private final ScheduleTaskConflictAnswerService scheduleTaskConflictAnswerService;
     private final TaskDetailAnswerService taskDetailAnswerService;
+    private final RestaurantBookingService restaurantBookingService;
+    private final BulkScheduleCancellationService bulkScheduleCancellationService;
+    private final DelegatedDecisionService delegatedDecisionService;
     private final ConversationContextService conversationContextService;
     private final com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService placeAliasService;
     private final int bindRadiusMeters;
@@ -68,6 +71,9 @@ public class IntentService {
                          ReminderTimingAnswerService reminderTimingAnswerService,
                          ScheduleTaskConflictAnswerService scheduleTaskConflictAnswerService,
                          TaskDetailAnswerService taskDetailAnswerService,
+                         RestaurantBookingService restaurantBookingService,
+                         BulkScheduleCancellationService bulkScheduleCancellationService,
+                         DelegatedDecisionService delegatedDecisionService,
                          ConversationContextService conversationContextService,
                          com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService placeAliasService,
                          @org.springframework.beans.factory.annotation.Value(
@@ -88,6 +94,9 @@ public class IntentService {
         this.reminderTimingAnswerService = reminderTimingAnswerService;
         this.scheduleTaskConflictAnswerService = scheduleTaskConflictAnswerService;
         this.taskDetailAnswerService = taskDetailAnswerService;
+        this.restaurantBookingService = restaurantBookingService;
+        this.bulkScheduleCancellationService = bulkScheduleCancellationService;
+        this.delegatedDecisionService = delegatedDecisionService;
         this.conversationContextService = conversationContextService;
         this.placeAliasService = placeAliasService;
         this.bindRadiusMeters = bindRadiusMeters;
@@ -96,7 +105,8 @@ public class IntentService {
 
     /** 處理使用者的一句話,回傳做了什麼;聽不懂/退回保底的話語會記成意圖問題供開發追蹤。 */
     public IntentResult handle(String text) {
-        IntentResult result = doHandle(text);
+        // 場合祝賀在記錄之前套用:意圖問題與上下文都要記使用者實際看到的回覆
+        IntentResult result = OccasionGreeting.decorate(text, doHandle(text));
         recordIssueIfUnresolved(text, result);
         conversationContextService.rememberExchange(text, result);
         return result;
@@ -119,8 +129,16 @@ public class IntentService {
         if (overviewDate.isPresent()) {
             return dailyScheduleOverviewService.overview(overviewDate.get());
         }
+        // 拒絕必須先於確認判斷:「不要併入固定行程」也包含「併入固定行程」字樣
+        if (isScheduleMergeRejection(text)) {
+            return dailyScheduleOverviewService.rejectMerge(text);
+        }
         if (isScheduleMergeConfirmation(text)) {
             return dailyScheduleOverviewService.confirmMerge();
+        }
+        // 「你自己看著辦」=授權低風險安排並回報(使用者裁決 #48)
+        if (isDecisionDelegation(text)) {
+            return delegatedDecisionService.decide();
         }
         Optional<String> routineQuestion = recurringRoutineClarification(text);
         if (routineQuestion.isPresent()) {
@@ -205,6 +223,26 @@ public class IntentService {
         return Optional.of(normalized.contains("明天") ? today.plusDays(1) : today);
     }
 
+    /** 「你自己看著辦」「你決定就好」:委任語,授權系統低風險安排(裁決 #48)。 */
+    static boolean isDecisionDelegation(String text) {
+        String normalized = text == null ? "" : text.replaceAll("\\s+", "");
+        return normalized.contains("看著辦")
+                || normalized.contains("你決定")
+                || normalized.contains("交給你決定")
+                || normalized.contains("幫我決定")
+                || normalized.contains("隨便你");
+    }
+
+    /** 「簡報排練不要併到上班固定行程」「不要併入」:拒絕合併提案,交回使用者決定時間。 */
+    static boolean isScheduleMergeRejection(String text) {
+        String normalized = text == null ? "" : text.replaceAll("\\s+", "");
+        return normalized.contains("不要併")
+                || normalized.contains("不併入")
+                || normalized.contains("別併入")
+                || normalized.contains("不要合併")
+                || normalized.contains("取消併入");
+    }
+
     static boolean isScheduleMergeConfirmation(String text) {
         String normalized = text == null ? "" : text.replaceAll("\\s+", "");
         return normalized.contains("確認併入")
@@ -252,6 +290,12 @@ public class IntentService {
     private IntentResult execute(String text, IntentCommand command) {
         if (command == null || command.type() == null) {
             throw new IllegalArgumentException("missing type");
+        }
+        // 模糊時間語(「下班後」「週末」)不可被猜成具體時間直接寫入:
+        // 一律建議+回問(使用者 2026-07-16 裁決,見 VagueTimeGuard)
+        Optional<IntentResult> vagueTime = VagueTimeGuard.clarify(text, command);
+        if (vagueTime.isPresent()) {
+            return vagueTime.get();
         }
         return switch (command.type()) {
             case ADD_SCHEDULE_REMINDER, SUGGEST_FREE_SLOT, CREATE_RELATIVE_SCHEDULE,
@@ -471,6 +515,11 @@ public class IntentService {
                         .orElseGet(() -> IntentResult.clarificationNeeded(
                                 "最近沒有等待回報的行程,想回報哪一個行程的結果?"));
             }
+            // 超能力範圍的要求不可只說做不到,要走替代引導(使用者裁決 #47)
+            case BOOK_RESTAURANT -> restaurantBookingService.handle(text, command);
+            // 破壞性操作安全閘:只刪指定範圍內的非固定行程(使用者裁決 #49)
+            case BULK_CANCEL_SCHEDULES -> bulkScheduleCancellationService.cancelWithin(
+                    parseTime(command.startAt()), parseTime(command.endAt()));
             case UNKNOWN -> IntentResult.clarificationNeeded(
                     command.reason() == null || command.reason().isBlank()
                             ? "我沒聽懂,可以換個說法嗎?" : command.reason());

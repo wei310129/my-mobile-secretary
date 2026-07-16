@@ -166,6 +166,19 @@ public record IntentCommand(
         SUGGEST_NEARBY,
         /** 回報行程實際結果(準時嗎/超時多久/原因)。 */
         RECORD_OUTCOME,
+        /**
+         * 批次刪行程(「把下週行程都刪掉」「刪掉所有行程」):破壞性操作安全閘——
+         * 只刪 startAt~endAt 範圍內的非固定行程;固定行程一律保留並提示逐一指名刪。
+         * 範圍缺一就留空,由系統回問,不可自行補範圍。
+         */
+        BULK_CANCEL_SCHEDULES,
+        /**
+         * 訂餐廳引導(「幫我訂餐廳」「訂位」):系統不能真的訂位,但要走替代路徑——
+         * 問齊料理/餐廳、時間、人數與特殊需求後,查營業時間與菜單、給訂位建議。
+         * placeName=指定餐廳、title=料理偏好、startAt=用餐時間、
+         * options.quantity=人數、options.description=特殊需求;缺的留空由系統回問。
+         */
+        BOOK_RESTAURANT,
         /** 聽不懂或資訊不足,需要回問。 */
         UNKNOWN
     }

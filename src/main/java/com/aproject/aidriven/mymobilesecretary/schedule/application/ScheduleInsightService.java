@@ -68,7 +68,27 @@ public class ScheduleInsightService {
         return conflicts;
     }
 
+    public Optional<ScheduleItem> longest(List<ScheduleItem> items) {
+        return items.stream().max(java.util.Comparator.comparing(
+                item -> Duration.between(item.getStartAt(), item.getEndAt())));
+    }
+
+    public Optional<DayLoad> busiestDay(List<ScheduleItem> items) {
+        return groupByDay(items).entrySet().stream()
+                .map(entry -> new DayLoad(entry.getKey(), entry.getValue().size(),
+                        entry.getValue().stream()
+                                .mapToLong(item -> Duration.between(
+                                        item.getStartAt(), item.getEndAt()).toMinutes())
+                                .sum()))
+                .sorted(java.util.Comparator.comparingLong(DayLoad::minutes).reversed()
+                        .thenComparing(DayLoad::date))
+                .findFirst();
+    }
+
     public record Gap(ScheduleItem first, ScheduleItem second,
                       Duration duration, boolean overlapping) {
+    }
+
+    public record DayLoad(LocalDate date, int count, long minutes) {
     }
 }

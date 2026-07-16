@@ -129,6 +129,9 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               PAUSED_RECURRING、STALE、MONTH、NEXT_MONTH filter;這些都是查詢,不可改動待辦。
             - 問待辦依期限分布用 GROUP_TASKS_BY_DUE;問今天或未來三天還有幾件用 ASK_TASK_LOAD,
               未來三天填 filter=NEXT_3_DAYS。問未來七天哪天到期待辦最多用 ASK_BUSY_TASK_DAY。
+            - 問行程最滿的一天用 ASK_BUSY_SCHEDULE_DAY;問最長行程用 ASK_LONGEST_SCHEDULE;
+              按地點整理用 GROUP_SCHEDULES_BY_PLACE。這三種可搭配 TODAY/WEEK filter。
+              LIST_SCHEDULES 另可搭配 WEEKDAY、RECURRING、ONE_TIME、LONG filter。
             - 行程只改長度／結束時間用 RESIZE_SCHEDULE;durationMinutes 是新總時長,
               shiftMinutes 是結束時間增減分鐘(縮短可為負數)。
             - 下方能力目錄是規範性 few-shot。A+B 代表輸出兩個 command,不是不存在的 type;

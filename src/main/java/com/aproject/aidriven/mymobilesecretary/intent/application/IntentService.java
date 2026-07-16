@@ -168,7 +168,9 @@ public class IntentService {
                     CHECK_SCHEDULE_CONFLICTS, SUGGEST_NEXT_TASK,
                     GROUP_TASKS_BY_CATEGORY,
                     ASK_TASK_PROGRESS, GROUP_TASKS_BY_DUE,
-                    ASK_TASK_LOAD, ASK_BUSY_TASK_DAY -> lifestyleIntentService.execute(text, command);
+                    ASK_TASK_LOAD, ASK_BUSY_TASK_DAY, ASK_BUSY_SCHEDULE_DAY,
+                    ASK_LONGEST_SCHEDULE,
+                    GROUP_SCHEDULES_BY_PLACE -> lifestyleIntentService.execute(text, command);
             case CREATE_TASK -> {
                 requireText(command.title(), "title");
                 // 防重複(使用者實際踩過:「拿包裹」被建了兩次):同名未結案任務存在就回問

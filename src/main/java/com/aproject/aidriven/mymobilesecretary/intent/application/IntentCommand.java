@@ -115,6 +115,9 @@ public record IntentCommand(
         GROUP_TASKS_BY_DUE,
         ASK_TASK_LOAD,
         ASK_BUSY_TASK_DAY,
+        ASK_BUSY_SCHEDULE_DAY,
+        ASK_LONGEST_SCHEDULE,
+        GROUP_SCHEDULES_BY_PLACE,
         /** 建任務(待辦,無固定時段;可有期限)。 */
         CREATE_TASK,
         /** 建行程(有明確開始/結束時段的承諾)。 */

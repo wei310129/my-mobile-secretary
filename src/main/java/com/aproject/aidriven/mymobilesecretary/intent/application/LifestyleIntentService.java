@@ -171,6 +171,9 @@ public class LifestyleIntentService {
             case GROUP_TASKS_BY_DUE -> groupTasksByDue();
             case ASK_TASK_LOAD -> taskLoad(o);
             case ASK_BUSY_TASK_DAY -> busiestTaskDay();
+            case ASK_BUSY_SCHEDULE_DAY -> busiestScheduleDay(o);
+            case ASK_LONGEST_SCHEDULE -> longestSchedule(o);
+            case GROUP_SCHEDULES_BY_PLACE -> groupSchedulesByPlace(o);
             default -> throw new IllegalArgumentException("not a lifestyle command: " + command.type());
         };
     }
@@ -800,6 +803,52 @@ public class LifestyleIntentService {
                         "未來七天沒有設定期限的待辦。"));
     }
 
+    private IntentResult busiestScheduleDay(IntentOptions o) {
+        List<ScheduleItem> items = filterSchedules(scheduleInsightService.upcoming(), o);
+        return scheduleInsightService.busiestDay(items)
+                .map(load -> IntentResult.message(IntentResult.Action.BUSIEST_SCHEDULE_DAY_INFO,
+                        "%s 的已排行程最滿，共 %d 個、約 %d 小時 %d 分鐘。".formatted(
+                                load.date(), load.count(), load.minutes() / 60, load.minutes() % 60)))
+                .orElseGet(() -> IntentResult.message(IntentResult.Action.BUSIEST_SCHEDULE_DAY_INFO,
+                        "指定範圍內沒有已確認行程。"));
+    }
+
+    private IntentResult longestSchedule(IntentOptions o) {
+        List<ScheduleItem> items = filterSchedules(scheduleInsightService.upcoming(), o);
+        return scheduleInsightService.longest(items).map(item -> {
+            contextService.rememberSchedule(item);
+            long minutes = Duration.between(item.getStartAt(), item.getEndAt()).toMinutes();
+            return IntentResult.message(IntentResult.Action.LONGEST_SCHEDULE_INFO,
+                    "最長的是「%s」，%s 開始，共 %d 小時 %d 分鐘。".formatted(
+                            item.getTitle(), format(item.getStartAt()), minutes / 60, minutes % 60));
+        }).orElseGet(() -> IntentResult.message(IntentResult.Action.LONGEST_SCHEDULE_INFO,
+                "指定範圍內沒有已確認行程。"));
+    }
+
+    private IntentResult groupSchedulesByPlace(IntentOptions o) {
+        List<ScheduleItem> items = filterSchedules(scheduleInsightService.upcoming(), o);
+        if (items.isEmpty()) {
+            return IntentResult.message(IntentResult.Action.SCHEDULES_GROUPED_BY_PLACE,
+                    "指定範圍內沒有已確認行程。 ");
+        }
+        contextService.rememberScheduleList(items);
+        java.util.Map<String, List<ScheduleItem>> groups = new java.util.LinkedHashMap<>();
+        items.forEach(item -> {
+            String place = item.getPlaceId() == null
+                    ? "未設定地點" : placeService.getPlace(item.getPlaceId()).getName();
+            groups.computeIfAbsent(place, ignored -> new java.util.ArrayList<>()).add(item);
+        });
+        String message = groups.entrySet().stream().map(entry -> {
+            String lines = entry.getValue().stream().limit(5)
+                    .map(item -> "- %s｜%s".formatted(item.getTitle(), format(item.getStartAt())))
+                    .collect(java.util.stream.Collectors.joining("\n"));
+            String tail = entry.getValue().size() > 5
+                    ? "\n…等 %d 個".formatted(entry.getValue().size()) : "";
+            return "%s（%d）\n%s%s".formatted(entry.getKey(), entry.getValue().size(), lines, tail);
+        }).collect(java.util.stream.Collectors.joining("\n"));
+        return IntentResult.message(IntentResult.Action.SCHEDULES_GROUPED_BY_PLACE, message);
+    }
+
     private IntentResult listShoppingAt(IntentCommand command) {
         Place place = resolvePlace(command.placeName()).orElseThrow(() ->
                 new IllegalArgumentException("unknown destination place"));
@@ -1080,6 +1129,12 @@ public class LifestyleIntentService {
                         && (date.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
                         || date.getDayOfWeek() == java.time.DayOfWeek.SUNDAY);
             }
+            case "WEEKDAY" -> {
+                LocalDate date = LocalDate.ofInstant(s.getStartAt(), TAIPEI);
+                yield !date.isAfter(today.plusDays(7))
+                        && date.getDayOfWeek() != java.time.DayOfWeek.SATURDAY
+                        && date.getDayOfWeek() != java.time.DayOfWeek.SUNDAY;
+            }
             case "MORNING" -> ZonedDateTime.ofInstant(s.getStartAt(), TAIPEI).getHour() < 12;
             case "AFTERNOON" -> {
                 int hour = ZonedDateTime.ofInstant(s.getStartAt(), TAIPEI).getHour();
@@ -1088,6 +1143,9 @@ public class LifestyleIntentService {
             case "EVENING" -> ZonedDateTime.ofInstant(s.getStartAt(), TAIPEI).getHour() >= 18;
             case "WITH_PLACE" -> s.getPlaceId() != null;
             case "NO_PLACE" -> s.getPlaceId() == null;
+            case "RECURRING" -> s.getRecurrence() == ScheduleItem.Recurrence.WEEKLY;
+            case "ONE_TIME" -> s.getRecurrence() == ScheduleItem.Recurrence.NONE;
+            case "LONG" -> Duration.between(s.getStartAt(), s.getEndAt()).toMinutes() > 120;
             default -> true;
         }).toList();
         return "TOMORROW_FIRST".equals(filter) ? filtered.stream().limit(1).toList() : filtered;

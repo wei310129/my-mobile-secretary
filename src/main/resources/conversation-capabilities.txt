@@ -198,3 +198,13 @@
 198|這個月有哪些待辦到期|LIST_TASKS|options.filter=MONTH
 199|下個月到期的事情有哪些|LIST_TASKS|options.filter=NEXT_MONTH
 200|哪些待辦沒有設定期限|LIST_TASKS|options.filter=NO_DUE
+201|這週哪一天行程排得最滿|ASK_BUSY_SCHEDULE_DAY|options.filter=WEEK;按已排分鐘比較
+202|未來七天最忙的是哪天|ASK_BUSY_SCHEDULE_DAY|options.filter=WEEK;同分鐘時回較早日期
+203|接下來最長的行程是哪個|ASK_LONGEST_SCHEDULE|回名稱、開始時間與總長
+204|這週哪個行程時間最長|ASK_LONGEST_SCHEDULE|options.filter=WEEK
+205|把這週行程按地點整理|GROUP_SCHEDULES_BY_PLACE|options.filter=WEEK
+206|接下來各地點有哪些行程|GROUP_SCHEDULES_BY_PLACE|無地點者獨立列為未設定地點
+207|哪些行程是每週固定的|LIST_SCHEDULES|options.filter=RECURRING
+208|接下來有哪些單次行程|LIST_SCHEDULES|options.filter=ONE_TIME
+209|哪些行程會超過兩小時|LIST_SCHEDULES|options.filter=LONG
+210|接下來平日有哪些行程|LIST_SCHEDULES|options.filter=WEEKDAY;只看未來七天

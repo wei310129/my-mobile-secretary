@@ -104,7 +104,10 @@ public record IntentResult(
         TASK_PROGRESS_INFO,
         TASKS_GROUPED_BY_DUE,
         TASK_LOAD_INFO,
-        BUSIEST_TASK_DAY_INFO
+        BUSIEST_TASK_DAY_INFO,
+        BUSIEST_SCHEDULE_DAY_INFO,
+        LONGEST_SCHEDULE_INFO,
+        SCHEDULES_GROUPED_BY_PLACE
     }
 
     /** 清單訊息共用:最多列 10 筆,其餘以「…等 N 件」收尾。 */

@@ -76,6 +76,31 @@ class ScheduleInsightServiceTest {
                 });
     }
 
+    @Test
+    void longestUsesActualScheduleDuration() {
+        ScheduleItem shortItem = schedule("短會議", NOW.plusSeconds(3600), NOW.plusSeconds(5400));
+        ScheduleItem longItem = schedule("長工作坊", NOW.plusSeconds(7200), NOW.plusSeconds(18000));
+
+        assertThat(service.longest(List.of(shortItem, longItem))).contains(longItem);
+    }
+
+    @Test
+    void busiestDayUsesTotalMinutesThenEarlierDate() {
+        ScheduleItem firstDay = schedule("第一天", Instant.parse("2030-08-01T02:00:00Z"),
+                Instant.parse("2030-08-01T04:00:00Z"));
+        ScheduleItem secondDayLong = schedule("第二天長行程", Instant.parse("2030-08-02T02:00:00Z"),
+                Instant.parse("2030-08-02T05:00:00Z"));
+        ScheduleItem secondDayShort = schedule("第二天短行程", Instant.parse("2030-08-02T06:00:00Z"),
+                Instant.parse("2030-08-02T06:30:00Z"));
+
+        assertThat(service.busiestDay(List.of(firstDay, secondDayLong, secondDayShort)))
+                .hasValueSatisfying(load -> {
+                    assertThat(load.date()).isEqualTo(LocalDate.of(2030, 8, 2));
+                    assertThat(load.count()).isEqualTo(2);
+                    assertThat(load.minutes()).isEqualTo(210);
+                });
+    }
+
     private static ScheduleItem schedule(String title, Instant start, Instant end) {
         ScheduleItem item = ScheduleItem.propose(title, start, end, null, NOW.minusSeconds(60));
         item.confirm(NOW.minusSeconds(30));

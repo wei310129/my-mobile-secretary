@@ -7,6 +7,7 @@ import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.ItemService;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PlanningPreferenceService;
+import com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceInsightService;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService;
 import com.aproject.aidriven.mymobilesecretary.knowledge.domain.Item;
 import com.aproject.aidriven.mymobilesecretary.planner.application.FreeSlotService;
@@ -48,6 +49,7 @@ public class LifestyleIntentService {
     private final ScheduleService scheduleService;
     private final ItemService itemService;
     private final PriceRecordService priceService;
+    private final PriceInsightService priceInsightService;
     private final PlaceAliasService placeAliasService;
     private final PlaceService placeService;
     private final GeofenceRuleService geofenceService;
@@ -64,6 +66,7 @@ public class LifestyleIntentService {
 
     public LifestyleIntentService(TaskService taskService, ScheduleService scheduleService,
                                   ItemService itemService, PriceRecordService priceService,
+                                  PriceInsightService priceInsightService,
                                   PlaceAliasService placeAliasService, PlaceService placeService,
                                   GeofenceRuleService geofenceService, FreeSlotService freeSlotService,
                                   RouteSuggestionService routeSuggestionService,
@@ -79,6 +82,7 @@ public class LifestyleIntentService {
         this.scheduleService = scheduleService;
         this.itemService = itemService;
         this.priceService = priceService;
+        this.priceInsightService = priceInsightService;
         this.placeAliasService = placeAliasService;
         this.placeService = placeService;
         this.geofenceService = geofenceService;
@@ -174,6 +178,9 @@ public class LifestyleIntentService {
             case ASK_BUSY_SCHEDULE_DAY -> busiestScheduleDay(o);
             case ASK_LONGEST_SCHEDULE -> longestSchedule(o);
             case GROUP_SCHEDULES_BY_PLACE -> groupSchedulesByPlace(o);
+            case ASK_LAST_PURCHASE -> lastPurchase(command);
+            case ASK_PRICE_SUMMARY -> priceSummary(command);
+            case ASK_FREQUENT_STORE -> frequentStore(command);
             default -> throw new IllegalArgumentException("not a lifestyle command: " + command.type());
         };
     }
@@ -902,6 +909,49 @@ public class LifestyleIntentService {
                 .collect(java.util.stream.Collectors.joining("\n"));
         return IntentResult.message(IntentResult.Action.PRICE_COMPARISON,
                 "「%s」歷史最低價比較:\n%s".formatted(command.title(), lines));
+    }
+
+    private IntentResult lastPurchase(IntentCommand command) {
+        require(command.title(), "title");
+        return priceInsightService.lastPurchase(command.title()).map(last -> {
+            var record = last.record();
+            String store = record.getStoreName() == null || record.getStoreName().isBlank()
+                    ? "，店家未記錄" : "，在%s".formatted(record.getStoreName());
+            String ago = last.daysAgo() == 0 ? "今天" : last.daysAgo() + " 天前";
+            return IntentResult.message(IntentResult.Action.LAST_PURCHASE_INFO,
+                    "上次買「%s」是 %s（%s）%s，單價 %d 元。".formatted(
+                            command.title(), record.getPurchasedAt(), ago, store,
+                            record.getPriceTwd()));
+        }).orElseGet(() -> IntentResult.message(IntentResult.Action.LAST_PURCHASE_INFO,
+                "目前沒有「%s」的購買紀錄。".formatted(command.title())));
+    }
+
+    private IntentResult priceSummary(IntentCommand command) {
+        require(command.title(), "title");
+        return priceInsightService.summary(command.title()).map(summary -> {
+            Integer change = summary.latestChangeTwd();
+            String trend = change == null ? "只有一筆，還不能比較漲跌"
+                    : change > 0 ? "比前一次貴 %d 元".formatted(change)
+                    : change < 0 ? "比前一次便宜 %d 元".formatted(Math.abs(change))
+                    : "和前一次相同";
+            return IntentResult.message(IntentResult.Action.PRICE_SUMMARY_INFO,
+                    "「%s」共有 %d 筆單價紀錄：平均 %d 元，最低 %d 元，最高 %d 元；最近 %d 元，%s。"
+                            .formatted(command.title(), summary.count(), summary.averagePriceTwd(),
+                                    summary.lowest().getPriceTwd(), summary.highest().getPriceTwd(),
+                                    summary.latest().getPriceTwd(), trend));
+        }).orElseGet(() -> IntentResult.message(IntentResult.Action.PRICE_SUMMARY_INFO,
+                "目前沒有「%s」的價格紀錄。".formatted(command.title())));
+    }
+
+    private IntentResult frequentStore(IntentCommand command) {
+        require(command.title(), "title");
+        return priceInsightService.favoriteStore(command.title())
+                .map(store -> IntentResult.message(IntentResult.Action.FREQUENT_STORE_INFO,
+                        "「%s」最常記錄在%s購買，共 %d 次；最近一次是 %s。".formatted(
+                                command.title(), store.storeName(), store.count(),
+                                store.lastPurchasedAt())))
+                .orElseGet(() -> IntentResult.message(IntentResult.Action.FREQUENT_STORE_INFO,
+                        "目前沒有「%s」含店家的購買紀錄。".formatted(command.title())));
     }
 
     private IntentResult createWeatherReminder(IntentCommand command, IntentOptions o) {

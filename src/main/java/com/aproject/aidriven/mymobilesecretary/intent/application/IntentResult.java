@@ -107,7 +107,10 @@ public record IntentResult(
         BUSIEST_TASK_DAY_INFO,
         BUSIEST_SCHEDULE_DAY_INFO,
         LONGEST_SCHEDULE_INFO,
-        SCHEDULES_GROUPED_BY_PLACE
+        SCHEDULES_GROUPED_BY_PLACE,
+        LAST_PURCHASE_INFO,
+        PRICE_SUMMARY_INFO,
+        FREQUENT_STORE_INFO
     }
 
     /** 清單訊息共用:最多列 10 筆,其餘以「…等 N 件」收尾。 */

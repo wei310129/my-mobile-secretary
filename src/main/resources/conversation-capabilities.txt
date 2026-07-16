@@ -208,3 +208,13 @@
 208|接下來有哪些單次行程|LIST_SCHEDULES|options.filter=ONE_TIME
 209|哪些行程會超過兩小時|LIST_SCHEDULES|options.filter=LONG
 210|接下來平日有哪些行程|LIST_SCHEDULES|options.filter=WEEKDAY;只看未來七天
+211|我上次買牛奶是什麼時候|ASK_LAST_PURCHASE|title=牛奶;回日期、距今天數、店家與單價
+212|牛奶多久沒買了|ASK_LAST_PURCHASE|title=牛奶;以台北日期計算
+213|洗衣精最近一次買多少錢|ASK_LAST_PURCHASE|title=洗衣精
+214|牛奶平均都買多少錢|ASK_PRICE_SUMMARY|title=牛奶;只統計已記錄單價
+215|牛奶歷史價差多大|ASK_PRICE_SUMMARY|title=牛奶;回最低與最高
+216|牛奶最近是漲還是跌|ASK_PRICE_SUMMARY|title=牛奶;比較最近兩筆
+217|衛生紙最高最低買過多少|ASK_PRICE_SUMMARY|title=衛生紙
+218|我最常在哪裡買牛奶|ASK_FREQUENT_STORE|title=牛奶;按含店家紀錄次數
+219|醬油在哪間店的紀錄最多|ASK_FREQUENT_STORE|title=醬油;同次數取最近購買店家
+220|咖啡有幾筆價格紀錄|ASK_PRICE_SUMMARY|title=咖啡

@@ -132,6 +132,9 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 問行程最滿的一天用 ASK_BUSY_SCHEDULE_DAY;問最長行程用 ASK_LONGEST_SCHEDULE;
               按地點整理用 GROUP_SCHEDULES_BY_PLACE。這三種可搭配 TODAY/WEEK filter。
               LIST_SCHEDULES 另可搭配 WEEKDAY、RECURRING、ONE_TIME、LONG filter。
+            - 問某品項上次何時／哪裡／多少錢買用 ASK_LAST_PURCHASE;問平均、高低價、價差、
+              最近漲跌或紀錄筆數用 ASK_PRICE_SUMMARY;問最常在哪家店買用 ASK_FREQUENT_STORE。
+              價格紀錄沒有購買數量,不可把單價加總成支出；使用者問支出時要 UNKNOWN 說明資料不足。
             - 行程只改長度／結束時間用 RESIZE_SCHEDULE;durationMinutes 是新總時長,
               shiftMinutes 是結束時間增減分鐘(縮短可為負數)。
             - 下方能力目錄是規範性 few-shot。A+B 代表輸出兩個 command,不是不存在的 type;

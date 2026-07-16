@@ -118,6 +118,9 @@ public record IntentCommand(
         ASK_BUSY_SCHEDULE_DAY,
         ASK_LONGEST_SCHEDULE,
         GROUP_SCHEDULES_BY_PLACE,
+        ASK_LAST_PURCHASE,
+        ASK_PRICE_SUMMARY,
+        ASK_FREQUENT_STORE,
         /** 建任務(待辦,無固定時段;可有期限)。 */
         CREATE_TASK,
         /** 建行程(有明確開始/結束時段的承諾)。 */

@@ -78,6 +78,58 @@ class GooglePlacesClientTest {
     }
 
     @Test
+    void parsesRestaurantCandidateWithHospitalityFields() {
+        stubSearch(200, """
+                {"places":[{
+                  "displayName": {"text": "鼎泰豐 信義店"},
+                  "formattedAddress": "台北市大安區信義路二段194號",
+                  "location": {"latitude": 25.0333, "longitude": 121.5300},
+                  "websiteUri": "https://www.dintaifung.com.tw",
+                  "googleMapsUri": "https://maps.google.com/?cid=123",
+                  "nationalPhoneNumber": "02 2321 8928",
+                  "regularOpeningHours": {"weekdayDescriptions": [
+                    "星期一: 11:00 – 20:30", "星期二: 11:00 – 20:30"]},
+                  "reservable": true,
+                  "goodForChildren": true,
+                  "accessibilityOptions": {"wheelchairAccessibleEntrance": true}
+                }]}
+                """);
+
+        Optional<GooglePlacesClient.RestaurantCandidate> candidate =
+                client().searchRestaurantFirst("鼎泰豐");
+
+        assertThat(candidate).isPresent();
+        assertThat(candidate.get().name()).isEqualTo("鼎泰豐 信義店");
+        assertThat(candidate.get().websiteUri()).contains("dintaifung");
+        assertThat(candidate.get().phoneNumber()).isEqualTo("02 2321 8928");
+        assertThat(candidate.get().openingHours()).hasSize(2).allMatch(day -> day.contains("11:00"));
+        assertThat(candidate.get().reservable()).isTrue();
+        assertThat(candidate.get().goodForChildren()).isTrue();
+        assertThat(candidate.get().wheelchairAccessible()).isTrue();
+        // Google 沒回的欄位是「不知道」,不可誤判成 false(明確不支援)
+        assertThat(candidate.get().allowsDogs()).isNull();
+    }
+
+    @Test
+    void restaurantSearchWithoutHospitalityDataStillParses() {
+        stubSearch(200, """
+                {"places":[{
+                  "displayName": {"text": "巷口小吃"},
+                  "formattedAddress": "新北市新店區某路1號",
+                  "location": {"latitude": 24.96, "longitude": 121.54}
+                }]}
+                """);
+
+        Optional<GooglePlacesClient.RestaurantCandidate> candidate =
+                client().searchRestaurantFirst("巷口小吃");
+
+        assertThat(candidate).isPresent();
+        assertThat(candidate.get().websiteUri()).isNull();
+        assertThat(candidate.get().openingHours()).isEmpty();
+        assertThat(candidate.get().reservable()).isNull();
+    }
+
+    @Test
     void authFailureThrowsIntegrationException() {
         stubSearch(403, "{\"error\":{\"status\":\"PERMISSION_DENIED\"}}");
 

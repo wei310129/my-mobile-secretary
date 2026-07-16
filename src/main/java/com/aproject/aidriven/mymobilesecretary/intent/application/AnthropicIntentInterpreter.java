@@ -82,6 +82,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               若與清單某項「相近但不確定」(可能是筆誤,如「夏印尼」vs「夏恩英語」)→ 不要硬猜,
               回 UNKNOWN 且 reason 寫「你是說『夏恩英語』嗎?」這種確認句。
             - CREATE_PLACE 的 placeName 可包含分店/地區資訊(「夏恩英語 新店七張分校」),查得更準。
+              使用者說先前地點選錯並補充分店／區域時,用 CREATE_PLACE 且保留完整限定詞重新查找,
+              不可只輸出舊的短名稱或繼續回舊地點。
             - priority:CREATE_TASK 聽得出急迫(趕快、務必、很急)才填 HIGH,否則 NORMAL;
               UPDATE_TASK 只有使用者明講要改優先級時才填,沒講必須留空。
             - RECORD_OUTCOME:onTime 準時為 true;超時填 overrunMinutes(分鐘,「半小時」=30);

@@ -44,8 +44,11 @@ public class PlaceAliasService {
         if (exact.isPresent()) {
             return exact;
         }
+        // 使用者輸入比既有名稱更長時,多出的字通常是分店／區域限定
+        // (實際案例:「新店七張的夏恩英語」不能被舊的「夏恩英語」台北店吃掉)。
+        // 只允許「既有完整名稱包含使用者縮寫」,不允許反向以短名稱攔截更具體查詢。
         return places.stream()
-                .filter(p -> p.getName().contains(needle) || needle.contains(p.getName()))
+                .filter(p -> p.getName().contains(needle))
                 .findFirst();
     }
 

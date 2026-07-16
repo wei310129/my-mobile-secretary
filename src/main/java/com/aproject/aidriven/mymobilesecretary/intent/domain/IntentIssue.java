@@ -23,7 +23,7 @@ public class IntentIssue {
     public enum Category {
         /** bot 回問(聽不懂、資訊不足、配對模糊)。 */
         CLARIFICATION,
-        /** LLM 失敗退回保底任務。 */
+        /** LLM 失敗後安全降級；可能保底建任務，也可能為避免誤寫而不異動資料。 */
         FALLBACK,
         /** 使用者對系統本身的抱怨/建議(「你是不是重複建立了」)。 */
         FEEDBACK

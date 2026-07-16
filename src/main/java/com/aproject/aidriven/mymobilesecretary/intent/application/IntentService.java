@@ -25,8 +25,8 @@ import org.springframework.stereotype.Service;
 /**
  * 意圖編排:解析 → 驗證 → 執行。
  *
- * 可靠度鐵律:LLM 任何失敗(沒設金鑰、逾時、輸出格式爛)都不能吞掉使用者的話——
- * 一律 fallback 把原文存成一般任務,寧可少聰明,不可丟資料。
+ * 可靠度鐵律:LLM 失敗時不得把查詢或修改指令誤存成任務。只有原文帶明確「提醒／記下」
+ * 指示時才建立保底待辦；其餘原文由對話與意圖問題紀錄保存，並誠實告知沒有異動資料。
  */
 @Service
 public class IntentService {
@@ -46,6 +46,7 @@ public class IntentService {
     private final LifestyleIntentService lifestyleIntentService;
     private final DailyScheduleOverviewService dailyScheduleOverviewService;
     private final ReminderTimingAnswerService reminderTimingAnswerService;
+    private final LastActivityAnswerService lastActivityAnswerService;
     private final ScheduleTaskConflictAnswerService scheduleTaskConflictAnswerService;
     private final TaskDetailAnswerService taskDetailAnswerService;
     private final RestaurantBookingService restaurantBookingService;
@@ -69,6 +70,7 @@ public class IntentService {
                          LifestyleIntentService lifestyleIntentService,
                          DailyScheduleOverviewService dailyScheduleOverviewService,
                          ReminderTimingAnswerService reminderTimingAnswerService,
+                         LastActivityAnswerService lastActivityAnswerService,
                          ScheduleTaskConflictAnswerService scheduleTaskConflictAnswerService,
                          TaskDetailAnswerService taskDetailAnswerService,
                          RestaurantBookingService restaurantBookingService,
@@ -92,6 +94,7 @@ public class IntentService {
         this.lifestyleIntentService = lifestyleIntentService;
         this.dailyScheduleOverviewService = dailyScheduleOverviewService;
         this.reminderTimingAnswerService = reminderTimingAnswerService;
+        this.lastActivityAnswerService = lastActivityAnswerService;
         this.scheduleTaskConflictAnswerService = scheduleTaskConflictAnswerService;
         this.taskDetailAnswerService = taskDetailAnswerService;
         this.restaurantBookingService = restaurantBookingService;
@@ -113,6 +116,10 @@ public class IntentService {
     }
 
     private IntentResult doHandle(String text) {
+        Optional<IntentResult> lastActivity = lastActivityAnswerService.answer(text);
+        if (lastActivity.isPresent()) {
+            return lastActivity.get();
+        }
         Optional<IntentResult> taskConflict = scheduleTaskConflictAnswerService.answer(text);
         if (taskConflict.isPresent()) {
             return taskConflict.get();
@@ -151,16 +158,17 @@ public class IntentService {
         IntentScript script;
         IntentInterpreter interpreter = interpreterProvider.getIfAvailable();
         if (interpreter == null) {
-            return fallbackTask(text, "意圖解析未啟用");
+            return safeFallback(text, "意圖解析未啟用");
         }
         try {
             script = interpreter.interpret(text, Instant.now(clock), conversationContextService.snapshot());
         } catch (Exception e) {
-            log.warn("Intent interpretation failed, falling back to plain task", e);
-            return fallbackTask(text, "AI 暫時無法使用");
+            log.warn("Intent interpretation failed ({}); applying safe fallback",
+                    e.getClass().getSimpleName());
+            return safeFallback(text, "AI 暫時無法使用");
         }
         if (script == null || script.commands() == null || script.commands().isEmpty()) {
-            return fallbackTask(text, "解析結果是空的");
+            return safeFallback(text, "解析結果是空的");
         }
 
         // 單一操作:維持原語意(驗證失敗 → 整句保底)
@@ -169,8 +177,8 @@ public class IntentService {
                 return execute(text, script.commands().get(0));
             } catch (IllegalArgumentException e) {
                 // LLM 輸出未通過驗證(時間格式爛、缺欄位)→ 同樣不丟資料
-                log.warn("Intent command invalid ({}), falling back to plain task", e.getMessage());
-                return fallbackTask(text, "解析結果不完整");
+                log.warn("Intent command invalid ({}); applying safe fallback", e.getMessage());
+                return safeFallback(text, "解析結果不完整");
             } catch (com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException e) {
                 // 業務錯誤(如 Google 查不到地點)→ 轉成可讀回覆;
                 // 絕不能往 webhook 洩漏成非 200,否則 LINE 會重送整包事件
@@ -192,7 +200,7 @@ public class IntentService {
             }
         }
         if (failed == script.commands().size()) {
-            return fallbackTask(text, "多項操作都解析失敗");
+            return safeFallback(text, "多項操作都解析失敗");
         }
         return IntentResult.batchExecuted(lines);
     }
@@ -454,6 +462,10 @@ public class IntentService {
                 yield IntentResult.priceHistory(command.title(),
                         priceRecordService.list(command.title()));
             }
+            case ASK_LAST_ACTIVITY -> {
+                requireText(command.title(), "title");
+                yield lastActivityAnswerService.answerTopic(command.title());
+            }
             case ASK_PLACE -> {
                 requireText(command.placeName(), "placeName");
                 yield resolvePlace(command.placeName())
@@ -553,6 +565,8 @@ public class IntentService {
             case CLARIFICATION_NEEDED -> issueService.recordSafely(
                     text, result.message(), com.aproject.aidriven.mymobilesecretary.intent.domain.IntentIssue.Category.CLARIFICATION);
             case FALLBACK_TASK_CREATED -> issueService.recordSafely(
+                    text, result.message(), com.aproject.aidriven.mymobilesecretary.intent.domain.IntentIssue.Category.FALLBACK);
+            case AI_UNAVAILABLE -> issueService.recordSafely(
                     text, result.message(), com.aproject.aidriven.mymobilesecretary.intent.domain.IntentIssue.Category.FALLBACK);
             case FEEDBACK_RECEIVED -> issueService.recordSafely(
                     text, result.message(), com.aproject.aidriven.mymobilesecretary.intent.domain.IntentIssue.Category.FEEDBACK);
@@ -776,10 +790,34 @@ public class IntentService {
     private record ScheduleMatch(ScheduleItem item, IntentResult failure) {
     }
 
-    /** LLM 失敗時的保底:原文直接存成任務(仍會觸發品項自動綁定)。 */
-    private IntentResult fallbackTask(String text, String why) {
-        Task task = taskService.createTask(text, null, TaskPriority.NORMAL, null);
-        return IntentResult.fallbackTaskCreated(task, why);
+    /** LLM 失敗時只替明確要求「提醒／記下」的原文建保底待辦；查詢與修改指令絕不異動資料。 */
+    private IntentResult safeFallback(String text, String why) {
+        if (hasExplicitCaptureCue(text) && !looksLikeQuestion(text)) {
+            Task task = taskService.createTask(text, null, TaskPriority.NORMAL, null);
+            return IntentResult.fallbackTaskCreated(task, why);
+        }
+        return IntentResult.aiUnavailable(why);
+    }
+
+    static boolean hasExplicitCaptureCue(String text) {
+        String normalized = text == null ? "" : text.replaceAll("\\s+", "");
+        return normalized.contains("提醒我") || normalized.contains("提醒一下")
+                || normalized.contains("幫我記") || normalized.contains("記一下")
+                || normalized.contains("記得") || normalized.contains("別忘")
+                || normalized.contains("不要忘記") || normalized.contains("加入待辦")
+                || normalized.contains("加到待辦") || normalized.contains("新增待辦")
+                || normalized.contains("建立待辦");
+    }
+
+    static boolean looksLikeQuestion(String text) {
+        String normalized = text == null ? "" : text.replaceAll("\\s+", "");
+        return normalized.contains("什麼時候") || normalized.contains("何時")
+                || normalized.contains("幾點") || normalized.contains("哪天")
+                || normalized.contains("哪裡") || normalized.contains("多少")
+                || normalized.contains("多久") || normalized.contains("有沒有")
+                || normalized.contains("是不是") || normalized.contains("怎麼")
+                || normalized.contains("為什麼") || normalized.contains("嗎")
+                || normalized.endsWith("?") || normalized.endsWith("？");
     }
 
     /** 地點名稱解析:先精確比對,再包含比對(規則式;不讓 LLM 決定 id)。 */

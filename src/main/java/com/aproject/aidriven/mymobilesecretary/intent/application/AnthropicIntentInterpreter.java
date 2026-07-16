@@ -14,8 +14,12 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.stream.Collectors;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
+import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.ChatModel;
+import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
@@ -32,7 +36,10 @@ import org.springframework.stereotype.Component;
 @ConditionalOnProperty(prefix = "app.intent", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class AnthropicIntentInterpreter implements IntentInterpreter {
 
+    private static final Logger log = LoggerFactory.getLogger(AnthropicIntentInterpreter.class);
     private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
+    private static final BeanOutputConverter<IntentScript> OUTPUT_CONVERTER =
+            new BeanOutputConverter<>(IntentScript.class);
 
     private static final String SYSTEM_PROMPT = """
             你是個人行程秘書的意圖解析器。把使用者的一句話解析成結構化意圖,只輸出符合 schema 的 JSON。
@@ -156,6 +163,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 問某品項上次何時／哪裡／多少錢買用 ASK_LAST_PURCHASE;問平均、高低價、價差、
               最近漲跌或紀錄筆數用 ASK_PRICE_SUMMARY;問最常在哪家店買用 ASK_FREQUENT_STORE。
               價格紀錄沒有購買數量,不可把單價加總成支出；使用者問支出時要 UNKNOWN 說明資料不足。
+            - 問上次做某個活動的時間(「我上次運動是什麼時候」「多久沒健身了」)用 ASK_LAST_ACTIVITY,
+              title 放活動關鍵字；這是查詢,絕不可建立待辦。購買紀錄仍用 ASK_LAST_PURCHASE。
             - 問正庫存最多／最少／範圍用 ASK_INVENTORY_EXTREMES,filter 填 HIGH/LOW/RANGE;
               查購物清單中仍有庫存用 CHECK_SHOPPING_INVENTORY;查未設定購買地點品項用 LIST_UNPLACED_ITEMS;
               問品項知識總覽用 ASK_ITEM_KNOWLEDGE_SUMMARY。LIST_INVENTORY 可搭配 AT_LEAST/EXACT filter
@@ -228,25 +237,76 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
                         p.getQuietStart(), p.getQuietEnd(), p.isAllowHighPriority(), p.getMutedUntil()))
                 .orElse("(無)");
 
-        return chatClient.prompt()
-                .system(SYSTEM_PROMPT + LIFESTYLE_RULES + "\n能力目錄:\n" + capabilityCatalog)
-                .user("""
-                        現在時間(台北):%s
-                        已知地點:%s
-                        未完成待辦:%s
-                        可操作行程:%s
-                        物品狀態:%s
-                        提醒偏好:%s
-                        短期上下文:%s
+        String userPrompt = """
+                現在時間(台北):%s
+                已知地點:%s
+                未完成待辦:%s
+                可操作行程:%s
+                物品狀態:%s
+                提醒偏好:%s
+                短期上下文:%s
 
-                        使用者說:%s
-                        """.formatted(nowTaipei, knownPlaces.isBlank() ? "(無)" : knownPlaces,
-                        openTasks.isBlank() ? "(無)" : openTasks,
-                        schedules.isBlank() ? "(無)" : schedules,
-                        shopping.isBlank() ? "(無)" : shopping,
-                        reminderPreference, context, text))
+                使用者說:%s
+                """.formatted(nowTaipei, knownPlaces.isBlank() ? "(無)" : knownPlaces,
+                openTasks.isBlank() ? "(無)" : openTasks,
+                schedules.isBlank() ? "(無)" : schedules,
+                shopping.isBlank() ? "(無)" : shopping,
+                reminderPreference, context, text);
+        ChatResponse response = chatClient.prompt()
+                .system(SYSTEM_PROMPT + LIFESTYLE_RULES + "\n能力目錄:\n" + capabilityCatalog)
+                // ChatClient.entity() 只讀第一個 generation。Sonnet 5 可能把 thinking block 放在
+                // 第一個、JSON text 放在後面，因此改為保留原始 ChatResponse 並挑出結構化文字。
+                .user(userPrompt + System.lineSeparator() + OUTPUT_CONVERTER.getFormat())
                 .call()
-                .entity(IntentScript.class);
+                .chatResponse();
+        return convertStructuredResponse(response);
+    }
+
+    static IntentScript convertStructuredResponse(ChatResponse response) {
+        if (response == null || response.getResults() == null || response.getResults().isEmpty()) {
+            throw new IllegalStateException("Anthropic returned no generations");
+        }
+
+        RuntimeException lastConversionFailure = null;
+        for (int index = 0; index < response.getResults().size(); index++) {
+            String candidate = response.getResults().get(index).getOutput().getText();
+            if (!looksLikeStructuredOutput(candidate)) {
+                continue;
+            }
+            try {
+                IntentScript script = OUTPUT_CONVERTER.convert(candidate);
+                if (index > 0) {
+                    log.debug("Selected Anthropic structured output generation {} of {}",
+                            index + 1, response.getResults().size());
+                }
+                return script;
+            } catch (RuntimeException e) {
+                lastConversionFailure = e;
+            }
+        }
+
+        var metadata = response.getMetadata();
+        var usage = metadata == null ? null : metadata.getUsage();
+        String finishReasons = response.getResults().stream()
+                .map(result -> result.getMetadata() == null
+                        ? "unknown" : result.getMetadata().getFinishReason())
+                .toList().toString();
+        log.warn("Anthropic intent response had no parseable structured text: model={}, generations={}, "
+                        + "finishReasons={}, promptTokens={}, completionTokens={}",
+                metadata == null ? "unknown" : metadata.getModel(), response.getResults().size(),
+                finishReasons, usage == null ? null : usage.getPromptTokens(),
+                usage == null ? null : usage.getCompletionTokens());
+        throw new IllegalStateException("Anthropic returned no parseable structured text",
+                lastConversionFailure);
+    }
+
+    private static boolean looksLikeStructuredOutput(String candidate) {
+        if (candidate == null || candidate.isBlank()) {
+            return false;
+        }
+        String stripped = candidate.stripLeading();
+        return stripped.startsWith("{") || stripped.startsWith("```")
+                || candidate.contains("\"commands\"");
     }
 
     private static String readCapabilityCatalog() {

@@ -118,6 +118,7 @@ public record IntentCommand(
         ASK_BUSY_SCHEDULE_DAY,
         ASK_LONGEST_SCHEDULE,
         GROUP_SCHEDULES_BY_PLACE,
+        ASK_LAST_ACTIVITY,
         ASK_LAST_PURCHASE,
         ASK_PRICE_SUMMARY,
         ASK_FREQUENT_STORE,

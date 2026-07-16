@@ -56,6 +56,7 @@ public record IntentResult(
         SCHEDULE_NEEDS_DECISION,
         OUTCOME_RECORDED,
         CLARIFICATION_NEEDED,
+        AI_UNAVAILABLE,
         FALLBACK_TASK_CREATED,
         SCHEDULE_REMINDER_CREATED,
         FREE_SLOTS_SUGGESTED,
@@ -469,5 +470,13 @@ public record IntentResult(
     static IntentResult fallbackTaskCreated(Task task, String why) {
         return new IntentResult(Action.FALLBACK_TASK_CREATED,
                 "%s,已先把原話存成任務「%s」".formatted(why, task.getTitle()), task, null);
+    }
+
+    static IntentResult aiUnavailable(String why) {
+        return new IntentResult(Action.AI_UNAVAILABLE,
+                "⚠️ %s。\n- 我沒有建立任何待辦\n- 原訊息已保留在對話與問題紀錄"
+                        .formatted(why)
+                        + "\n\n🔄 請稍後再試一次。",
+                null, null);
     }
 }

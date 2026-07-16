@@ -30,7 +30,8 @@ final class OccasionGreeting {
             return result;
         }
         if (result.action() == IntentResult.Action.FEEDBACK_RECEIVED
-                || result.action() == IntentResult.Action.FALLBACK_TASK_CREATED) {
+                || result.action() == IntentResult.Action.FALLBACK_TASK_CREATED
+                || result.action() == IntentResult.Action.AI_UNAVAILABLE) {
             return result;
         }
         Optional<String> greeting = OCCASIONS.stream()

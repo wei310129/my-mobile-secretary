@@ -163,7 +163,7 @@ public final class IntentReplyFormatter {
         if (name.contains("SOCIAL")) {
             return "👋";
         }
-        if (name.contains("FALLBACK")) {
+        if (name.contains("FALLBACK") || name.contains("UNAVAILABLE")) {
             return "⚠️";
         }
         if (name.contains("SUGGESTION")) {

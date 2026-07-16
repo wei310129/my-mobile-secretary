@@ -243,3 +243,4 @@
 243|每週六上午九點上英文課到九月底|CREATE_SCHEDULE|recurring=true;options.recurrence=WEEKLY;options.recurrenceUntil=當年09-30;截止日含當日
 244|這週六英文課先不上,下週照常|SKIP_RECURRING_OCCURRENCE|title=英文課;options.referenceKind=SCHEDULE;只取消本場與本場提醒,下一場保留原規則
 245|這週英文課改十點,下週照舊|RESCHEDULE_SCHEDULE|title=英文課;options.recurrenceScope=THIS_OCCURRENCE;只改本場,下一場沿用原時間
+246|我上次運動是什麼時候|ASK_LAST_ACTIVITY|title=運動;查已完成待辦、已完成行程與已結束的確認行程;不可建立待辦

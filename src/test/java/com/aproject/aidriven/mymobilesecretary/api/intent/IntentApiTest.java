@@ -20,6 +20,8 @@ class IntentApiTest extends IntegrationTestBase {
     private StubIntentInterpreter stub;
     @Autowired
     private com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService priceRecordService;
+    @Autowired
+    private com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService taskService;
 
     private void say(String text, org.springframework.test.web.servlet.ResultMatcher... matchers) throws Exception {
         var actions = mockMvc.perform(post("/api/intent")
@@ -494,26 +496,49 @@ class IntentApiTest extends IntegrationTestBase {
                 jsonPath("$.action").value("SUGGESTION_MADE"));
     }
 
-    /** 可靠度鐵律:LLM 失敗(stub 沒塞回覆=模擬炸掉)→ 原文存成任務,不丟資料。 */
+    /** 沒有明確建待辦指示時，LLM 失敗只能告知，不能把普通句子寫進任務。 */
     @Test
-    void interpreterFailureFallsBackToPlainTask() throws Exception {
+    void interpreterFailureDoesNotMutateDataWithoutExplicitCaptureCue() throws Exception {
         // 不呼叫 stub.nextCommand → interpret 會丟例外
+        int before = taskService.listTasks().size();
 
         say("這句話一定要被留下來",
-                jsonPath("$.action").value("FALLBACK_TASK_CREATED"),
-                jsonPath("$.task.title").value("這句話一定要被留下來"));
+                jsonPath("$.action").value("AI_UNAVAILABLE"),
+                jsonPath("$.task").value(org.hamcrest.Matchers.nullValue()),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("我沒有建立任何待辦")));
+        org.assertj.core.api.Assertions.assertThat(taskService.listTasks()).hasSize(before);
     }
 
-    /** LLM 輸出爛時間 → 驗證擋下 → 一樣 fallback,不丟資料。 */
+    /** 明確說「幫我記」時才允許在 LLM 故障期間建立保底待辦。 */
     @Test
-    void invalidCommandTimeFallsBackToPlainTask() throws Exception {
+    void explicitCaptureCueStillCreatesFallbackTask() throws Exception {
+        say("幫我記一下這句話一定要被留下來",
+                jsonPath("$.action").value("FALLBACK_TASK_CREATED"),
+                jsonPath("$.task.title").value("幫我記一下這句話一定要被留下來"));
+    }
+
+    /** LLM 輸出爛時間 → 驗證擋下，但不可再把無效行程誤建成待辦。 */
+    @Test
+    void invalidCommandTimeDoesNotBecomeTask() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE, "壞時間行程", null,
                 "明天十一點", "後天", null, null, null,
                 null, null, null, null, null));
 
         say("測試爛時間",
-                jsonPath("$.action").value("FALLBACK_TASK_CREATED"),
-                jsonPath("$.task.title").value("測試爛時間"));
+                jsonPath("$.action").value("AI_UNAVAILABLE"),
+                jsonPath("$.task").value(org.hamcrest.Matchers.nullValue()));
+    }
+
+    /** 使用者實際問句走確定性查詢；即使 stub 沒回覆，也不能建成待辦。 */
+    @Test
+    void lastExerciseQuestionNeverFallsBackToTask() throws Exception {
+        int before = taskService.listTasks().size();
+
+        say("我上次運動是什麼時候",
+                jsonPath("$.action").value("RECENT_ACTIVITY_LISTED"),
+                jsonPath("$.task").value(org.hamcrest.Matchers.nullValue()));
+
+        org.assertj.core.api.Assertions.assertThat(taskService.listTasks()).hasSize(before);
     }
 }

@@ -154,6 +154,10 @@ public record IntentResult(
 
     static IntentResult scheduleDecided(ScheduleDecision decision) {
         boolean feasible = decision.feasibility().feasible();
+        boolean nested = decision.feasibility().issues().stream()
+                .anyMatch(issue -> issue.type()
+                        == com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue.Type
+                        .NESTED_IN_RECURRING_SCHEDULE);
         String issues = decision.feasibility().issues().stream()
                 .map(issue -> "- " + issue.message())
                 .collect(Collectors.joining("\n"));
@@ -161,7 +165,10 @@ public record IntentResult(
                 feasible ? Action.SCHEDULE_CONFIRMED : Action.SCHEDULE_NEEDS_DECISION,
                 feasible
                         ? "行程「%s」可行,已確認".formatted(decision.item().getTitle())
-                        : "行程「%s」尚未確認：\n%s\n請告訴我要改哪個行程或指定新時間；我不會自行確認。"
+                        : nested
+                        ? "行程「%s」尚未確認：\n%s\n\n請回覆是否併入固定行程；我不會自行確認或要求改期。"
+                                .formatted(decision.item().getTitle(), issues)
+                        : "行程「%s」尚未確認：\n%s\n\n請告訴我要改哪個行程或指定新時間；我不會自行確認。"
                                 .formatted(decision.item().getTitle(), issues),
                 null, decision);
     }
@@ -227,10 +234,14 @@ public record IntentResult(
     }
 
     static IntentResult scheduleRecurrenceSet(ScheduleItem item) {
-        boolean weekly = item.getRecurrence() == ScheduleItem.Recurrence.WEEKLY;
+        String label = switch (item.getRecurrence()) {
+            case WEEKLY -> "每週固定";
+            case WEEKDAYS -> "每個上班日固定";
+            case NONE -> null;
+        };
         return new IntentResult(Action.SCHEDULE_RECURRENCE_SET,
-                weekly
-                        ? "「%s」已設為每週固定,這週結束後我會自動排下一週。".formatted(item.getTitle())
+                label != null
+                        ? "「%s」已設為%s,之後會自動排下一場。".formatted(item.getTitle(), label)
                         : "「%s」已改回單次行程,不再自動重複。".formatted(item.getTitle()),
                 null, null);
     }
@@ -242,8 +253,11 @@ public record IntentResult(
                 ZonedDateTime.ofInstant(item.getEndAt(), TAIPEI)
                         .format(DateTimeFormatter.ofPattern("HH:mm")));
         StringBuilder message = new StringBuilder("「%s」:%s".formatted(item.getTitle(), time));
-        message.append("\n類型:").append(
-                item.getRecurrence() == ScheduleItem.Recurrence.WEEKLY ? "每週固定" : "單次");
+        message.append("\n類型:").append(switch (item.getRecurrence()) {
+            case WEEKLY -> "每週固定";
+            case WEEKDAYS -> "每個上班日固定";
+            case NONE -> "單次";
+        });
         if (place != null) {
             message.append("\n地點:").append(place.getName());
         }

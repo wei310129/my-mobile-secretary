@@ -20,6 +20,10 @@ public interface ScheduleItemRepository extends JpaRepository<ScheduleItem, Long
     List<ScheduleItem> findByRecurrenceAndEndAtLessThanEqual(
             ScheduleItem.Recurrence recurrence, Instant endAt);
 
+    /** 固定行程 rollover:一次掃描所有會自動延續的週期。 */
+    List<ScheduleItem> findByRecurrenceInAndEndAtLessThanEqual(
+            Collection<ScheduleItem.Recurrence> recurrences, Instant endAt);
+
     /** rollover 判重:下一週場次是否已排。 */
     boolean existsByTitleAndRecurrenceAndStartAt(
             String title, ScheduleItem.Recurrence recurrence, Instant startAt);

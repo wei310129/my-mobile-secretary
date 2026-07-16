@@ -42,7 +42,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             判斷規則:
             - 有明確「開始時段」的活動(剪頭髮、開會、聚餐)→ CREATE_SCHEDULE,startAt 必填;
               使用者沒說結束時間就依活動常識估 endAt(剪頭髮約 1 小時、會議約 1 小時);
-              聽得出是每週固定(「每週三」「固定行程」)→ recurring 填 true。
+              聽得出是每週固定(「每週三」「固定行程」)→ recurring 填 true,options.recurrence 填 WEEKLY;
+              「每個上班日」「週一到週五」→ recurring 填 true,options.recurrence 填 WEEKDAYS,不可只填 WEEKLY。
             - 接送/陪同類行程要主動拆成完整的配套:「送女兒10點到12點上課」不是一個 10-12 的行程,
               而是兩個 command:CREATE_SCHEDULE「送女兒上課」(到達時間前約 20 分鐘出發到抵達)+
               CREATE_SCHEDULE「接女兒下課」(結束時間起約 20 分鐘),中間時段留空讓使用者能排其他事。
@@ -57,7 +58,7 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 問某待辦要去哪裡做(「我要去哪取蝦皮?」「包裹在哪拿」)→ ASK_TASK_PLACE,title 放待辦關鍵字。
             - 取消既有行程(「明天的會議取消」)→ CANCEL_SCHEDULE,title 放行程關鍵字。
             - 說某行程是每週固定/取消固定(「送女兒上課是每週固定的」)→ SET_SCHEDULE_RECURRING,
-              title 放關鍵字,recurring 填 true(取消固定填 false)。
+              title 放關鍵字,recurring 填 true(取消固定填 false);上班日固定另填 options.recurrence=WEEKDAYS。
             - 問某行程的細節(「送女兒上課是固定行程嗎?」「會議是幾點?」)→ ASK_SCHEDULE_INFO,title 放關鍵字。
             - 查某品項買過的價格明細(「列出買奶粉的明細」「鮮奶上次多少錢」)→ ASK_PRICE_HISTORY,
               title 放品項關鍵字(如「奶粉」)。
@@ -103,6 +104,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - CREATE_TASK 可同時填 dueAt、placeName 與 options。重複提醒填 options.recurrence;
               天氣條件提醒用 CREATE_WEATHER_REMINDER,不要把「如果」忽略。
             - 「今天有什麼事」是 LIST_AGENDA+filter TODAY,不能退化成列全部未完成待辦。
+            - 問今天／明天行程總覽時,必須同時包含固定行程與當日單次行程;不可只回數量統計。
+              使用者確認把當日項目併入固定行程時用 ACCEPT_CONTEXT,不可建新行程或要求改期。
             - 序號操作一定填 options.ordinal;省略名稱的承接操作不要自行虛構 title。
             - 純致謝、結束語輸出 SOCIAL;抱怨輸出 FEEDBACK,絕不可 fallback 建成待辦。
             - 修改待辦名稱／備註／分類／優先級用 UPDATE_TASK。只有使用者明講優先級時才填 priority;

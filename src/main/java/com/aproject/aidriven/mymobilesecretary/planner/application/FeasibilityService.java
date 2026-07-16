@@ -97,6 +97,26 @@ public class FeasibilityService {
                         ? candidate.getStartAt() : other.getStartAt();
                 Instant overlapEnd = candidate.getEndAt().isBefore(other.getEndAt())
                         ? candidate.getEndAt() : other.getEndAt();
+                boolean candidateContainsOther = !other.getStartAt().isBefore(candidate.getStartAt())
+                        && !other.getEndAt().isAfter(candidate.getEndAt());
+                boolean otherContainsCandidate = !candidate.getStartAt().isBefore(other.getStartAt())
+                        && !candidate.getEndAt().isAfter(other.getEndAt());
+                boolean nestedWithRecurring = (candidateContainsOther || otherContainsCandidate)
+                        && (candidate.getRecurrence() != ScheduleItem.Recurrence.NONE
+                        || other.getRecurrence() != ScheduleItem.Recurrence.NONE);
+                if (nestedWithRecurring) {
+                    ScheduleItem recurring = candidate.getRecurrence() != ScheduleItem.Recurrence.NONE
+                            ? candidate : other;
+                    ScheduleItem nested = recurring == candidate ? other : candidate;
+                    issues.add(new FeasibilityIssue(
+                            FeasibilityIssue.Type.NESTED_IN_RECURRING_SCHEDULE,
+                            "「%s」%s–%s 位於固定行程「%s」%s–%s 內；它可能是固定行程的當日子項目。"
+                                    .formatted(nested.getTitle(), format(nested.getStartAt()),
+                                            formatTime(nested.getEndAt()), recurring.getTitle(),
+                                            format(recurring.getStartAt()), formatTime(recurring.getEndAt())),
+                            other.getId()));
+                    continue;
+                }
                 issues.add(new FeasibilityIssue(
                         FeasibilityIssue.Type.TIME_OVERLAP,
                         "「%s」%s–%s 與「%s」%s–%s 衝突；重疊區間 %s–%s（%d 分鐘）。"

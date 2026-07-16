@@ -8,6 +8,8 @@ import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItemRepository;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -90,5 +92,32 @@ class RecurringScheduleFlowTest extends IntegrationTestBase {
                 .anyMatch(i -> i.getTitle().equals("固定測試已取消")
                         && i.getStartAt().equals(canceled.getStartAt().plus(Duration.ofDays(7))));
         assertThat(nextExists).isFalse();
+    }
+
+    /** 上班日固定:週五結束後跳到週一,其他平日則排隔天。 */
+    @Test
+    void endedWorkdayScheduleRollsOverToNextWeekday() {
+        Instant now = now();
+        ScheduleItem current = ScheduleItem.propose("固定測試上班日通勤",
+                now.minus(Duration.ofHours(12)), now.minus(Duration.ofHours(11)), null, now);
+        current.confirm(now);
+        current.repeat(ScheduleItem.Recurrence.WEEKDAYS, now);
+        current.complete(now);
+        scheduleItemRepository.save(current);
+        ZonedDateTime currentStart = ZonedDateTime.ofInstant(current.getStartAt(), ZoneId.of("Asia/Taipei"));
+        ZonedDateTime expectedStart = currentStart.plusDays(1);
+        while (expectedStart.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
+                || expectedStart.getDayOfWeek() == java.time.DayOfWeek.SUNDAY) {
+            expectedStart = expectedStart.plusDays(1);
+        }
+
+        scheduleService.rolloverDueRecurringSchedules();
+
+        Instant expected = expectedStart.toInstant();
+        ScheduleItem next = scheduleItemRepository.findAllByOrderByStartAtAsc().stream()
+                .filter(item -> item.getTitle().equals("固定測試上班日通勤"))
+                .filter(item -> item.getStartAt().equals(expected))
+                .findFirst().orElseThrow();
+        assertThat(next.getRecurrence()).isEqualTo(ScheduleItem.Recurrence.WEEKDAYS);
     }
 }

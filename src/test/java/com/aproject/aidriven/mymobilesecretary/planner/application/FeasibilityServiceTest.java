@@ -118,6 +118,24 @@ class FeasibilityServiceTest {
                 .contains("「剪頭髮」", "「開會」", "重疊區間", "60 分鐘");
     }
 
+    @Test
+    void oneTimeMeetingInsideRecurringWorkBlockAsksAboutNestingInsteadOfReschedule() {
+        ScheduleItem meeting = schedule(2, "專案週會",
+                NOW.plus(Duration.ofHours(3)), NOW.plus(Duration.ofHours(4)), null);
+        confirmedItems(meeting);
+        ScheduleItem workday = schedule(1, "上班日通勤與上班",
+                NOW.plus(Duration.ofHours(1)), NOW.plus(Duration.ofHours(10)), null);
+        workday.repeat(ScheduleItem.Recurrence.WEEKDAYS, NOW);
+
+        FeasibilityResult result = service.check(workday);
+
+        assertThat(result.feasible()).isFalse();
+        assertThat(result.issues()).extracting(FeasibilityIssue::type)
+                .containsExactly(FeasibilityIssue.Type.NESTED_IN_RECURRING_SCHEDULE);
+        assertThat(result.issues().getFirst().message())
+                .contains("專案週會", "固定行程", "當日子項目");
+    }
+
     /** 使用者的原始案例:人在高雄,2 小時後台北的預約 → 擋下。 */
     @Test
     void kaohsiungToTaipeiInTwoHoursIsInfeasible() {

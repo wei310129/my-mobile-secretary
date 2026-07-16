@@ -39,7 +39,7 @@ public class ScheduleItem {
     @Column(nullable = false, length = 20)
     private ScheduleStatus status;
 
-    /** 重複週期;WEEKLY 的行程結束後由 rollover worker 自動排下一週。 */
+    /** 重複週期;固定行程結束後由 rollover worker 自動排下一次。 */
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private Recurrence recurrence = Recurrence.NONE;
@@ -77,16 +77,27 @@ public class ScheduleItem {
         /** 單次行程。 */
         NONE,
         /** 每週固定(結束後自動排下一週)。 */
-        WEEKLY
+        WEEKLY,
+        /** 每個週一至週五(結束後自動排下一個平日)。 */
+        WEEKDAYS
     }
 
     /** 設為每週固定行程。終止狀態(取消/放棄)的行程沒有下一週,不可設定。 */
     public void repeatWeekly(Instant now) {
+        repeat(Recurrence.WEEKLY, now);
+    }
+
+    /** 設定固定週期。終止狀態的行程不可重新啟用固定規則。 */
+    public void repeat(Recurrence recurrence, Instant now) {
         if (status == ScheduleStatus.CANCELED || status == ScheduleStatus.REJECTED) {
             throw new BusinessException("INVALID_STATE_TRANSITION",
                     "Schedule %d is terminated (%s), cannot repeat".formatted(id, status));
         }
-        this.recurrence = Recurrence.WEEKLY;
+        if (recurrence == null || recurrence == Recurrence.NONE) {
+            stopRepeating(now);
+            return;
+        }
+        this.recurrence = recurrence;
         this.updatedAt = now;
     }
 

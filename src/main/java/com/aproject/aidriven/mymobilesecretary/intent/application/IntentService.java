@@ -13,7 +13,9 @@ import com.aproject.aidriven.mymobilesecretary.schedule.domain.OutcomeReason;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.OffsetDateTime;
+import java.time.ZoneId;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -42,6 +44,7 @@ public class IntentService {
     private final com.aproject.aidriven.mymobilesecretary.geo.application.GeofenceRuleService geofenceRuleService;
     private final com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService priceRecordService;
     private final LifestyleIntentService lifestyleIntentService;
+    private final DailyScheduleOverviewService dailyScheduleOverviewService;
     private final ConversationContextService conversationContextService;
     private final com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService placeAliasService;
     private final int bindRadiusMeters;
@@ -58,6 +61,7 @@ public class IntentService {
                          com.aproject.aidriven.mymobilesecretary.geo.application.GeofenceRuleService geofenceRuleService,
                          com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService priceRecordService,
                          LifestyleIntentService lifestyleIntentService,
+                         DailyScheduleOverviewService dailyScheduleOverviewService,
                          ConversationContextService conversationContextService,
                          com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService placeAliasService,
                          @org.springframework.beans.factory.annotation.Value(
@@ -74,6 +78,7 @@ public class IntentService {
         this.geofenceRuleService = geofenceRuleService;
         this.priceRecordService = priceRecordService;
         this.lifestyleIntentService = lifestyleIntentService;
+        this.dailyScheduleOverviewService = dailyScheduleOverviewService;
         this.conversationContextService = conversationContextService;
         this.placeAliasService = placeAliasService;
         this.bindRadiusMeters = bindRadiusMeters;
@@ -89,6 +94,13 @@ public class IntentService {
     }
 
     private IntentResult doHandle(String text) {
+        Optional<LocalDate> overviewDate = dailyScheduleDate(text, clock);
+        if (overviewDate.isPresent()) {
+            return dailyScheduleOverviewService.overview(overviewDate.get());
+        }
+        if (isScheduleMergeConfirmation(text)) {
+            return dailyScheduleOverviewService.confirmMerge();
+        }
         Optional<String> routineQuestion = recurringRoutineClarification(text);
         if (routineQuestion.isPresent()) {
             return IntentResult.clarificationNeeded(routineQuestion.get());
@@ -144,6 +156,39 @@ public class IntentService {
             return fallbackTask(text, "多項操作都解析失敗");
         }
         return IntentResult.batchExecuted(lines);
+    }
+
+    static Optional<LocalDate> dailyScheduleDate(String text, Clock clock) {
+        String normalized = text == null ? "" : text.replaceAll("\\s+", "");
+        String withoutEndingPunctuation = normalized.replaceFirst("[?？。!！]+$", "");
+        boolean hasDate = normalized.contains("今天") || normalized.contains("明天");
+        boolean hasSchedule = normalized.contains("行程");
+        boolean creation = normalized.contains("建立") || normalized.contains("新增")
+                || normalized.contains("安排一個") || normalized.contains("排一個")
+                || normalized.contains("幫我排");
+        boolean asking = normalized.contains("總整") || normalized.contains("總覽")
+                || normalized.contains("列出") || normalized.contains("有什麼行程")
+                || normalized.contains("行程有哪些")
+                || normalized.contains("查看行程") || normalized.contains("看看行程")
+                || (normalized.contains("固定行程") && normalized.contains("當日行程"))
+                || normalized.contains("給我今天的行程") || normalized.contains("給我明天的行程")
+                || normalized.contains("給我今天行程") || normalized.contains("給我明天行程")
+                || withoutEndingPunctuation.endsWith("今天的行程")
+                || withoutEndingPunctuation.endsWith("明天的行程")
+                || withoutEndingPunctuation.endsWith("今天行程")
+                || withoutEndingPunctuation.endsWith("明天行程");
+        if (!hasDate || !hasSchedule || creation || !asking) {
+            return Optional.empty();
+        }
+        LocalDate today = LocalDate.now(clock.withZone(ZoneId.of("Asia/Taipei")));
+        return Optional.of(normalized.contains("明天") ? today.plusDays(1) : today);
+    }
+
+    static boolean isScheduleMergeConfirmation(String text) {
+        String normalized = text == null ? "" : text.replaceAll("\\s+", "");
+        return normalized.contains("確認併入")
+                || normalized.contains("確認合併")
+                || normalized.contains("併入固定行程");
     }
 
     static Optional<String> capabilityHelp(String text) {
@@ -256,7 +301,7 @@ public class IntentService {
                 Long placeId = resolvePlace(command.placeName()).map(Place::getId).orElse(null);
                 ScheduleDecision decision = scheduleService.createSchedule(
                         command.title(), startAt, endAt, placeId,
-                        Boolean.TRUE.equals(command.recurring()));
+                        parseScheduleRecurrence(command));
                 yield IntentResult.scheduleDecided(decision);
             }
             case COMPLETE_TASK -> {
@@ -308,7 +353,9 @@ public class IntentService {
                 ScheduleMatch match = matchReschedulableSchedule(command.title(), "設定");
                 yield match.failure() != null ? match.failure()
                         : IntentResult.scheduleRecurrenceSet(
-                                scheduleService.setWeeklyRecurrence(match.item().getId(), recurring));
+                                scheduleService.setRecurrence(match.item().getId(), recurring
+                                        ? parseScheduleRecurrence(command)
+                                        : ScheduleItem.Recurrence.NONE));
             }
             case ASK_SCHEDULE_INFO -> {
                 requireText(command.title(), "title");
@@ -705,6 +752,19 @@ public class IntentService {
         } catch (Exception e) {
             return Task.Recurrence.NONE;
         }
+    }
+
+    private static ScheduleItem.Recurrence parseScheduleRecurrence(IntentCommand command) {
+        String value = command.safeOptions().recurrence();
+        if (value != null && !value.isBlank()) {
+            try {
+                return ScheduleItem.Recurrence.valueOf(value.toUpperCase());
+            } catch (IllegalArgumentException ignored) {
+                // 未知週期退回既有 recurring 布林語意，避免 LLM 拼字錯誤造成資料遺失。
+            }
+        }
+        return Boolean.TRUE.equals(command.recurring())
+                ? ScheduleItem.Recurrence.WEEKLY : ScheduleItem.Recurrence.NONE;
     }
 
     private static Task.ConditionType parseCondition(String value) {

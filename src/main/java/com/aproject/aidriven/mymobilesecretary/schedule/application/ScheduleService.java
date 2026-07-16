@@ -48,13 +48,20 @@ public class ScheduleService {
     /** 提出新行程並驗算;recurring = true 表示每週固定(結束後自動排下一週)。 */
     public ScheduleDecision createSchedule(String title, Instant startAt, Instant endAt,
                                            Long placeId, boolean recurring) {
+        return createSchedule(title, startAt, endAt, placeId,
+                recurring ? ScheduleItem.Recurrence.WEEKLY : ScheduleItem.Recurrence.NONE);
+    }
+
+    /** 提出新行程並套用明確週期。 */
+    public ScheduleDecision createSchedule(String title, Instant startAt, Instant endAt,
+                                           Long placeId, ScheduleItem.Recurrence recurrence) {
         if (placeId != null) {
             placeService.getPlace(placeId); // 地點必須存在
         }
         Instant now = Instant.now(clock);
         ScheduleItem item = ScheduleItem.propose(title, startAt, endAt, placeId, now);
-        if (recurring) {
-            item.repeatWeekly(now);
+        if (recurrence != null && recurrence != ScheduleItem.Recurrence.NONE) {
+            item.repeat(recurrence, now);
         }
         item = scheduleItemRepository.save(item);
         return gate(item, now);
@@ -62,10 +69,16 @@ public class ScheduleService {
 
     /** 設定/取消每週固定。 */
     public ScheduleItem setWeeklyRecurrence(Long scheduleId, boolean recurring) {
+        return setRecurrence(scheduleId,
+                recurring ? ScheduleItem.Recurrence.WEEKLY : ScheduleItem.Recurrence.NONE);
+    }
+
+    /** 設定明確固定週期。 */
+    public ScheduleItem setRecurrence(Long scheduleId, ScheduleItem.Recurrence recurrence) {
         ScheduleItem item = getSchedule(scheduleId);
         Instant now = Instant.now(clock);
-        if (recurring) {
-            item.repeatWeekly(now);
+        if (recurrence != null && recurrence != ScheduleItem.Recurrence.NONE) {
+            item.repeat(recurrence, now);
         } else {
             item.stopRepeating(now);
         }
@@ -82,24 +95,40 @@ public class ScheduleService {
     public int rolloverDueRecurringSchedules() {
         Instant now = Instant.now(clock);
         List<ScheduleItem> due = scheduleItemRepository
-                .findByRecurrenceAndEndAtLessThanEqual(ScheduleItem.Recurrence.WEEKLY, now).stream()
+                .findByRecurrenceInAndEndAtLessThanEqual(
+                        EnumSet.of(ScheduleItem.Recurrence.WEEKLY, ScheduleItem.Recurrence.WEEKDAYS), now).stream()
                 .filter(item -> item.getStatus() == ScheduleStatus.CONFIRMED
                         || item.getStatus() == ScheduleStatus.COMPLETED)
                 .toList();
         int created = 0;
         for (ScheduleItem item : due) {
-            Instant nextStart = item.getStartAt().plus(java.time.Duration.ofDays(7));
+            java.time.Duration shift = nextRecurrenceShift(item);
+            Instant nextStart = item.getStartAt().plus(shift);
             if (scheduleItemRepository.existsByTitleAndRecurrenceAndStartAt(
-                    item.getTitle(), ScheduleItem.Recurrence.WEEKLY, nextStart)) {
+                    item.getTitle(), item.getRecurrence(), nextStart)) {
                 continue;
             }
             createSchedule(item.getTitle(), nextStart,
-                    item.getEndAt().plus(java.time.Duration.ofDays(7)), item.getPlaceId(), true);
-            // 本場次交棒後改回單次,避免每輪重掃(下一週場次接手 WEEKLY 身分)
+                    item.getEndAt().plus(shift), item.getPlaceId(), item.getRecurrence());
+            // 本場次交棒後改回單次,避免每輪重掃(下一場接手固定週期身分)
             item.stopRepeating(now);
             created++;
         }
         return created;
+    }
+
+    private java.time.Duration nextRecurrenceShift(ScheduleItem item) {
+        if (item.getRecurrence() == ScheduleItem.Recurrence.WEEKLY) {
+            return java.time.Duration.ofDays(7);
+        }
+        java.time.ZonedDateTime current = java.time.ZonedDateTime.ofInstant(
+                item.getStartAt(), java.time.ZoneId.of("Asia/Taipei"));
+        java.time.ZonedDateTime next = current.plusDays(1);
+        while (next.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
+                || next.getDayOfWeek() == java.time.DayOfWeek.SUNDAY) {
+            next = next.plusDays(1);
+        }
+        return java.time.Duration.between(current.toInstant(), next.toInstant());
     }
 
     /** 改時間 → 回 PROPOSED 重新驗算;可行一樣自動放行。 */

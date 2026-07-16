@@ -1236,7 +1236,7 @@ public class LifestyleIntentService {
         if (start == null) start = source.getStartAt().plus(Duration.ofDays(1));
         Instant end = start.plus(Duration.between(source.getStartAt(), source.getEndAt()));
         var decision = scheduleService.createSchedule(command.title(), start, end, source.getPlaceId(),
-                source.getRecurrence() == ScheduleItem.Recurrence.WEEKLY);
+                source.getRecurrence());
         contextService.rememberSchedule(decision.item());
         return IntentResult.scheduleDecided(decision);
     }
@@ -1308,7 +1308,7 @@ public class LifestyleIntentService {
             case "EVENING" -> ZonedDateTime.ofInstant(s.getStartAt(), TAIPEI).getHour() >= 18;
             case "WITH_PLACE" -> s.getPlaceId() != null;
             case "NO_PLACE" -> s.getPlaceId() == null;
-            case "RECURRING" -> s.getRecurrence() == ScheduleItem.Recurrence.WEEKLY;
+            case "RECURRING" -> s.getRecurrence() != ScheduleItem.Recurrence.NONE;
             case "ONE_TIME" -> s.getRecurrence() == ScheduleItem.Recurrence.NONE;
             case "LONG" -> Duration.between(s.getStartAt(), s.getEndAt()).toMinutes() > 120;
             default -> true;

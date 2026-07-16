@@ -29,6 +29,8 @@
 - LINE 長篇上班日常被誤判為回饋：`RecurringRoutineClarificationTest` 1/1 通過，改問實際缺少的固定時段決策。
 - 對話回覆格式統一：格式器、收據、LINE client、一般提醒、天氣通知、待安排追問、行程結果追問與既有特殊回覆共 44/44 通過；
   驗證多項目條列、區塊空行、對應 emoji、LINE JSON 實際文字與重複格式化不變形。
+- LINE 每日行程總覽漏掉固定上班行程：每日總覽、日期查詢攔截、巢狀行程與格式器局部測試 22/22 通過；
+  `RecurringScheduleFlowTest` 4/4 通過，並以真實 PostgreSQL 驗證 V16 migration 與 `WEEKDAYS` rollover。
 - 第二波 `LifestyleIntentApiTest`：測試環境找不到 Docker，Spring context 在案例執行前停止；
   因此 V14/V15 migration 與 API 整合仍列為關鍵節點待驗證，不算程式測試失敗，也不算通過。
 - 本階段尚未重跑完整 `mvn test`，不得把精準測試通過誤寫成全套通過。

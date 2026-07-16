@@ -96,7 +96,7 @@ public final class IntentReplyFormatter {
         if (containsAny(firstLine, "建議", "可考慮", "可以考慮", "不妨")) {
             return "💡";
         }
-        if (containsAny(firstLine, "請回覆", "請選", "要不要", "是否")
+        if (containsAny(firstLine, "請回覆", "請選", "請確認", "請告訴", "要不要", "是否")
                 || firstLine.endsWith("?") || firstLine.endsWith("？")) {
             return "❓";
         }

@@ -43,7 +43,9 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 有明確「開始時段」的活動(剪頭髮、開會、聚餐)→ CREATE_SCHEDULE,startAt 必填;
               使用者沒說結束時間就依活動常識估 endAt(剪頭髮約 1 小時、會議約 1 小時);
               聽得出是每週固定(「每週三」「固定行程」)→ recurring 填 true,options.recurrence 填 WEEKLY;
-              「每個上班日」「週一到週五」→ recurring 填 true,options.recurrence 填 WEEKDAYS,不可只填 WEEKLY。
+              「每個上班日」「週一到週五」→ recurring 填 true,options.recurrence 填 WEEKDAYS,不可只填 WEEKLY;
+              固定行程有截止語(「到九月底」「截至 12/31」)→ options.recurrenceUntil 填台北日期 yyyy-MM-dd,
+              「月底」要換成該月最後一天，截止日含當日；不可把截止日誤放進 endAt。
             - 接送/陪同類行程要主動拆成完整的配套:「送女兒10點到12點上課」不是一個 10-12 的行程,
               而是兩個 command:CREATE_SCHEDULE「送女兒上課」(到達時間前約 20 分鐘出發到抵達)+
               CREATE_SCHEDULE「接女兒下課」(結束時間起約 20 分鐘),中間時段留空讓使用者能排其他事。
@@ -58,7 +60,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 問某待辦要去哪裡做(「我要去哪取蝦皮?」「包裹在哪拿」)→ ASK_TASK_PLACE,title 放待辦關鍵字。
             - 取消既有行程(「明天的會議取消」)→ CANCEL_SCHEDULE,title 放行程關鍵字。
             - 說某行程是每週固定/取消固定(「送女兒上課是每週固定的」)→ SET_SCHEDULE_RECURRING,
-              title 放關鍵字,recurring 填 true(取消固定填 false);上班日固定另填 options.recurrence=WEEKDAYS。
+              title 放關鍵字,recurring 填 true(取消固定填 false);上班日固定另填 options.recurrence=WEEKDAYS;
+              有「到某日為止」時另填 options.recurrenceUntil=yyyy-MM-dd。
             - 問某行程的細節(「送女兒上課是固定行程嗎?」「會議是幾點?」)→ ASK_SCHEDULE_INFO,title 放關鍵字。
             - 查待辦本身的明細(「列出買奶粉待辦的明細」)→ ASK_TASK_INFO；只有明講價格、買過紀錄或
               上次多少錢才是 ASK_PRICE_HISTORY，title 放品項關鍵字(如「奶粉」)。
@@ -103,7 +106,7 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 你會收到短期上下文、未完成待辦、近期行程、已知地點與購物品項。只有資料能唯一指向時,
               才能解析「上一個、第二個、那件事、她」;否則輸出 UNKNOWN 回問。
             - options 可填:filter、ordinal、durationMinutes、leadMinutes、radiusMeters、triggerType、
-              recurrence、category、itemNames、quantity、referenceTitle、referenceKind、timeOfDay、
+              recurrence、recurrenceUntil、category、itemNames、quantity、referenceTitle、referenceKind、timeOfDay、
               keepTime、shiftMinutes、condition、fromPlaceName、bufferMinutes、clarificationQuestion、alias。
               第二波欄位還有 newTitle、description、quietStart、quietEnd、allowHighPriority。
             - CREATE_TASK 可同時填 dueAt、placeName 與 options。原句明講「去某地買／拿／做」時 placeName

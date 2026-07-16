@@ -240,3 +240,4 @@
 240|晚上七點訂巷口熱炒,6位有坐輪椅的長輩|BOOK_RESTAURANT|placeName=巷口熱炒;options.quantity=6;options.description=行動不便長輩;回覆要確認無障礙
 241|把下週一到週三的行程都刪掉|BULK_CANCEL_SCHEDULES|startAt=下週一00:00;endAt=下週三24:00;只刪非固定行程並回報固定行程未動
 242|刪掉所有行程|BULK_CANCEL_SCHEDULES|範圍留空;系統回問明確時間段,固定行程要逐一指名刪
+243|每週六上午九點上英文課到九月底|CREATE_SCHEDULE|recurring=true;options.recurrence=WEEKLY;options.recurrenceUntil=當年09-30;截止日含當日

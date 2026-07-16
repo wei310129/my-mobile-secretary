@@ -1236,7 +1236,8 @@ public class LifestyleIntentService {
         if (start == null) start = source.getStartAt().plus(Duration.ofDays(1));
         Instant end = start.plus(Duration.between(source.getStartAt(), source.getEndAt()));
         var decision = scheduleService.createSchedule(command.title(), start, end, source.getPlaceId(),
-                source.getRecurrence());
+                source.getRecurrence(), source.getRecurrence() == ScheduleItem.Recurrence.NONE
+                        ? null : source.getRecurrenceUntil());
         contextService.rememberSchedule(decision.item());
         return IntentResult.scheduleDecided(decision);
     }

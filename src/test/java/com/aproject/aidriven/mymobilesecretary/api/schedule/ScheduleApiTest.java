@@ -56,6 +56,28 @@ class ScheduleApiTest extends IntegrationTestBase {
                 .isEqualTo("CONFIRMED");
     }
 
+    /** REST 建立與查詢都要保留固定週期的含當日截止日期。 */
+    @Test
+    void recurringSchedulePersistsInclusiveCutoffDate() throws Exception {
+        String body = mockMvc.perform(post("/api/schedules")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title":"每週英文課","startAt":"2027-07-03T01:00:00Z",
+                                 "endAt":"2027-07-03T02:00:00Z","recurrence":"WEEKLY",
+                                 "recurrenceUntil":"2027-09-30"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.schedule.recurrence").value("WEEKLY"))
+                .andExpect(jsonPath("$.schedule.recurrenceUntil").value("2027-09-30"))
+                .andReturn().getResponse().getContentAsString();
+
+        long id = objectMapper.readTree(body).get("schedule").get("id").asLong();
+        mockMvc.perform(get("/api/schedules/{id}", id))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.recurrence").value("WEEKLY"))
+                .andExpect(jsonPath("$.recurrenceUntil").value("2027-09-30"));
+    }
+
     /** 時間重疊 → 留 PROPOSED + TIME_OVERLAP + 選項;改時間後放行。 */
     @Test
     void overlappingScheduleStaysProposedThenRescheduleConfirms() throws Exception {

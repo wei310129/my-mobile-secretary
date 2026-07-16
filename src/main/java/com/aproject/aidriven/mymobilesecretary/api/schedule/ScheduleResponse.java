@@ -3,6 +3,7 @@ package com.aproject.aidriven.mymobilesecretary.api.schedule;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import java.time.Instant;
+import java.time.LocalDate;
 
 /** 行程的 API 回應格式。 */
 public record ScheduleResponse(
@@ -12,6 +13,8 @@ public record ScheduleResponse(
         Instant endAt,
         Long placeId,
         ScheduleStatus status,
+        ScheduleItem.Recurrence recurrence,
+        LocalDate recurrenceUntil,
         Instant createdAt,
         Instant updatedAt
 ) {
@@ -25,6 +28,8 @@ public record ScheduleResponse(
                 item.getEndAt(),
                 item.getPlaceId(),
                 item.getStatus(),
+                item.getRecurrence(),
+                item.getRecurrenceUntil(),
                 item.getCreatedAt(),
                 item.getUpdatedAt());
     }

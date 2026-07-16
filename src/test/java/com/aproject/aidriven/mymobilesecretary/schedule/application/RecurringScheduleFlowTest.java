@@ -8,6 +8,7 @@ import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItemRepository;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.temporal.ChronoUnit;
@@ -119,5 +120,51 @@ class RecurringScheduleFlowTest extends IntegrationTestBase {
                 .filter(item -> item.getStartAt().equals(expected))
                 .findFirst().orElseThrow();
         assertThat(next.getRecurrence()).isEqualTo(ScheduleItem.Recurrence.WEEKDAYS);
+    }
+
+    /** 截止日含當日：下一場剛好落在截止日，仍要建立並把截止日交棒。 */
+    @Test
+    void weeklyScheduleIncludesOccurrenceOnCutoffDate() {
+        Instant now = now();
+        ScheduleItem current = ScheduleItem.propose("固定測試截止日邊界",
+                now.minus(Duration.ofHours(3)), now.minus(Duration.ofHours(2)), null, now);
+        LocalDate cutoff = current.getStartAt().plus(Duration.ofDays(7))
+                .atZone(ZoneId.of("Asia/Taipei")).toLocalDate();
+        current.confirm(now);
+        current.repeat(ScheduleItem.Recurrence.WEEKLY, cutoff, now);
+        current.complete(now);
+        scheduleItemRepository.save(current);
+
+        scheduleService.rolloverDueRecurringSchedules();
+
+        ScheduleItem next = scheduleItemRepository.findAllByOrderByStartAtAsc().stream()
+                .filter(item -> item.getTitle().equals("固定測試截止日邊界"))
+                .filter(item -> item.getStartAt().equals(current.getStartAt().plus(Duration.ofDays(7))))
+                .findFirst().orElseThrow();
+        assertThat(next.getRecurrence()).isEqualTo(ScheduleItem.Recurrence.WEEKLY);
+        assertThat(next.getRecurrenceUntil()).isEqualTo(cutoff);
+    }
+
+    /** 下一場超過截止日：不建立新場次，固定規則自然結束並保留截止紀錄。 */
+    @Test
+    void weeklyScheduleStopsBeforeOccurrenceAfterCutoff() {
+        Instant now = now();
+        ScheduleItem current = ScheduleItem.propose("固定測試截止後停止",
+                now.minus(Duration.ofHours(5)), now.minus(Duration.ofHours(4)), null, now);
+        LocalDate cutoff = current.getStartAt().atZone(ZoneId.of("Asia/Taipei")).toLocalDate();
+        current.confirm(now);
+        current.repeat(ScheduleItem.Recurrence.WEEKLY, cutoff, now);
+        current.complete(now);
+        scheduleItemRepository.save(current);
+
+        scheduleService.rolloverDueRecurringSchedules();
+
+        boolean nextExists = scheduleItemRepository.findAllByOrderByStartAtAsc().stream()
+                .anyMatch(item -> item.getTitle().equals("固定測試截止後停止")
+                        && item.getStartAt().equals(current.getStartAt().plus(Duration.ofDays(7))));
+        ScheduleItem ended = scheduleItemRepository.findById(current.getId()).orElseThrow();
+        assertThat(nextExists).isFalse();
+        assertThat(ended.getRecurrence()).isEqualTo(ScheduleItem.Recurrence.NONE);
+        assertThat(ended.getRecurrenceUntil()).isEqualTo(cutoff);
     }
 }

@@ -9,6 +9,8 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 
 /**
  * 行程:有時間(可選地點)的承諾。後端行程是 source of truth。
@@ -18,6 +20,8 @@ import java.time.Instant;
  */
 @Entity
 public class ScheduleItem {
+
+    private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
@@ -43,6 +47,9 @@ public class ScheduleItem {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private Recurrence recurrence = Recurrence.NONE;
+
+    /** 固定行程的最後有效日期（台北時區、含當日）；null 代表無期限。 */
+    private LocalDate recurrenceUntil;
 
     @Column(nullable = false)
     private Instant createdAt;
@@ -89,6 +96,11 @@ public class ScheduleItem {
 
     /** 設定固定週期。終止狀態的行程不可重新啟用固定規則。 */
     public void repeat(Recurrence recurrence, Instant now) {
+        repeat(recurrence, null, now);
+    }
+
+    /** 設定固定週期與含當日的截止日期。 */
+    public void repeat(Recurrence recurrence, LocalDate recurrenceUntil, Instant now) {
         if (status == ScheduleStatus.CANCELED || status == ScheduleStatus.REJECTED) {
             throw new BusinessException("INVALID_STATE_TRANSITION",
                     "Schedule %d is terminated (%s), cannot repeat".formatted(id, status));
@@ -97,18 +109,35 @@ public class ScheduleItem {
             stopRepeating(now);
             return;
         }
+        LocalDate firstOccurrence = startAt.atZone(TAIPEI).toLocalDate();
+        if (recurrenceUntil != null && recurrenceUntil.isBefore(firstOccurrence)) {
+            throw new BusinessException("INVALID_RECURRENCE_UNTIL",
+                    "recurrenceUntil must include the first occurrence");
+        }
         this.recurrence = recurrence;
+        this.recurrenceUntil = recurrenceUntil;
         this.updatedAt = now;
     }
 
     /** 取消固定(之後不再自動排下一週)。 */
     public void stopRepeating(Instant now) {
         this.recurrence = Recurrence.NONE;
+        this.recurrenceUntil = null;
+        this.updatedAt = now;
+    }
+
+    /** 固定行程自然走到截止日；停止展開，但保留截止日期供查詢與稽核。 */
+    public void finishRecurrence(Instant now) {
+        this.recurrence = Recurrence.NONE;
         this.updatedAt = now;
     }
 
     public Recurrence getRecurrence() {
         return recurrence;
+    }
+
+    public LocalDate getRecurrenceUntil() {
+        return recurrenceUntil;
     }
 
     /** 確認(可行放行,或使用者看過警告後強制確認)。 */

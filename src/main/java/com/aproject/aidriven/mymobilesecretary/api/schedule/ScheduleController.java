@@ -36,7 +36,8 @@ public class ScheduleController {
     @ResponseStatus(HttpStatus.CREATED)
     public ScheduleDecisionResponse createSchedule(@Valid @RequestBody CreateScheduleRequest request) {
         return ScheduleDecisionResponse.from(scheduleService.createSchedule(
-                request.title(), request.startAt(), request.endAt(), request.placeId()));
+                request.title(), request.startAt(), request.endAt(), request.placeId(),
+                request.recurrence(), request.recurrenceUntil()));
     }
 
     /** 列出行程(可用 ?status=PENDING 過濾 pending 池)。 */

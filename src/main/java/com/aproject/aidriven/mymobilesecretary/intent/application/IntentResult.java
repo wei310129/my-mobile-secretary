@@ -179,6 +179,7 @@ public record IntentResult(
 
     static IntentResult scheduleDecided(ScheduleDecision decision) {
         boolean feasible = decision.feasibility().feasible();
+        String recurrenceDetails = scheduleRecurrenceDetails(decision.item());
         boolean nested = decision.feasibility().issues().stream()
                 .anyMatch(issue -> issue.type()
                         == com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue.Type
@@ -193,15 +194,16 @@ public record IntentResult(
         return new IntentResult(
                 feasible ? Action.SCHEDULE_CONFIRMED : Action.SCHEDULE_NEEDS_DECISION,
                 feasible
-                        ? "行程「%s」可行,已確認".formatted(decision.item().getTitle())
+                        ? "行程「%s」可行,已確認%s".formatted(
+                                decision.item().getTitle(), recurrenceDetails)
                         : nested
-                        ? "行程「%s」尚未確認：\n%s\n\n請回覆是否併入固定行程；我不會自行確認或要求改期。"
-                                .formatted(decision.item().getTitle(), issues)
+                        ? "行程「%s」尚未確認：%s\n%s\n\n請回覆是否併入固定行程；我不會自行確認或要求改期。"
+                                .formatted(decision.item().getTitle(), recurrenceDetails, issues)
                         : crossesTask
-                        ? "行程「%s」尚未確認：\n%s\n\n請確認要縮短、延後，或仍照原時間安排；我不會自行更動待辦或行程。"
-                                .formatted(decision.item().getTitle(), issues)
-                        : "行程「%s」尚未確認：\n%s\n\n請告訴我要改哪個行程或指定新時間；我不會自行確認。"
-                                .formatted(decision.item().getTitle(), issues),
+                        ? "行程「%s」尚未確認：%s\n%s\n\n請確認要縮短、延後，或仍照原時間安排；我不會自行更動待辦或行程。"
+                                .formatted(decision.item().getTitle(), recurrenceDetails, issues)
+                        : "行程「%s」尚未確認：%s\n%s\n\n請告訴我要改哪個行程或指定新時間；我不會自行確認。"
+                                .formatted(decision.item().getTitle(), recurrenceDetails, issues),
                 null, decision);
     }
 
@@ -273,7 +275,8 @@ public record IntentResult(
         };
         return new IntentResult(Action.SCHEDULE_RECURRENCE_SET,
                 label != null
-                        ? "「%s」已設為%s,之後會自動排下一場。".formatted(item.getTitle(), label)
+                        ? "「%s」已設為%s%s,之後會自動排下一場。".formatted(
+                                item.getTitle(), label, recurrenceUntilLabel(item))
                         : "「%s」已改回單次行程,不再自動重複。".formatted(item.getTitle()),
                 null, null);
     }
@@ -288,12 +291,34 @@ public record IntentResult(
         message.append("\n類型:").append(switch (item.getRecurrence()) {
             case WEEKLY -> "每週固定";
             case WEEKDAYS -> "每個上班日固定";
-            case NONE -> "單次";
+            case NONE -> item.getRecurrenceUntil() == null ? "單次" : "固定規則已結束";
         });
+        if (item.getRecurrenceUntil() != null) {
+            message.append("\n截止:").append(item.getRecurrenceUntil()
+                    .format(DateTimeFormatter.ofPattern("yyyy/MM/dd"))).append("（含當日）");
+        }
         if (place != null) {
             message.append("\n地點:").append(place.getName());
         }
         return new IntentResult(Action.SCHEDULE_INFO, message.toString(), null, null);
+    }
+
+    private static String scheduleRecurrenceDetails(ScheduleItem item) {
+        String label = switch (item.getRecurrence()) {
+            case WEEKLY -> "每週固定";
+            case WEEKDAYS -> "每個上班日固定";
+            case NONE -> null;
+        };
+        if (label == null) {
+            return "";
+        }
+        return "\n固定規則:" + label + recurrenceUntilLabel(item);
+    }
+
+    private static String recurrenceUntilLabel(ScheduleItem item) {
+        return item.getRecurrenceUntil() == null ? ""
+                : "至%s（含當日）".formatted(item.getRecurrenceUntil()
+                        .format(DateTimeFormatter.ofPattern("yyyy/MM/dd")));
     }
 
     static IntentResult priceHistory(String keyword,

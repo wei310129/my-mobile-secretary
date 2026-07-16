@@ -367,7 +367,7 @@ public class IntentService {
                 Long placeId = resolvePlace(command.placeName()).map(Place::getId).orElse(null);
                 ScheduleDecision decision = scheduleService.createSchedule(
                         command.title(), startAt, endAt, placeId,
-                        parseScheduleRecurrence(command));
+                        parseScheduleRecurrence(command), parseRecurrenceUntil(command));
                 yield IntentResult.scheduleDecided(decision);
             }
             case COMPLETE_TASK -> {
@@ -421,7 +421,8 @@ public class IntentService {
                         : IntentResult.scheduleRecurrenceSet(
                                 scheduleService.setRecurrence(match.item().getId(), recurring
                                         ? parseScheduleRecurrence(command)
-                                        : ScheduleItem.Recurrence.NONE));
+                                        : ScheduleItem.Recurrence.NONE,
+                                        recurring ? parseRecurrenceUntil(command) : null));
             }
             case ASK_SCHEDULE_INFO -> {
                 requireText(command.title(), "title");
@@ -836,6 +837,18 @@ public class IntentService {
         }
         return Boolean.TRUE.equals(command.recurring())
                 ? ScheduleItem.Recurrence.WEEKLY : ScheduleItem.Recurrence.NONE;
+    }
+
+    private static java.time.LocalDate parseRecurrenceUntil(IntentCommand command) {
+        String value = command.safeOptions().recurrenceUntil();
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        try {
+            return java.time.LocalDate.parse(value);
+        } catch (java.time.format.DateTimeParseException e) {
+            throw new IllegalArgumentException("bad recurrenceUntil: " + value, e);
+        }
     }
 
     private static Task.ConditionType parseCondition(String value) {

@@ -89,6 +89,24 @@ class LifestyleIntentApiTest extends IntegrationTestBase {
     }
 
     @Test
+    void recurringScheduleCutoffFlowsFromIntentToConfirmation() throws Exception {
+        IntentOptions options = new IntentOptions(
+                null, null, null, null, null, null, "WEEKLY", null,
+                null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null,
+                "2030-09-30");
+        stub.nextCommand(command(IntentCommand.Type.CREATE_SCHEDULE, "每週英文課",
+                null, "2030-08-10T09:00:00+08:00", "2030-08-10T10:00:00+08:00",
+                null, options));
+
+        say("每週六上午九點上英文課到九月底",
+                jsonPath("$.action").value("SCHEDULE_CONFIRMED"),
+                jsonPath("$.schedule.schedule.recurrence").value("WEEKLY"),
+                jsonPath("$.schedule.schedule.recurrenceUntil").value("2030-09-30"),
+                jsonPath("$.message").value(containsString("2030/09/30")));
+    }
+
+    @Test
     void recurringTaskCanBePausedResumedAndUpdated() throws Exception {
         String title = "生活測試週報";
         // 「每週」沒講週幾必須回問,不可自行定時點(使用者 2026-07-16 裁決),且不得建立任務

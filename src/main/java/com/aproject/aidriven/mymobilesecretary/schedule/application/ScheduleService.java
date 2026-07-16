@@ -6,9 +6,12 @@ import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityResult;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItemRepository;
+import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
 import com.aproject.aidriven.mymobilesecretary.shared.error.NotFoundException;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.EnumSet;
 import java.util.List;
 import org.springframework.stereotype.Service;
@@ -24,6 +27,8 @@ import org.springframework.transaction.annotation.Transactional;
 @Service
 @Transactional
 public class ScheduleService {
+
+    private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
 
     private final ScheduleItemRepository scheduleItemRepository;
     private final FeasibilityService feasibilityService;
@@ -55,13 +60,23 @@ public class ScheduleService {
     /** 提出新行程並套用明確週期。 */
     public ScheduleDecision createSchedule(String title, Instant startAt, Instant endAt,
                                            Long placeId, ScheduleItem.Recurrence recurrence) {
+        return createSchedule(title, startAt, endAt, placeId, recurrence, null);
+    }
+
+    /** 建立可選擇截止日期（台北時區、含當日）的固定行程。 */
+    public ScheduleDecision createSchedule(String title, Instant startAt, Instant endAt,
+                                           Long placeId, ScheduleItem.Recurrence recurrence,
+                                           LocalDate recurrenceUntil) {
         if (placeId != null) {
             placeService.getPlace(placeId); // 地點必須存在
         }
         Instant now = Instant.now(clock);
         ScheduleItem item = ScheduleItem.propose(title, startAt, endAt, placeId, now);
         if (recurrence != null && recurrence != ScheduleItem.Recurrence.NONE) {
-            item.repeat(recurrence, now);
+            item.repeat(recurrence, recurrenceUntil, now);
+        } else if (recurrenceUntil != null) {
+            throw new BusinessException(
+                    "INVALID_RECURRENCE_UNTIL", "recurrenceUntil requires a recurring schedule");
         }
         item = scheduleItemRepository.save(item);
         return gate(item, now);
@@ -75,10 +90,16 @@ public class ScheduleService {
 
     /** 設定明確固定週期。 */
     public ScheduleItem setRecurrence(Long scheduleId, ScheduleItem.Recurrence recurrence) {
+        return setRecurrence(scheduleId, recurrence, null);
+    }
+
+    /** 設定固定週期與可選截止日期（含當日）。 */
+    public ScheduleItem setRecurrence(Long scheduleId, ScheduleItem.Recurrence recurrence,
+                                      LocalDate recurrenceUntil) {
         ScheduleItem item = getSchedule(scheduleId);
         Instant now = Instant.now(clock);
         if (recurrence != null && recurrence != ScheduleItem.Recurrence.NONE) {
-            item.repeat(recurrence, now);
+            item.repeat(recurrence, recurrenceUntil, now);
         } else {
             item.stopRepeating(now);
         }
@@ -104,17 +125,27 @@ public class ScheduleService {
         for (ScheduleItem item : due) {
             java.time.Duration shift = nextRecurrenceShift(item);
             Instant nextStart = item.getStartAt().plus(shift);
+            if (isAfterRecurrenceUntil(item, nextStart)) {
+                item.finishRecurrence(now);
+                continue;
+            }
             if (scheduleItemRepository.existsByTitleAndRecurrenceAndStartAt(
                     item.getTitle(), item.getRecurrence(), nextStart)) {
                 continue;
             }
             createSchedule(item.getTitle(), nextStart,
-                    item.getEndAt().plus(shift), item.getPlaceId(), item.getRecurrence());
+                    item.getEndAt().plus(shift), item.getPlaceId(), item.getRecurrence(),
+                    item.getRecurrenceUntil());
             // 本場次交棒後改回單次,避免每輪重掃(下一場接手固定週期身分)
             item.stopRepeating(now);
             created++;
         }
         return created;
+    }
+
+    private boolean isAfterRecurrenceUntil(ScheduleItem item, Instant nextStart) {
+        return item.getRecurrenceUntil() != null
+                && nextStart.atZone(TAIPEI).toLocalDate().isAfter(item.getRecurrenceUntil());
     }
 
     private java.time.Duration nextRecurrenceShift(ScheduleItem item) {

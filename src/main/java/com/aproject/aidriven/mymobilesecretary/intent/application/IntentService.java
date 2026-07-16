@@ -89,6 +89,10 @@ public class IntentService {
     }
 
     private IntentResult doHandle(String text) {
+        Optional<String> help = capabilityHelp(text);
+        if (help.isPresent()) {
+            return IntentResult.message(IntentResult.Action.SOCIAL_REPLIED, help.get());
+        }
         IntentScript script;
         IntentInterpreter interpreter = interpreterProvider.getIfAvailable();
         if (interpreter == null) {
@@ -136,6 +140,25 @@ public class IntentService {
             return fallbackTask(text, "多項操作都解析失敗");
         }
         return IntentResult.batchExecuted(lines);
+    }
+
+    static Optional<String> capabilityHelp(String text) {
+        String normalized = text == null ? "" : text.replaceAll("\\s+", "");
+        boolean asking = normalized.contains("能力範圍")
+                || normalized.contains("功能介紹")
+                || normalized.contains("你會什麼")
+                || normalized.contains("你能做什麼")
+                || normalized.contains("你可以做什麼");
+        if (!asking) return Optional.empty();
+        return Optional.of("""
+                我目前可以直接幫你：
+                1. 建立、修改、完成與查詢待辦，包含期限、優先級、分類、固定提醒。
+                2. 建立與調整行程，檢查撞期、交通可行性、空檔、提醒與每週固定行程。
+                3. 管理地點與到達／離開提醒，整理順路事項。
+                4. 管理購物清單、已盤點庫存、品項店家與歷史單價。
+                5. 設定勿擾、天氣條件提醒與交通監看。
+                你也可以直接描述生活安排；資訊不足時我會先問，不會自行確認有衝突的行程。
+                """.strip());
     }
 
     /** 依驗證後的 command 執行;LLM 輸出一律先驗證再信。 */

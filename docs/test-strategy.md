@@ -23,6 +23,7 @@
   Maven 重新編譯 208 份主程式與 64 份測試來源成功。修正衝突細節／建議、行程提醒查詢；
   同名任務編號選擇再跑能力契約 1/1 通過。
 - LINE 跨使用者隱私修正：`LineOwnerGuardTest` 2/2 通過；owner 未設定時由全放行改為全阻擋。
+- LINE 能力介紹誤回內部分類理由：`IntentServiceCapabilityHelpTest` 1/1 通過，改為確定性使用者說明。
 - 第二波 `LifestyleIntentApiTest`：測試環境找不到 Docker，Spring context 在案例執行前停止；
   因此 V14/V15 migration 與 API 整合仍列為關鍵節點待驗證，不算程式測試失敗，也不算通過。
 - 本階段尚未重跑完整 `mvn test`，不得把精準測試通過誤寫成全套通過。

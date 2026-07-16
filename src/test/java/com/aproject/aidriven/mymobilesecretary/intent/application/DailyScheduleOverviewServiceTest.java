@@ -43,14 +43,21 @@ class DailyScheduleOverviewServiceTest {
         ScheduleItem meeting = proposed("專案週會",
                 "2026-07-17T10:00:00+08:00", "2026-07-17T11:00:00+08:00");
         meeting.confirm(NOW);
-        when(scheduleService.listSchedules(null)).thenReturn(List.of(workday, meeting));
+        ScheduleItem rehearsal = proposed("簡報排練",
+                "2026-07-17T11:00:00+08:00", "2026-07-17T12:00:00+08:00");
+        rehearsal.confirm(NOW);
+        when(scheduleService.listSchedules(null)).thenReturn(List.of(workday, meeting, rehearsal));
 
         IntentResult result = service.overview(LocalDate.of(2026, 7, 17));
 
         assertThat(result.message())
-                .contains("2026/07/17", "固定行程", "07:00–19:15｜上班日通勤與上班（起床到下班）｜待確認")
-                .contains("當日行程", "10:00–11:00｜專案週會｜已確認")
+                .contains("📅 2026/07/17", "📌 07:00–19:15", "上班日通勤與上班（起床到下班）｜待確認")
+                .contains("💼 10:00–11:00", "專案週會｜已確認")
+                .contains("💻 11:00–12:00", "簡報排練｜已確認")
                 .contains("位於", "不需要改期", "請確認是否把上述當日項目併入固定行程");
+        assertThat(result.message()).doesNotContain("固定行程:", "當日行程:");
+        assertThat(result.message().indexOf("📌 07:00–19:15"))
+                .isLessThan(result.message().indexOf("📝 已位於固定行程內的當日項目"));
         verify(contextService).rememberSchedule(workday);
     }
 
@@ -64,6 +71,30 @@ class DailyScheduleOverviewServiceTest {
         IntentResult result = service.overview(LocalDate.of(2026, 7, 18));
 
         assertThat(result.message()).contains("目前沒有固定或當日行程");
+    }
+
+    @Test
+    void workdayRoutineDoesNotAppearBeforeItsAnchorOrAfterItsCutoff() {
+        ScheduleItem workday = proposed("上班日通勤與上班",
+                "2026-07-17T07:00:00+08:00", "2026-07-17T19:15:00+08:00");
+        workday.repeat(ScheduleItem.Recurrence.WEEKDAYS, LocalDate.of(2026, 7, 31), NOW);
+        when(scheduleService.listSchedules(null)).thenReturn(List.of(workday));
+
+        assertThat(service.overview(LocalDate.of(2026, 7, 16)).message())
+                .contains("目前沒有固定或當日行程");
+        assertThat(service.overview(LocalDate.of(2026, 8, 3)).message())
+                .contains("目前沒有固定或當日行程");
+    }
+
+    @Test
+    void oneTimeScheduleUsesContentSpecificEmoji() {
+        ScheduleItem exercise = proposed("晚上運動",
+                "2026-07-17T20:00:00+08:00", "2026-07-17T21:00:00+08:00");
+        exercise.confirm(NOW);
+        when(scheduleService.listSchedules(null)).thenReturn(List.of(exercise));
+
+        assertThat(service.overview(LocalDate.of(2026, 7, 17)).message())
+                .contains("🏃 20:00–21:00", "晚上運動｜已確認");
     }
 
     @Test

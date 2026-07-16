@@ -63,9 +63,11 @@ public class DailyScheduleOverviewService {
                     "%s目前沒有固定或當日行程。".formatted(date.format(DAY)));
         }
 
-        StringBuilder message = new StringBuilder("%s行程總覽:".formatted(date.format(DAY)));
-        appendSection(message, "固定行程", fixed);
-        appendSection(message, "當日行程", oneTime);
+        List<Occurrence> completeOverview = Stream.concat(fixed.stream(), oneTime.stream())
+                .sorted(Comparator.comparing(Occurrence::startAt))
+                .toList();
+        StringBuilder message = new StringBuilder("📅 %s行程總覽：".formatted(date.format(DAY)));
+        appendCompleteOverview(message, completeOverview);
 
         List<ContainedOccurrence> contained = oneTime.stream()
                 .flatMap(child -> fixed.stream()
@@ -73,11 +75,13 @@ public class DailyScheduleOverviewService {
                         .map(parent -> new ContainedOccurrence(parent, child)))
                 .toList();
         if (!contained.isEmpty()) {
-            message.append("\n\n已位於固定行程內的當日項目:");
-            contained.forEach(relation -> message.append("\n%s「%s」位於 %s–%s「%s」內，不需要改期。"
-                    .formatted(range(relation.child()), relation.child().source().getTitle(),
-                            time(relation.parent().startAt()), time(relation.parent().endAt()),
-                            relation.parent().source().getTitle())));
+            message.append("\n\n📝 已位於固定行程內的當日項目：");
+            contained.forEach(relation -> message.append(
+                    "\n- %s %s｜%s，位於 %s–%s「%s」內，不需要改期。"
+                            .formatted(scheduleEmoji(relation.child().source()), range(relation.child()),
+                                    relation.child().source().getTitle(),
+                                    time(relation.parent().startAt()), time(relation.parent().endAt()),
+                                    relation.parent().source().getTitle())));
         }
 
         fixed.stream()
@@ -86,7 +90,7 @@ public class DailyScheduleOverviewService {
                 .findFirst()
                 .ifPresent(item -> {
                     contextService.rememberSchedule(item);
-                    message.append("\n\n請確認是否把上述當日項目併入固定行程「%s」；我不會自行確認。"
+                    message.append("\n\n❓ 請確認是否把上述當日項目併入固定行程「%s」；我不會自行確認。"
                             .formatted(item.getTitle()));
                 });
         return IntentResult.message(IntentResult.Action.SCHEDULES_LISTED, message.toString());
@@ -190,23 +194,49 @@ public class DailyScheduleOverviewService {
                         .formatted(item.getTitle()));
     }
 
-    private static void appendSection(StringBuilder message, String title, List<Occurrence> occurrences) {
-        if (occurrences.isEmpty()) {
-            return;
-        }
-        message.append("\n\n").append(title).append(":");
-        occurrences.forEach(occurrence -> message.append("\n%s｜%s｜%s"
-                .formatted(range(occurrence), occurrence.source().getTitle(),
+    /** 第一區先按時間列出完整行程；固定行程用圖釘，單次行程依內容選圖示。 */
+    private static void appendCompleteOverview(StringBuilder message, List<Occurrence> occurrences) {
+        occurrences.forEach(occurrence -> message.append("\n\n%s %s"
+                        .formatted(scheduleEmoji(occurrence.source()), range(occurrence)))
+                .append("\n- %s｜%s".formatted(occurrence.source().getTitle(),
                         statusLabel(occurrence.source().getStatus()))));
     }
 
+    static String scheduleEmoji(ScheduleItem item) {
+        if (item.getRecurrence() != ScheduleItem.Recurrence.NONE) {
+            return "📌";
+        }
+        String title = normalizeForMatch(item.getTitle());
+        if (containsAny(title, "簡報", "電腦", "線上", "視訊", "文件")) return "💻";
+        if (containsAny(title, "會議", "週會", "工作", "專案", "上班")) return "💼";
+        if (containsAny(title, "運動", "健身", "跑步", "慢跑", "重訓", "游泳", "瑜伽")) return "🏃";
+        if (containsAny(title, "吃飯", "午餐", "晚餐", "早餐", "聚餐", "餐廳")) return "🍽️";
+        if (containsAny(title, "看醫生", "醫院", "診所", "回診", "牙醫")) return "🏥";
+        if (containsAny(title, "接送", "接小孩", "送小孩", "通勤", "開車", "搭車")) return "🚗";
+        if (containsAny(title, "上課", "課程", "讀書", "學習")) return "📚";
+        if (containsAny(title, "購物", "採買", "買東西")) return "🛒";
+        if (containsAny(title, "睡覺", "休息", "午睡")) return "🛌";
+        return "📅";
+    }
+
+    private static boolean containsAny(String value, String... candidates) {
+        for (String candidate : candidates) {
+            if (value.contains(candidate)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     private static boolean occursOn(ScheduleItem item, LocalDate date) {
+        LocalDate anchor = LocalDate.ofInstant(item.getStartAt(), TAIPEI);
+        if (date.isBefore(anchor)
+                || (item.getRecurrenceUntil() != null && date.isAfter(item.getRecurrenceUntil()))) {
+            return false;
+        }
         return switch (item.getRecurrence()) {
             case NONE -> false;
-            case WEEKLY -> {
-                LocalDate anchor = LocalDate.ofInstant(item.getStartAt(), TAIPEI);
-                yield !date.isBefore(anchor) && date.getDayOfWeek() == anchor.getDayOfWeek();
-            }
+            case WEEKLY -> date.getDayOfWeek() == anchor.getDayOfWeek();
             case WEEKDAYS -> date.getDayOfWeek() != java.time.DayOfWeek.SATURDAY
                     && date.getDayOfWeek() != java.time.DayOfWeek.SUNDAY;
         };

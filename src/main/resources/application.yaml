@@ -12,7 +12,10 @@ spring:
       chat:
         options:
           model: claude-sonnet-5
-          max-tokens: 1024
+          # 意圖/收據 schema 已隨能力擴充變大(options 25 欄、批次多指令 JSON);
+          # 1024 曾在正式環境觸發空回應(BeanOutputConverter 收到 0 長度內容而炸開),
+          # 調高以留足輸出空間——LLM 失敗仍會 fallback,這裡只是降低發生機率
+          max-tokens: 4096
   profiles:
     # 沒指定 profile 時預設當本機開發
     default: local

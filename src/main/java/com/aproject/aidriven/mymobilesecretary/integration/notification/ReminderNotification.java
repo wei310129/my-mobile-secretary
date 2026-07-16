@@ -1,5 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.integration.notification;
 
+import com.aproject.aidriven.mymobilesecretary.intent.application.IntentReplyFormatter;
+
 /**
  * 要送給使用者的提醒通知內容(通道無關)。
  *
@@ -14,4 +16,7 @@ public record ReminderNotification(
         String title,
         String message
 ) {
+    public ReminderNotification {
+        message = IntentReplyFormatter.formatNotification(title, message);
+    }
 }

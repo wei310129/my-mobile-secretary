@@ -235,7 +235,7 @@ public class ScheduleFollowUpService {
 
     /** 逐通道送出詢問;單一通道失敗只記錄(詢問屬 nice-to-have,不建 delivery 紀錄)。 */
     private void sendPrompt(ScheduleItem item) {
-        String message = "「%s」結束了嗎?準時嗎?有超時的話大概多久、原因是什麼(會議超時/交通意外/上下班尖峰)?"
+        String message = "「%s」結束了嗎?\n\n請回覆:\n準時或超時\n超時多久\n原因（例如會議超時、交通意外、上下班尖峰）"
                 .formatted(item.getTitle());
         for (NotificationSender sender : senders) {
             try {

@@ -84,7 +84,7 @@ public class WeatherAlertService {
             return false;
         }
         WeatherForecast f = forecast.get();
-        send("出門提醒", "今天%s(%s),降雨機率 %d%%,出門記得帶傘。"
+        send("天氣出門提醒", "今日天氣:\n%s（%s）\n降雨機率 %d%%\n\n出門提醒:\n記得帶傘"
                 .formatted(f.description(), f.county(), f.rainProbabilityPercent()));
         return true;
     }
@@ -120,8 +120,8 @@ public class WeatherAlertService {
         String schedules = upcoming.stream()
                 .map(item -> "「%s」(%s)".formatted(item.getTitle(),
                         ZonedDateTime.ofInstant(item.getStartAt(), TAIPEI).format(TIME)))
-                .reduce((a, b) -> a + "、" + b).orElse("");
-        send("天氣警示", "%s降雨機率 %d%%(%s),接下來有 %s,要調整行程嗎?"
+                .reduce((a, b) -> a + "\n" + b).orElse("");
+        send("天氣警示", "天氣狀況:\n%s\n降雨機率 %d%%\n%s\n\n接下來的行程:\n%s\n\n要調整行程嗎?"
                 .formatted(f.county(), f.rainProbabilityPercent(), f.description(), schedules));
         return true;
     }

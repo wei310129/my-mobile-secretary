@@ -232,9 +232,9 @@ public class LifestyleIntentService {
                             .formatted(item.getTitle(), format(item.getStartAt()), time(item.getEndAt())));
         }
         String times = reminders.stream().map(task -> format(task.getDueAt()))
-                .collect(java.util.stream.Collectors.joining("、"));
+                .collect(java.util.stream.Collectors.joining("\n"));
         return IntentResult.message(IntentResult.Action.SCHEDULE_REMINDER_INFO,
-                "「%s」是 %s–%s；目前會在 %s 提醒。".formatted(
+                "「%s」是 %s–%s。\n\n目前的提醒時間:\n%s".formatted(
                         item.getTitle(), format(item.getStartAt()), time(item.getEndAt()), times));
     }
 
@@ -291,7 +291,7 @@ public class LifestyleIntentService {
                 .map(s -> "行程｜%s｜%s".formatted(s.getTitle(), format(s.getStartAt())))
                 .collect(java.util.stream.Collectors.joining("\n"));
         return IntentResult.message(IntentResult.Action.AGENDA_LISTED,
-                java.util.stream.Stream.of(scheduleLines, taskLines).filter(v -> !v.isBlank())
+                "行程與待辦:\n" + java.util.stream.Stream.of(scheduleLines, taskLines).filter(v -> !v.isBlank())
                         .collect(java.util.stream.Collectors.joining("\n")));
     }
 
@@ -319,7 +319,7 @@ public class LifestyleIntentService {
                         taskService.listTasks().stream().map(t -> new Recent("待辦「%s」".formatted(t.getTitle()), t.getCreatedAt())),
                         scheduleService.listSchedules(null).stream().map(s -> new Recent("行程「%s」".formatted(s.getTitle()), s.getCreatedAt())))
                 .sorted(Comparator.comparing(Recent::at).reversed()).limit(5).toList();
-        String message = recent.isEmpty() ? "最近沒有新增內容。" : recent.stream()
+        String message = recent.isEmpty() ? "最近沒有新增內容。" : "最近新增的內容:\n" + recent.stream()
                 .map(r -> "%s｜%s".formatted(r.label(), format(r.at())))
                 .collect(java.util.stream.Collectors.joining("\n"));
         return IntentResult.message(IntentResult.Action.RECENT_ACTIVITY_LISTED, message);
@@ -351,8 +351,8 @@ public class LifestyleIntentService {
             items.forEach(item -> itemService.bindItemToPlace(item.getName(), place.getId()));
         }
         return IntentResult.message(IntentResult.Action.SHOPPING_ITEMS_ADDED,
-                "已加入購物清單:%s。重複品項不會再新增一份。".formatted(
-                        items.stream().map(Item::getName).collect(java.util.stream.Collectors.joining("、"))));
+                "已加入購物清單:\n%s\n\n重複品項不會再新增一份。".formatted(
+                        items.stream().map(Item::getName).collect(java.util.stream.Collectors.joining("\n"))));
     }
 
     private IntentResult removeShopping(IntentCommand command, IntentOptions o) {
@@ -365,8 +365,8 @@ public class LifestyleIntentService {
 
     private IntentResult listShopping() {
         List<Item> items = itemService.listShoppingItems();
-        String message = items.isEmpty() ? "購物清單目前是空的。" : "還要買:" +
-                items.stream().map(Item::getName).collect(java.util.stream.Collectors.joining("、"));
+        String message = items.isEmpty() ? "購物清單目前是空的。" : "還要買:\n" +
+                items.stream().map(Item::getName).collect(java.util.stream.Collectors.joining("\n"));
         return IntentResult.message(IntentResult.Action.SHOPPING_LISTED, message);
     }
 
@@ -453,8 +453,8 @@ public class LifestyleIntentService {
                     "這些品項目前不在購物清單裡。 ");
         }
         return IntentResult.message(IntentResult.Action.SHOPPING_ITEMS_PURCHASED,
-                "已標記買到:%s。".formatted(purchased.stream().map(Item::getName)
-                        .collect(java.util.stream.Collectors.joining("、"))));
+                "已標記買到:\n%s".formatted(purchased.stream().map(Item::getName)
+                        .collect(java.util.stream.Collectors.joining("\n"))));
     }
 
     private IntentResult clearShopping() {
@@ -487,7 +487,7 @@ public class LifestyleIntentService {
                     .filter(item -> item.getInventoryQuantity() == o.quantity()).toList();
         }
         String message = items.isEmpty() ? (maximum == null ? "目前沒有大於 0 的庫存紀錄。" : "沒有已知的低庫存品項。")
-                : items.stream().map(item -> "%s｜%d".formatted(item.getName(), item.getInventoryQuantity()))
+                : "庫存清單:\n" + items.stream().map(item -> "%s｜%d".formatted(item.getName(), item.getInventoryQuantity()))
                 .collect(java.util.stream.Collectors.joining("\n"));
         return IntentResult.message(IntentResult.Action.INVENTORY_LISTED, message);
     }
@@ -511,9 +511,9 @@ public class LifestyleIntentService {
     private IntentResult checkShoppingInventory() {
         List<Item> items = itemInsightService.shoppingItemsWithStock();
         String message = items.isEmpty() ? "購物清單中沒有同時具有正庫存紀錄的品項。"
-                : "購物清單中這些品項仍有已知庫存：%s。".formatted(items.stream()
+                : "購物清單中這些品項仍有已知庫存:\n%s".formatted(items.stream()
                 .map(item -> "%s %d".formatted(item.getName(), item.getInventoryQuantity()))
-                .collect(java.util.stream.Collectors.joining("、")));
+                .collect(java.util.stream.Collectors.joining("\n")));
         return IntentResult.message(IntentResult.Action.SHOPPING_INVENTORY_CHECKED, message);
     }
 
@@ -521,8 +521,8 @@ public class LifestyleIntentService {
         List<Item> items = itemInsightService.itemsWithoutPlace();
         return IntentResult.message(IntentResult.Action.UNPLACED_ITEMS_LISTED,
                 items.isEmpty() ? "所有已知品項都至少有一個購買地點。"
-                        : "還沒記錄購買地點：%s。".formatted(items.stream().map(Item::getName)
-                        .collect(java.util.stream.Collectors.joining("、"))));
+                        : "還沒記錄購買地點:\n%s".formatted(items.stream().map(Item::getName)
+                        .collect(java.util.stream.Collectors.joining("\n"))));
     }
 
     private IntentResult itemKnowledgeSummary() {
@@ -544,7 +544,7 @@ public class LifestyleIntentService {
                 .map(Place::getName).sorted().toList();
         return IntentResult.message(IntentResult.Action.ITEM_PLACES_INFO,
                 places.isEmpty() ? "還不知道「%s」可以在哪裡買。".formatted(item.getName())
-                        : "「%s」可以在:%s。".formatted(item.getName(), String.join("、", places)));
+                        : "「%s」可以在:\n%s".formatted(item.getName(), String.join("\n", places)));
     }
 
     private IntentResult bindItemPlace(IntentCommand command) {
@@ -562,8 +562,8 @@ public class LifestyleIntentService {
                 new IllegalArgumentException("unknown destination place"));
         List<Item> items = itemService.listKnownItemsAt(place.getId());
         String message = items.isEmpty() ? "目前沒有記錄「%s」可買的品項。".formatted(place.getName())
-                : "記得「%s」可買:%s。".formatted(place.getName(), items.stream().map(Item::getName)
-                .collect(java.util.stream.Collectors.joining("、")));
+                : "記得「%s」可買:\n%s".formatted(place.getName(), items.stream().map(Item::getName)
+                .collect(java.util.stream.Collectors.joining("\n")));
         return IntentResult.message(IntentResult.Action.ITEMS_BY_PLACE_LISTED, message);
     }
 
@@ -585,9 +585,9 @@ public class LifestyleIntentService {
                 }
             }
         }
-        String message = groups.entrySet().stream().map(entry -> "%s｜%s".formatted(
-                        entry.getKey(), String.join("、", entry.getValue())))
-                .collect(java.util.stream.Collectors.joining("\n"));
+        String message = groups.entrySet().stream().map(entry -> "%s（%d）\n%s".formatted(
+                        entry.getKey(), entry.getValue().size(), String.join("\n", entry.getValue())))
+                .collect(java.util.stream.Collectors.joining("\n\n"));
         return IntentResult.message(IntentResult.Action.SHOPPING_GROUPED_BY_PLACE, message);
     }
 
@@ -596,8 +596,8 @@ public class LifestyleIntentService {
         List<Item> items = itemService.restockLowInventory(maximum);
         return IntentResult.message(IntentResult.Action.LOW_INVENTORY_RESTOCKED,
                 items.isEmpty() ? "沒有已盤點且低於門檻的庫存。"
-                        : "已把低庫存加入購物清單:%s。".formatted(items.stream().map(Item::getName)
-                        .collect(java.util.stream.Collectors.joining("、"))));
+                        : "已把低庫存加入購物清單:\n%s".formatted(items.stream().map(Item::getName)
+                        .collect(java.util.stream.Collectors.joining("\n"))));
     }
 
     private IntentResult setQuietHours(IntentOptions o) {
@@ -667,8 +667,9 @@ public class LifestyleIntentService {
                 .toList();
         contextService.rememberTaskList(tasks);
         String message = tasks.isEmpty() ? (unbound ? "所有未完成待辦都已有地點規則。" : "目前沒有地點提醒待辦。")
-                : tasks.stream().map(task -> "「%s」".formatted(task.getTitle()))
-                .collect(java.util.stream.Collectors.joining("、"));
+                : (unbound ? "尚未設定地點規則的待辦:\n" : "地點提醒待辦:\n")
+                + tasks.stream().map(task -> "「%s」".formatted(task.getTitle()))
+                .collect(java.util.stream.Collectors.joining("\n"));
         return IntentResult.message(IntentResult.Action.LOCATION_TASKS_LISTED, message);
     }
 
@@ -775,7 +776,7 @@ public class LifestyleIntentService {
                                 ZonedDateTime.ofInstant(item.getStartAt(), TAIPEI)
                                         .format(DateTimeFormatter.ofPattern("HH:mm"))))
                                 .collect(java.util.stream.Collectors.joining("\n"))))
-                .collect(java.util.stream.Collectors.joining("\n"));
+                .collect(java.util.stream.Collectors.joining("\n\n"));
         return IntentResult.message(IntentResult.Action.SCHEDULES_GROUPED_BY_DAY, message);
     }
 
@@ -798,8 +799,9 @@ public class LifestyleIntentService {
                 ? target == null ? "指定範圍內沒有時間重疊的已確認行程。"
                 : "「%s」沒有和其他已確認行程重疊。".formatted(target.getTitle())
                 : conflicts.stream().map(this::describeConflict)
-                .collect(java.util.stream.Collectors.joining("\n"))
-                + "\n我不會自行修改或確認；請告訴我要改哪個行程，或直接指定新時間。";
+                .collect(java.util.stream.Collectors.joining("\n\n"))
+                + "\n\n下一步建議：告訴我要改哪個行程，或直接指定新時間。"
+                + "\n我不會自行修改或確認。";
         return IntentResult.message(IntentResult.Action.SCHEDULE_CONFLICTS_CHECKED, message);
     }
 
@@ -820,9 +822,10 @@ public class LifestyleIntentService {
                 first.getTitle(), format(first.getStartAt()), time(first.getEndAt()),
                 second.getTitle(), format(second.getStartAt()), time(second.getEndAt()),
                 format(overlapStart), time(overlapEnd), duration.toMinutes())
-                + "\n可考慮：A.「%s」改到 %s–%s；B.「%s」改到 %s–%s。選定後我會再檢查其他衝突。"
+                + "\n\n可考慮以下時段：\nA.「%s」改到 %s–%s\nB.「%s」改到 %s–%s"
                 .formatted(first.getTitle(), format(firstEarlierStart), time(second.getStartAt()),
-                        second.getTitle(), format(first.getEndAt()), time(secondLaterEnd));
+                        second.getTitle(), format(first.getEndAt()), time(secondLaterEnd))
+                + "\n\n選定後我會再檢查其他衝突。";
     }
 
     private IntentResult suggestNextTask(IntentOptions o) {
@@ -867,7 +870,7 @@ public class LifestyleIntentService {
                         entry.getValue().size(), entry.getValue().stream()
                                 .map(task -> "- " + task.getTitle())
                                 .collect(java.util.stream.Collectors.joining("\n"))))
-                .collect(java.util.stream.Collectors.joining("\n"));
+                .collect(java.util.stream.Collectors.joining("\n\n"));
         return IntentResult.message(IntentResult.Action.TASKS_GROUPED_BY_CATEGORY, message);
     }
 
@@ -900,7 +903,7 @@ public class LifestyleIntentService {
                     ? "\n…等 %d 件".formatted(entry.getValue().size()) : "";
             return "%s（%d）\n%s%s".formatted(dueBucketLabel(entry.getKey()),
                     entry.getValue().size(), titles, tail);
-        }).collect(java.util.stream.Collectors.joining("\n"));
+        }).collect(java.util.stream.Collectors.joining("\n\n"));
         return IntentResult.message(IntentResult.Action.TASKS_GROUPED_BY_DUE, message);
     }
 
@@ -964,7 +967,7 @@ public class LifestyleIntentService {
             String tail = entry.getValue().size() > 5
                     ? "\n…等 %d 個".formatted(entry.getValue().size()) : "";
             return "%s（%d）\n%s%s".formatted(entry.getKey(), entry.getValue().size(), lines, tail);
-        }).collect(java.util.stream.Collectors.joining("\n"));
+        }).collect(java.util.stream.Collectors.joining("\n\n"));
         return IntentResult.message(IntentResult.Action.SCHEDULES_GROUPED_BY_PLACE, message);
     }
 
@@ -973,8 +976,8 @@ public class LifestyleIntentService {
                 new IllegalArgumentException("unknown destination place"));
         List<Item> items = itemService.listShoppingItemsAt(place.getId());
         String message = items.isEmpty() ? "目前沒有綁在「%s」的待買品項。".formatted(place.getName())
-                : "到「%s」要買:%s。".formatted(place.getName(), items.stream().map(Item::getName)
-                .collect(java.util.stream.Collectors.joining("、")));
+                : "到「%s」要買:\n%s".formatted(place.getName(), items.stream().map(Item::getName)
+                .collect(java.util.stream.Collectors.joining("\n")));
         return IntentResult.message(IntentResult.Action.SHOPPING_BY_PLACE_LISTED, message);
     }
 

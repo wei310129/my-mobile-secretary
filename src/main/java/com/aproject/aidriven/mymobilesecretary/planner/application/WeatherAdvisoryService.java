@@ -45,7 +45,7 @@ public class WeatherAdvisoryService {
         if (forecast.maxTemp() >= properties.highTempThreshold()) {
             tips.add("高溫 %d 度,生鮮早點買、盡快回家冰".formatted(forecast.maxTemp()));
         }
-        return tips.isEmpty() ? Optional.empty() : Optional.of(String.join(";", tips));
+        return tips.isEmpty() ? Optional.empty() : Optional.of(String.join("\n", tips));
     }
 
     /** 給對話查詢與條件提醒共用的安全預報入口。 */

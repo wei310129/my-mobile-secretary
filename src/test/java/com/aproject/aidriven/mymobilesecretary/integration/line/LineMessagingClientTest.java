@@ -4,6 +4,7 @@ import static java.nio.charset.StandardCharsets.UTF_8;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatCode;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
 import java.time.Clock;
@@ -26,6 +27,8 @@ class LineMessagingClientTest {
     private HttpServer server;
     private final AtomicInteger tokenRequests = new AtomicInteger();
     private final List<String> replyAuthHeaders = new CopyOnWriteArrayList<>();
+    private final List<String> replyBodies = new CopyOnWriteArrayList<>();
+    private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
     void startServer() throws Exception {
@@ -33,6 +36,7 @@ class LineMessagingClientTest {
         server.start();
         tokenRequests.set(0);
         replyAuthHeaders.clear();
+        replyBodies.clear();
     }
 
     @AfterEach
@@ -63,6 +67,7 @@ class LineMessagingClientTest {
     private void stubReply(int status) {
         server.createContext("/v2/bot/message/reply", exchange -> {
             replyAuthHeaders.add(exchange.getRequestHeaders().getFirst("Authorization"));
+            replyBodies.add(new String(exchange.getRequestBody().readAllBytes(), UTF_8));
             exchange.sendResponseHeaders(status, -1);
             exchange.close();
         });
@@ -75,11 +80,13 @@ class LineMessagingClientTest {
 
     /** 設定了長效 token 就直接用,不打 token endpoint。 */
     @Test
-    void staticAccessTokenIsUsedDirectly() {
+    void staticAccessTokenIsUsedDirectly() throws Exception {
         stubReply(200);
         client(props("long-lived-token")).reply("rt-1", "已記下");
 
         assertThat(replyAuthHeaders).containsExactly("Bearer long-lived-token");
+        assertThat(objectMapper.readTree(replyBodies.getFirst())
+                .path("messages").get(0).path("text").asText()).isEqualTo("💬 已記下");
         assertThat(tokenRequests.get()).isZero();
     }
 

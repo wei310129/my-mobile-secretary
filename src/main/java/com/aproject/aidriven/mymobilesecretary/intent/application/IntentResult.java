@@ -25,6 +25,10 @@ public record IntentResult(
         ScheduleDecision decision
 ) {
 
+    public IntentResult {
+        message = IntentReplyFormatter.format(action, message);
+    }
+
     public enum Action {
         TASK_CREATED,
         TASK_COMPLETED,
@@ -288,9 +292,9 @@ public record IntentResult(
         }
         String titles = canceled.stream().limit(LIST_LIMIT)
                 .map(t -> "「" + t.getTitle() + "」")
-                .collect(Collectors.joining("、"));
+                .collect(Collectors.joining("\n"));
         return new IntentResult(Action.ALL_TASKS_CANCELED,
-                "已取消全部 %d 件待辦:%s".formatted(canceled.size(), titles), null, null);
+                "已取消全部 %d 件待辦:\n%s".formatted(canceled.size(), titles), null, null);
     }
 
     static IntentResult placeCreated(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {

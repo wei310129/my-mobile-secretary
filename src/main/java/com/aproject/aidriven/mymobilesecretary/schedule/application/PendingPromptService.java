@@ -90,8 +90,9 @@ public class PendingPromptService {
         String titles = pending.stream()
                 .limit(5)
                 .map(item -> "「" + item.getTitle() + "」")
-                .collect(Collectors.joining("、"));
-        String message = "你現在有空檔。有 %d 件待安排:%s,要排進行程嗎?".formatted(pending.size(), titles);
+                .collect(Collectors.joining("\n"));
+        String message = "你現在有空檔。\n\n待安排事項（%d 件）:\n%s\n\n要排進行程嗎?"
+                .formatted(pending.size(), titles);
 
         // 逐通道送出;單一通道失敗只記錄(詢問屬 nice-to-have,不建 delivery 紀錄)
         for (NotificationSender sender : senders) {

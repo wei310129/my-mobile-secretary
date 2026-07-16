@@ -109,7 +109,8 @@ class ReminderDeliveryServiceTest {
         service.deliver(reminder(), task());
 
         assertThat(logSender.received.get(0).message())
-                .isEqualTo("ENTER geofence: 全聯(降雨機率 70%,記得帶傘、東西別買太多)");
+                .isEqualTo("🔔 ENTER geofence: 全聯\n\n"
+                        + "🌦️ 天氣提醒:\n- 降雨機率 70%,記得帶傘、東西別買太多");
     }
 
     /** 一個通道失敗:記失敗、不丟例外、其他通道照送。 */

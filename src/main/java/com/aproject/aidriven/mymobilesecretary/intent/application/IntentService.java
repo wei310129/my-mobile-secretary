@@ -438,18 +438,18 @@ public class IntentService {
                 .filter(t -> t.getDueAt() != null && t.getDueAt().isBefore(now))
                 .limit(3).toList();
         if (!overdue.isEmpty()) {
-            advice.append("\n\n已逾期：%s。請直接說「%s改到明天下午三點」，或告訴我已完成。"
+            advice.append("\n\n已逾期:\n%s\n\n建議直接說「%s改到明天下午三點」，或告訴我已完成。"
                     .formatted(overdue.stream().map(t -> "「" + t.getTitle() + "」")
-                                    .collect(java.util.stream.Collectors.joining("、")),
+                                    .collect(java.util.stream.Collectors.joining("\n")),
                             overdue.getFirst().getTitle()));
         }
 
         var missing = tasks.stream().filter(t -> t.getDueAt() == null).limit(3).toList();
         if (!missing.isEmpty()) {
-            advice.append("\n\n未設定期限：%s。補一句（例如「%s這週六早上處理」），我才能按時提醒。"
+            advice.append("\n\n未設定期限:\n%s\n\n建議補一句（例如「%s這週六早上處理」），我才能按時提醒。"
                     .formatted(
                             missing.stream().map(t -> "「" + t.getTitle() + "」")
-                                    .collect(java.util.stream.Collectors.joining("、")),
+                                    .collect(java.util.stream.Collectors.joining("\n")),
                             missing.get(0).getTitle()));
         }
 
@@ -458,9 +458,9 @@ public class IntentService {
                 .filter(t -> geofenceRuleService.listRulesForTask(t.getId()).isEmpty())
                 .limit(3).toList();
         if (!missingPlace.isEmpty()) {
-            advice.append("\n\n可能需要地點但尚未設定：%s。可以說「%s是在蝦皮店到店領」。"
+            advice.append("\n\n可能需要地點但尚未設定:\n%s\n\n建議可以說「%s是在蝦皮店到店領」。"
                     .formatted(missingPlace.stream().map(t -> "「" + t.getTitle() + "」")
-                                    .collect(java.util.stream.Collectors.joining("、")),
+                                    .collect(java.util.stream.Collectors.joining("\n")),
                             missingPlace.getFirst().getTitle()));
         }
 
@@ -628,9 +628,9 @@ public class IntentService {
                             java.time.ZonedDateTime.ofInstant(item.getStartAt(),
                                     java.time.ZoneId.of("Asia/Taipei"))
                                     .format(java.time.format.DateTimeFormatter.ofPattern("MM/dd HH:mm"))))
-                    .collect(java.util.stream.Collectors.joining("、"));
+                    .collect(java.util.stream.Collectors.joining("\n"));
             return new ScheduleMatch(null, IntentResult.clarificationNeeded(
-                    "有 %d 個行程都符合:%s,告訴我日期或時間我才不會%s錯。"
+                    "有 %d 個行程都符合:\n%s\n\n請告訴我日期或時間，我才不會%s錯。"
                             .formatted(matches.size(), titles, actionVerb)));
         }
         return new ScheduleMatch(matches.get(0), null);
@@ -737,13 +737,14 @@ public class IntentService {
                     .values().stream().filter(group -> group.size() > 1).toList();
             String detail = duplicates.isEmpty()
                     ? "我檢查了目前未完成待辦,沒有完全同名的重複項目。"
-                    : "目前有重複候選:" + duplicates.stream()
+                    : "目前有重複候選:\n" + duplicates.stream()
                     .map(group -> group.stream().map(Task::getTitle).distinct()
                             .collect(java.util.stream.Collectors.joining("／"))
                             + " × " + group.size())
-                    .collect(java.util.stream.Collectors.joining("、"));
+                    .collect(java.util.stream.Collectors.joining("\n"));
             return IntentResult.message(IntentResult.Action.FEEDBACK_RECEIVED,
-                    "你提醒得對,不應該重複建立。" + detail + "要刪掉多出的項目時告訴我名稱即可。");
+                    "你提醒得對，不應該重複建立。\n\n" + detail
+                            + "\n\n要刪掉多出的項目時，告訴我名稱即可。");
         }
         if (reason.contains("MISSING_PLACE") || reason.contains("地點")) {
             Long id = conversationContextService.taskIdAt(null);

@@ -93,7 +93,7 @@ class PendingPromptServiceTest {
 
         assertThat(prompted).isTrue();
         assertThat(sender.received).hasSize(1);
-        assertThat(sender.received.get(0).message()).contains("2 件待安排").contains("剪頭髮");
+        assertThat(sender.received.get(0).message()).contains("待安排事項（2 件）").contains("剪頭髮");
     }
 
     @Test

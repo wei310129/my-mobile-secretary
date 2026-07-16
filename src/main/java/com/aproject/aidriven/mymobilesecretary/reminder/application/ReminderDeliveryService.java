@@ -57,7 +57,7 @@ public class ReminderDeliveryService {
      */
     public void deliver(Reminder reminder, Task task, String message) {
         String finalMessage = weatherAdvisoryService.currentAdvisory()
-                .map(advisory -> message + "(" + advisory + ")")
+                .map(advisory -> message + "\n\n天氣提醒:\n" + advisory)
                 .orElse(message);
         ReminderNotification notification = new ReminderNotification(
                 reminder.getId(), task.getId(), task.getTitle(), finalMessage);

@@ -82,9 +82,9 @@ public class ReceiptService {
         String store = command.storeName() == null || command.storeName().isBlank()
                 ? "" : "(" + command.storeName() + ")";
         return new ReceiptResult(
-                "已記下 %d 項價格%s:%s".formatted(savedNames.size(), store,
-                        String.join("、", savedNames.stream().limit(5).toList())
-                                + (savedNames.size() > 5 ? "…" : "")),
+                "已記下 %d 項價格%s:\n%s".formatted(savedNames.size(), store,
+                        String.join("\n", savedNames.stream().limit(5).toList())
+                                + (savedNames.size() > 5 ? "\n……其餘品項也已記錄" : "")),
                 savedNames.size());
     }
 
@@ -102,5 +102,8 @@ public class ReceiptService {
 
     /** 收據處理結果:回覆訊息 + 入庫行數。 */
     public record ReceiptResult(String message, int savedCount) {
+        public ReceiptResult {
+            message = IntentReplyFormatter.format("🧾", message);
+        }
     }
 }

@@ -1,6 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.integration.line;
 
 import com.aproject.aidriven.mymobilesecretary.integration.IntegrationException;
+import com.aproject.aidriven.mymobilesecretary.intent.application.IntentReplyFormatter;
 import java.util.List;
 import java.util.Map;
 import org.slf4j.Logger;
@@ -41,13 +42,14 @@ public class LineMessagingClient {
      */
     public void reply(String replyToken, String text) {
         try {
+            String formattedText = IntentReplyFormatter.format("💬", text);
             restClient.post()
                     .uri("/v2/bot/message/reply")
                     .header("Authorization", "Bearer " + tokenManager.getAccessToken())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of(
                             "replyToken", replyToken,
-                            "messages", List.of(Map.of("type", "text", "text", text))))
+                            "messages", List.of(Map.of("type", "text", "text", formattedText))))
                     .retrieve()
                     .toBodilessEntity();
         } catch (Exception e) {

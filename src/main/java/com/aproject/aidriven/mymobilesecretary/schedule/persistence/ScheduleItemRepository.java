@@ -5,6 +5,7 @@ import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import java.time.Instant;
 import java.util.Collection;
 import java.util.List;
+import java.util.Optional;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 /** ScheduleItem 資料存取。 */
@@ -26,6 +27,9 @@ public interface ScheduleItemRepository extends JpaRepository<ScheduleItem, Long
 
     /** rollover 判重:下一週場次是否已排。 */
     boolean existsByTitleAndRecurrenceAndStartAt(
+            String title, ScheduleItem.Recurrence recurrence, Instant startAt);
+
+    Optional<ScheduleItem> findByTitleAndRecurrenceAndStartAt(
             String title, ScheduleItem.Recurrence recurrence, Instant startAt);
 
     /** 空閒偵測:某狀態的行程是否與 [from, until) 時間窗重疊。 */

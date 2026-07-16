@@ -107,6 +107,33 @@ class LifestyleIntentApiTest extends IntegrationTestBase {
     }
 
     @Test
+    void recurringScheduleCanSkipOnceWithoutLeavingItsReminder() throws Exception {
+        IntentOptions recurring = new IntentOptions(
+                null, null, null, null, null, null, "WEEKLY", null,
+                null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null,
+                "2031-12-31");
+        stub.nextCommand(command(IntentCommand.Type.CREATE_SCHEDULE, "生活測試英文課停一次",
+                null, "2031-10-04T09:00:00+08:00", "2031-10-04T10:00:00+08:00",
+                null, recurring));
+        say("每週六上午九點上英文課",
+                jsonPath("$.action").value("SCHEDULE_CONFIRMED"));
+
+        stub.nextCommand(command(IntentCommand.Type.ADD_SCHEDULE_REMINDER, "生活測試英文課停一次",
+                null, null, null, null,
+                options(null, null, null, 15, null, null, null, null, null, null)));
+        say("英文課前十五分鐘提醒",
+                jsonPath("$.action").value("SCHEDULE_REMINDER_CREATED"));
+
+        stub.nextCommand(command(IntentCommand.Type.SKIP_RECURRING_OCCURRENCE,
+                "生活測試英文課停一次", null, null, null, null, scheduleReferenceOptions()));
+        say("這週六英文課先不上,下週照常",
+                jsonPath("$.action").value("SCHEDULE_RECURRENCE_SKIPPED"),
+                jsonPath("$.message").value(containsString("下一次")),
+                jsonPath("$.message").value(containsString("已取消這一場的 1 個相關提醒")));
+    }
+
+    @Test
     void recurringTaskCanBePausedResumedAndUpdated() throws Exception {
         String title = "生活測試週報";
         // 「每週」沒講週幾必須回問,不可自行定時點(使用者 2026-07-16 裁決),且不得建立任務
@@ -207,5 +234,11 @@ class LifestyleIntentApiTest extends IntegrationTestBase {
         return new IntentOptions(null, null, null, null, null, null, null, category,
                 null, null, null, null, null, null, null, null, null, null,
                 null, null, newTitle, description);
+    }
+
+    private static IntentOptions scheduleReferenceOptions() {
+        return new IntentOptions(null, null, null, null, null, null, null, null,
+                null, null, null, "SCHEDULE", null, null, null, null, null, null,
+                null, null, null, null);
     }
 }

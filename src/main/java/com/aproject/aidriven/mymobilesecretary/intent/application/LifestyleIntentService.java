@@ -417,12 +417,39 @@ public class LifestyleIntentService {
     }
 
     private IntentResult skipRecurring(IntentCommand command, IntentOptions o) {
+        if ("SCHEDULE".equalsIgnoreCase(o.referenceKind())) {
+            ScheduleItem target = scheduleTarget(command, o);
+            var skipped = scheduleService.skipRecurringOccurrence(target.getId());
+            int canceledReminders = cancelSkippedScheduleReminders(skipped.skipped());
+            ScheduleItem context = skipped.next() == null ? skipped.skipped() : skipped.next();
+            contextService.rememberSchedule(context);
+            String next = skipped.next() == null
+                    ? "固定系列已到截止日,沒有下一場。"
+                    : "下一次是 %s%s。".formatted(format(skipped.next().getStartAt()),
+                            skipped.next().getStatus() == ScheduleStatus.CONFIRMED
+                                    ? "" : ",目前尚待確認");
+            String reminder = canceledReminders == 0 ? ""
+                    : "\n已取消這一場的 %d 個相關提醒。".formatted(canceledReminders);
+            return IntentResult.message(IntentResult.Action.SCHEDULE_RECURRENCE_SKIPPED,
+                    "已略過「%s」這一次。\n%s%s".formatted(
+                            target.getTitle(), next, reminder));
+        }
         Task target = taskTarget(command, o);
         Task changed = taskService.skipRecurringOccurrence(target.getId());
         contextService.rememberTask(changed);
         return IntentResult.taskMessage(IntentResult.Action.RECURRENCE_SKIPPED,
                 "已略過「%s」這一次,下一次是 %s。".formatted(
                         changed.getTitle(), format(changed.getDueAt())), changed);
+    }
+
+    private int cancelSkippedScheduleReminders(ScheduleItem skipped) {
+        String reminderTitle = "提醒:" + skipped.getTitle();
+        List<Task> reminders = taskService.listOpenTasks().stream()
+                .filter(task -> task.getTitle().equalsIgnoreCase(reminderTitle))
+                .filter(task -> task.getDueAt() != null && !task.getDueAt().isAfter(skipped.getStartAt()))
+                .toList();
+        reminders.forEach(task -> taskService.cancelTask(task.getId()));
+        return reminders.size();
     }
 
     private IntentResult listCompleted(IntentOptions o) {

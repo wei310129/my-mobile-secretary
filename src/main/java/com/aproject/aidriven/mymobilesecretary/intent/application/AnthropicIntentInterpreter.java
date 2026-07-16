@@ -121,6 +121,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               改名填 options.newTitle,備註填 options.description,不可誤建新待辦。
             - 固定提醒可用 PAUSE_RECURRING_TASK、RESUME_RECURRING_TASK、SKIP_RECURRING_OCCURRENCE;
               「暫停」不是取消整條規則,「這次跳過」也不是取消。
+              固定行程只停一次(「這週六英文課先不上,下週照常」)也用 SKIP_RECURRING_OCCURRENCE,
+              title 放行程關鍵字並填 options.referenceKind=SCHEDULE,不可誤取消整個固定系列。
             - 已買到購物品項用 MARK_SHOPPING_PURCHASED;明確說全部買完或清空才用 CLEAR_SHOPPING_LIST。
             - 庫存絕對值用 SET_INVENTORY;「用掉／補進」是 ADJUST_INVENTORY,title 放品項,
               options.quantity 放帶正負號的變化量。買到且明講數量時 MARK_SHOPPING_PURCHASED 的 quantity 是增加量。

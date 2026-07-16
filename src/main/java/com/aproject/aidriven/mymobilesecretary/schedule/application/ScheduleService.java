@@ -143,6 +143,39 @@ public class ScheduleService {
         return created;
     }
 
+    /**
+     * 只略過目前這一場固定行程：先確保下一場已建立，再取消本場，避免固定系列斷掉。
+     * 截止日後沒有下一場時，系列自然結束。
+     */
+    public RecurringScheduleSkip skipRecurringOccurrence(Long scheduleId) {
+        ScheduleItem item = getSchedule(scheduleId);
+        if (item.getStatus() != ScheduleStatus.CONFIRMED) {
+            throw new BusinessException("INVALID_STATE_TRANSITION",
+                    "Only a confirmed recurring schedule can skip one occurrence");
+        }
+        if (item.getRecurrence() == null || item.getRecurrence() == ScheduleItem.Recurrence.NONE) {
+            throw new BusinessException("NOT_RECURRING_SCHEDULE",
+                    "Schedule %d is not recurring".formatted(scheduleId));
+        }
+
+        Instant now = Instant.now(clock);
+        java.time.Duration shift = nextRecurrenceShift(item);
+        Instant nextStart = item.getStartAt().plus(shift);
+        ScheduleItem next = null;
+        if (!isAfterRecurrenceUntil(item, nextStart)) {
+            next = scheduleItemRepository.findByTitleAndRecurrenceAndStartAt(
+                            item.getTitle(), item.getRecurrence(), nextStart)
+                    .orElseGet(() -> createSchedule(item.getTitle(), nextStart,
+                            item.getEndAt().plus(shift), item.getPlaceId(), item.getRecurrence(),
+                            item.getRecurrenceUntil()).item());
+            item.stopRepeating(now);
+        } else {
+            item.finishRecurrence(now);
+        }
+        item.cancel(now);
+        return new RecurringScheduleSkip(item, next);
+    }
+
     private boolean isAfterRecurrenceUntil(ScheduleItem item, Instant nextStart) {
         return item.getRecurrenceUntil() != null
                 && nextStart.atZone(TAIPEI).toLocalDate().isAfter(item.getRecurrenceUntil());
@@ -272,5 +305,8 @@ public class ScheduleService {
 
     /** 行程 + 可行性驗算結果(建立/改時間的回傳)。 */
     public record ScheduleDecision(ScheduleItem item, FeasibilityResult feasibility) {
+    }
+
+    public record RecurringScheduleSkip(ScheduleItem skipped, ScheduleItem next) {
     }
 }

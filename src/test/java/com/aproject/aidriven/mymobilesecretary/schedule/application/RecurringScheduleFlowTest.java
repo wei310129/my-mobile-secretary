@@ -167,4 +167,28 @@ class RecurringScheduleFlowTest extends IntegrationTestBase {
         assertThat(ended.getRecurrence()).isEqualTo(ScheduleItem.Recurrence.NONE);
         assertThat(ended.getRecurrenceUntil()).isEqualTo(cutoff);
     }
+
+    /** 略過單次固定行程：本場取消，但下一週接手原週期與截止日。 */
+    @Test
+    void skippingOneOccurrenceKeepsRecurringSeriesAlive() {
+        Instant now = now();
+        Instant start = now.plus(Duration.ofDays(30));
+        LocalDate cutoff = start.plus(Duration.ofDays(21))
+                .atZone(ZoneId.of("Asia/Taipei")).toLocalDate();
+        ScheduleItem current = ScheduleItem.propose("固定測試本週停課",
+                start, start.plus(Duration.ofHours(1)), null, now);
+        current.confirm(now);
+        current.repeat(ScheduleItem.Recurrence.WEEKLY, cutoff, now);
+        scheduleItemRepository.save(current);
+
+        ScheduleService.RecurringScheduleSkip skipped =
+                scheduleService.skipRecurringOccurrence(current.getId());
+
+        assertThat(skipped.skipped().getStatus()).isEqualTo(ScheduleStatus.CANCELED);
+        assertThat(skipped.skipped().getRecurrence()).isEqualTo(ScheduleItem.Recurrence.NONE);
+        assertThat(skipped.next()).isNotNull();
+        assertThat(skipped.next().getStartAt()).isEqualTo(start.plus(Duration.ofDays(7)));
+        assertThat(skipped.next().getRecurrence()).isEqualTo(ScheduleItem.Recurrence.WEEKLY);
+        assertThat(skipped.next().getRecurrenceUntil()).isEqualTo(cutoff);
+    }
 }

@@ -26,6 +26,7 @@
 - LINE 能力介紹誤回內部分類理由：`IntentServiceCapabilityHelpTest` 1/1 通過，改為確定性使用者說明。
 - LINE 地點選錯分店：`PlaceAliasServiceTest` 1/1 通過；更具體的分店查詢不再命中舊短名稱。
 - LINE 待辦建議混淆期限與地點：`TaskAdviceClassificationTest` 1/1 通過；逾期、無期限、缺地點分開回覆。
+- LINE 長篇上班日常被誤判為回饋：`RecurringRoutineClarificationTest` 1/1 通過，改問實際缺少的固定時段決策。
 - 第二波 `LifestyleIntentApiTest`：測試環境找不到 Docker，Spring context 在案例執行前停止；
   因此 V14/V15 migration 與 API 整合仍列為關鍵節點待驗證，不算程式測試失敗，也不算通過。
 - 本階段尚未重跑完整 `mvn test`，不得把精準測試通過誤寫成全套通過。

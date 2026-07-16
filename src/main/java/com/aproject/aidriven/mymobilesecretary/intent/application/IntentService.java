@@ -89,6 +89,10 @@ public class IntentService {
     }
 
     private IntentResult doHandle(String text) {
+        Optional<String> routineQuestion = recurringRoutineClarification(text);
+        if (routineQuestion.isPresent()) {
+            return IntentResult.clarificationNeeded(routineQuestion.get());
+        }
         Optional<String> help = capabilityHelp(text);
         if (help.isPresent()) {
             return IntentResult.message(IntentResult.Action.SOCIAL_REPLIED, help.get());
@@ -158,6 +162,23 @@ public class IntentService {
                 4. 管理購物清單、已盤點庫存、品項店家與歷史單價。
                 5. 設定勿擾、天氣條件提醒與交通監看。
                 你也可以直接描述生活安排；資訊不足時我會先問，不會自行確認有衝突的行程。
+                """.strip());
+    }
+
+    static Optional<String> recurringRoutineClarification(String text) {
+        String normalized = text == null ? "" : text.replaceAll("\\s+", "");
+        boolean routine = normalized.contains("每個上班日")
+                && (normalized.contains("日常行程") || normalized.contains("日常安排"))
+                && (normalized.contains("上班") || normalized.contains("通勤"));
+        if (!routine) return Optional.empty();
+        return Optional.of("""
+                我知道你要記的是「上班日固定生活時段」，而且親自到場的事情不能排進通勤與上班區間；我不會把這段當成一般回饋，也不會先猜時間建立。
+                建立前請一次確認這 4 點：
+                1. 上班日固定是週一到週五嗎？國定假日是否略過？
+                2. 送完小孩後，最晚幾點要到富邦內湖大樓？
+                3. 「18:10–20 下班」是每天可在這段時間任選，還是不同星期有固定下班時間？
+                4. 要封鎖的是 07:00 起床到抵達公司、上班到回家全程，還是只封鎖搭車／騎車區段？
+                你回答後，我再拆成固定時段；下雨與未下雨路線會保留為條件資訊，不會同時占兩份時間。
                 """.strip());
     }
 

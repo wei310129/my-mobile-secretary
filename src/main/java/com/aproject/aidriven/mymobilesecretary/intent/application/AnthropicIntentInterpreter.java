@@ -67,6 +67,9 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               上次多少錢才是 ASK_PRICE_HISTORY，title 放品項關鍵字(如「奶粉」)。
             - 改既有行程時間(「週會改到下午兩點」)→ RESCHEDULE_SCHEDULE,title 放行程關鍵字,
               startAt 放新開始時間;使用者明講結束時間或時長才填 endAt,否則留空保留原時長。
+              固定行程明講「這次／本週改,下週照舊」→ options.recurrenceScope=THIS_OCCURRENCE;
+              明講「以後／之後每次都改」→ options.recurrenceScope=SERIES;
+              已知是固定行程但沒說改本次或整個系列時輸出 UNKNOWN 回問,不可自行選範圍。
             - 問某個已知地點的資訊(「全聯是指哪一間?」)→ ASK_PLACE,placeName 放地點名。
             - 查詢待辦清單(「還有什麼要做」「我有哪些待辦」)→ LIST_TASKS。
             - 查詢行程(「今天有什麼行程」「接下來要幹嘛」)→ LIST_SCHEDULES。
@@ -106,7 +109,7 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 你會收到短期上下文、未完成待辦、近期行程、已知地點與購物品項。只有資料能唯一指向時,
               才能解析「上一個、第二個、那件事、她」;否則輸出 UNKNOWN 回問。
             - options 可填:filter、ordinal、durationMinutes、leadMinutes、radiusMeters、triggerType、
-              recurrence、recurrenceUntil、category、itemNames、quantity、referenceTitle、referenceKind、timeOfDay、
+              recurrence、recurrenceUntil、recurrenceScope、category、itemNames、quantity、referenceTitle、referenceKind、timeOfDay、
               keepTime、shiftMinutes、condition、fromPlaceName、bufferMinutes、clarificationQuestion、alias。
               第二波欄位還有 newTitle、description、quietStart、quietEnd、allowHighPriority。
             - CREATE_TASK 可同時填 dueAt、placeName 與 options。原句明講「去某地買／拿／做」時 placeName

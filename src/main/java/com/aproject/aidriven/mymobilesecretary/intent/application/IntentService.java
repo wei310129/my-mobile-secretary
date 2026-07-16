@@ -409,6 +409,23 @@ public class IntentService {
                     newEndAt = newStartAt.plus(java.time.Duration.between(
                             match.item().getStartAt(), match.item().getEndAt()));
                 }
+                String recurrenceScope = command.safeOptions().recurrenceScope();
+                if (match.item().getRecurrence() != ScheduleItem.Recurrence.NONE) {
+                    if (recurrenceScope == null || recurrenceScope.isBlank()) {
+                        yield IntentResult.clarificationNeeded(
+                                "「%s」是固定行程。這次改時間要只改本次,還是之後每一次都改?"
+                                        .formatted(match.item().getTitle()));
+                    }
+                    if ("THIS_OCCURRENCE".equalsIgnoreCase(recurrenceScope)) {
+                        yield IntentResult.scheduleOccurrenceRescheduled(
+                                scheduleService.rescheduleSingleOccurrence(
+                                        match.item().getId(), newStartAt, newEndAt));
+                    }
+                    if (!"SERIES".equalsIgnoreCase(recurrenceScope)) {
+                        yield IntentResult.clarificationNeeded(
+                                "請確認要只改這一次,還是修改整個固定系列。");
+                    }
+                }
                 ScheduleDecision decision = scheduleService.reschedule(
                         match.item().getId(), newStartAt, newEndAt);
                 yield IntentResult.scheduleRescheduled(decision);

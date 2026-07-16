@@ -242,3 +242,4 @@
 242|刪掉所有行程|BULK_CANCEL_SCHEDULES|範圍留空;系統回問明確時間段,固定行程要逐一指名刪
 243|每週六上午九點上英文課到九月底|CREATE_SCHEDULE|recurring=true;options.recurrence=WEEKLY;options.recurrenceUntil=當年09-30;截止日含當日
 244|這週六英文課先不上,下週照常|SKIP_RECURRING_OCCURRENCE|title=英文課;options.referenceKind=SCHEDULE;只取消本場與本場提醒,下一場保留原規則
+245|這週英文課改十點,下週照舊|RESCHEDULE_SCHEDULE|title=英文課;options.recurrenceScope=THIS_OCCURRENCE;只改本場,下一場沿用原時間

@@ -134,6 +134,51 @@ class LifestyleIntentApiTest extends IntegrationTestBase {
     }
 
     @Test
+    void recurringScheduleCanRescheduleOnlyThisOccurrence() throws Exception {
+        IntentOptions recurring = new IntentOptions(
+                null, null, null, null, null, null, "WEEKLY", null,
+                null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null,
+                "2032-12-31");
+        stub.nextCommand(command(IntentCommand.Type.CREATE_SCHEDULE, "生活測試英文課只改本次",
+                null, "2032-10-02T09:00:00+08:00", "2032-10-02T10:00:00+08:00",
+                null, recurring));
+        say("每週六上午九點上英文課",
+                jsonPath("$.action").value("SCHEDULE_CONFIRMED"));
+
+        stub.nextCommand(command(IntentCommand.Type.RESCHEDULE_SCHEDULE,
+                "生活測試英文課只改本次", null, "2032-10-02T11:00:00+08:00", null,
+                null, recurrenceScopeOptions("THIS_OCCURRENCE")));
+        say("這週英文課改十一點,下週照舊",
+                jsonPath("$.action").value("SCHEDULE_RESCHEDULED"),
+                jsonPath("$.schedule.schedule.recurrence").value("NONE"),
+                jsonPath("$.message").value(containsString("只把")),
+                jsonPath("$.message").value(containsString("10/09 09:00")));
+    }
+
+    @Test
+    void recurringScheduleRescheduleAsksWhenScopeIsMissing() throws Exception {
+        IntentOptions recurring = new IntentOptions(
+                null, null, null, null, null, null, "WEEKLY", null,
+                null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null,
+                "2033-12-31");
+        stub.nextCommand(command(IntentCommand.Type.CREATE_SCHEDULE, "生活測試固定改期要確認",
+                null, "2033-10-01T09:00:00+08:00", "2033-10-01T10:00:00+08:00",
+                null, recurring));
+        say("每週六上午九點固定會議",
+                jsonPath("$.action").value("SCHEDULE_CONFIRMED"));
+
+        stub.nextCommand(command(IntentCommand.Type.RESCHEDULE_SCHEDULE,
+                "生活測試固定改期要確認", null, "2033-10-01T11:00:00+08:00", null,
+                null, IntentOptions.empty()));
+        say("固定會議改十一點",
+                jsonPath("$.action").value("CLARIFICATION_NEEDED"),
+                jsonPath("$.message").value(containsString("只改本次")),
+                jsonPath("$.message").value(containsString("之後每一次")));
+    }
+
+    @Test
     void recurringTaskCanBePausedResumedAndUpdated() throws Exception {
         String title = "生活測試週報";
         // 「每週」沒講週幾必須回問,不可自行定時點(使用者 2026-07-16 裁決),且不得建立任務
@@ -240,5 +285,11 @@ class LifestyleIntentApiTest extends IntegrationTestBase {
         return new IntentOptions(null, null, null, null, null, null, null, null,
                 null, null, null, "SCHEDULE", null, null, null, null, null, null,
                 null, null, null, null);
+    }
+
+    private static IntentOptions recurrenceScopeOptions(String scope) {
+        return new IntentOptions(null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, scope);
     }
 }

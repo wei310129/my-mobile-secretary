@@ -173,6 +173,11 @@ public class ScheduleItem {
         if (!newEndAt.isAfter(newStartAt)) {
             throw new BusinessException("INVALID_TIME_RANGE", "endAt must be after startAt");
         }
+        if (recurrence != Recurrence.NONE && recurrenceUntil != null
+                && newStartAt.atZone(TAIPEI).toLocalDate().isAfter(recurrenceUntil)) {
+            throw new BusinessException("INVALID_RECURRENCE_UNTIL",
+                    "A recurring occurrence cannot move after recurrenceUntil");
+        }
         transitionTo(ScheduleStatus.PROPOSED, now);
         this.startAt = newStartAt;
         this.endAt = newEndAt;

@@ -149,31 +149,56 @@ public class ScheduleService {
      */
     public RecurringScheduleSkip skipRecurringOccurrence(Long scheduleId) {
         ScheduleItem item = getSchedule(scheduleId);
-        if (item.getStatus() != ScheduleStatus.CONFIRMED) {
-            throw new BusinessException("INVALID_STATE_TRANSITION",
-                    "Only a confirmed recurring schedule can skip one occurrence");
-        }
-        if (item.getRecurrence() == null || item.getRecurrence() == ScheduleItem.Recurrence.NONE) {
-            throw new BusinessException("NOT_RECURRING_SCHEDULE",
-                    "Schedule %d is not recurring".formatted(scheduleId));
-        }
-
+        requireConfirmedRecurring(item);
         Instant now = Instant.now(clock);
-        java.time.Duration shift = nextRecurrenceShift(item);
-        Instant nextStart = item.getStartAt().plus(shift);
-        ScheduleItem next = null;
-        if (!isAfterRecurrenceUntil(item, nextStart)) {
-            next = scheduleItemRepository.findByTitleAndRecurrenceAndStartAt(
-                            item.getTitle(), item.getRecurrence(), nextStart)
-                    .orElseGet(() -> createSchedule(item.getTitle(), nextStart,
-                            item.getEndAt().plus(shift), item.getPlaceId(), item.getRecurrence(),
-                            item.getRecurrenceUntil()).item());
+        ScheduleItem next = ensureNextRecurringOccurrence(item);
+        if (next != null) {
             item.stopRepeating(now);
         } else {
             item.finishRecurrence(now);
         }
         item.cancel(now);
         return new RecurringScheduleSkip(item, next);
+    }
+
+    /** 只調整目前這一場，先用原時間建立下一場，避免新時間污染後續固定系列。 */
+    public RecurringScheduleReschedule rescheduleSingleOccurrence(
+            Long scheduleId, Instant newStartAt, Instant newEndAt) {
+        ScheduleItem item = getSchedule(scheduleId);
+        requireConfirmedRecurring(item);
+        Instant now = Instant.now(clock);
+        ScheduleItem next = ensureNextRecurringOccurrence(item);
+        if (next != null) {
+            item.stopRepeating(now);
+        } else {
+            item.finishRecurrence(now);
+        }
+        item.reschedule(newStartAt, newEndAt, now);
+        return new RecurringScheduleReschedule(gate(item, now), next);
+    }
+
+    private void requireConfirmedRecurring(ScheduleItem item) {
+        if (item.getStatus() != ScheduleStatus.CONFIRMED) {
+            throw new BusinessException("INVALID_STATE_TRANSITION",
+                    "Only a confirmed recurring schedule can change one occurrence");
+        }
+        if (item.getRecurrence() == null || item.getRecurrence() == ScheduleItem.Recurrence.NONE) {
+            throw new BusinessException("NOT_RECURRING_SCHEDULE",
+                    "Schedule %d is not recurring".formatted(item.getId()));
+        }
+    }
+
+    private ScheduleItem ensureNextRecurringOccurrence(ScheduleItem item) {
+        java.time.Duration shift = nextRecurrenceShift(item);
+        Instant nextStart = item.getStartAt().plus(shift);
+        if (isAfterRecurrenceUntil(item, nextStart)) {
+            return null;
+        }
+        return scheduleItemRepository.findByTitleAndRecurrenceAndStartAt(
+                        item.getTitle(), item.getRecurrence(), nextStart)
+                .orElseGet(() -> createSchedule(item.getTitle(), nextStart,
+                        item.getEndAt().plus(shift), item.getPlaceId(), item.getRecurrence(),
+                        item.getRecurrenceUntil()).item());
     }
 
     private boolean isAfterRecurrenceUntil(ScheduleItem item, Instant nextStart) {
@@ -308,5 +333,8 @@ public class ScheduleService {
     }
 
     public record RecurringScheduleSkip(ScheduleItem skipped, ScheduleItem next) {
+    }
+
+    public record RecurringScheduleReschedule(ScheduleDecision changed, ScheduleItem next) {
     }
 }

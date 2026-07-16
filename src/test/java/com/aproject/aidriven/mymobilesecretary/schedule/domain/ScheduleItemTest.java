@@ -23,4 +23,20 @@ class ScheduleItemTest {
                         error -> org.assertj.core.api.Assertions.assertThat(error.getCode())
                                 .isEqualTo("INVALID_RECURRENCE_UNTIL"));
     }
+
+    @Test
+    void recurringScheduleCannotMoveBeyondItsCutoff() {
+        ScheduleItem item = ScheduleItem.propose("每週六上課",
+                Instant.parse("2026-07-18T01:00:00Z"),
+                Instant.parse("2026-07-18T02:00:00Z"), null, NOW);
+        item.confirm(NOW);
+        item.repeat(ScheduleItem.Recurrence.WEEKLY, LocalDate.of(2026, 7, 31), NOW);
+
+        assertThatThrownBy(() -> item.reschedule(
+                Instant.parse("2026-08-01T01:00:00Z"),
+                Instant.parse("2026-08-01T02:00:00Z"), NOW))
+                .isInstanceOfSatisfying(BusinessException.class,
+                        error -> org.assertj.core.api.Assertions.assertThat(error.getCode())
+                                .isEqualTo("INVALID_RECURRENCE_UNTIL"));
+    }
 }

@@ -2,8 +2,10 @@ package com.aproject.aidriven.mymobilesecretary.intent.application;
 
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleFollowUpService.OutcomeRecorded;
+import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService.RecurringScheduleReschedule;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService.ScheduleDecision;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
+import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
@@ -355,6 +357,26 @@ public record IntentResult(
         String message = decision.feasibility().feasible()
                 ? "行程「%s」已改到 %s,可行並已確認".formatted(item.getTitle(), interval)
                 : "行程「%s」已改到 %s,但新時段有問題,需要你決定".formatted(item.getTitle(), interval);
+        return new IntentResult(Action.SCHEDULE_RESCHEDULED, message, null, decision);
+    }
+
+    static IntentResult scheduleOccurrenceRescheduled(RecurringScheduleReschedule outcome) {
+        ScheduleDecision decision = outcome.changed();
+        ScheduleItem item = decision.item();
+        String interval = "%s-%s".formatted(
+                ZonedDateTime.ofInstant(item.getStartAt(), TAIPEI).format(LIST_TIME),
+                ZonedDateTime.ofInstant(item.getEndAt(), TAIPEI)
+                        .format(DateTimeFormatter.ofPattern("HH:mm")));
+        String continuation = outcome.next() == null
+                ? "原固定系列已到截止日,沒有下一場。"
+                : "下一次仍照原規則排在 %s%s。".formatted(
+                        ZonedDateTime.ofInstant(outcome.next().getStartAt(), TAIPEI).format(LIST_TIME),
+                        outcome.next().getStatus() == ScheduleStatus.CONFIRMED
+                                ? "" : ",目前尚待確認");
+        String message = decision.feasibility().feasible()
+                ? "已只把「%s」這一次改到 %s。\n%s".formatted(item.getTitle(), interval, continuation)
+                : "只改「%s」這一次的新時段 %s 有問題,尚待你決定。\n%s"
+                        .formatted(item.getTitle(), interval, continuation);
         return new IntentResult(Action.SCHEDULE_RESCHEDULED, message, null, decision);
     }
 

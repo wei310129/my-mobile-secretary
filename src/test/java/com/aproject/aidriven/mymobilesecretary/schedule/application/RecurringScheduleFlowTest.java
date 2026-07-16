@@ -191,4 +191,29 @@ class RecurringScheduleFlowTest extends IntegrationTestBase {
         assertThat(skipped.next().getRecurrence()).isEqualTo(ScheduleItem.Recurrence.WEEKLY);
         assertThat(skipped.next().getRecurrenceUntil()).isEqualTo(cutoff);
     }
+
+    /** 只改本次：本場使用新時間，下一週仍沿用原本的固定時段。 */
+    @Test
+    void reschedulingOneOccurrenceDoesNotShiftTheSeries() {
+        Instant now = now();
+        Instant originalStart = now.plus(Duration.ofDays(45));
+        LocalDate cutoff = originalStart.plus(Duration.ofDays(28))
+                .atZone(ZoneId.of("Asia/Taipei")).toLocalDate();
+        ScheduleItem current = ScheduleItem.propose("固定測試只改本次",
+                originalStart, originalStart.plus(Duration.ofHours(1)), null, now);
+        current.confirm(now);
+        current.repeat(ScheduleItem.Recurrence.WEEKLY, cutoff, now);
+        scheduleItemRepository.save(current);
+
+        var outcome = scheduleService.rescheduleSingleOccurrence(current.getId(),
+                originalStart.plus(Duration.ofHours(2)), originalStart.plus(Duration.ofHours(3)));
+
+        assertThat(outcome.changed().item().getStartAt())
+                .isEqualTo(originalStart.plus(Duration.ofHours(2)));
+        assertThat(outcome.changed().item().getRecurrence()).isEqualTo(ScheduleItem.Recurrence.NONE);
+        assertThat(outcome.next()).isNotNull();
+        assertThat(outcome.next().getStartAt()).isEqualTo(originalStart.plus(Duration.ofDays(7)));
+        assertThat(outcome.next().getRecurrence()).isEqualTo(ScheduleItem.Recurrence.WEEKLY);
+        assertThat(outcome.next().getRecurrenceUntil()).isEqualTo(cutoff);
+    }
 }

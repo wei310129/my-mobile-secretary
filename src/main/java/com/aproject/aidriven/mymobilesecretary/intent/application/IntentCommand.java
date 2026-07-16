@@ -51,12 +51,14 @@ public record IntentCommand(
     }
 
     public enum Type {
+        EXPLAIN_LAST_FAILURE,
         ADD_SCHEDULE_REMINDER,
         SUGGEST_FREE_SLOT,
         CREATE_RELATIVE_SCHEDULE,
         LIST_AGENDA,
         ASK_TASK_INFO,
         ASK_AVAILABILITY,
+        LIST_SCHEDULES_ON_DATE,
         LIST_RECENT,
         SUGGEST_ROUTE_TASKS,
         SET_PLACE_ALIAS,

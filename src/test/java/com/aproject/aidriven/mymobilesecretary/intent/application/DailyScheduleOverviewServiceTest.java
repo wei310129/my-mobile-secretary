@@ -98,6 +98,22 @@ class DailyScheduleOverviewServiceTest {
     }
 
     @Test
+    void historicalDayShowsOnlySchedulesOnThatDate() {
+        ScheduleItem yesterday = proposed("昨天運動",
+                "2026-07-15T20:00:00+08:00", "2026-07-15T21:00:00+08:00");
+        yesterday.confirm(NOW);
+        ScheduleItem tomorrow = proposed("明天會議",
+                "2026-07-17T10:00:00+08:00", "2026-07-17T11:00:00+08:00");
+        tomorrow.confirm(NOW);
+        when(scheduleService.listSchedules(null)).thenReturn(List.of(yesterday, tomorrow));
+
+        IntentResult result = service.overview(LocalDate.of(2026, 7, 15));
+
+        assertThat(result.message()).contains("2026/07/15", "昨天運動")
+                .doesNotContain("明天會議");
+    }
+
+    @Test
     void mergeConfirmationConfirmsTheProposedRecurringSchedule() {
         ScheduleItem workday = proposed("上班日通勤與上班",
                 "2026-07-17T07:00:00+08:00", "2026-07-17T19:15:00+08:00");

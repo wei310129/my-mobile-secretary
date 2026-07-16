@@ -57,6 +57,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               而是兩個 command:CREATE_SCHEDULE「送女兒上課」(到達時間前約 20 分鐘出發到抵達)+
               CREATE_SCHEDULE「接女兒下課」(結束時間起約 20 分鐘),中間時段留空讓使用者能排其他事。
             - 待辦事項(買東西、繳費、聯絡某人)→ CREATE_TASK;有截止時間才填 dueAt。
+              只有單一明確時點的短生活事項(如「今晚十點倒垃圾」)也用 CREATE_TASK，dueAt 填該時點；
+              不可輸出缺 endAt 的 CREATE_SCHEDULE。
             - 回報待辦已完成(「牛奶買到了」「電費繳完了」)→ COMPLETE_TASK,title 放該任務的關鍵字(如「牛奶」)。
             - 取消待辦(「取消買排骨」「醬油不用買了」)→ CANCEL_TASK,title 放關鍵字。
             - 一次取消全部待辦(「全部待辦都取消」「清空待辦」)→ CANCEL_ALL_TASKS。
@@ -80,6 +82,10 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 問某個已知地點的資訊(「全聯是指哪一間?」)→ ASK_PLACE,placeName 放地點名。
             - 查詢待辦清單(「還有什麼要做」「我有哪些待辦」)→ LIST_TASKS。
             - 查詢行程(「今天有什麼行程」「接下來要幹嘛」)→ LIST_SCHEDULES。
+            - 查指定過去或特定日期的行程(「昨天的行程」「上禮拜五的行程」)→ LIST_SCHEDULES_ON_DATE,
+              startAt 填目標日期台北時區的 00:00；不可用只列未來行程的 LIST_SCHEDULES。
+            - 問上一筆為什麼失敗(「為什麼失敗」「剛才怎麼了」)→ EXPLAIN_LAST_FAILURE；
+              不可當成一般 FEEDBACK，也不可重新執行上一筆操作。
             - 問待會/接下來可以「順便、順路」做什麼(「待會有什麼可以順便做」)→ SUGGEST_NEARBY;
               使用者明講時間長度(「看2小時」「未來一小時」)才填 windowHours(小時整數),沒講就留空、不要猜。
             - 回報剛結束行程的實際結果(「準時結束」「會開晚了半小時」「路上塞車遲到20分」)→ RECORD_OUTCOME。

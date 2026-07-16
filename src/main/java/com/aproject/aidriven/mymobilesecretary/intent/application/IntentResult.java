@@ -57,6 +57,7 @@ public record IntentResult(
         OUTCOME_RECORDED,
         CLARIFICATION_NEEDED,
         AI_UNAVAILABLE,
+        FAILURE_EXPLAINED,
         FALLBACK_TASK_CREATED,
         SCHEDULE_REMINDER_CREATED,
         FREE_SLOTS_SUGGESTED,
@@ -479,5 +480,20 @@ public record IntentResult(
                         .formatted(why)
                         + "\n\n🔄 請稍後再試一次。",
                 null, null);
+    }
+
+    static IntentResult aiUnavailable(String why, String validationReason, IntentCommand command) {
+        StringBuilder message = new StringBuilder("⚠️ ").append(why).append("。");
+        if (validationReason != null && !validationReason.isBlank()) {
+            message.append("\n- Java 驗證原因：").append(validationReason);
+        }
+        if (command != null) {
+            message.append("\n- AI 回覆資料：")
+                    .append(IntentValidationDiagnostic.summarize(command));
+        }
+        message.append("\n- 我沒有建立任何待辦或行程")
+                .append("\n- 原訊息與上述診斷已保留在對話與問題紀錄")
+                .append("\n\n🔄 請修正資訊後再試一次，或直接問我「為什麼失敗」。");
+        return new IntentResult(Action.AI_UNAVAILABLE, message.toString(), null, null);
     }
 }

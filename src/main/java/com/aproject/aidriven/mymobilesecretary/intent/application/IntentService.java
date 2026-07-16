@@ -119,6 +119,11 @@ public class IntentService {
     }
 
     private IntentResult doHandle(String text) {
+        Optional<IntentResult> failureExplanation = FailureExplanationService.answer(
+                text, conversationContextService.snapshot());
+        if (failureExplanation.isPresent()) {
+            return failureExplanation.get();
+        }
         Optional<IntentResult> activityCount = activityCountAnswerService.answer(text);
         if (activityCount.isPresent()) {
             return activityCount.get();
@@ -180,12 +185,14 @@ public class IntentService {
 
         // 單一操作:維持原語意(驗證失敗 → 整句保底)
         if (script.commands().size() == 1) {
+            IntentCommand command = script.commands().get(0);
             try {
-                return execute(text, script.commands().get(0));
+                return execute(text, command);
             } catch (IllegalArgumentException e) {
                 // LLM 輸出未通過驗證(時間格式爛、缺欄位)→ 同樣不丟資料
                 log.warn("Intent command invalid ({}); applying safe fallback", e.getMessage());
-                return safeFallback(text, "解析結果不完整");
+                return safeFallback(text, "解析結果不完整",
+                        IntentValidationDiagnostic.explain(e), command);
             } catch (com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException e) {
                 // 業務錯誤(如 Google 查不到地點)→ 轉成可讀回覆;
                 // 絕不能往 webhook 洩漏成非 200,否則 LINE 會重送整包事件
@@ -215,27 +222,69 @@ public class IntentService {
     static Optional<LocalDate> dailyScheduleDate(String text, Clock clock) {
         String normalized = text == null ? "" : text.replaceAll("\\s+", "");
         String withoutEndingPunctuation = normalized.replaceFirst("[?？。!！]+$", "");
-        boolean hasDate = normalized.contains("今天") || normalized.contains("明天");
+        Optional<LocalDate> targetDate = relativeScheduleDate(normalized, clock);
         boolean hasSchedule = normalized.contains("行程");
-        boolean creation = normalized.contains("建立") || normalized.contains("新增")
+        boolean modifying = normalized.contains("建立") || normalized.contains("新增")
                 || normalized.contains("安排一個") || normalized.contains("排一個")
-                || normalized.contains("幫我排");
+                || normalized.contains("幫我排") || normalized.contains("取消")
+                || normalized.contains("刪除") || normalized.contains("刪掉")
+                || normalized.contains("改期") || normalized.contains("改到")
+                || normalized.contains("改成") || normalized.contains("移到")
+                || normalized.contains("延後") || normalized.contains("提前");
         boolean asking = normalized.contains("總整") || normalized.contains("總覽")
                 || normalized.contains("列出") || normalized.contains("有什麼行程")
                 || normalized.contains("行程有哪些")
                 || normalized.contains("查看行程") || normalized.contains("看看行程")
                 || (normalized.contains("固定行程") && normalized.contains("當日行程"))
-                || normalized.contains("給我今天的行程") || normalized.contains("給我明天的行程")
-                || normalized.contains("給我今天行程") || normalized.contains("給我明天行程")
-                || withoutEndingPunctuation.endsWith("今天的行程")
-                || withoutEndingPunctuation.endsWith("明天的行程")
-                || withoutEndingPunctuation.endsWith("今天行程")
-                || withoutEndingPunctuation.endsWith("明天行程");
-        if (!hasDate || !hasSchedule || creation || !asking) {
+                || normalized.contains("給我")
+                || withoutEndingPunctuation.endsWith("的行程")
+                || withoutEndingPunctuation.endsWith("行程");
+        if (targetDate.isEmpty() || !hasSchedule || modifying || !asking) {
             return Optional.empty();
         }
+        return targetDate;
+    }
+
+    static Optional<LocalDate> relativeScheduleDate(String normalizedText, Clock clock) {
+        String normalized = normalizedText == null ? "" : normalizedText.replaceAll("\\s+", "");
         LocalDate today = LocalDate.now(clock.withZone(ZoneId.of("Asia/Taipei")));
-        return Optional.of(normalized.contains("明天") ? today.plusDays(1) : today);
+        if (normalized.contains("大前天")) return Optional.of(today.minusDays(3));
+        if (normalized.contains("前天")) return Optional.of(today.minusDays(2));
+        if (normalized.contains("昨天") || normalized.contains("昨日")) return Optional.of(today.minusDays(1));
+        if (normalized.contains("今天") || normalized.contains("今日")) return Optional.of(today);
+        if (normalized.contains("大後天") || normalized.contains("大后天")) return Optional.of(today.plusDays(3));
+        if (normalized.contains("後天") || normalized.contains("后天")) return Optional.of(today.plusDays(2));
+        if (normalized.contains("明天") || normalized.contains("明日")) return Optional.of(today.plusDays(1));
+
+        java.util.regex.Matcher previousWeekday = java.util.regex.Pattern
+                .compile("(?:上週|上周|上禮拜|上個禮拜|上星期|上個星期)([一二三四五六日天])")
+                .matcher(normalized);
+        if (previousWeekday.find()) {
+            return Optional.of(weekdayInWeek(today.minusWeeks(1), previousWeekday.group(1)));
+        }
+        java.util.regex.Matcher currentWeekday = java.util.regex.Pattern
+                .compile("(?:這週|这周|本週|本周|這禮拜|这个礼拜|這星期|本星期)([一二三四五六日天])")
+                .matcher(normalized);
+        if (currentWeekday.find()) {
+            return Optional.of(weekdayInWeek(today, currentWeekday.group(1)));
+        }
+        return Optional.empty();
+    }
+
+    private static LocalDate weekdayInWeek(LocalDate reference, String chineseWeekday) {
+        int day = switch (chineseWeekday) {
+            case "一" -> 1;
+            case "二" -> 2;
+            case "三" -> 3;
+            case "四" -> 4;
+            case "五" -> 5;
+            case "六" -> 6;
+            case "日", "天" -> 7;
+            default -> throw new IllegalArgumentException("unsupported weekday: " + chineseWeekday);
+        };
+        LocalDate monday = reference.with(
+                java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+        return monday.plusDays(day - 1L);
     }
 
     /** 「你自己看著辦」「你決定就好」:委任語,授權系統低風險安排(裁決 #48)。 */
@@ -313,6 +362,10 @@ public class IntentService {
             return vagueTime.get();
         }
         return switch (command.type()) {
+            case EXPLAIN_LAST_FAILURE -> FailureExplanationService.answer(
+                            text, conversationContextService.snapshot())
+                    .orElseGet(() -> IntentResult.message(IntentResult.Action.FAILURE_EXPLAINED,
+                            "目前沒有可追查的上一筆解析失敗紀錄。"));
             case ADD_SCHEDULE_REMINDER, SUGGEST_FREE_SLOT, CREATE_RELATIVE_SCHEDULE,
                     LIST_AGENDA, ASK_TASK_INFO, ASK_AVAILABILITY, LIST_RECENT,
                     SUGGEST_ROUTE_TASKS, SET_PLACE_ALIAS, ADD_SHOPPING_ITEMS,
@@ -376,8 +429,16 @@ public class IntentService {
                 requireText(command.title(), "title");
                 Instant startAt = parseTime(command.startAt());
                 Instant endAt = parseTime(command.endAt());
-                if (startAt == null || endAt == null) {
-                    throw new IllegalArgumentException("schedule missing startAt/endAt");
+                if (startAt == null) {
+                    throw new IllegalArgumentException("schedule missing startAt");
+                }
+                // 只有一個明確時點、沒有結束時間的生活事項(如「今晚十點倒垃圾」)
+                // 是 timed task，不應因 LLM 偶爾誤選 CREATE_SCHEDULE 而整句失敗。
+                if (endAt == null) {
+                    yield execute(text, new IntentCommand(IntentCommand.Type.CREATE_TASK,
+                            command.title(), command.startAt(), null, null,
+                            command.placeName(), command.priority(), command.reason(),
+                            null, null, null, null, false, command.options()));
                 }
                 Long placeId = resolvePlace(command.placeName()).map(Place::getId).orElse(null);
                 ScheduleDecision decision = scheduleService.createSchedule(
@@ -477,6 +538,14 @@ public class IntentService {
                 requireText(command.title(), "title");
                 yield activityCountAnswerService.answerTopic(
                         command.title(), command.safeOptions().filter());
+            }
+            case LIST_SCHEDULES_ON_DATE -> {
+                Instant dateTime = parseTime(command.startAt());
+                if (dateTime == null) {
+                    throw new IllegalArgumentException("daily schedule query missing startAt");
+                }
+                yield dailyScheduleOverviewService.overview(
+                        LocalDate.ofInstant(dateTime, ZoneId.of("Asia/Taipei")));
             }
             case ASK_PLACE -> {
                 requireText(command.placeName(), "placeName");
@@ -804,11 +873,18 @@ public class IntentService {
 
     /** LLM 失敗時只替明確要求「提醒／記下」的原文建保底待辦；查詢與修改指令絕不異動資料。 */
     private IntentResult safeFallback(String text, String why) {
+        return safeFallback(text, why, null, null);
+    }
+
+    private IntentResult safeFallback(String text, String why,
+                                      String validationReason, IntentCommand command) {
         if (hasExplicitCaptureCue(text) && !looksLikeQuestion(text)) {
             Task task = taskService.createTask(text, null, TaskPriority.NORMAL, null);
             return IntentResult.fallbackTaskCreated(task, why);
         }
-        return IntentResult.aiUnavailable(why);
+        return validationReason == null
+                ? IntentResult.aiUnavailable(why)
+                : IntentResult.aiUnavailable(why, validationReason, command);
     }
 
     static boolean hasExplicitCaptureCue(String text) {

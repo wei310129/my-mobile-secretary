@@ -530,6 +530,44 @@ class IntentApiTest extends IntegrationTestBase {
                 jsonPath("$.task").value(org.hamcrest.Matchers.nullValue()));
     }
 
+    /** 驗證失敗要保存 AI 欄位，後續問原因時可從對話上下文直接說明。 */
+    @Test
+    void invalidCommandCanBeExplainedFromConversationContext() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE, "診斷測試倒垃圾", null,
+                null, "2026-07-16T22:15:00+08:00", null, "NORMAL", null,
+                null, null, null, null, false));
+
+        say("診斷測試今晚十點倒垃圾",
+                jsonPath("$.action").value("AI_UNAVAILABLE"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
+                        "建立行程必須提供 startAt")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
+                        "type=CREATE_SCHEDULE")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("startAt=(空)")));
+
+        say("為什麼失敗？",
+                jsonPath("$.action").value("FAILURE_EXPLAINED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
+                        "建立行程必須提供 startAt")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
+                        "沒有執行這筆操作")));
+    }
+
+    /** 單一明確時點的生活事項被誤判成缺 endAt 行程時，安全降為 timed task。 */
+    @Test
+    void singlePointChoreWithMissingScheduleEndBecomesTimedTask() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE, "診斷測試倒垃圾單點", null,
+                "2027-07-16T22:00:00+08:00", null, null, "NORMAL", null,
+                null, null, null, null, false));
+
+        say("明年今天晚上10點要去倒垃圾",
+                jsonPath("$.action").value("TASK_CREATED"),
+                jsonPath("$.task.title").value("診斷測試倒垃圾單點"),
+                jsonPath("$.task.dueAt").value("2027-07-16T14:00:00Z"));
+    }
+
     /** 使用者實際問句走確定性查詢；即使 stub 沒回覆，也不能建成待辦。 */
     @Test
     void lastExerciseQuestionNeverFallsBackToTask() throws Exception {

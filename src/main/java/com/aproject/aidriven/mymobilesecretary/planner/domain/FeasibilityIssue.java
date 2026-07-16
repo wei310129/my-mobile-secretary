@@ -14,6 +14,8 @@ public record FeasibilityIssue(Type type, String message, Long relatedScheduleId
         TIME_OVERLAP,
         /** 單次行程完整位於固定行程內，需詢問是否視為固定行程的子項目。 */
         NESTED_IN_RECURRING_SCHEDULE,
+        /** 行程跨過未完成待辦的提醒／期限時間。 */
+        TASK_DUE_DURING_SCHEDULE,
         /** 從前一個行程地點趕不到。 */
         TRAVEL_FROM_PREVIOUS,
         /** 結束後趕不上下一個行程。 */

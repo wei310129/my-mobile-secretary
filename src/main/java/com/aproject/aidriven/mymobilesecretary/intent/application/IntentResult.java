@@ -158,6 +158,10 @@ public record IntentResult(
                 .anyMatch(issue -> issue.type()
                         == com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue.Type
                         .NESTED_IN_RECURRING_SCHEDULE);
+        boolean crossesTask = decision.feasibility().issues().stream()
+                .anyMatch(issue -> issue.type()
+                        == com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue.Type
+                        .TASK_DUE_DURING_SCHEDULE);
         String issues = decision.feasibility().issues().stream()
                 .map(issue -> "- " + issue.message())
                 .collect(Collectors.joining("\n"));
@@ -167,6 +171,9 @@ public record IntentResult(
                         ? "行程「%s」可行,已確認".formatted(decision.item().getTitle())
                         : nested
                         ? "行程「%s」尚未確認：\n%s\n\n請回覆是否併入固定行程；我不會自行確認或要求改期。"
+                                .formatted(decision.item().getTitle(), issues)
+                        : crossesTask
+                        ? "行程「%s」尚未確認：\n%s\n\n請確認要縮短、延後，或仍照原時間安排；我不會自行更動待辦或行程。"
                                 .formatted(decision.item().getTitle(), issues)
                         : "行程「%s」尚未確認：\n%s\n\n請告訴我要改哪個行程或指定新時間；我不會自行確認。"
                                 .formatted(decision.item().getTitle(), issues),

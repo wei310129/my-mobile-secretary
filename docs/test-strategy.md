@@ -31,6 +31,8 @@
   驗證多項目條列、區塊空行、對應 emoji、LINE JSON 實際文字與重複格式化不變形。
 - LINE 每日行程總覽漏掉固定上班行程：每日總覽、日期查詢攔截、巢狀行程與格式器局部測試 22/22 通過；
   `RecurringScheduleFlowTest` 4/4 通過，並以真實 PostgreSQL 驗證 V16 migration 與 `WEEKDAYS` rollover。
+- LINE 運動安排忽略九點洗澡提醒：提醒時間查詢、待辦與行程衝突說明、可行性規則單元測試 16/16 通過；
+  `RecurringScheduleFlowTest` 4/4 通過，確認新增 intent／planner 依賴可由完整 Spring Context 正常注入。
 - 第二波 `LifestyleIntentApiTest`：測試環境找不到 Docker，Spring context 在案例執行前停止；
   因此 V14/V15 migration 與 API 整合仍列為關鍵節點待驗證，不算程式測試失敗，也不算通過。
 - 本階段尚未重跑完整 `mvn test`，不得把精準測試通過誤寫成全套通過。

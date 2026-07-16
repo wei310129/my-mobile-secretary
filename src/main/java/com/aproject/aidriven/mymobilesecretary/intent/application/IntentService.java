@@ -45,6 +45,8 @@ public class IntentService {
     private final com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService priceRecordService;
     private final LifestyleIntentService lifestyleIntentService;
     private final DailyScheduleOverviewService dailyScheduleOverviewService;
+    private final ReminderTimingAnswerService reminderTimingAnswerService;
+    private final ScheduleTaskConflictAnswerService scheduleTaskConflictAnswerService;
     private final ConversationContextService conversationContextService;
     private final com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService placeAliasService;
     private final int bindRadiusMeters;
@@ -62,6 +64,8 @@ public class IntentService {
                          com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService priceRecordService,
                          LifestyleIntentService lifestyleIntentService,
                          DailyScheduleOverviewService dailyScheduleOverviewService,
+                         ReminderTimingAnswerService reminderTimingAnswerService,
+                         ScheduleTaskConflictAnswerService scheduleTaskConflictAnswerService,
                          ConversationContextService conversationContextService,
                          com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService placeAliasService,
                          @org.springframework.beans.factory.annotation.Value(
@@ -79,6 +83,8 @@ public class IntentService {
         this.priceRecordService = priceRecordService;
         this.lifestyleIntentService = lifestyleIntentService;
         this.dailyScheduleOverviewService = dailyScheduleOverviewService;
+        this.reminderTimingAnswerService = reminderTimingAnswerService;
+        this.scheduleTaskConflictAnswerService = scheduleTaskConflictAnswerService;
         this.conversationContextService = conversationContextService;
         this.placeAliasService = placeAliasService;
         this.bindRadiusMeters = bindRadiusMeters;
@@ -94,6 +100,14 @@ public class IntentService {
     }
 
     private IntentResult doHandle(String text) {
+        Optional<IntentResult> taskConflict = scheduleTaskConflictAnswerService.answer(text);
+        if (taskConflict.isPresent()) {
+            return taskConflict.get();
+        }
+        Optional<IntentResult> reminderTiming = reminderTimingAnswerService.answer(text);
+        if (reminderTiming.isPresent()) {
+            return reminderTiming.get();
+        }
         Optional<LocalDate> overviewDate = dailyScheduleDate(text, clock);
         if (overviewDate.isPresent()) {
             return dailyScheduleOverviewService.overview(overviewDate.get());

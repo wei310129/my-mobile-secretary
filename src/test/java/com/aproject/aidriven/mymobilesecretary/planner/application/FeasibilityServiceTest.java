@@ -13,6 +13,9 @@ import com.aproject.aidriven.mymobilesecretary.knowledge.application.BufferRuleS
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PlanningPreferenceService;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityResult;
+import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
+import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskPriority;
+import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItemRepository;
@@ -56,6 +59,9 @@ class FeasibilityServiceTest {
     @Mock
     private PlanningPreferenceService planningPreferenceService;
 
+    @Mock
+    private TaskRepository taskRepository;
+
     private FeasibilityService service;
 
     @BeforeEach
@@ -66,11 +72,14 @@ class FeasibilityServiceTest {
                 new StraightLineTravelTimeEstimator(new FeasibilityProperties(25, Duration.ofMinutes(10))),
                 bufferRuleService,
                 planningPreferenceService,
+                taskRepository,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         // 預設沒有緩衝習慣;個別測試再覆寫
         lenient().when(bufferRuleService.recommendedBuffer(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Duration.ZERO);
         lenient().when(planningPreferenceService.extraTransferBuffer()).thenReturn(Duration.ZERO);
+        lenient().when(taskRepository.findByStatusIn(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(List.of());
     }
 
     /** 建立有 id 的行程(排除自身邏輯需要 id)。 */
@@ -134,6 +143,24 @@ class FeasibilityServiceTest {
                 .containsExactly(FeasibilityIssue.Type.NESTED_IN_RECURRING_SCHEDULE);
         assertThat(result.issues().getFirst().message())
                 .contains("專案週會", "固定行程", "當日子項目");
+    }
+
+    @Test
+    void scheduleCrossingTaskReminderRequiresDecision() {
+        Task bath = Task.create("帶小孩去洗澡", null, TaskPriority.NORMAL,
+                NOW.plus(Duration.ofMinutes(7)), NOW);
+        when(taskRepository.findByStatusIn(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(List.of(bath));
+        confirmedItems();
+
+        FeasibilityResult result = service.check(schedule(1, "運動",
+                NOW, NOW.plus(Duration.ofHours(1)), null));
+
+        assertThat(result.feasible()).isFalse();
+        assertThat(result.issues()).extracting(FeasibilityIssue::type)
+                .containsExactly(FeasibilityIssue.Type.TASK_DUE_DURING_SCHEDULE);
+        assertThat(result.issues().getFirst().message())
+                .contains("運動", "帶小孩去洗澡", "提醒／期限");
     }
 
     /** 使用者的原始案例:人在高雄,2 小時後台北的預約 → 擋下。 */

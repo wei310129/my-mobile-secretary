@@ -5,6 +5,8 @@ import com.aproject.aidriven.mymobilesecretary.geo.persistence.LocationEventRepo
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.BufferRuleService;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PlanningPreferenceService;
+import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskStatus;
+import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityResult;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
@@ -51,6 +53,7 @@ public class FeasibilityService {
     private final TravelTimeEstimator travelTimeEstimator;
     private final BufferRuleService bufferRuleService;
     private final PlanningPreferenceService planningPreferenceService;
+    private final TaskRepository taskRepository;
     private final Clock clock;
 
     public FeasibilityService(ScheduleItemRepository scheduleItemRepository,
@@ -59,6 +62,7 @@ public class FeasibilityService {
                               TravelTimeEstimator travelTimeEstimator,
                               BufferRuleService bufferRuleService,
                               PlanningPreferenceService planningPreferenceService,
+                              TaskRepository taskRepository,
                               Clock clock) {
         this.scheduleItemRepository = scheduleItemRepository;
         this.placeRepository = placeRepository;
@@ -66,6 +70,7 @@ public class FeasibilityService {
         this.travelTimeEstimator = travelTimeEstimator;
         this.bufferRuleService = bufferRuleService;
         this.planningPreferenceService = planningPreferenceService;
+        this.taskRepository = taskRepository;
         this.clock = clock;
     }
 
@@ -82,8 +87,26 @@ public class FeasibilityService {
 
         List<FeasibilityIssue> issues = new ArrayList<>();
         checkTimeOverlap(candidate, confirmed, issues);
+        checkTimedTasks(candidate, issues);
         checkTravel(candidate, confirmed, issues);
         return FeasibilityResult.withIssues(issues);
+    }
+
+    /** 行程跨過待辦的提醒／期限時先擋下詢問，不能假裝整段都有空。 */
+    private void checkTimedTasks(ScheduleItem candidate, List<FeasibilityIssue> issues) {
+        taskRepository.findByStatusIn(java.util.EnumSet.of(
+                        TaskStatus.CREATED, TaskStatus.SCHEDULED,
+                        TaskStatus.REMINDED, TaskStatus.ESCALATED)).stream()
+                .filter(task -> task.getDueAt() != null)
+                .filter(task -> !task.getDueAt().isBefore(candidate.getStartAt())
+                        && task.getDueAt().isBefore(candidate.getEndAt()))
+                .forEach(task -> issues.add(new FeasibilityIssue(
+                        FeasibilityIssue.Type.TASK_DUE_DURING_SCHEDULE,
+                        "行程「%s」%s–%s 會跨過待辦「%s」的提醒／期限 %s。"
+                                .formatted(candidate.getTitle(), format(candidate.getStartAt()),
+                                        formatTime(candidate.getEndAt()), task.getTitle(),
+                                        format(task.getDueAt())),
+                        null)));
     }
 
     /** 時間重疊:候選 [start,end) 與任一 CONFIRMED [start,end) 相交即衝突。 */

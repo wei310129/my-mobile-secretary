@@ -16,6 +16,8 @@ app:
       enabled: true
       channel-secret: test-channel-secret
       channel-access-token: test-access-token
+      # 擁有者守門 fail-closed:測試事件帶這個 userId 才會被處理
+      owner-user-id: test-owner-user
   weather:
     # 測試不打真實氣象署:提醒不附天氣建議
     enabled: false

@@ -69,7 +69,8 @@ class IntentApiTest extends IntegrationTestBase {
 
         say("嗯...那個...",
                 jsonPath("$.action").value("CLARIFICATION_NEEDED"),
-                jsonPath("$.message").value("請告訴我具體要做什麼"));
+                // 回覆一律經 IntentReplyFormatter 加上分類 emoji(回問 → ❓)
+                jsonPath("$.message").value("❓ 請告訴我具體要做什麼"));
     }
 
     /** 任務閉環:「買到了」→ 唯一命中的未完成任務被劃掉(CONFIRMED)。 */

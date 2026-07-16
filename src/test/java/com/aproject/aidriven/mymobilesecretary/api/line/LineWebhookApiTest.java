@@ -22,6 +22,8 @@ import org.springframework.http.MediaType;
 class LineWebhookApiTest extends IntegrationTestBase {
 
     private static final String TEST_SECRET = "test-channel-secret";
+    /** 與 application-test.yaml 的 owner-user-id 一致;擁有者守門 fail-closed,事件必須帶此來源才會被處理。 */
+    private static final String OWNER_USER_ID = "test-owner-user";
 
     @Autowired
     private StubIntentInterpreter stub;
@@ -34,8 +36,9 @@ class LineWebhookApiTest extends IntegrationTestBase {
 
     private byte[] textMessageEvent(String text) {
         return """
-                {"events":[{"type":"message","replyToken":"rt-1","message":{"type":"text","text":"%s"}}]}
-                """.formatted(text).getBytes(StandardCharsets.UTF_8);
+                {"events":[{"type":"message","replyToken":"rt-1","source":{"userId":"%s"},\
+                "message":{"type":"text","text":"%s"}}]}
+                """.formatted(OWNER_USER_ID, text).getBytes(StandardCharsets.UTF_8);
     }
 
     /** 驗簽失敗 → 401,且不得處理內容(不建任務)。 */
@@ -95,8 +98,9 @@ class LineWebhookApiTest extends IntegrationTestBase {
     @Test
     void imageEventSurvivesContentFetchFailure() throws Exception {
         byte[] body = """
-                {"events":[{"type":"message","replyToken":"rt-3","message":{"id":"m-1","type":"image"}}]}
-                """.getBytes(StandardCharsets.UTF_8);
+                {"events":[{"type":"message","replyToken":"rt-3","source":{"userId":"%s"},\
+                "message":{"id":"m-1","type":"image"}}]}
+                """.formatted(OWNER_USER_ID).getBytes(StandardCharsets.UTF_8);
 
         mockMvc.perform(post("/api/line/webhook")
                         .header("X-Line-Signature", sign(body))

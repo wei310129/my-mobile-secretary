@@ -139,7 +139,7 @@ class RetentionCoordinatorTest {
         when(runner.runSystem(any())).thenAnswer(invocation -> {
             Supplier<?> operation = invocation.getArgument(0);
             try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(
-                    WorkspaceContext.authentication())) {
+                    WorkspaceContext.system())) {
                 return operation.get();
             }
         });
@@ -170,7 +170,8 @@ class RetentionCoordinatorTest {
 
     private static void assertSystemScope() {
         WorkspaceContext context = WorkspaceContextHolder.requireContext();
-        assertThat(context.isAuthentication()).isTrue();
+        assertThat(context.isSystem()).isTrue();
+        assertThat(context.isAuthentication()).isFalse();
         assertThat(context.actorId()).isEqualTo(WorkspaceContext.NIL_ID);
         assertThat(context.workspaceId()).isEqualTo(WorkspaceContext.NIL_ID);
     }

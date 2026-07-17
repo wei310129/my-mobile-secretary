@@ -63,7 +63,11 @@ public class WorkspaceBackgroundRunner {
 
     /** Executes global account/retention work under a NIL tenant that cannot expose business rows. */
     public <T> T runSystem(Supplier<T> operation) {
-        return runAuthentication(operation);
+        Objects.requireNonNull(operation, "operation");
+        try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(
+                WorkspaceContext.system())) {
+            return operation.get();
+        }
     }
 
     private static <T> T runAuthentication(Supplier<T> operation) {

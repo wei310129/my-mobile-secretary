@@ -21,7 +21,20 @@ public record WorkspaceContext(UUID actorId, UUID workspaceId, WorkspaceChannel 
         return new WorkspaceContext(NIL_ID, NIL_ID, WorkspaceChannel.AUTHENTICATION);
     }
 
+    /** Scope for trusted global retention and infrastructure maintenance only. */
+    public static WorkspaceContext system() {
+        return new WorkspaceContext(NIL_ID, NIL_ID, WorkspaceChannel.SYSTEM);
+    }
+
     public boolean isAuthentication() {
         return channel == WorkspaceChannel.AUTHENTICATION;
+    }
+
+    public boolean isSystem() {
+        return channel == WorkspaceChannel.SYSTEM;
+    }
+
+    public boolean isTenantScope() {
+        return !isAuthentication() && !isSystem();
     }
 }

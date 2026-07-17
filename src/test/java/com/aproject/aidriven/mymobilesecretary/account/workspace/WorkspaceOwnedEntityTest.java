@@ -58,6 +58,16 @@ class WorkspaceOwnedEntityTest {
                 .hasMessageContaining("Authentication scope");
     }
 
+    @Test
+    void systemScopeCannotAccidentallyCreateTenantEntity() {
+        TestEntity entity = new TestEntity();
+
+        assertThatThrownBy(() -> WorkspaceContextHolder.runWith(
+                WorkspaceContext.system(), entity::prepare))
+                .isInstanceOf(SecurityException.class)
+                .hasMessageContaining("SYSTEM scope");
+    }
+
     private static WorkspaceContext context() {
         return new WorkspaceContext(UUID.randomUUID(), UUID.randomUUID(), WorkspaceChannel.TEST);
     }

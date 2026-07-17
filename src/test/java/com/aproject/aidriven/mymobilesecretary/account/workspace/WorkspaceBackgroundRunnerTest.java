@@ -80,4 +80,17 @@ class WorkspaceBackgroundRunnerTest {
         assertThat(result.succeeded()).isEqualTo(1);
         assertThat(result.failed()).isEqualTo(1);
     }
+
+    @Test
+    void globalMaintenanceUsesDedicatedSystemScope() {
+        String result = new WorkspaceBackgroundRunner(memberRepository).runSystem(() -> {
+            WorkspaceContext context = WorkspaceContextHolder.requireContext();
+            assertThat(context.isSystem()).isTrue();
+            assertThat(context.isAuthentication()).isFalse();
+            return "done";
+        });
+
+        assertThat(result).isEqualTo("done");
+        assertThat(WorkspaceContextHolder.current()).isEmpty();
+    }
 }

@@ -73,6 +73,18 @@ class WorkspaceContextHolderTest {
         }
     }
 
+    @Test
+    void systemScopeIsDistinctFromAuthentication() {
+        try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(
+                WorkspaceContext.system())) {
+            WorkspaceContext context = WorkspaceContextHolder.requireContext();
+            assertThat(context.isSystem()).isTrue();
+            assertThat(context.isAuthentication()).isFalse();
+            assertThat(context.isTenantScope()).isFalse();
+            assertThat(context.workspaceId()).isEqualTo(WorkspaceContext.NIL_ID);
+        }
+    }
+
     private static WorkspaceContext context(WorkspaceChannel channel) {
         return new WorkspaceContext(UUID.randomUUID(), UUID.randomUUID(), channel);
     }

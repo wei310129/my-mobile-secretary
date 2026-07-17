@@ -25,8 +25,10 @@ public abstract class WorkspaceOwnedEntity {
     @PreUpdate
     protected final void applyWorkspaceOwnership() {
         WorkspaceContext context = WorkspaceContextHolder.requireContext();
-        if (context.isAuthentication()) {
-            throw new SecurityException("Authentication scope cannot write workspace data");
+        if (!context.isTenantScope()) {
+            String scope = context.isAuthentication() ? "Authentication" : context.channel().name();
+            throw new SecurityException(scope
+                    + " scope cannot write workspace data through an entity");
         }
         if (workspaceId == null) {
             workspaceId = context.workspaceId();

@@ -25,7 +25,7 @@ final class JavaCodexProcessLauncher implements CodexProcessLauncher {
         return new JavaManagedProcess(processBuilder.start());
     }
 
-    private static void sanitizeEnvironment(Map<String, String> environment) {
+    static void sanitizeEnvironment(Map<String, String> environment) {
         environment.entrySet().removeIf(entry -> !ALLOWED_ENVIRONMENT_NAMES.contains(
                 entry.getKey().toLowerCase(Locale.ROOT)));
     }

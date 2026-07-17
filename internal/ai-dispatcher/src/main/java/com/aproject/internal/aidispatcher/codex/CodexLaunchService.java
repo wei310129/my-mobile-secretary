@@ -1,6 +1,7 @@
 package com.aproject.internal.aidispatcher.codex;
 
 import com.aproject.internal.aidispatcher.coordination.DispatcherInstanceIdentity;
+import com.aproject.internal.aidispatcher.config.CodexLifecycleProperties;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
@@ -21,17 +22,20 @@ public class CodexLaunchService {
     private final Clock clock;
     private final DispatcherInstanceIdentity instanceIdentity;
     private final CodexExecutionPort executionPort;
+    private final CodexLifecycleProperties lifecycleProperties;
 
     public CodexLaunchService(JdbcTemplate jdbcTemplate,
                               PlatformTransactionManager transactionManager,
                               Clock clock,
                               DispatcherInstanceIdentity instanceIdentity,
-                              CodexExecutionPort executionPort) {
+                              CodexExecutionPort executionPort,
+                              CodexLifecycleProperties lifecycleProperties) {
         this.jdbcTemplate = jdbcTemplate;
         this.transactionTemplate = new TransactionTemplate(transactionManager);
         this.clock = clock;
         this.instanceIdentity = instanceIdentity;
         this.executionPort = executionPort;
+        this.lifecycleProperties = lifecycleProperties;
     }
 
     public CodexLaunchResult launch(UUID runId) {
@@ -140,10 +144,12 @@ public class CodexLaunchService {
         int runUpdated = jdbcTemplate.update("""
                 UPDATE dispatcher_run
                 SET status = 'RUNNING', external_execution_id = ?, started_at = ?,
-                    last_heartbeat_at = ?, updated_at = ?
+                    last_heartbeat_at = ?, heartbeat_deadline = ?, updated_at = ?
                 WHERE run_id = ? AND fencing_token = ? AND status = 'STARTING'
                 """, receipt.externalExecutionId(), Timestamp.from(receipt.acceptedAt()),
-                Timestamp.from(receipt.acceptedAt()), Timestamp.from(acknowledgedAt),
+                Timestamp.from(receipt.acceptedAt()),
+                Timestamp.from(receipt.acceptedAt().plus(lifecycleProperties.heartbeatTimeout())),
+                Timestamp.from(acknowledgedAt),
                 command.runId(), command.fencingToken());
         int laneUpdated = jdbcTemplate.update("""
                 UPDATE dispatcher_lane

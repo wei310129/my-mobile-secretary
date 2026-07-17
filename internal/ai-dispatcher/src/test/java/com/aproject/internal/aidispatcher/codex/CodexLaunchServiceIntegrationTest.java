@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.aproject.internal.aidispatcher.config.DispatcherProperties;
+import com.aproject.internal.aidispatcher.config.CodexLifecycleProperties;
 import com.aproject.internal.aidispatcher.coordination.DispatcherCoordinator;
 import com.aproject.internal.aidispatcher.coordination.DispatcherInstanceIdentity;
 import com.aproject.internal.aidispatcher.coordination.DispatcherTickResult;
@@ -207,7 +208,9 @@ class CodexLaunchServiceIntegrationTest {
                 new DataSourceTransactionManager(dataSource),
                 clock,
                 new DispatcherInstanceIdentity(),
-                port);
+                port,
+                new CodexLifecycleProperties(
+                        Duration.ofMinutes(2), Duration.ofMinutes(5), 3));
     }
 
     private String runStatus(UUID runId) {

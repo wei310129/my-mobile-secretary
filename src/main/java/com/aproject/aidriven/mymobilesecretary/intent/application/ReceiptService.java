@@ -1,6 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService;
+import com.aproject.aidriven.mymobilesecretary.shared.security.PromptInjectionGuard;
 import java.time.Clock;
 import java.time.LocalDate;
 import java.time.ZoneId;
@@ -74,6 +75,12 @@ public class ReceiptService {
             return new ReceiptResult("這張照片看起來不是收據,或讀不到品項。", 0);
         }
 
+        if (containsPromptInjection(command)) {
+            log.warn("Untrusted image document rejected [reason=prompt_injection_signal]");
+            return new ReceiptResult("DOCUMENT_SECURITY_REJECTED",
+                    "圖片含有疑似指令或要求揭露敏感資訊的文字，為了安全沒有執行或儲存任何內容。", 0);
+        }
+
         ReceiptCommand.DocumentType type = command.documentType();
         if (type == null) {
             type = command.items() == null || command.items().isEmpty()
@@ -136,6 +143,33 @@ public class ReceiptService {
     }
 
     /** 收據日期解析失敗(缺漏、格式爛)→ 當作今天(台北時間),寧可粗略不可丟棄。 */
+    private static boolean containsPromptInjection(ReceiptCommand command) {
+        List<String> values = new ArrayList<>();
+        values.add(command.storeName());
+        values.add(command.documentTitle());
+        if (command.items() != null) {
+            command.items().stream().filter(java.util.Objects::nonNull)
+                    .map(ReceiptCommand.Line::name).forEach(values::add);
+        }
+        if (command.itineraryEntries() != null) {
+            for (ReceiptCommand.ItineraryEntry entry : command.itineraryEntries()) {
+                if (entry == null) {
+                    continue;
+                }
+                values.add(entry.title());
+                values.add(entry.placeName());
+                values.add(entry.details());
+            }
+        }
+        if (command.activities() != null) {
+            values.addAll(command.activities());
+        }
+        if (command.notices() != null) {
+            values.addAll(command.notices());
+        }
+        return PromptInjectionGuard.inspectExternalContent(values).suspicious();
+    }
+
     private LocalDate parseDateOrToday(String date) {
         if (date == null || date.isBlank()) {
             return LocalDate.now(clock.withZone(TAIPEI));

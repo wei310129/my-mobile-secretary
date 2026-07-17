@@ -9,6 +9,7 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.aproject.aidriven.mymobilesecretary.IntegrationTestBase;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -60,6 +61,25 @@ class TaskApiTest extends IntegrationTestBase {
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("VALIDATION_ERROR"))
                 .andExpect(jsonPath("$.fieldErrors[0].field").value("title"));
+    }
+
+    @Test
+    void sqlMetacharactersAreStoredAsDataAndCannotExecuteSql() throws Exception {
+        String maliciousTitle = "安全測試'); DROP TABLE task; --";
+
+        mockMvc.perform(post("/api/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(objectMapper.writeValueAsString(Map.of("title", maliciousTitle))))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.title").value(maliciousTitle));
+
+        mockMvc.perform(post("/api/tasks")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"title": "資料表仍可正常寫入"}
+                                """))
+                .andExpect(status().isCreated())
+                .andExpect(jsonPath("$.title").value("資料表仍可正常寫入"));
     }
 
     @Test

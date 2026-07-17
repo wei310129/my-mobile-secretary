@@ -2,6 +2,7 @@ package com.aproject.aidriven.mymobilesecretary.travel.application;
 
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ReceiptCommand;
+import com.aproject.aidriven.mymobilesecretary.shared.security.PromptInjectionGuard;
 import com.aproject.aidriven.mymobilesecretary.travel.domain.TravelItineraryDraft;
 import com.aproject.aidriven.mymobilesecretary.travel.domain.TravelItineraryDraft.Status;
 import com.aproject.aidriven.mymobilesecretary.travel.persistence.TravelItineraryDraftRepository;
@@ -46,6 +47,7 @@ public class TravelItineraryDraftService {
             throw new IllegalArgumentException("travel itinerary draft missing document type");
         }
         Payload payload = sanitize(command);
+        rejectInstructionLikeContent(command.documentTitle(), payload);
         if (payload.entries().isEmpty() && payload.activities().isEmpty()
                 && payload.notices().isEmpty()) {
             throw new IllegalArgumentException("travel itinerary draft has no readable content");
@@ -137,6 +139,21 @@ public class TravelItineraryDraftService {
             return objectMapper.writeValueAsString(payload);
         } catch (JsonProcessingException e) {
             throw new IllegalArgumentException("travel itinerary draft cannot be serialized", e);
+        }
+    }
+
+    private static void rejectInstructionLikeContent(String documentTitle, Payload payload) {
+        List<String> values = new java.util.ArrayList<>();
+        values.add(documentTitle);
+        for (Entry entry : payload.entries()) {
+            values.add(entry.title());
+            values.add(entry.placeName());
+            values.add(entry.details());
+        }
+        values.addAll(payload.activities());
+        values.addAll(payload.notices());
+        if (PromptInjectionGuard.inspectExternalContent(values).suspicious()) {
+            throw new IllegalArgumentException("travel itinerary contains instruction-like content");
         }
     }
 

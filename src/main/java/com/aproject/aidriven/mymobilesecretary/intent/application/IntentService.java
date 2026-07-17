@@ -69,6 +69,8 @@ public class IntentService {
     private CapabilityShadowRouter capabilityShadowRouter;
     private com.aproject.aidriven.mymobilesecretary.family.application.FamilyMessageService
             familyMessageService;
+    private com.aproject.aidriven.mymobilesecretary.family.application.FamilyPersonService
+            familyPersonService;
 
     public IntentService(ObjectProvider<IntentInterpreter> interpreterProvider,
                          TaskService taskService,
@@ -145,6 +147,12 @@ public class IntentService {
         this.familyMessageService = service;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setFamilyPersonService(
+            com.aproject.aidriven.mymobilesecretary.family.application.FamilyPersonService service) {
+        this.familyPersonService = service;
+    }
+
     /** 處理使用者的一句話,回傳做了什麼;聽不懂/退回保底的話語會記成意圖問題供開發追蹤。 */
     public IntentResult handle(String text) {
         return handle(text, "UNKNOWN");
@@ -191,6 +199,14 @@ public class IntentService {
 
     private IntentResult doHandle(String text, IntentFlowTrace flowTrace,
                                   MutationBoundary mutationBoundary) {
+        if (familyPersonService != null) {
+            Optional<IntentResult> person = familyPersonService.answer(
+                    text, mutationBoundary::beforeMutation);
+            if (person.isPresent()) {
+                return person.get();
+            }
+            familyPersonService.observeMentions(text, mutationBoundary::beforeMutation);
+        }
         if (familyMessageService != null) {
             Optional<IntentResult> family = familyMessageService.answer(
                     text, mutationBoundary::beforeMutation);

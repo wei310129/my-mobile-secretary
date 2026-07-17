@@ -138,6 +138,9 @@ public final class IntentReplyFormatter {
         if (name.contains("FAMILY_NOTICE")) {
             return "👨‍👩‍👧‍👦";
         }
+        if (name.contains("FAMILY_PERSON")) {
+            return "👤";
+        }
         if (name.contains("KNOWLEDGE")) {
             return "🧠";
         }

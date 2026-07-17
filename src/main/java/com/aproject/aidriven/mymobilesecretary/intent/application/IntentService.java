@@ -67,6 +67,8 @@ public class IntentService {
     private final Clock clock;
     private IntentDecisionTraceService decisionTraceService;
     private CapabilityShadowRouter capabilityShadowRouter;
+    private com.aproject.aidriven.mymobilesecretary.family.application.FamilyMessageService
+            familyMessageService;
 
     public IntentService(ObjectProvider<IntentInterpreter> interpreterProvider,
                          TaskService taskService,
@@ -137,6 +139,12 @@ public class IntentService {
         this.capabilityShadowRouter = capabilityShadowRouter;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setFamilyMessageService(
+            com.aproject.aidriven.mymobilesecretary.family.application.FamilyMessageService service) {
+        this.familyMessageService = service;
+    }
+
     /** 處理使用者的一句話,回傳做了什麼;聽不懂/退回保底的話語會記成意圖問題供開發追蹤。 */
     public IntentResult handle(String text) {
         return handle(text, "UNKNOWN");
@@ -183,6 +191,13 @@ public class IntentService {
 
     private IntentResult doHandle(String text, IntentFlowTrace flowTrace,
                                   MutationBoundary mutationBoundary) {
+        if (familyMessageService != null) {
+            Optional<IntentResult> family = familyMessageService.answer(
+                    text, mutationBoundary::beforeMutation);
+            if (family.isPresent()) {
+                return family.get();
+            }
+        }
         Optional<IntentResult> failureExplanation = FailureExplanationService.answer(
                 text, conversationContextService.snapshot());
         if (failureExplanation.isPresent()) {
@@ -246,6 +261,10 @@ public class IntentService {
         Optional<String> help = capabilityHelp(text);
         if (help.isPresent()) {
             return IntentResult.message(IntentResult.Action.SOCIAL_REPLIED, help.get());
+        }
+        Optional<IntentResult> knownPlace = answerKnownPlaceQuestion(text);
+        if (knownPlace.isPresent()) {
+            return knownPlace.get();
         }
         IntentScript script;
         IntentInterpreter interpreter = interpreterProvider.getIfAvailable();
@@ -670,7 +689,7 @@ public class IntentService {
             case ASK_PLACE -> {
                 requireText(command.placeName(), "placeName");
                 yield resolvePlace(command.placeName())
-                        .map(IntentResult::placeInfo)
+                        .map(this::placeInfo)
                         .orElseGet(() -> IntentResult.clarificationNeeded(
                                 "我沒有叫「%s」的地點紀錄,說「建立地點:%s」我就去 Google 查來存。"
                                         .formatted(command.placeName(), command.placeName())));
@@ -680,7 +699,7 @@ public class IntentService {
                 // 已有同名(含)地點就不重建,直接回資訊
                 var existing = resolvePlace(command.placeName());
                 if (existing.isPresent()) {
-                    yield IntentResult.placeInfo(existing.get());
+                    yield placeInfo(existing.get());
                 }
                 // 座標留空 → PlaceService 向 Google 補全;查不到丟業務錯誤,由外層轉成回覆
                 yield IntentResult.placeCreated(placeService.createPlace(
@@ -1151,6 +1170,27 @@ public class IntentService {
     /** 地點名稱解析:先精確比對,再包含比對(規則式;不讓 LLM 決定 id)。 */
     private Optional<Place> resolvePlace(String placeName) {
         return placeAliasService.resolve(placeName);
+    }
+
+    private IntentResult placeInfo(Place place) {
+        String guidance = familyMessageService == null ? null
+                : familyMessageService.placeGuidance(place.getName()).orElse(null);
+        return IntentResult.placeInfo(place, guidance);
+    }
+
+    private Optional<IntentResult> answerKnownPlaceQuestion(String text) {
+        if (text == null || text.isBlank()) {
+            return Optional.empty();
+        }
+        String candidate = text.strip()
+                .replaceFirst("[?？]+$", "")
+                .replaceFirst("^你知道", "")
+                .replaceFirst("在哪(?:裡|裏|兒)?(?:嗎)?$", "")
+                .strip();
+        if (candidate.equals(text.strip()) || candidate.isBlank() || candidate.length() > 100) {
+            return Optional.empty();
+        }
+        return resolvePlace(candidate).map(this::placeInfo);
     }
 
     private static void requireText(String value, String field) {

@@ -135,6 +135,12 @@ public final class IntentReplyFormatter {
         if (containsAny(name, "TRAVEL", "TRAFFIC", "ROUTE")) {
             return "🚗";
         }
+        if (name.contains("FAMILY_NOTICE")) {
+            return "👨‍👩‍👧‍👦";
+        }
+        if (name.contains("KNOWLEDGE")) {
+            return "🧠";
+        }
         if (name.contains("PRICE")) {
             return "💰";
         }

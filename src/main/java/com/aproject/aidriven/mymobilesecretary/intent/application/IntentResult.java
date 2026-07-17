@@ -81,6 +81,11 @@ public record IntentResult(
         TRAVEL_ITINERARY_DRAFTED,
         TRAVEL_ITINERARY_CONFIRMED,
         TRAVEL_ITINERARY_DISCARDED,
+        FAMILY_NOTICE_DRAFTED,
+        FAMILY_NOTICE_STATUS,
+        FAMILY_NOTICE_CONFIRMED,
+        FAMILY_NOTICE_DISCARDED,
+        KNOWLEDGE_SAVED,
         TRAFFIC_WATCH_CREATED,
         CONNECTION_CHECKED,
         PLANNING_PREFERENCE_SET,
@@ -176,7 +181,7 @@ public record IntentResult(
         return new IntentResult(Action.TASK_CREATED, message.toString(), task, null);
     }
 
-    static IntentResult message(Action action, String message) {
+    public static IntentResult message(Action action, String message) {
         return new IntentResult(action, message, null, null);
     }
 
@@ -401,10 +406,10 @@ public record IntentResult(
 
     static IntentResult placeCreated(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
         String detail = place.getAddress() == null || place.getAddress().isBlank()
-                ? "座標 (%.5f, %.5f)".formatted(place.getLatitude(), place.getLongitude())
-                : place.getAddress();
+                ? "定位已保存，但還沒有可讀地址或附近地標"
+                : "地址：" + place.getAddress();
         return new IntentResult(Action.PLACE_CREATED,
-                "已建立地點「%s」:%s%s".formatted(place.getName(), detail,
+                "已建立地點「%s」。\n- %s%s".formatted(place.getName(), detail,
                         place.getType() == null || place.getType().isBlank()
                                 ? "" : "(%s)".formatted(place.getType())),
                 null, null);
@@ -439,13 +444,24 @@ public record IntentResult(
     }
 
     static IntentResult placeInfo(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
+        return placeInfo(place, null);
+    }
+
+    static IntentResult placeInfo(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place,
+                                  String guidance) {
         String location = place.getAddress() == null || place.getAddress().isBlank()
-                ? "座標 (%.5f, %.5f)".formatted(place.getLatitude(), place.getLongitude())
-                : place.getAddress();
+                ? "我有保存定位，但還沒有可讀地址或附近地標"
+                : "地址：" + place.getAddress();
         String type = place.getType() == null || place.getType().isBlank()
                 ? "" : "(%s)".formatted(place.getType());
+        String learned = guidance == null || guidance.isBlank()
+                ? "" : "\n\n🧭 你教過我的到達方式：\n- " + guidance;
+        String question = place.getAddress() == null || place.getAddress().isBlank()
+                ? "\n\n❓ 如果你有 Google Maps 連結、地址或附近地標，請傳給我補完整。"
+                : "";
         return new IntentResult(Action.PLACE_INFO,
-                "「%s」%s:%s".formatted(place.getName(), type, location), null, null);
+                "我知道「%s」%s。\n- %s%s%s".formatted(
+                        place.getName(), type, location, learned, question), null, null);
     }
 
     /** 一句多操作的合併回覆:逐項列出各自結果。 */
@@ -470,7 +486,7 @@ public record IntentResult(
                 "已記下「%s」的結果:%s".formatted(recorded.item().getTitle(), detail), null, null);
     }
 
-    static IntentResult clarificationNeeded(String reason) {
+    public static IntentResult clarificationNeeded(String reason) {
         return new IntentResult(Action.CLARIFICATION_NEEDED, reason, null, null);
     }
 

@@ -11,6 +11,14 @@ import org.springframework.ai.chat.model.Generation;
 class AnthropicIntentInterpreterTest {
 
     @Test
+    void legacySystemPromptDoesNotDuplicateFullConversationCatalog() {
+        String prompt = AnthropicIntentInterpreter.systemPrompt();
+
+        assertThat(prompt).doesNotContain("001|幫我記得買牛奶");
+        assertThat(prompt.length()).isLessThan(25_000);
+    }
+
+    @Test
     void readsJsonGenerationAfterLeadingThinkingBlock() {
         ChatResponse response = new ChatResponse(List.of(
                 new Generation(new AssistantMessage("")),

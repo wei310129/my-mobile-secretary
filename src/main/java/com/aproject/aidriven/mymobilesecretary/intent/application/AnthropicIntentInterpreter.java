@@ -9,7 +9,6 @@ import com.aproject.aidriven.mymobilesecretary.reminder.persistence.ReminderPref
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItemRepository;
 import com.aproject.aidriven.mymobilesecretary.shared.security.PromptInjectionGuard;
-import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
@@ -22,7 +21,6 @@ import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.converter.BeanOutputConverter;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
-import org.springframework.core.io.ClassPathResource;
 import org.springframework.stereotype.Component;
 
 /**
@@ -222,7 +220,6 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
     private final ScheduleItemRepository scheduleRepository;
     private final ItemRepository itemRepository;
     private final ReminderPreferenceRepository reminderPreferenceRepository;
-    private final String capabilityCatalog;
 
     public AnthropicIntentInterpreter(ChatModel chatModel, PlaceRepository placeRepository,
                                       TaskRepository taskRepository,
@@ -235,7 +232,6 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
         this.scheduleRepository = scheduleRepository;
         this.itemRepository = itemRepository;
         this.reminderPreferenceRepository = reminderPreferenceRepository;
-        this.capabilityCatalog = readCapabilityCatalog();
     }
 
     @Override
@@ -247,6 +243,7 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
     public IntentScript interpret(String text, Instant now, ConversationSnapshot context) {
         // 已知地點清單給 LLM 做名稱正規化(「萬家福」vs「新店萬家福」)
         String knownPlaces = placeRepository.findAll().stream()
+                .limit(50)
                 .map(Place::getName)
                 .collect(Collectors.joining("、"));
         String nowTaipei = ZonedDateTime.ofInstant(now, TAIPEI)
@@ -255,6 +252,7 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
                         TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.REMINDED, TaskStatus.ESCALATED))
                 .stream().map(task -> "%d:%s%s".formatted(task.getId(), task.getTitle(),
                         task.getDueAt() == null ? "" : "@" + task.getDueAt()))
+                .limit(50)
                 .collect(Collectors.joining("、"));
         String schedules = scheduleRepository.findByStatusInOrderByStartAtAsc(java.util.EnumSet.of(
                         ScheduleStatus.PROPOSED, ScheduleStatus.CONFIRMED, ScheduleStatus.PENDING))
@@ -263,6 +261,7 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
                 .collect(Collectors.joining("、"));
         String shopping = itemRepository.findAll().stream()
                 .filter(item -> item.isShoppingNeeded() || item.getInventoryQuantity() > 0)
+                .limit(50)
                 .map(item -> "%s(庫存%d%s)".formatted(item.getName(), item.getInventoryQuantity(),
                         item.isShoppingNeeded() ? ",待買" : ""))
                 .collect(Collectors.joining("、"));
@@ -291,14 +290,15 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
                 PromptInjectionGuard.delimit("item_state",
                         shopping.isBlank() ? "(無)" : shopping),
                 PromptInjectionGuard.delimit("reminder_preference", reminderPreference),
-                PromptInjectionGuard.delimit("short_term_context", context),
-                PromptInjectionGuard.delimit("current_user_message", text));
+                PromptInjectionGuard.delimit("short_term_context",
+                        boundedPromptValue(String.valueOf(context), 4000)),
+                PromptInjectionGuard.delimit("current_user_message",
+                        boundedPromptValue(text, 6000)));
         long modelStarted = System.nanoTime();
         ChatResponse response;
         try {
             response = chatClient.prompt()
-                    .system(SYSTEM_PROMPT + TRUST_BOUNDARY_RULES + LIFESTYLE_RULES
-                            + "\n能力目錄:\n" + capabilityCatalog)
+                    .system(systemPrompt())
                     // ChatClient.entity() 只讀第一個 generation。Sonnet 5 可能把 thinking block 放在
                     // 第一個、JSON text 放在後面，因此改為保留原始 ChatResponse 並挑出結構化文字。
                     .user(userPrompt + System.lineSeparator() + OUTPUT_CONVERTER.getFormat())
@@ -374,12 +374,15 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
                 || candidate.contains("\"commands\"");
     }
 
-    private static String readCapabilityCatalog() {
-        try {
-            return new ClassPathResource("conversation-capabilities.txt")
-                    .getContentAsString(StandardCharsets.UTF_8);
-        } catch (Exception e) {
-            throw new IllegalStateException("conversation capability catalog missing", e);
-        }
+    static String systemPrompt() {
+        return SYSTEM_PROMPT + TRUST_BOUNDARY_RULES + LIFESTYLE_RULES;
     }
+
+    private static String boundedPromptValue(String value, int maxCharacters) {
+        if (value == null || value.length() <= maxCharacters) {
+            return value;
+        }
+        return value.substring(0, maxCharacters) + "…[truncated]";
+    }
+
 }

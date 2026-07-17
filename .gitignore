@@ -34,3 +34,7 @@ build/
 
 ### 機密(絕不進版控)###
 secrets.yaml
+
+### 本機開發環境腳本狀態(dev-start/stop/restart.ps1 產生)###
+scripts/.dev-state.json
+scripts/.logs/

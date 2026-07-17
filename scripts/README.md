@@ -9,6 +9,19 @@ docker compose up -d      # PostGIS + Redis
 .\mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local  # 後端(local profile,提醒會跳 Windows 桌面通知)
 ```
 
+## 一鍵管理完整開發環境
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-start.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-status.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-restart.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-stop.ps1
+```
+
+`dev-start.ps1` 與 `dev-restart.ps1` 會確認 Docker daemon、PostgreSQL、Redis、ngrok
+及 Spring Boot actuator health；任何必要服務不健康都會回傳非零 exit code。若本機允許
+執行 PowerShell 腳本，也可在 `scripts` 目錄直接使用 `.\dev-restart.ps1`。
+
 ## PowerShell 腳本
 
 第一次先建地點與任務:

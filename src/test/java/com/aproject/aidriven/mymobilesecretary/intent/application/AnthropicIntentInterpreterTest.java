@@ -7,15 +7,19 @@ import org.junit.jupiter.api.Test;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
+import org.springframework.ai.converter.BeanOutputConverter;
 
 class AnthropicIntentInterpreterTest {
 
     @Test
     void legacySystemPromptDoesNotDuplicateFullConversationCatalog() {
         String prompt = AnthropicIntentInterpreter.systemPrompt();
+        String outputSchema = new BeanOutputConverter<>(IntentScript.class).getFormat();
 
         assertThat(prompt).doesNotContain("001|幫我記得買牛奶");
-        assertThat(prompt.length()).isLessThan(25_000);
+        assertThat(prompt.length()).isLessThan(12_000);
+        assertThat(outputSchema.length()).isLessThan(15_000);
+        assertThat(prompt.length() + outputSchema.length()).isLessThan(27_000);
     }
 
     @Test

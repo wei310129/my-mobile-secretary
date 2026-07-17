@@ -1,19 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
-import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
-import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
-import com.aproject.aidriven.mymobilesecretary.knowledge.persistence.ItemRepository;
-import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskStatus;
-import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
-import com.aproject.aidriven.mymobilesecretary.reminder.persistence.ReminderPreferenceRepository;
-import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
-import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItemRepository;
-import com.aproject.aidriven.mymobilesecretary.shared.security.PromptInjectionGuard;
 import java.time.Instant;
-import java.time.ZoneId;
-import java.time.ZonedDateTime;
-import java.time.format.DateTimeFormatter;
-import java.util.stream.Collectors;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.ai.chat.client.ChatClient;
@@ -36,7 +23,6 @@ import org.springframework.stereotype.Component;
 public class AnthropicIntentInterpreter implements IntentInterpreter {
 
     private static final Logger log = LoggerFactory.getLogger(AnthropicIntentInterpreter.class);
-    private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
     private static final BeanOutputConverter<IntentScript> OUTPUT_CONVERTER =
             new BeanOutputConverter<>(IntentScript.class);
 
@@ -215,23 +201,12 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             """;
 
     private final ChatClient chatClient;
-    private final PlaceRepository placeRepository;
-    private final TaskRepository taskRepository;
-    private final ScheduleItemRepository scheduleRepository;
-    private final ItemRepository itemRepository;
-    private final ReminderPreferenceRepository reminderPreferenceRepository;
+    private final IntentPromptContextBuilder promptContextBuilder;
 
-    public AnthropicIntentInterpreter(ChatModel chatModel, PlaceRepository placeRepository,
-                                      TaskRepository taskRepository,
-                                      ScheduleItemRepository scheduleRepository,
-                                      ItemRepository itemRepository,
-                                      ReminderPreferenceRepository reminderPreferenceRepository) {
+    public AnthropicIntentInterpreter(ChatModel chatModel,
+                                      IntentPromptContextBuilder promptContextBuilder) {
         this.chatClient = ChatClient.create(chatModel);
-        this.placeRepository = placeRepository;
-        this.taskRepository = taskRepository;
-        this.scheduleRepository = scheduleRepository;
-        this.itemRepository = itemRepository;
-        this.reminderPreferenceRepository = reminderPreferenceRepository;
+        this.promptContextBuilder = promptContextBuilder;
     }
 
     @Override
@@ -241,59 +216,7 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
 
     @Override
     public IntentScript interpret(String text, Instant now, ConversationSnapshot context) {
-        // 已知地點清單給 LLM 做名稱正規化(「萬家福」vs「新店萬家福」)
-        String knownPlaces = placeRepository.findAll().stream()
-                .limit(50)
-                .map(Place::getName)
-                .collect(Collectors.joining("、"));
-        String nowTaipei = ZonedDateTime.ofInstant(now, TAIPEI)
-                .format(DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm (EEEE)"));
-        String openTasks = taskRepository.findByStatusIn(java.util.EnumSet.of(
-                        TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.REMINDED, TaskStatus.ESCALATED))
-                .stream().map(task -> "%d:%s%s".formatted(task.getId(), task.getTitle(),
-                        task.getDueAt() == null ? "" : "@" + task.getDueAt()))
-                .limit(50)
-                .collect(Collectors.joining("、"));
-        String schedules = scheduleRepository.findByStatusInOrderByStartAtAsc(java.util.EnumSet.of(
-                        ScheduleStatus.PROPOSED, ScheduleStatus.CONFIRMED, ScheduleStatus.PENDING))
-                .stream().limit(30).map(item -> "%d:%s@%s".formatted(
-                        item.getId(), item.getTitle(), item.getStartAt()))
-                .collect(Collectors.joining("、"));
-        String shopping = itemRepository.findAll().stream()
-                .filter(item -> item.isShoppingNeeded() || item.getInventoryQuantity() > 0)
-                .limit(50)
-                .map(item -> "%s(庫存%d%s)".formatted(item.getName(), item.getInventoryQuantity(),
-                        item.isShoppingNeeded() ? ",待買" : ""))
-                .collect(Collectors.joining("、"));
-        String reminderPreference = reminderPreferenceRepository.findFirstByOrderByIdAsc()
-                .map(p -> "勿擾=%s-%s,緊急例外=%s,靜音到=%s".formatted(
-                        p.getQuietStart(), p.getQuietEnd(), p.isAllowHighPriority(), p.getMutedUntil()))
-                .orElse("(無)");
-
-        String userPrompt = """
-                現在時間(台北):%s
-                %s
-                %s
-                %s
-                %s
-                %s
-                %s
-
-                %s
-                """.formatted(nowTaipei,
-                PromptInjectionGuard.delimit("known_places",
-                        knownPlaces.isBlank() ? "(無)" : knownPlaces),
-                PromptInjectionGuard.delimit("open_tasks",
-                        openTasks.isBlank() ? "(無)" : openTasks),
-                PromptInjectionGuard.delimit("schedules",
-                        schedules.isBlank() ? "(無)" : schedules),
-                PromptInjectionGuard.delimit("item_state",
-                        shopping.isBlank() ? "(無)" : shopping),
-                PromptInjectionGuard.delimit("reminder_preference", reminderPreference),
-                PromptInjectionGuard.delimit("short_term_context",
-                        boundedPromptValue(String.valueOf(context), 4000)),
-                PromptInjectionGuard.delimit("current_user_message",
-                        boundedPromptValue(text, 6000)));
+        String userPrompt = promptContextBuilder.build(text, now, context);
         long modelStarted = System.nanoTime();
         ChatResponse response;
         try {
@@ -376,13 +299,6 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
 
     static String systemPrompt() {
         return SYSTEM_PROMPT + TRUST_BOUNDARY_RULES + LIFESTYLE_RULES;
-    }
-
-    private static String boundedPromptValue(String value, int maxCharacters) {
-        if (value == null || value.length() <= maxCharacters) {
-            return value;
-        }
-        return value.substring(0, maxCharacters) + "…[truncated]";
     }
 
 }

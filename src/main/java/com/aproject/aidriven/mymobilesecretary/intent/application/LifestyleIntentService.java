@@ -5,12 +5,7 @@ import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType;
-import com.aproject.aidriven.mymobilesecretary.knowledge.application.ItemService;
-import com.aproject.aidriven.mymobilesecretary.knowledge.application.ItemInsightService;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PlanningPreferenceService;
-import com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceInsightService;
-import com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService;
-import com.aproject.aidriven.mymobilesecretary.knowledge.domain.Item;
 import com.aproject.aidriven.mymobilesecretary.planner.application.FreeSlotService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.RouteSuggestionService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.TravelPlanningService;
@@ -35,6 +30,7 @@ import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Optional;
+import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Service;
 
 /**
@@ -42,16 +38,14 @@ import org.springframework.stereotype.Service;
  * 語句如何分類仍由 LLM 負責;本類只接受 typed command 並做確定性執行。
  */
 @Service
+@RequiredArgsConstructor
 public class LifestyleIntentService {
     private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
     private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ofPattern("MM/dd HH:mm");
 
     private final TaskService taskService;
     private final ScheduleService scheduleService;
-    private final ItemService itemService;
-    private final ItemInsightService itemInsightService;
-    private final PriceRecordService priceService;
-    private final PriceInsightService priceInsightService;
+    private final LifestyleItemIntentService itemIntentService;
     private final PlaceAliasService placeAliasService;
     private final PlaceService placeService;
     private final GeofenceRuleService geofenceService;
@@ -65,42 +59,6 @@ public class LifestyleIntentService {
     private final ScheduleInsightService scheduleInsightService;
     private final TaskInsightService taskInsightService;
     private final Clock clock;
-
-    public LifestyleIntentService(TaskService taskService, ScheduleService scheduleService,
-                                  ItemService itemService, ItemInsightService itemInsightService,
-                                  PriceRecordService priceService,
-                                  PriceInsightService priceInsightService,
-                                  PlaceAliasService placeAliasService, PlaceService placeService,
-                                  GeofenceRuleService geofenceService, FreeSlotService freeSlotService,
-                                  RouteSuggestionService routeSuggestionService,
-                                  TravelPlanningService travelPlanningService,
-                                  WeatherAdvisoryService weatherService,
-                                  PlanningPreferenceService preferenceService,
-                                  ConversationContextService contextService,
-                                  ReminderPreferenceService reminderPreferenceService,
-                                  ScheduleInsightService scheduleInsightService,
-                                  TaskInsightService taskInsightService,
-                                  Clock clock) {
-        this.taskService = taskService;
-        this.scheduleService = scheduleService;
-        this.itemService = itemService;
-        this.itemInsightService = itemInsightService;
-        this.priceService = priceService;
-        this.priceInsightService = priceInsightService;
-        this.placeAliasService = placeAliasService;
-        this.placeService = placeService;
-        this.geofenceService = geofenceService;
-        this.freeSlotService = freeSlotService;
-        this.routeSuggestionService = routeSuggestionService;
-        this.travelPlanningService = travelPlanningService;
-        this.weatherService = weatherService;
-        this.preferenceService = preferenceService;
-        this.contextService = contextService;
-        this.reminderPreferenceService = reminderPreferenceService;
-        this.scheduleInsightService = scheduleInsightService;
-        this.taskInsightService = taskInsightService;
-        this.clock = clock;
-    }
 
     public IntentResult execute(String text, IntentCommand command) {
         try {
@@ -122,11 +80,14 @@ public class LifestyleIntentService {
             case LIST_RECENT -> listRecent();
             case SUGGEST_ROUTE_TASKS -> suggestRoute(command);
             case SET_PLACE_ALIAS -> setPlaceAlias(command, o);
-            case ADD_SHOPPING_ITEMS -> addShopping(command, o);
-            case REMOVE_SHOPPING_ITEM -> removeShopping(command, o);
-            case LIST_SHOPPING_ITEMS -> listShopping();
-            case SET_INVENTORY -> setInventory(command, o);
-            case ASK_PRICE_COMPARISON -> comparePrices(command);
+            case ADD_SHOPPING_ITEMS, REMOVE_SHOPPING_ITEM, LIST_SHOPPING_ITEMS,
+                    SET_INVENTORY, ASK_PRICE_COMPARISON, MARK_SHOPPING_PURCHASED,
+                    CLEAR_SHOPPING_LIST, LIST_SHOPPING_BY_PLACE, ADJUST_INVENTORY,
+                    LIST_INVENTORY, ASK_ITEM_PLACES, BIND_ITEM_PLACE, LIST_ITEMS_BY_PLACE,
+                    GROUP_SHOPPING_BY_PLACE, RESTOCK_LOW_INVENTORY, ASK_LAST_PURCHASE,
+                    ASK_PRICE_SUMMARY, ASK_FREQUENT_STORE, ASK_INVENTORY_EXTREMES,
+                    CHECK_SHOPPING_INVENTORY, LIST_UNPLACED_ITEMS,
+                    ASK_ITEM_KNOWLEDGE_SUMMARY -> itemIntentService.execute(command);
             case ASK_WEATHER -> IntentResult.message(IntentResult.Action.WEATHER_INFO,
                     weatherService.describeCurrentForecast().orElse("目前拿不到天氣預報,稍後再試。"));
             case CREATE_WEATHER_REMINDER -> createWeatherReminder(command, o);
@@ -147,18 +108,8 @@ public class LifestyleIntentService {
             case RESUME_RECURRING_TASK -> resumeRecurring(command, o);
             case SKIP_RECURRING_OCCURRENCE -> skipRecurring(command, o);
             case LIST_COMPLETED_TASKS -> listCompleted(o);
-            case MARK_SHOPPING_PURCHASED -> markShoppingPurchased(command, o);
-            case CLEAR_SHOPPING_LIST -> clearShopping();
-            case LIST_SHOPPING_BY_PLACE -> listShoppingAt(command);
             case AGENDA_SUMMARY -> agendaSummary(o);
             case RESIZE_SCHEDULE -> resizeSchedule(command, o);
-            case ADJUST_INVENTORY -> adjustInventory(command, o);
-            case LIST_INVENTORY -> listInventory(o);
-            case ASK_ITEM_PLACES -> askItemPlaces(command);
-            case BIND_ITEM_PLACE -> bindItemPlace(command);
-            case LIST_ITEMS_BY_PLACE -> listItemsAt(command);
-            case GROUP_SHOPPING_BY_PLACE -> groupShoppingByPlace();
-            case RESTOCK_LOW_INVENTORY -> restockLowInventory(o);
             case SET_QUIET_HOURS -> setQuietHours(o);
             case CLEAR_QUIET_HOURS -> clearQuietHours();
             case MUTE_REMINDERS -> muteReminders(command);
@@ -182,13 +133,6 @@ public class LifestyleIntentService {
             case ASK_BUSY_SCHEDULE_DAY -> busiestScheduleDay(o);
             case ASK_LONGEST_SCHEDULE -> longestSchedule(o);
             case GROUP_SCHEDULES_BY_PLACE -> groupSchedulesByPlace(o);
-            case ASK_LAST_PURCHASE -> lastPurchase(command);
-            case ASK_PRICE_SUMMARY -> priceSummary(command);
-            case ASK_FREQUENT_STORE -> frequentStore(command);
-            case ASK_INVENTORY_EXTREMES -> inventoryExtremes(o);
-            case CHECK_SHOPPING_INVENTORY -> checkShoppingInventory();
-            case LIST_UNPLACED_ITEMS -> listUnplacedItems();
-            case ASK_ITEM_KNOWLEDGE_SUMMARY -> itemKnowledgeSummary();
             case ASK_SCHEDULE_REMINDER -> askScheduleReminder(command, o);
             default -> throw new IllegalArgumentException("not a lifestyle command: " + command.type());
         };
@@ -342,41 +286,6 @@ public class LifestyleIntentService {
                 "記住了,「%s」就是「%s」。".formatted(o.alias(), place.getName()));
     }
 
-    private IntentResult addShopping(IntentCommand command, IntentOptions o) {
-        List<String> names = itemNames(command, o);
-        List<Item> items = itemService.addShoppingItems(names);
-        if (command.placeName() != null && !command.placeName().isBlank()) {
-            Place place = resolvePlace(command.placeName()).orElseGet(() ->
-                    placeService.createPlace(command.placeName(), null, null, null, null));
-            items.forEach(item -> itemService.bindItemToPlace(item.getName(), place.getId()));
-        }
-        return IntentResult.message(IntentResult.Action.SHOPPING_ITEMS_ADDED,
-                "已加入購物清單:\n%s\n\n重複品項不會再新增一份。".formatted(
-                        items.stream().map(Item::getName).collect(java.util.stream.Collectors.joining("\n"))));
-    }
-
-    private IntentResult removeShopping(IntentCommand command, IntentOptions o) {
-        String name = itemNames(command, o).getFirst();
-        boolean removed = itemService.removeShoppingItem(name).isPresent();
-        return IntentResult.message(IntentResult.Action.SHOPPING_ITEM_REMOVED,
-                removed ? "已從購物清單移除「%s」。".formatted(name)
-                        : "購物清單裡沒有「%s」。".formatted(name));
-    }
-
-    private IntentResult listShopping() {
-        List<Item> items = itemService.listShoppingItems();
-        String message = items.isEmpty() ? "購物清單目前是空的。" : "還要買:\n" +
-                items.stream().map(Item::getName).collect(java.util.stream.Collectors.joining("\n"));
-        return IntentResult.message(IntentResult.Action.SHOPPING_LISTED, message);
-    }
-
-    private IntentResult setInventory(IntentCommand command, IntentOptions o) {
-        String name = itemNames(command, o).getFirst();
-        Item item = itemService.setInventory(name, o.quantity() == null ? 0 : o.quantity());
-        return IntentResult.message(IntentResult.Action.INVENTORY_UPDATED,
-                "已更新「%s」庫存為 %d。".formatted(item.getName(), item.getInventoryQuantity()));
-    }
-
     private IntentResult updateTask(IntentCommand command, IntentOptions o) {
         Task target = taskTarget(command, o);
         TaskPriority priority = null;
@@ -470,161 +379,6 @@ public class LifestyleIntentService {
                         .map(task -> "✓ %s｜%s".formatted(task.getTitle(), format(task.getUpdatedAt())))
                         .collect(java.util.stream.Collectors.joining("\n")));
         return IntentResult.message(IntentResult.Action.COMPLETED_TASKS_LISTED, message);
-    }
-
-    private IntentResult markShoppingPurchased(IntentCommand command, IntentOptions o) {
-        List<String> names = itemNames(command, o);
-        List<Item> purchased = itemService.markShoppingPurchased(names, o.quantity());
-        if (purchased.isEmpty()) {
-            return IntentResult.message(IntentResult.Action.SHOPPING_ITEMS_PURCHASED,
-                    "這些品項目前不在購物清單裡。 ");
-        }
-        return IntentResult.message(IntentResult.Action.SHOPPING_ITEMS_PURCHASED,
-                "已標記買到:\n%s".formatted(purchased.stream().map(Item::getName)
-                        .collect(java.util.stream.Collectors.joining("\n"))));
-    }
-
-    private IntentResult clearShopping() {
-        List<Item> cleared = itemService.clearShoppingList();
-        return IntentResult.message(IntentResult.Action.SHOPPING_LIST_CLEARED,
-                cleared.isEmpty() ? "購物清單本來就是空的。" : "已清空購物清單,共 %d 項。".formatted(cleared.size()));
-    }
-
-    private IntentResult adjustInventory(IntentCommand command, IntentOptions o) {
-        require(command.title(), "title");
-        if (o.quantity() == null || o.quantity() == 0) {
-            throw new IllegalArgumentException("missing inventory delta");
-        }
-        Item item = itemService.adjustInventory(command.title(), o.quantity());
-        return IntentResult.message(IntentResult.Action.INVENTORY_ADJUSTED,
-                "已把「%s」庫存%s %d,目前是 %d。".formatted(item.getName(),
-                        o.quantity() > 0 ? "增加" : "減少", Math.abs(o.quantity()),
-                        item.getInventoryQuantity()));
-    }
-
-    private IntentResult listInventory(IntentOptions o) {
-        Integer maximum = "LOW".equalsIgnoreCase(o.filter())
-                ? (o.quantity() == null ? 1 : o.quantity()) : null;
-        List<Item> items = itemService.listInventory(maximum);
-        if ("AT_LEAST".equalsIgnoreCase(o.filter()) && o.quantity() != null) {
-            items = itemService.listInventory(null).stream()
-                    .filter(item -> item.getInventoryQuantity() >= o.quantity()).toList();
-        } else if ("EXACT".equalsIgnoreCase(o.filter()) && o.quantity() != null) {
-            items = itemService.listInventory(null).stream()
-                    .filter(item -> item.getInventoryQuantity() == o.quantity()).toList();
-        }
-        String message = items.isEmpty() ? (maximum == null ? "目前沒有大於 0 的庫存紀錄。" : "沒有已知的低庫存品項。")
-                : "庫存清單:\n" + items.stream().map(item -> "%s｜%d".formatted(item.getName(), item.getInventoryQuantity()))
-                .collect(java.util.stream.Collectors.joining("\n"));
-        return IntentResult.message(IntentResult.Action.INVENTORY_LISTED, message);
-    }
-
-    private IntentResult inventoryExtremes(IntentOptions o) {
-        return itemInsightService.inventoryExtremes().map(extremes -> {
-            Item selected = "LOW".equalsIgnoreCase(o.filter())
-                    ? extremes.lowest() : extremes.highest();
-            String message = "RANGE".equalsIgnoreCase(o.filter())
-                    ? "已知正庫存從「%s」%d 到「%s」%d；不同品項單位可能不同。".formatted(
-                            extremes.lowest().getName(), extremes.lowest().getInventoryQuantity(),
-                            extremes.highest().getName(), extremes.highest().getInventoryQuantity())
-                    : "已知正庫存%s的是「%s」，數量 %d；不同品項單位可能不同。".formatted(
-                            "LOW".equalsIgnoreCase(o.filter()) ? "最少" : "最多",
-                            selected.getName(), selected.getInventoryQuantity());
-            return IntentResult.message(IntentResult.Action.INVENTORY_EXTREMES_INFO, message);
-        }).orElseGet(() -> IntentResult.message(IntentResult.Action.INVENTORY_EXTREMES_INFO,
-                "目前沒有大於 0 的庫存紀錄；數量 0 可能是尚未盤點，不能當成缺貨。"));
-    }
-
-    private IntentResult checkShoppingInventory() {
-        List<Item> items = itemInsightService.shoppingItemsWithStock();
-        String message = items.isEmpty() ? "購物清單中沒有同時具有正庫存紀錄的品項。"
-                : "購物清單中這些品項仍有已知庫存:\n%s".formatted(items.stream()
-                .map(item -> "%s %d".formatted(item.getName(), item.getInventoryQuantity()))
-                .collect(java.util.stream.Collectors.joining("\n")));
-        return IntentResult.message(IntentResult.Action.SHOPPING_INVENTORY_CHECKED, message);
-    }
-
-    private IntentResult listUnplacedItems() {
-        List<Item> items = itemInsightService.itemsWithoutPlace();
-        return IntentResult.message(IntentResult.Action.UNPLACED_ITEMS_LISTED,
-                items.isEmpty() ? "所有已知品項都至少有一個購買地點。"
-                        : "還沒記錄購買地點:\n%s".formatted(items.stream().map(Item::getName)
-                        .collect(java.util.stream.Collectors.joining("\n"))));
-    }
-
-    private IntentResult itemKnowledgeSummary() {
-        var summary = itemInsightService.summary();
-        return IntentResult.message(IntentResult.Action.ITEM_KNOWLEDGE_SUMMARY,
-                "共記得 %d 個品項：%d 個有正庫存、%d 個在購物清單、%d 個有購買地點。"
-                        .formatted(summary.knownItems(), summary.inventoriedItems(),
-                                summary.shoppingItems(), summary.itemsWithPlace()));
-    }
-
-    private IntentResult askItemPlaces(IntentCommand command) {
-        require(command.title(), "title");
-        Optional<Item> found = itemService.findItem(command.title());
-        if (found.isEmpty()) {
-            return IntentResult.clarificationNeeded("我還沒有「%s」的品項紀錄。".formatted(command.title()));
-        }
-        Item item = found.get();
-        List<String> places = item.getPlaceIds().stream().map(placeService::getPlace)
-                .map(Place::getName).sorted().toList();
-        return IntentResult.message(IntentResult.Action.ITEM_PLACES_INFO,
-                places.isEmpty() ? "還不知道「%s」可以在哪裡買。".formatted(item.getName())
-                        : "「%s」可以在:\n%s".formatted(item.getName(), String.join("\n", places)));
-    }
-
-    private IntentResult bindItemPlace(IntentCommand command) {
-        require(command.title(), "title");
-        require(command.placeName(), "placeName");
-        Place place = resolvePlace(command.placeName()).orElseGet(() ->
-                placeService.createPlace(command.placeName(), null, null, null, null));
-        Item item = itemService.bindItemToPlace(command.title(), place.getId());
-        return IntentResult.message(IntentResult.Action.ITEM_PLACE_BOUND,
-                "記住了,「%s」可以在「%s」買。".formatted(item.getName(), place.getName()));
-    }
-
-    private IntentResult listItemsAt(IntentCommand command) {
-        Place place = resolvePlace(command.placeName()).orElseThrow(() ->
-                new IllegalArgumentException("unknown destination place"));
-        List<Item> items = itemService.listKnownItemsAt(place.getId());
-        String message = items.isEmpty() ? "目前沒有記錄「%s」可買的品項。".formatted(place.getName())
-                : "記得「%s」可買:\n%s".formatted(place.getName(), items.stream().map(Item::getName)
-                .collect(java.util.stream.Collectors.joining("\n")));
-        return IntentResult.message(IntentResult.Action.ITEMS_BY_PLACE_LISTED, message);
-    }
-
-    private IntentResult groupShoppingByPlace() {
-        List<Item> shopping = itemService.listShoppingItems();
-        if (shopping.isEmpty()) {
-            return IntentResult.message(IntentResult.Action.SHOPPING_GROUPED_BY_PLACE, "購物清單目前是空的。");
-        }
-        java.util.Map<Long, String> placeNames = placeService.listPlaces().stream()
-                .collect(java.util.stream.Collectors.toMap(Place::getId, Place::getName));
-        java.util.Map<String, java.util.List<String>> groups = new java.util.LinkedHashMap<>();
-        for (Item item : shopping) {
-            if (item.getPlaceIds().isEmpty()) {
-                groups.computeIfAbsent("未指定店家", ignored -> new java.util.ArrayList<>()).add(item.getName());
-            } else {
-                for (Long placeId : item.getPlaceIds()) {
-                    String place = placeNames.getOrDefault(placeId, "未知地點");
-                    groups.computeIfAbsent(place, ignored -> new java.util.ArrayList<>()).add(item.getName());
-                }
-            }
-        }
-        String message = groups.entrySet().stream().map(entry -> "%s（%d）\n%s".formatted(
-                        entry.getKey(), entry.getValue().size(), String.join("\n", entry.getValue())))
-                .collect(java.util.stream.Collectors.joining("\n\n"));
-        return IntentResult.message(IntentResult.Action.SHOPPING_GROUPED_BY_PLACE, message);
-    }
-
-    private IntentResult restockLowInventory(IntentOptions o) {
-        int maximum = o.quantity() == null ? 1 : Math.max(o.quantity(), 1);
-        List<Item> items = itemService.restockLowInventory(maximum);
-        return IntentResult.message(IntentResult.Action.LOW_INVENTORY_RESTOCKED,
-                items.isEmpty() ? "沒有已盤點且低於門檻的庫存。"
-                        : "已把低庫存加入購物清單:\n%s".formatted(items.stream().map(Item::getName)
-                        .collect(java.util.stream.Collectors.joining("\n"))));
     }
 
     private IntentResult setQuietHours(IntentOptions o) {
@@ -998,16 +752,6 @@ public class LifestyleIntentService {
         return IntentResult.message(IntentResult.Action.SCHEDULES_GROUPED_BY_PLACE, message);
     }
 
-    private IntentResult listShoppingAt(IntentCommand command) {
-        Place place = resolvePlace(command.placeName()).orElseThrow(() ->
-                new IllegalArgumentException("unknown destination place"));
-        List<Item> items = itemService.listShoppingItemsAt(place.getId());
-        String message = items.isEmpty() ? "目前沒有綁在「%s」的待買品項。".formatted(place.getName())
-                : "到「%s」要買:\n%s".formatted(place.getName(), items.stream().map(Item::getName)
-                .collect(java.util.stream.Collectors.joining("\n")));
-        return IntentResult.message(IntentResult.Action.SHOPPING_BY_PLACE_LISTED, message);
-    }
-
     private IntentResult agendaSummary(IntentOptions o) {
         List<Task> tasks = filterTasks(taskService.listOpenTasks(), o);
         List<ScheduleItem> schedules = filterSchedules(upcomingSchedules(), o);
@@ -1039,61 +783,6 @@ public class LifestyleIntentService {
                         format(decision.item().getStartAt()),
                         ZonedDateTime.ofInstant(decision.item().getEndAt(), TAIPEI)
                                 .format(DateTimeFormatter.ofPattern("HH:mm"))), decision);
-    }
-
-    private IntentResult comparePrices(IntentCommand command) {
-        require(command.title(), "title");
-        var prices = priceService.compareStores(command.title());
-        if (prices.isEmpty()) return IntentResult.message(IntentResult.Action.PRICE_COMPARISON,
-                "目前沒有「%s」可比較的店家價格。".formatted(command.title()));
-        String lines = prices.stream().map(p -> "%s｜%d 元｜%s".formatted(
-                        p.storeName(), p.priceTwd(), p.purchasedAt()))
-                .collect(java.util.stream.Collectors.joining("\n"));
-        return IntentResult.message(IntentResult.Action.PRICE_COMPARISON,
-                "「%s」歷史最低價比較:\n%s".formatted(command.title(), lines));
-    }
-
-    private IntentResult lastPurchase(IntentCommand command) {
-        require(command.title(), "title");
-        return priceInsightService.lastPurchase(command.title()).map(last -> {
-            var record = last.record();
-            String store = record.getStoreName() == null || record.getStoreName().isBlank()
-                    ? "，店家未記錄" : "，在%s".formatted(record.getStoreName());
-            String ago = last.daysAgo() == 0 ? "今天" : last.daysAgo() + " 天前";
-            return IntentResult.message(IntentResult.Action.LAST_PURCHASE_INFO,
-                    "上次買「%s」是 %s（%s）%s，單價 %d 元。".formatted(
-                            command.title(), record.getPurchasedAt(), ago, store,
-                            record.getPriceTwd()));
-        }).orElseGet(() -> IntentResult.message(IntentResult.Action.LAST_PURCHASE_INFO,
-                "目前沒有「%s」的購買紀錄。".formatted(command.title())));
-    }
-
-    private IntentResult priceSummary(IntentCommand command) {
-        require(command.title(), "title");
-        return priceInsightService.summary(command.title()).map(summary -> {
-            Integer change = summary.latestChangeTwd();
-            String trend = change == null ? "只有一筆，還不能比較漲跌"
-                    : change > 0 ? "比前一次貴 %d 元".formatted(change)
-                    : change < 0 ? "比前一次便宜 %d 元".formatted(Math.abs(change))
-                    : "和前一次相同";
-            return IntentResult.message(IntentResult.Action.PRICE_SUMMARY_INFO,
-                    "「%s」共有 %d 筆單價紀錄：平均 %d 元，最低 %d 元，最高 %d 元；最近 %d 元，%s。"
-                            .formatted(command.title(), summary.count(), summary.averagePriceTwd(),
-                                    summary.lowest().getPriceTwd(), summary.highest().getPriceTwd(),
-                                    summary.latest().getPriceTwd(), trend));
-        }).orElseGet(() -> IntentResult.message(IntentResult.Action.PRICE_SUMMARY_INFO,
-                "目前沒有「%s」的價格紀錄。".formatted(command.title())));
-    }
-
-    private IntentResult frequentStore(IntentCommand command) {
-        require(command.title(), "title");
-        return priceInsightService.favoriteStore(command.title())
-                .map(store -> IntentResult.message(IntentResult.Action.FREQUENT_STORE_INFO,
-                        "「%s」最常記錄在%s購買，共 %d 次；最近一次是 %s。".formatted(
-                                command.title(), store.storeName(), store.count(),
-                                store.lastPurchasedAt())))
-                .orElseGet(() -> IntentResult.message(IntentResult.Action.FREQUENT_STORE_INFO,
-                        "目前沒有「%s」含店家的購買紀錄。".formatted(command.title())));
     }
 
     private IntentResult createWeatherReminder(IntentCommand command, IntentOptions o) {
@@ -1378,17 +1067,6 @@ public class LifestyleIntentService {
 
     private Optional<Place> resolvePlace(String name) {
         return placeAliasService.resolve(name);
-    }
-
-    private List<String> itemNames(IntentCommand command, IntentOptions o) {
-        List<String> names = o.itemNames();
-        if (names == null || names.isEmpty()) {
-            if (command.title() == null || command.title().isBlank()) {
-                throw new IllegalArgumentException("itemNames missing");
-            }
-            names = List.of(command.title());
-        }
-        return names;
     }
 
     private static TriggerType parseTrigger(String value) {

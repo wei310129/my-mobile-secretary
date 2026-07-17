@@ -15,6 +15,8 @@ reasoning and it is not part of the main application's runtime.
 - Deleting this directory must not change how the main application compiles or runs.
 
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the dependency and failure boundaries.
+See [DESIGN.md](DESIGN.md) for the state machine, lifecycle, data model, race analysis and
+operations checklist.
 
 ## Local commands
 

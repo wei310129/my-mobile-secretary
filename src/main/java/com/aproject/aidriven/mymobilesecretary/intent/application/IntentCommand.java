@@ -122,6 +122,8 @@ public record IntentCommand(
         GROUP_SCHEDULES_BY_PLACE,
         ASK_ACTIVITY_COUNT,
         ASK_LAST_ACTIVITY,
+        /** 開始蒐集旅行／出遊規劃資料；只回問與分類，不直接建立任何資料。 */
+        PLAN_TRIP,
         ASK_LAST_PURCHASE,
         ASK_PRICE_SUMMARY,
         ASK_FREQUENT_STORE,

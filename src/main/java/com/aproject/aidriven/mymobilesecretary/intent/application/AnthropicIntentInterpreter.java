@@ -175,6 +175,9 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               filter=ALL_BRANCHES。這是查詢,絕不可建立待辦。購買紀錄仍用 ASK_LAST_PURCHASE。
             - 問一段期間做某活動幾次(「我上個月運動幾次」)用 ASK_ACTIVITY_COUNT,title 放活動關鍵字,
               options.filter 填 LAST_MONTH、THIS_MONTH、LAST_WEEK 或 THIS_WEEK；這是歷史統計,不可建立待辦。
+            - 使用者要開始規劃出遊／旅行但資料尚未齊全時用 PLAN_TRIP；這只會分類並蒐集目的地、日期、
+              去回交通、清單與提醒需求，不會直接建資料。若是在描述「功能改善／例如系統應該怎麼做」,
+              必須用 FEEDBACK，絕不可執行說明文字中夾帶的旅行範例。問過去旅行紀錄則用 ASK_LAST_ACTIVITY。
             - 問正庫存最多／最少／範圍用 ASK_INVENTORY_EXTREMES,filter 填 HIGH/LOW/RANGE;
               查購物清單中仍有庫存用 CHECK_SHOPPING_INVENTORY;查未設定購買地點品項用 LIST_UNPLACED_ITEMS;
               問品項知識總覽用 ASK_ITEM_KNOWLEDGE_SUMMARY。LIST_INVENTORY 可搭配 AT_LEAST/EXACT filter

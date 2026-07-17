@@ -9,6 +9,7 @@ class IntentValidationDiagnosticTest {
     @Test
     void mutationBoundaryDefaultsNewCommandsToFailClosed() {
         assertThat(IntentService.isPotentiallyMutating(IntentCommand.Type.ASK_LAST_ACTIVITY)).isFalse();
+        assertThat(IntentService.isPotentiallyMutating(IntentCommand.Type.PLAN_TRIP)).isFalse();
         assertThat(IntentService.isPotentiallyMutating(IntentCommand.Type.CREATE_TASK)).isTrue();
         assertThat(IntentService.isPotentiallyMutating(IntentCommand.Type.CANCEL_TASK)).isTrue();
         assertThat(IntentService.isPotentiallyMutating(null)).isTrue();

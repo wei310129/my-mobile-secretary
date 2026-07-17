@@ -115,8 +115,8 @@ class LastActivityAnswerServiceTest {
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.RECENT_ACTIVITY_LISTED);
         assertThat(result.message())
-                .contains("沒有找到在「World Gym」的運動紀錄", "其他健身房", "沒有新增")
-                .doesNotContain("2026/07/15");
+                .contains("沒有找到在「World Gym」的運動紀錄", "其他健身房")
+                .doesNotContain("2026/07/15", "沒有把其他地點", "沒有新增任何待辦");
     }
 
     @Test

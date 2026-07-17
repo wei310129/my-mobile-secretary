@@ -222,6 +222,42 @@ class IntentApiTest extends IntegrationTestBase {
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不會建立待辦或行程")));
     }
 
+    /** 自由文字提到「地點」是產品建議，不得接回先前任務的缺地點追問。 */
+    @Test
+    void feedbackMentioningLocationDoesNotResumeOldTask() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_TASK, "回饋邊界測試運動", null, null, null, null,
+                "NORMAL", null, null, null, null, null, null));
+        say("幫我記回饋邊界測試運動");
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.FEEDBACK, null, null, null, null, null, null,
+                "旅行功能要包含出發地點與交通工具", null, null, null, null, null));
+        say("這是功能改善：旅行要詢問出發地點與交通工具",
+                jsonPath("$.action").value("FEEDBACK_RECEIVED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("功能改善問題紀錄")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("要在哪裡做"))));
+    }
+
+    /** 明確的機器原因碼仍可接回上一筆任務，避免把正確追問一併關掉。 */
+    @Test
+    void explicitMissingPlaceReasonStillResumesOldTask() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_TASK, "缺地點追問測試瑜伽", null, null, null, null,
+                "NORMAL", null, null, null, null, null, null));
+        say("幫我記缺地點追問測試瑜伽");
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.FEEDBACK, null, null, null, null, null, null,
+                "MISSING_PLACE", null, null, null, null, null));
+        say("你還沒問我要在哪裡做",
+                jsonPath("$.action").value("FEEDBACK_RECEIVED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
+                        "缺地點追問測試瑜伽")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("要在哪裡做")));
+    }
+
     /** 取消待辦:「取消買排骨」→ 唯一命中的任務 CANCELED。 */
     @Test
     void cancelTaskIntentCancelsUniqueMatch() throws Exception {
@@ -591,6 +627,23 @@ class IntentApiTest extends IntegrationTestBase {
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
                         "沒有找到在「World Gym」的運動紀錄")),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString("其他健身房")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("沒有新增任何待辦"))),
+                jsonPath("$.task").value(org.hamcrest.Matchers.nullValue()));
+
+        org.assertj.core.api.Assertions.assertThat(taskService.listTasks()).hasSize(before);
+    }
+
+    /** 明確旅行敘述先做唯讀 intake；完整規劃確認前不可建立任何資料。 */
+    @Test
+    void cruiseTripStartsSafePlanningIntakeWithoutCreatingTask() throws Exception {
+        int before = taskService.listTasks().size();
+
+        say("11月17-22日搭郵輪去日本玩",
+                jsonPath("$.action").value("TRAVEL_INFO"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("11/17–11/22")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("返家方式")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("確認後才建立")),
                 jsonPath("$.task").value(org.hamcrest.Matchers.nullValue()));
 
         org.assertj.core.api.Assertions.assertThat(taskService.listTasks()).hasSize(before);

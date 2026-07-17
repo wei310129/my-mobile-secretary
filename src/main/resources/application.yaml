@@ -79,6 +79,9 @@ app:
   knowledge:
     # 品項自動綁定時建立的 geofence 半徑
     auto-bind-radius-meters: 200
+  travel:
+    # 未特別說明時，單程達此時間才把一般外出視為「出遊」而非住家附近日常休閒
+    outing-threshold-minutes: 35
   intent:
     # LLM 意圖理解；關閉時 /api/intent 走安全降級，只有明確「提醒／記下」才建保底待辦
     enabled: true

@@ -117,9 +117,8 @@ public class LastActivityAnswerService {
                     ? "其他健身房的%s紀錄".formatted(topic)
                     : "其他地點的%s紀錄".formatted(topic);
             return IntentResult.message(IntentResult.Action.RECENT_ACTIVITY_LISTED,
-                    "🔎 沒有找到在「%s」的%s紀錄。\n- 我沒有把其他地點的紀錄混進來"
+                    "🔎 沒有找到在「%s」的%s紀錄。"
                             .formatted(displayPlace, topic)
-                            + "\n- 我沒有新增任何待辦或行程"
                             + "\n\n❓ 要改查%s嗎？".formatted(broader));
         }
 

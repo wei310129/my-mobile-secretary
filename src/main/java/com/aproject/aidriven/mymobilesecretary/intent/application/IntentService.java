@@ -53,6 +53,7 @@ public class IntentService {
     private final ReminderTimingAnswerService reminderTimingAnswerService;
     private final LastActivityAnswerService lastActivityAnswerService;
     private final ActivityCountAnswerService activityCountAnswerService;
+    private final TravelPlanningIntakeService travelPlanningIntakeService;
     private final ScheduleTaskConflictAnswerService scheduleTaskConflictAnswerService;
     private final TaskDetailAnswerService taskDetailAnswerService;
     private final RestaurantBookingService restaurantBookingService;
@@ -80,6 +81,7 @@ public class IntentService {
                          ReminderTimingAnswerService reminderTimingAnswerService,
                          LastActivityAnswerService lastActivityAnswerService,
                          ActivityCountAnswerService activityCountAnswerService,
+                         TravelPlanningIntakeService travelPlanningIntakeService,
                          ScheduleTaskConflictAnswerService scheduleTaskConflictAnswerService,
                          TaskDetailAnswerService taskDetailAnswerService,
                          RestaurantBookingService restaurantBookingService,
@@ -105,6 +107,7 @@ public class IntentService {
         this.reminderTimingAnswerService = reminderTimingAnswerService;
         this.lastActivityAnswerService = lastActivityAnswerService;
         this.activityCountAnswerService = activityCountAnswerService;
+        this.travelPlanningIntakeService = travelPlanningIntakeService;
         this.scheduleTaskConflictAnswerService = scheduleTaskConflictAnswerService;
         this.taskDetailAnswerService = taskDetailAnswerService;
         this.restaurantBookingService = restaurantBookingService;
@@ -186,6 +189,10 @@ public class IntentService {
         Optional<IntentResult> lastActivity = lastActivityAnswerService.answer(text);
         if (lastActivity.isPresent()) {
             return lastActivity.get();
+        }
+        Optional<IntentResult> travelPlanning = travelPlanningIntakeService.answer(text);
+        if (travelPlanning.isPresent()) {
+            return travelPlanning.get();
         }
         Optional<IntentResult> taskConflict = scheduleTaskConflictAnswerService.answer(text);
         if (taskConflict.isPresent()) {
@@ -623,6 +630,7 @@ public class IntentService {
                 yield activityCountAnswerService.answerTopic(
                         command.title(), command.safeOptions().filter());
             }
+            case PLAN_TRIP -> travelPlanningIntakeService.intake(text);
             case LIST_SCHEDULES_ON_DATE -> {
                 Instant dateTime = parseTime(command.startAt());
                 if (dateTime == null) {
@@ -1074,7 +1082,7 @@ public class IntentService {
                     GROUP_TASKS_BY_CATEGORY, ASK_TASK_PROGRESS, GROUP_TASKS_BY_DUE,
                     ASK_TASK_LOAD, ASK_BUSY_TASK_DAY, ASK_BUSY_SCHEDULE_DAY,
                     ASK_LONGEST_SCHEDULE, GROUP_SCHEDULES_BY_PLACE, ASK_ACTIVITY_COUNT,
-                    ASK_LAST_ACTIVITY, ASK_LAST_PURCHASE, ASK_PRICE_SUMMARY,
+                    ASK_LAST_ACTIVITY, PLAN_TRIP, ASK_LAST_PURCHASE, ASK_PRICE_SUMMARY,
                     ASK_FREQUENT_STORE, ASK_INVENTORY_EXTREMES,
                     CHECK_SHOPPING_INVENTORY, LIST_UNPLACED_ITEMS,
                     ASK_ITEM_KNOWLEDGE_SUMMARY, ASK_SCHEDULE_REMINDER,
@@ -1235,7 +1243,10 @@ public class IntentService {
                     "你提醒得對，不應該重複建立。\n\n" + detail
                             + "\n\n要刪掉多出的項目時，告訴我名稱即可。");
         }
-        if (reason.contains("MISSING_PLACE") || reason.contains("地點")) {
+        // Only a stable machine-readable reason may resume the previous task. Free-form product
+        // feedback often mentions「地點」while describing a proposed feature, and must not be
+        // mistaken for an answer to an old task follow-up.
+        if (reason.equals("MISSING_PLACE")) {
             Long id = conversationContextService.taskIdAt(null);
             if (id != null) {
                 Task task = taskService.getTask(id);

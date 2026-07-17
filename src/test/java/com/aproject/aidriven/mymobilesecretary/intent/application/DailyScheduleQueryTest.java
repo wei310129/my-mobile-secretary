@@ -65,4 +65,48 @@ class DailyScheduleQueryTest {
         assertThat(IntentService.isDecisionDelegation("給我明天的行程")).isFalse();
         assertThat(IntentService.isDecisionDelegation("取消簡報排練")).isFalse();
     }
+
+    @Test
+    void schoolDropOffRequiresPickupAssignmentBeforeScheduling() {
+        assertThat(IntentService.schoolPickupClarification(
+                "每週六早上十點到十二點送女兒上英文課")).isPresent();
+        assertThat(IntentService.schoolPickupClarification(
+                "明天九點送兒子去安親班")).isPresent();
+        assertThat(IntentService.schoolPickupClarification(
+                "明天九點我送女兒上課，十二點接的人還沒決定")).isPresent();
+        assertThat(IntentService.schoolPickupClarification(
+                "明天九點校車接孩子上課，下午可能校車送回")).isPresent();
+
+        assertThat(IntentService.schoolPickupClarification(
+                "每週六十點我送女兒上英文課，十二點老婆接回家")).isEmpty();
+        assertThat(IntentService.schoolPickupClarification(
+                "明天九點校車接孩子去上課")).isEmpty();
+        assertThat(IntentService.schoolPickupClarification(
+                "送女兒上課要帶什麼？")).isEmpty();
+    }
+
+    @Test
+    void pickupSafeguardKeepsIndependentCommandsAndRemovesUnsafeSchoolMutation() {
+        IntentCommand unsafeSchool = command(IntentCommand.Type.CREATE_SCHEDULE, "送女兒上課");
+        IntentCommand meeting = command(IntentCommand.Type.CREATE_SCHEDULE, "產品會議");
+
+        IntentScript safe = IntentService.applySchoolPickupSafeguard(
+                new IntentScript(java.util.List.of(unsafeSchool, meeting)),
+                "請問下課後由誰接？");
+
+        assertThat(safe.commands()).extracting(IntentCommand::title)
+                .containsExactly("產品會議", null);
+        assertThat(safe.commands()).extracting(IntentCommand::type)
+                .containsExactly(IntentCommand.Type.CREATE_SCHEDULE, IntentCommand.Type.UNKNOWN);
+        assertThat(safe.commands().getLast().reason()).contains("由誰接");
+        assertThat(IntentService.hasIndependentIntentBesidesSchoolDropOff(
+                "明天九點送女兒上課，下午兩點有產品會議")).isTrue();
+        assertThat(IntentService.hasIndependentIntentBesidesSchoolDropOff(
+                "明天九點送女兒上課")).isFalse();
+    }
+
+    private static IntentCommand command(IntentCommand.Type type, String title) {
+        return new IntentCommand(type, title, null, null, null, null, null, null,
+                null, null, null, null, null);
+    }
 }

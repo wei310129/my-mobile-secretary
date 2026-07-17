@@ -96,6 +96,18 @@ class FamilyMessageServiceTest {
     }
 
     @Test
+    void plainTeacherNotificationAlsoCreatesConfirmationDraft() {
+        String notice = "老師通知明天十點到校、十二點結束，穿防水鞋並帶換洗衣物";
+
+        IntentResult result = service.answer(notice, () -> { }).orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FAMILY_NOTICE_DRAFTED);
+        assertThat(result.message()).contains("10:00").contains("12:00").contains("換洗衣物");
+        verify(repository).save(any(FamilyNoticeDraft.class));
+        verify(scheduleService, never()).createSchedule(any(), any(), any(), any());
+    }
+
+    @Test
     void explicitRelationshipIsRememberedAndAcknowledged() {
         String text = "我是我女兒的家長，也是我女兒的爸爸，這層關係你能理解嗎？";
 

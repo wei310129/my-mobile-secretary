@@ -43,9 +43,13 @@ public class FamilyMessageService {
     private static final Pattern NUMBERED_LINE = Pattern.compile(
             "(?m)^\\s*\\d+[.、)]\\s*(.+?)\\s*$");
     private static final Pattern REPORT_TIME = Pattern.compile(
-            "(?<!\\d)([01]?\\d|2[0-3])(?::([0-5]\\d))?\\s*(?:報到|集合)");
+            "(?<!\\d)([01]?\\d|2[0-3])(?:[:：]([0-5]\\d))?\\s*(?:報到|集合|到校)");
     private static final Pattern END_TIME = Pattern.compile(
-            "(?<!\\d)([01]?\\d|2[0-3])(?::([0-5]\\d))?\\s*(?:結束|散場)");
+            "(?<!\\d)([01]?\\d|2[0-3])(?:[:：]([0-5]\\d))?\\s*(?:結束|散場)");
+    private static final Pattern CHINESE_REPORT_TIME = Pattern.compile(
+            "([零〇一二兩三四五六七八九十]{1,3})\\s*點\\s*(?:報到|集合|到校)");
+    private static final Pattern CHINESE_END_TIME = Pattern.compile(
+            "([零〇一二兩三四五六七八九十]{1,3})\\s*點\\s*(?:結束|散場)");
     private static final Pattern SPOKEN_END_TIME = Pattern.compile(
             "(?<!\\d)([01]?\\d|2[0-3])(?:[:：]([0-5]\\d))?\\s*點?\\s*(?:結束|散場)");
     private static final Pattern EVENT_TITLE = Pattern.compile(
@@ -297,8 +301,10 @@ public class FamilyMessageService {
     private Payload parse(String text) {
         LocalDate today = LocalDate.now(clock.withZone(TAIPEI));
         LocalDate eventDate = containsTomorrow(text) ? today.plusDays(1) : null;
-        LocalTime reportTime = firstTime(REPORT_TIME, text).orElse(null);
-        LocalTime endTime = firstTime(END_TIME, text).orElse(null);
+        LocalTime reportTime = firstTime(REPORT_TIME, text)
+                .or(() -> firstChineseHour(CHINESE_REPORT_TIME, text)).orElse(null);
+        LocalTime endTime = firstTime(END_TIME, text)
+                .or(() -> firstChineseHour(CHINESE_END_TIME, text)).orElse(null);
         String title = extractTitle(text).orElse("老師通知");
         List<String> lines = noticeLines(text);
         List<String> preparation = new ArrayList<>();
@@ -398,7 +404,8 @@ public class FamilyMessageService {
     private static boolean looksLikeTeacherNotice(String text) {
         String compact = text.replaceAll("\\s+", "");
         return compact.contains("老師") && (compact.contains("@All")
-                || compact.contains("提醒訊息") || compact.contains("老師說"))
+                || compact.contains("提醒訊息") || compact.contains("老師說")
+                || compact.contains("老師通知"))
                 && (NUMBERED_LINE.matcher(text).find()
                 || containsAny(compact, "換洗衣物", "防水鞋", "報到", "集合"));
     }
@@ -418,7 +425,8 @@ public class FamilyMessageService {
     }
 
     private static Optional<LocalTime> spokenEndTime(String text) {
-        return firstTime(SPOKEN_END_TIME, text);
+        return firstTime(SPOKEN_END_TIME, text)
+                .or(() -> firstChineseHour(CHINESE_END_TIME, text));
     }
 
     private static Optional<LocalTime> firstTime(Pattern pattern, String text) {
@@ -427,6 +435,38 @@ public class FamilyMessageService {
         int hour = Integer.parseInt(matcher.group(1));
         int minute = matcher.group(2) == null ? 0 : Integer.parseInt(matcher.group(2));
         return Optional.of(LocalTime.of(hour, minute));
+    }
+
+    private static Optional<LocalTime> firstChineseHour(Pattern pattern, String text) {
+        Matcher matcher = pattern.matcher(text);
+        if (!matcher.find()) return Optional.empty();
+        int hour = chineseNumber(matcher.group(1));
+        return hour >= 0 && hour <= 23 ? Optional.of(LocalTime.of(hour, 0)) : Optional.empty();
+    }
+
+    private static int chineseNumber(String value) {
+        if (value == null || value.isBlank()) return -1;
+        int ten = value.indexOf('十');
+        if (ten < 0) return chineseDigit(value.charAt(0));
+        int tens = ten == 0 ? 1 : chineseDigit(value.charAt(0));
+        int ones = ten == value.length() - 1 ? 0 : chineseDigit(value.charAt(ten + 1));
+        return tens < 0 || ones < 0 ? -1 : tens * 10 + ones;
+    }
+
+    private static int chineseDigit(char value) {
+        return switch (value) {
+            case '零', '〇' -> 0;
+            case '一' -> 1;
+            case '二', '兩' -> 2;
+            case '三' -> 3;
+            case '四' -> 4;
+            case '五' -> 5;
+            case '六' -> 6;
+            case '七' -> 7;
+            case '八' -> 8;
+            case '九' -> 9;
+            default -> -1;
+        };
     }
 
     private static Optional<String> extractTitle(String text) {

@@ -51,9 +51,10 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               「每個上班日」「週一到週五」→ recurring 填 true,options.recurrence 填 WEEKDAYS,不可只填 WEEKLY;
               固定行程有截止語(「到九月底」「截至 12/31」)→ options.recurrenceUntil 填台北日期 yyyy-MM-dd,
               「月底」要換成該月最後一天，截止日含當日；不可把截止日誤放進 endAt。
-            - 接送/陪同類行程要主動拆成完整的配套:「送女兒10點到12點上課」不是一個 10-12 的行程,
-              而是兩個 command:CREATE_SCHEDULE「送女兒上課」(到達時間前約 20 分鐘出發到抵達)+
-              CREATE_SCHEDULE「接女兒下課」(結束時間起約 20 分鐘),中間時段留空讓使用者能排其他事。
+            - 「送女兒／兒子／孩子上課」通常還隱含下課接回，但接的人不一定是使用者。
+              未明講誰接、接回時間與地點時，不可自行拆成送／接兩個行程、不可發明交通緩衝，
+              也不可直接建立整段行程；輸出 UNKNOWN，reason 主動詢問誰送、誰接、接回時間與地點。
+              已明講接送分工時，才依原文建立對應行程，不可把家人的行程誤稱為使用者本人要執行。
             - 待辦事項(買東西、繳費、聯絡某人)→ CREATE_TASK;有截止時間才填 dueAt。
               只有單一明確時點的短生活事項(如「今晚十點倒垃圾」)也用 CREATE_TASK，dueAt 填該時點；
               不可輸出缺 endAt 的 CREATE_SCHEDULE。

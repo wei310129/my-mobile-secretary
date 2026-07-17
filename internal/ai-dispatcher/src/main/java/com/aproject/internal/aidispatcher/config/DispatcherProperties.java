@@ -13,13 +13,6 @@ public record DispatcherProperties(
         int maxEventPayloadBytesPerRun
 ) {
 
-    public DispatcherProperties(boolean enabled,
-                                Duration pollInterval,
-                                Duration quietPeriod,
-                                Duration maximumWait) {
-        this(enabled, pollInterval, quietPeriod, maximumWait, 20, 65_536);
-    }
-
     public DispatcherProperties {
         requirePositive(pollInterval, "pollInterval");
         requirePositive(quietPeriod, "quietPeriod");

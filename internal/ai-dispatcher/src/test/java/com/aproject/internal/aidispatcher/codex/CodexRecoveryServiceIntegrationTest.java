@@ -239,7 +239,8 @@ class CodexRecoveryServiceIntegrationTest {
                 transactionManager(),
                 fixedClock(BASE.plus(Duration.ofMinutes(5))),
                 new DispatcherProperties(
-                        false, Duration.ofSeconds(1), Duration.ofMinutes(5), Duration.ofMinutes(30)),
+                        false, Duration.ofSeconds(1), Duration.ofMinutes(5), Duration.ofMinutes(30),
+                        20, 65_536),
                 new DispatcherInstanceIdentity());
         return coordinator.tick().runId();
     }

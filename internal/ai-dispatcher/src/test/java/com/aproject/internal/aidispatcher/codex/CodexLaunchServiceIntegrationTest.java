@@ -222,7 +222,8 @@ class CodexLaunchServiceIntegrationTest {
                 new DataSourceTransactionManager(dataSource),
                 clock,
                 new DispatcherProperties(
-                        false, Duration.ofSeconds(1), Duration.ofMinutes(5), Duration.ofMinutes(30)),
+                        false, Duration.ofSeconds(1), Duration.ofMinutes(5), Duration.ofMinutes(30),
+                        20, 65_536),
                 new DispatcherInstanceIdentity());
         DispatcherTickResult tick = coordinator.tick();
         assertThat(tick.outcome()).isEqualTo(DispatcherTickResult.Outcome.CLAIMED);

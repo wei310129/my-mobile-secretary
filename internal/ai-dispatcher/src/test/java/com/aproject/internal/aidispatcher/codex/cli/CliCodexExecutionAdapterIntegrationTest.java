@@ -269,7 +269,8 @@ class CliCodexExecutionAdapterIntegrationTest {
                 jdbcTemplate, transactionManager(), coordinatorClock,
                 new DispatcherProperties(
                         false, Duration.ofSeconds(1),
-                        Duration.ofMinutes(5), Duration.ofMinutes(30)),
+                        Duration.ofMinutes(5), Duration.ofMinutes(30),
+                        20, 65_536),
                 new DispatcherInstanceIdentity());
         UUID runId = coordinator.tick().runId();
         if (runId == null) {

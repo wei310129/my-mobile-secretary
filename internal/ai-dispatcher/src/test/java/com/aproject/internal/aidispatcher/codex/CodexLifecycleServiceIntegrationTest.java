@@ -217,7 +217,8 @@ class CodexLifecycleServiceIntegrationTest {
                 new DataSourceTransactionManager(dataSource),
                 launchClock,
                 new DispatcherProperties(
-                        false, Duration.ofSeconds(1), Duration.ofMinutes(5), Duration.ofMinutes(30)),
+                        false, Duration.ofSeconds(1), Duration.ofMinutes(5), Duration.ofMinutes(30),
+                        20, 65_536),
                 new DispatcherInstanceIdentity());
         UUID runId = coordinator.tick().runId();
         CodexExecutionPort port = command -> new CodexStartReceipt(

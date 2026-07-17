@@ -26,6 +26,16 @@ ai-dispatcher:
     heartbeat-timeout: ${AI_DISPATCHER_CODEX_HEARTBEAT_TIMEOUT:2m}
     retry-delay: ${AI_DISPATCHER_CODEX_RETRY_DELAY:5m}
     max-recovery-attempts: ${AI_DISPATCHER_CODEX_MAX_RECOVERY_ATTEMPTS:3}
+  codex-cli:
+    enabled: ${AI_DISPATCHER_CODEX_CLI_ENABLED:false}
+    executable: ${AI_DISPATCHER_CODEX_CLI_EXECUTABLE:}
+    repository: ${AI_DISPATCHER_CODEX_REPOSITORY:}
+    heartbeat-interval: ${AI_DISPATCHER_CODEX_CLI_HEARTBEAT_INTERVAL:30s}
+    no-progress-timeout: ${AI_DISPATCHER_CODEX_CLI_NO_PROGRESS_TIMEOUT:15m}
+    maximum-runtime: ${AI_DISPATCHER_CODEX_CLI_MAXIMUM_RUNTIME:2h}
+    maximum-json-line-length: ${AI_DISPATCHER_CODEX_CLI_MAXIMUM_JSON_LINE_LENGTH:1048576}
+    maximum-stderr-characters: ${AI_DISPATCHER_CODEX_CLI_MAXIMUM_STDERR_CHARACTERS:16384}
+    maximum-prompt-characters: ${AI_DISPATCHER_CODEX_CLI_MAXIMUM_PROMPT_CHARACTERS:1048576}
   trigger-polling:
     page-size: ${AI_DISPATCHER_TRIGGER_PAGE_SIZE:100}
     max-pages-per-poll: ${AI_DISPATCHER_TRIGGER_MAX_PAGES:10}

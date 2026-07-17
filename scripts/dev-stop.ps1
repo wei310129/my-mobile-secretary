@@ -24,17 +24,23 @@ if ($RemoveVolumes -and -not $Docker) {
 Write-Host "=== Stopping development environment ===" -ForegroundColor Cyan
 $state = Read-DevState
 
-$laneState = Get-DispatcherLaneState
-if (Test-DispatcherLaneActive -State $laneState) {
-    Write-Host "Dispatcher lane is $laneState; stop refused to avoid terminating an active Codex run." `
+$dispatcherPid = Resolve-ManagedProcessId -TrackedProcessId $state.dispatcherPid `
+    -Port $DispatcherPort -Kind "Dispatcher"
+$laneSnapshot = Get-DispatcherLaneSnapshot
+if ($dispatcherPid -and -not $laneSnapshot) {
+    Write-Host "Dispatcher is running but its durable lane cannot be inspected; stop refused." `
+        -ForegroundColor Red
+    Write-Host "Restore Dispatcher DB visibility before stopping the environment." -ForegroundColor Yellow
+    exit 2
+}
+if ($laneSnapshot -and $laneSnapshot.ActiveRunId) {
+    Write-Host "Dispatcher lane is $($laneSnapshot.State) with active run $($laneSnapshot.ActiveRunId); stop refused." `
         -ForegroundColor Red
     Write-Host "Wait for the run to finish before stopping the environment." -ForegroundColor Yellow
     exit 2
 }
 
 # Stop Dispatcher first so it cannot poll while the main application is shutting down.
-$dispatcherPid = Resolve-ManagedProcessId -TrackedProcessId $state.dispatcherPid `
-    -Port $DispatcherPort -Kind "Dispatcher"
 if ($dispatcherPid) {
     Stop-ProcessTree -ProcessId $dispatcherPid -Label "AI Dispatcher"
 } else {

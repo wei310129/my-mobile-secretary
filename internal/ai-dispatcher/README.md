@@ -19,6 +19,8 @@ See [DESIGN.md](DESIGN.md) for the state machine, lifecycle, data model, race an
 operations checklist.
 See [SESSION_BINDING.md](SESSION_BINDING.md) for securely binding the durable
 `development-main` lane to the Codex thread displayed as `開發主要對話`.
+See [CODEX_CLI.md](CODEX_CLI.md) for the disabled-by-default CLI adapter, its security boundary,
+failure semantics, enablement procedure and smoke-test runbook.
 
 ## Local commands
 
@@ -48,8 +50,9 @@ docker compose -f internal/ai-dispatcher/compose.yaml up -d
 .\mvnw.cmd -f internal/ai-dispatcher/pom.xml spring-boot:run
 ```
 
-The application is disabled by default. Set `AI_DISPATCHER_ENABLED=true` only after its durable
-state machine, the named Codex session and a concrete Codex execution adapter have been configured.
+The scheduler and Codex CLI adapter are independently disabled by default. Set
+`AI_DISPATCHER_ENABLED=true` only after the durable state machine, named Codex session and CLI
+adapter have been configured and verified.
 Starting the service with the default configuration therefore proves that its database, migrations
 and HTTP health endpoint are ready; it does not start Codex. The main-application feed is also
 disabled independently. Its minimum settings are:
@@ -70,6 +73,10 @@ LINE-history replay window. Pending and claimed payloads are never purged.
 The session-binding management API is independently disabled by default. Enabling it does not
 enable dispatching or launch Codex. It requires a separate administrator token and is intended for
 explicit setup, verification and controlled rebinding only.
+
+Repository development scripts intentionally disarm automation on ordinary startup. This keeps
+routine main-application work and test runs from consuming Codex tokens. Follow `CODEX_CLI.md` when
+running an explicitly armed Dispatcher process.
 
 ## Removal
 

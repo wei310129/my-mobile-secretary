@@ -7,8 +7,8 @@ The Dispatcher owns one durable logical session:
 - provider: `CODEX_DESKTOP`
 - external session id: the opaque technical Codex thread/session ID
 
-The display name is for operators. It is never used to resume Codex. A future
-`CodexExecutionPort` adapter must start work with the bound technical ID and must correlate every
+The display name is for operators. It is never used to resume Codex. The conditional CLI
+`CodexExecutionPort` adapter starts work with the bound technical ID and correlates every
 heartbeat, status query and completion with the Dispatcher `runId` and fencing token.
 
 ## Obtain the technical ID
@@ -120,6 +120,6 @@ or an uncertain execution.
   never the technical session ID.
 - The API token is configuration-only. It is not stored in the database or returned by an endpoint.
 
-After the binding is `READY`, the health component is healthy, and a concrete execution adapter has
-been integration-tested, set `AI_DISPATCHER_ENABLED=true`. A binding alone cannot launch Codex;
-the adapter remains a separate implementation and deployment concern.
+After the binding is `READY`, configure and verify the independently disabled adapter as documented
+in `CODEX_CLI.md`. A binding alone cannot launch Codex; both the CLI adapter and Dispatcher
+scheduler must be explicitly enabled.

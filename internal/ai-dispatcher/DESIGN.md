@@ -143,6 +143,7 @@ log monitor.
 | `dispatcher_lane` | Singleton coordination row | Row lock serializes state transitions |
 | `dispatcher_run` | Attempt/audit/fencing/heartbeat plus immutable session snapshot | Partial unique index allows one active run globally |
 | `dispatcher_run_event` | Ordered batch membership | A source event belongs once at a position in a run |
+| `codex_execution_attempt` | CLI process/audit/usage correlation | One durable adapter handle per run; a missing live attachment is never treated as not found |
 
 PostgreSQL is the lock and queue. Redis locks, file locks, JVM semaphores and `AtomicBoolean` are
 not correctness mechanisms. The scheduler's `AtomicBoolean` only avoids redundant re-entry inside
@@ -165,6 +166,12 @@ one process; DB constraints and fencing remain authoritative across processes an
   exactly one request can advance a given version.
 - Claim stores the display name, provider, technical session id and binding version on the run.
   Launch and recovery use that snapshot, never a later mutable binding.
+- The CLI adapter invokes an absolute executable with a fixed argument array. Prompt/event data is
+  UTF-8 stdin and never a process argument or shell command.
+- `turn.completed` plus exit code zero is proven success. A failure after `turn.started`, malformed
+  JSONL, session mismatch or supervisor uncertainty pauses with claimed events retained.
+- A process that is alive but produces no JSONL progress stops receiving heartbeats after the
+  configured watchdog deadline. The adapter never kills it automatically or starts a replacement.
 
 The merge strategy is batching, not summarization. Fifty messages create one run with fifty ordered
 event records and their metadata. Dispatcher never performs AI interpretation.
@@ -188,9 +195,10 @@ active state before claiming anything:
 
 ## Heartbeat contract
 
-The adapter should call `CodexLifecycleService.heartbeat(runId, fencingToken)` before the configured
-deadline. It should call `onCodexFinish` exactly once when possible; duplicates are safe. A missed
-heartbeat does not automatically kill or replace Codex. Recovery first queries the external system.
+The adapter calls `CodexLifecycleService.heartbeat(runId, fencingToken)` while its attached process
+is alive and making progress. It calls `onCodexFinish` for proven outcomes and
+`onCodexOutcomeUnknown` when repository side effects cannot be excluded. Callbacks are idempotent.
+A missed heartbeat does not automatically kill or replace Codex.
 
 ## Enablement checklist
 
@@ -199,7 +207,8 @@ heartbeat does not automatically kill or replace Codex. Recovery first queries t
 2. Configure the main application feed with a random token of at least 32 characters and one
    `DEVELOPMENT_FEED_WORKSPACE_ID` / `DEVELOPMENT_FEED_ACTOR_ID`.
 3. Configure Dispatcher with the same token and main base URL.
-4. Supply a `CodexExecutionPort` adapter. This repository deliberately does not control Codex Desktop.
+4. Configure the conditional CLI adapter according to `CODEX_CLI.md`, but keep both enable flags
+   false until its executable, repository and authentication have been verified.
 5. Bind the adapter's real technical session id through the protected management API documented in
    `SESSION_BINDING.md`; the durable display name remains `開發主要對話`.
 6. Keep `AI_DISPATCHER_ENABLED=false` until steps 1-5 are verified, then enable the scheduler.
@@ -239,6 +248,10 @@ Implemented tests cover:
 - authenticated session binding, optimistic version conflicts and immutable audit history.
 - concurrent binding with exactly one winner and run-snapshot launch/recovery correlation.
 - non-sensitive session readiness/version details in Dispatcher health.
+- fixed CLI command/stdin contract, environment allowlist and forward-compatible JSONL parsing.
+- asynchronous process supervision, durable exit/token audit and terminal recovery after restart.
+- confirmed pre-turn failure, uncertain post-turn failure, no-progress watchdog and unattached
+  restart behavior using a fake process without consuming Codex tokens.
 
 Before changing locking, migrations, callbacks, security, cursor format or retention, run both:
 
@@ -260,3 +273,4 @@ Before changing locking, migrations, callbacks, security, cursor format or reten
 9. Generic trigger port and main-feed pull adapter.
 10. Main application's authenticated, actor-scoped, read-only feed.
 11. Payload retention and final cross-build regression.
+12. Disabled-by-default Codex CLI adapter and fail-closed process supervision.

@@ -179,21 +179,37 @@ function Test-DockerDaemon {
     return $LASTEXITCODE -eq 0
 }
 
-# Reads only the single local Dispatcher lane state. This is used to avoid killing a supervised
+# Reads only the single local Dispatcher lane snapshot. This is used to avoid killing a supervised
 # Codex child process during an ordinary restart. Failure to inspect returns $null and never claims
 # that an execution is safe to interrupt.
-function Get-DispatcherLaneState {
+function Get-DispatcherLaneSnapshot {
     if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { return $null }
     if ((Get-ContainerHealth -ContainerName "mms-ai-dispatcher-postgres") -ne "healthy") {
         return $null
     }
     $value = docker exec mms-ai-dispatcher-postgres `
         psql -U ai_dispatcher -d ai_dispatcher -tA `
-        -c "SELECT state FROM dispatcher_lane WHERE lane_key = 'CODEX_DEVELOPMENT';" 2>$null
+        -c "SELECT state || '|' || COALESCE(active_run_id::text, '') FROM dispatcher_lane WHERE lane_key = 'CODEX_DEVELOPMENT';" 2>$null
     if ($LASTEXITCODE -ne 0) { return $null }
-    $state = ($value | Out-String).Trim()
+    $parts = (($value | Out-String).Trim()) -split '\|', 2
+    if ($parts.Count -ne 2) { return $null }
+    $state = $parts[0]
     $known = @("IDLE", "WAITING", "STARTING", "RUNNING", "RECOVERING", "PAUSED")
-    if ($known -contains $state) { return $state }
+    if (-not ($known -contains $state)) { return $null }
+    $activeRunId = $parts[1]
+    if ($activeRunId) {
+        $parsedRunId = [guid]::Empty
+        if (-not [guid]::TryParse($activeRunId, [ref]$parsedRunId)) { return $null }
+    }
+    return [pscustomobject]@{
+        State       = $state
+        ActiveRunId = $activeRunId
+    }
+}
+
+function Get-DispatcherLaneState {
+    $snapshot = Get-DispatcherLaneSnapshot
+    if ($snapshot) { return $snapshot.State }
     return $null
 }
 

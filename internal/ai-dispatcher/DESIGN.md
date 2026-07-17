@@ -8,7 +8,7 @@
  | LINE webhook -> normal application transaction               |
  |                  -> line_message_log                          |
  |                                                              |
- | GET /internal/integration/v1/development-events              |
+ | GET /internal/integration/v2/development-issues              |
  |   read-only / cursor based / actor+workspace RLS / token auth |
  +------------------------------^-------------------------------+
                                 | pull only
@@ -27,7 +27,7 @@
  |                     LifecycleService <- finish / heartbeat    |
  |                     RecoveryService  <- status query          |
  |                                                              |
- | CodexExecutionPort is an intentionally unimplemented adapter  |
+ | CliCodexExecutionAdapter (disabled unless explicitly armed)    |
  +--------------------------------------------------------------+
 ```
 

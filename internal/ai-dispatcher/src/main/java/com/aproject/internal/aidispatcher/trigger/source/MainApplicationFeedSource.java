@@ -16,8 +16,10 @@ import org.springframework.web.client.RestClient;
         prefix = "ai-dispatcher.main-feed", name = "enabled", havingValue = "true")
 public class MainApplicationFeedSource implements TriggerSource {
 
-    public static final String SOURCE_KEY = "main-conversation-feed-v1";
-    private static final String FEED_PATH = "/internal/integration/v1/development-events";
+    public static final String SOURCE_KEY = "main-development-issue-feed-v2";
+    private static final String FEED_PATH = "/internal/integration/v2/development-issues";
+    private static final String SUPPORTED_EVENT_TYPE = "intent.issue.opened";
+    private static final int SUPPORTED_SCHEMA_VERSION = 2;
 
     private final RestClient restClient;
     private final ObjectMapper objectMapper;
@@ -91,6 +93,11 @@ public class MainApplicationFeedSource implements TriggerSource {
     private DevelopmentTriggerEvent mapEvent(FeedEvent event) {
         if (event == null) {
             throw new IllegalStateException("Main application feed contains a null event");
+        }
+        if (!SUPPORTED_EVENT_TYPE.equals(event.type())
+                || event.schemaVersion() != SUPPORTED_SCHEMA_VERSION) {
+            throw new IllegalStateException(
+                    "Main application feed returned an unsupported event contract");
         }
         try {
             String metadata = objectMapper.writeValueAsString(

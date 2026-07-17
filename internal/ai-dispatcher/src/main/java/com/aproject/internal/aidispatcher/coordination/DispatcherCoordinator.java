@@ -27,6 +27,8 @@ public class DispatcherCoordinator {
     private final Clock clock;
     private final DispatcherInstanceIdentity instanceIdentity;
     private final QuietPeriodPolicy quietPeriodPolicy;
+    private final int maxEventsPerRun;
+    private final int maxEventPayloadBytesPerRun;
     private final DispatcherStateMachine stateMachine = new DispatcherStateMachine();
 
     public DispatcherCoordinator(JdbcTemplate jdbcTemplate,
@@ -40,6 +42,8 @@ public class DispatcherCoordinator {
         this.instanceIdentity = instanceIdentity;
         this.quietPeriodPolicy = new QuietPeriodPolicy(
                 properties.quietPeriod(), properties.maximumWait());
+        this.maxEventsPerRun = properties.maxEventsPerRun();
+        this.maxEventPayloadBytesPerRun = properties.maxEventPayloadBytesPerRun();
     }
 
     public DispatcherTickResult tick() {
@@ -81,14 +85,6 @@ public class DispatcherCoordinator {
             return DispatcherTickResult.idle();
         }
 
-        PendingAggregate lockedAggregate = PendingAggregate.from(events);
-        DispatchSchedule lockedSchedule = schedule(
-                lockedAggregate, previousRunFinishedAt, lane.retryNotBefore());
-        if (!lockedSchedule.isEligibleAt(now)) {
-            moveToWaiting(lane.state(), lockedAggregate, lockedSchedule, now);
-            return DispatcherTickResult.waiting(
-                    lockedAggregate.eventCount(), lockedSchedule.eligibleAt());
-        }
         SessionRow session = readySession();
         if (session == null) {
             moveToPausedForSession(lane.state(), now);
@@ -128,15 +124,35 @@ public class DispatcherCoordinator {
     }
 
     private List<PendingEventRow> lockPendingEvents() {
-        return jdbcTemplate.query("""
-                SELECT id, recorded_at
+        List<PendingEventRow> candidates = jdbcTemplate.query("""
+                SELECT id, recorded_at,
+                       octet_length(source_key)
+                           + octet_length(source_event_id)
+                           + octet_length(trigger_type)
+                           + octet_length(subject_ref)
+                           + octet_length(metadata::text)
+                           + 128 AS payload_bytes
                 FROM dispatcher_event
                 WHERE processing_state = 'PENDING'
                 ORDER BY recorded_at, id
+                LIMIT ?
                 FOR UPDATE
                 """, (resultSet, rowNumber) -> new PendingEventRow(
                         resultSet.getLong("id"),
-                        resultSet.getTimestamp("recorded_at").toInstant()));
+                        resultSet.getTimestamp("recorded_at").toInstant(),
+                        resultSet.getInt("payload_bytes")),
+                maxEventsPerRun);
+        int selectedBytes = 0;
+        int selectedCount = 0;
+        for (PendingEventRow candidate : candidates) {
+            if (selectedCount > 0
+                    && selectedBytes + candidate.payloadBytes() > maxEventPayloadBytesPerRun) {
+                break;
+            }
+            selectedBytes = Math.addExact(selectedBytes, candidate.payloadBytes());
+            selectedCount++;
+        }
+        return candidates.subList(0, selectedCount);
     }
 
     private Instant lastRunFinishedAt() {
@@ -297,7 +313,7 @@ public class DispatcherCoordinator {
     private record LaneRow(DispatcherState state, long fencingToken, Instant retryNotBefore) {
     }
 
-    private record PendingEventRow(long id, Instant recordedAt) {
+    private record PendingEventRow(long id, Instant recordedAt, int payloadBytes) {
     }
 
     private record SessionRow(
@@ -309,10 +325,5 @@ public class DispatcherCoordinator {
     }
 
     private record PendingAggregate(long eventCount, Instant firstRecordedAt, Instant lastRecordedAt) {
-
-        private static PendingAggregate from(List<PendingEventRow> rows) {
-            return new PendingAggregate(
-                    rows.size(), rows.getFirst().recordedAt(), rows.getLast().recordedAt());
-        }
     }
 }

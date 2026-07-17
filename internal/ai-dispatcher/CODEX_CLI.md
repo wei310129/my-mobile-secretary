@@ -54,7 +54,12 @@ AI_DISPATCHER_CODEX_CLI_MAXIMUM_RUNTIME=2h
 AI_DISPATCHER_CODEX_CLI_MAXIMUM_JSON_LINE_LENGTH=1048576
 AI_DISPATCHER_CODEX_CLI_MAXIMUM_STDERR_CHARACTERS=16384
 AI_DISPATCHER_CODEX_CLI_MAXIMUM_PROMPT_CHARACTERS=1048576
+AI_DISPATCHER_MAX_EVENTS_PER_RUN=20
+AI_DISPATCHER_MAX_EVENT_PAYLOAD_BYTES_PER_RUN=65536
 ```
+
+The run limits are enforced before the CLI prompt is rendered. Events beyond either budget remain
+pending in the Dispatcher database for a later run; they are not dropped or summarized.
 
 The adapter flag only creates the execution port. New work starts only when all of these independent
 conditions are also satisfied:

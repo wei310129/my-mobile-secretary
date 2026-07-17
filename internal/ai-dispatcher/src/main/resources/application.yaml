@@ -22,6 +22,8 @@ ai-dispatcher:
   poll-interval: ${AI_DISPATCHER_POLL_INTERVAL:1s}
   quiet-period: ${AI_DISPATCHER_QUIET_PERIOD:5m}
   maximum-wait: ${AI_DISPATCHER_MAXIMUM_WAIT:30m}
+  max-events-per-run: ${AI_DISPATCHER_MAX_EVENTS_PER_RUN:20}
+  max-event-payload-bytes-per-run: ${AI_DISPATCHER_MAX_EVENT_PAYLOAD_BYTES_PER_RUN:65536}
   codex:
     heartbeat-timeout: ${AI_DISPATCHER_CODEX_HEARTBEAT_TIMEOUT:2m}
     retry-delay: ${AI_DISPATCHER_CODEX_RETRY_DELAY:5m}

@@ -18,4 +18,14 @@ class DispatcherPropertiesTest {
         assertThatIllegalArgumentException().isThrownBy(() -> new DispatcherProperties(
                 false, Duration.ZERO, Duration.ofMinutes(5), Duration.ofMinutes(30)));
     }
+
+    @Test
+    void rejectsNonPositiveRunLimits() {
+        assertThatIllegalArgumentException().isThrownBy(() -> new DispatcherProperties(
+                false, Duration.ofSeconds(1), Duration.ofMinutes(5), Duration.ofMinutes(30),
+                0, 65_536));
+        assertThatIllegalArgumentException().isThrownBy(() -> new DispatcherProperties(
+                false, Duration.ofSeconds(1), Duration.ofMinutes(5), Duration.ofMinutes(30),
+                20, 0));
+    }
 }

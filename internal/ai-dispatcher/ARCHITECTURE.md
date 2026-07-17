@@ -39,21 +39,21 @@ representation and compatibility tests the serialized contract.
 
 ## Integration contract
 
-The future trigger feed must be versioned and cursor based. Its minimum behavior is:
+The trigger feed is versioned and cursor based. Its minimum behavior is:
 
 ```text
-GET /internal/integration/v1/development-events?after=<opaque-cursor>&limit=<n>
+GET /internal/integration/v2/development-issues?after=<opaque-cursor>&limit=<n>
 
 200 OK
 {
   "events": [
     {
-      "eventId": "stable-source-id",
-      "type": "line.conversation.recorded",
+      "eventId": "intent-issue:stable-source-id",
+      "type": "intent.issue.opened",
       "occurredAt": "instant",
       "subjectRef": "opaque-reference",
-      "schemaVersion": 1,
-      "metadata": {"messageType": "TEXT", "text": "development request"}
+      "schemaVersion": 2,
+      "metadata": {"category": "unsupported_intent", "utterance": "development request"}
     }
   ],
   "nextCursor": "opaque-cursor",
@@ -70,9 +70,10 @@ The implemented contract has these requirements:
 - Feed unavailability only delays Dispatcher work.
 - Dispatcher persists an event before advancing its local cursor.
 
-The quiet-period batch is the merge boundary. Fifty feed events become one Codex run containing
-fifty ordered event references; Dispatcher does not summarize or semantically merge user text.
-This avoids data loss and keeps AI reasoning outside Dispatcher.
+The quiet-period batch is the merge boundary. One Codex run contains at most the configured event
+count and payload-byte budget; overflow remains pending for later runs. Dispatcher does not
+summarize or semantically merge user text. This avoids data loss, bounds token exposure and keeps
+AI reasoning outside Dispatcher.
 
 ## Database boundary
 

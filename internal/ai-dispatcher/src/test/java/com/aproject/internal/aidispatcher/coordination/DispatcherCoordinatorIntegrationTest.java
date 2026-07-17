@@ -28,7 +28,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 class DispatcherCoordinatorIntegrationTest {
 
     private static final Instant BASE = Instant.parse("2026-07-17T00:00:00Z");
-    private static final String SOURCE = "main-conversation-feed-v1";
+    private static final String SOURCE = "main-development-issue-feed-v2";
 
     @Container
     private static final PostgreSQLContainer<?> POSTGRES =
@@ -94,6 +94,35 @@ class DispatcherCoordinatorIntegrationTest {
         assertThat(runEventCount(result.runId())).isEqualTo(100);
         assertThat(runSessionSnapshot(result.runId())).isEqualTo("session-test");
         assertThat(laneState()).isEqualTo("STARTING");
+    }
+
+    @Test
+    void capsEachRunByEventCountAndLeavesTheRemainderPending() {
+        for (int index = 1; index <= 5; index++) {
+            insertEvent("event-" + index, BASE);
+        }
+
+        DispatcherTickResult result = coordinatorAt(
+                BASE.plus(Duration.ofMinutes(5)), "instance-a", 2, 65_536).tick();
+
+        assertThat(result.outcome()).isEqualTo(DispatcherTickResult.Outcome.CLAIMED);
+        assertThat(result.eventCount()).isEqualTo(2);
+        assertThat(countByEventState("CLAIMED")).isEqualTo(2);
+        assertThat(countByEventState("PENDING")).isEqualTo(3);
+    }
+
+    @Test
+    void capsEachRunByPayloadBytesAfterAtLeastOneEvent() {
+        insertEvent("event-1", BASE, "x".repeat(512));
+        insertEvent("event-2", BASE, "x".repeat(512));
+
+        DispatcherTickResult result = coordinatorAt(
+                BASE.plus(Duration.ofMinutes(5)), "instance-a", 20, 700).tick();
+
+        assertThat(result.outcome()).isEqualTo(DispatcherTickResult.Outcome.CLAIMED);
+        assertThat(result.eventCount()).isEqualTo(1);
+        assertThat(countByEventState("CLAIMED")).isEqualTo(1);
+        assertThat(countByEventState("PENDING")).isEqualTo(1);
     }
 
     @Test
@@ -188,6 +217,13 @@ class DispatcherCoordinatorIntegrationTest {
     }
 
     private DispatcherCoordinator coordinatorAt(Instant now, String instanceId) {
+        return coordinatorAt(now, instanceId, 100, 65_536);
+    }
+
+    private DispatcherCoordinator coordinatorAt(Instant now,
+                                                String instanceId,
+                                                int maxEventsPerRun,
+                                                int maxPayloadBytesPerRun) {
         return new DispatcherCoordinator(
                 jdbcTemplate,
                 new DataSourceTransactionManager(dataSource),
@@ -196,18 +232,25 @@ class DispatcherCoordinatorIntegrationTest {
                         false,
                         Duration.ofSeconds(1),
                         Duration.ofMinutes(5),
-                        Duration.ofMinutes(30)),
+                        Duration.ofMinutes(30),
+                        maxEventsPerRun,
+                        maxPayloadBytesPerRun),
                 new DispatcherInstanceIdentity(instanceId));
     }
 
     private void insertEvent(String eventId, Instant recordedAt) {
+        insertEvent(eventId, recordedAt, "");
+    }
+
+    private void insertEvent(String eventId, Instant recordedAt, String payload) {
         jdbcTemplate.update("""
                 INSERT INTO dispatcher_event (
                     source_key, source_event_id, trigger_type, subject_ref,
                     schema_version, occurred_at, recorded_at, processing_state, metadata)
-                VALUES (?, ?, 'line.conversation.recorded', ?, 1, ?, ?, 'PENDING', '{}'::jsonb)
-                """, SOURCE, eventId, "line-message:" + eventId,
-                Timestamp.from(recordedAt), Timestamp.from(recordedAt));
+                VALUES (?, ?, 'intent.issue.opened', ?, 2, ?, ?, 'PENDING',
+                        jsonb_build_object('utterance', ?))
+                """, SOURCE, eventId, "intent-issue:" + eventId,
+                Timestamp.from(recordedAt), Timestamp.from(recordedAt), payload);
     }
 
     private String laneState() {

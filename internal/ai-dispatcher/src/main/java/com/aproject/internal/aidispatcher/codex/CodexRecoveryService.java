@@ -71,7 +71,9 @@ public class CodexRecoveryService {
         List<RunRow> runs = jdbcTemplate.query("""
                 SELECT r.status, r.fencing_token, r.external_execution_id,
                        r.launch_dispatched_at, r.heartbeat_deadline,
-                       r.recovery_attempt_count, r.updated_at, s.external_session_id
+                       r.recovery_attempt_count, r.updated_at,
+                       COALESCE(r.external_session_id_snapshot, s.external_session_id)
+                           AS external_session_id
                 FROM dispatcher_run r
                 JOIN agent_session s ON s.session_key = r.session_key
                 WHERE r.run_id = ?

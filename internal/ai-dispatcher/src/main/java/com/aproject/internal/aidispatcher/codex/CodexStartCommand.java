@@ -8,7 +8,9 @@ public record CodexStartCommand(
         long fencingToken,
         String sessionKey,
         String sessionDisplayName,
+        String sessionProvider,
         String externalSessionId,
+        long sessionBindingVersion,
         List<CodexEventReference> events
 ) {
 
@@ -16,6 +18,13 @@ public record CodexStartCommand(
         events = List.copyOf(events);
         if (events.isEmpty()) {
             throw new IllegalArgumentException("A Codex start command requires at least one event");
+        }
+        if (sessionKey == null || sessionKey.isBlank()
+                || sessionDisplayName == null || sessionDisplayName.isBlank()
+                || sessionProvider == null || sessionProvider.isBlank()
+                || externalSessionId == null || externalSessionId.isBlank()
+                || sessionBindingVersion < 0) {
+            throw new IllegalArgumentException("A Codex start command requires a session binding snapshot");
         }
     }
 }

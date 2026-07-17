@@ -89,11 +89,12 @@ public class DispatcherCoordinator {
             return DispatcherTickResult.waiting(
                     lockedAggregate.eventCount(), lockedSchedule.eligibleAt());
         }
-        if (!sessionIsReady()) {
+        SessionRow session = readySession();
+        if (session == null) {
             moveToPausedForSession(lane.state(), now);
             return DispatcherTickResult.paused();
         }
-        return claimRun(lane, events, now);
+        return claimRun(lane, events, session, now);
     }
 
     private LaneRow lockLane() {
@@ -147,13 +148,21 @@ public class DispatcherCoordinator {
         return instant(value);
     }
 
-    private boolean sessionIsReady() {
-        Boolean ready = jdbcTemplate.queryForObject("""
-                SELECT status = 'READY' AND external_session_id IS NOT NULL
+    private SessionRow readySession() {
+        List<SessionRow> rows = jdbcTemplate.query("""
+                SELECT display_name, provider, external_session_id, version
                 FROM agent_session
-                WHERE session_key = ?
-                """, Boolean.class, SESSION_KEY);
-        return Boolean.TRUE.equals(ready);
+                WHERE session_key = ? AND status = 'READY' AND external_session_id IS NOT NULL
+                FOR SHARE
+                """, (resultSet, rowNumber) -> new SessionRow(
+                        resultSet.getString("display_name"),
+                        resultSet.getString("provider"),
+                        resultSet.getString("external_session_id"),
+                        resultSet.getLong("version")), SESSION_KEY);
+        if (rows.size() > 1) {
+            throw new IllegalStateException("Development session is duplicated");
+        }
+        return rows.isEmpty() ? null : rows.getFirst();
     }
 
     private DispatchSchedule schedule(PendingAggregate aggregate,
@@ -216,6 +225,7 @@ public class DispatcherCoordinator {
 
     private DispatcherTickResult claimRun(LaneRow lane,
                                           List<PendingEventRow> events,
+                                          SessionRow session,
                                           Instant now) {
         DispatcherState waitingState = lane.state();
         if (waitingState == DispatcherState.IDLE) {
@@ -229,11 +239,15 @@ public class DispatcherCoordinator {
         jdbcTemplate.update("""
                 INSERT INTO dispatcher_run (
                     run_id, lane_key, run_sequence, fencing_token, status, session_key,
+                    session_display_name_snapshot, session_provider_snapshot,
+                    external_session_id_snapshot, session_binding_version,
                     starter_instance_id, event_count, start_requested_at,
                     recovery_attempt_count, created_at, updated_at)
-                VALUES (?, ?, ?, ?, 'STARTING', ?, ?, ?, ?, 0, ?, ?)
+                VALUES (?, ?, ?, ?, 'STARTING', ?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?)
                 """, runId, LANE_KEY, nextToken, nextToken, SESSION_KEY,
-                instanceIdentity.value(), eventCount, timestamp(now), timestamp(now), timestamp(now));
+                session.displayName(), session.provider(), session.externalSessionId(),
+                session.version(), instanceIdentity.value(), eventCount,
+                timestamp(now), timestamp(now), timestamp(now));
 
         int position = 0;
         for (PendingEventRow event : events) {
@@ -284,6 +298,14 @@ public class DispatcherCoordinator {
     }
 
     private record PendingEventRow(long id, Instant recordedAt) {
+    }
+
+    private record SessionRow(
+            String displayName,
+            String provider,
+            String externalSessionId,
+            long version
+    ) {
     }
 
     private record PendingAggregate(long eventCount, Instant firstRecordedAt, Instant lastRecordedAt) {

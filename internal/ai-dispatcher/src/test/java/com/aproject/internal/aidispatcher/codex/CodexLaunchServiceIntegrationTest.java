@@ -68,7 +68,7 @@ class CodexLaunchServiceIntegrationTest {
                 UPDATE agent_session
                 SET status = 'READY', external_session_id = 'codex-session-123',
                     bound_at = CURRENT_TIMESTAMP, last_verified_at = CURRENT_TIMESTAMP,
-                    version = version + 1, updated_at = CURRENT_TIMESTAMP
+                    version = 10, updated_at = CURRENT_TIMESTAMP
                 WHERE session_key = 'development-main'
                 """);
         clock = Clock.fixed(BASE.plus(Duration.ofMinutes(5)), ZoneOffset.UTC);
@@ -90,8 +90,33 @@ class CodexLaunchServiceIntegrationTest {
         assertThat(laneState()).isEqualTo("RUNNING");
         assertThat(captured.get().sessionDisplayName()).isEqualTo("開發主要對話");
         assertThat(captured.get().externalSessionId()).isEqualTo("codex-session-123");
+        assertThat(captured.get().sessionProvider()).isEqualTo("CODEX_DESKTOP");
+        assertThat(captured.get().sessionBindingVersion()).isEqualTo(10);
         assertThat(captured.get().events()).hasSize(1);
         assertThat(captured.get().events().getFirst().metadataJson()).isEqualTo("{}");
+    }
+
+    @Test
+    void usesTheClaimTimeBindingSnapshotIfTheRegistryRowDrifts() {
+        UUID runId = claimOneEvent();
+        jdbcTemplate.update("""
+                UPDATE agent_session
+                SET external_session_id = 'different-session-after-claim', version = 11,
+                    bound_at = CURRENT_TIMESTAMP, last_verified_at = CURRENT_TIMESTAMP,
+                    updated_at = CURRENT_TIMESTAMP
+                WHERE session_key = 'development-main'
+                """);
+        AtomicReference<CodexStartCommand> captured = new AtomicReference<>();
+        CodexExecutionPort port = command -> {
+            captured.set(command);
+            return new CodexStartReceipt("execution-snapshot", BASE.plus(Duration.ofMinutes(5)));
+        };
+
+        CodexLaunchResult result = launchService(port).launch(runId);
+
+        assertThat(result.outcome()).isEqualTo(CodexLaunchResult.Outcome.STARTED);
+        assertThat(captured.get().externalSessionId()).isEqualTo("codex-session-123");
+        assertThat(captured.get().sessionBindingVersion()).isEqualTo(10);
     }
 
     @Test

@@ -92,6 +92,7 @@ class DispatcherCoordinatorIntegrationTest {
         assertThat(runCount()).isEqualTo(1);
         assertThat(countByEventState("CLAIMED")).isEqualTo(100);
         assertThat(runEventCount(result.runId())).isEqualTo(100);
+        assertThat(runSessionSnapshot(result.runId())).isEqualTo("session-test");
         assertThat(laneState()).isEqualTo("STARTING");
     }
 
@@ -229,5 +230,11 @@ class DispatcherCoordinatorIntegrationTest {
         return jdbcTemplate.queryForObject("""
                 SELECT COUNT(*) FROM dispatcher_run_event WHERE run_id = ?
                 """, Long.class, runId);
+    }
+
+    private String runSessionSnapshot(java.util.UUID runId) {
+        return jdbcTemplate.queryForObject("""
+                SELECT external_session_id_snapshot FROM dispatcher_run WHERE run_id = ?
+                """, String.class, runId);
     }
 }

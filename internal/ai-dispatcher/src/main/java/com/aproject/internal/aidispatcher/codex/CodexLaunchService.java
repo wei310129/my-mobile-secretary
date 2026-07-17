@@ -62,8 +62,13 @@ public class CodexLaunchService {
 
     private LaunchPreparation claimLaunchHandoff(UUID runId) {
         List<LaunchRow> rows = jdbcTemplate.query("""
-                SELECT r.fencing_token, r.launch_dispatched_at,
-                       s.session_key, s.display_name, s.external_session_id, s.status
+                SELECT r.fencing_token, r.launch_dispatched_at, r.session_key,
+                       COALESCE(r.session_display_name_snapshot, s.display_name) AS display_name,
+                       COALESCE(r.session_provider_snapshot, s.provider) AS provider,
+                       COALESCE(r.external_session_id_snapshot, s.external_session_id)
+                           AS external_session_id,
+                       COALESCE(r.session_binding_version, s.version) AS binding_version,
+                       s.status
                 FROM dispatcher_lane l
                 JOIN dispatcher_run r ON r.run_id = l.active_run_id
                 JOIN agent_session s ON s.session_key = r.session_key
@@ -77,7 +82,9 @@ public class CodexLaunchService {
                         resultSet.getTimestamp("launch_dispatched_at"),
                         resultSet.getString("session_key"),
                         resultSet.getString("display_name"),
+                        resultSet.getString("provider"),
                         resultSet.getString("external_session_id"),
+                        resultSet.getLong("binding_version"),
                         resultSet.getString("status")), runId);
         if (rows.isEmpty()) {
             return LaunchPreparation.withoutCommand(CodexLaunchResult.Outcome.NOT_ACTIVE);
@@ -122,7 +129,9 @@ public class CodexLaunchService {
                 row.fencingToken(),
                 row.sessionKey(),
                 row.displayName(),
+                row.provider(),
                 row.externalSessionId(),
+                row.bindingVersion(),
                 events));
     }
 
@@ -170,7 +179,9 @@ public class CodexLaunchService {
             Timestamp launchDispatchedAt,
             String sessionKey,
             String displayName,
+            String provider,
             String externalSessionId,
+            long bindingVersion,
             String sessionStatus
     ) {
     }

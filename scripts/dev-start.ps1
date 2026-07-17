@@ -82,7 +82,7 @@ if (-not $NoNgrok) {
             exit 1
         }
         $proc = Start-Process -FilePath $ngrokExe `
-            -ArgumentList "http", "$AppPort", "--log=stdout" `
+            -ArgumentList "http", "$AppPort", "--log=stdout", "--log-level=warn" `
             -WorkingDirectory $RepoRoot -WindowStyle Hidden -PassThru `
             -RedirectStandardOutput (Join-Path $LogsDir "ngrok.out.log") `
             -RedirectStandardError (Join-Path $LogsDir "ngrok.err.log")
@@ -147,6 +147,6 @@ if ($ngrokUrl) {
     Write-Host "LINE webhook: $ngrokUrl/api/line/webhook" -ForegroundColor Cyan
     Write-Host "  (網址每次重啟 ngrok 會換,記得回 LINE Developers Console 更新)" -ForegroundColor DarkGray
 }
-Write-Host "log:        scripts\.logs\*.log"
+Write-Host "log:        scripts\.logs\spring-boot.log (10 MB 分卷，總量上限 100 MB)"
 Write-Host "查狀態:     .\dev-status.ps1"
 Write-Host "停止:       .\dev-stop.ps1"

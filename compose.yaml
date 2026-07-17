@@ -1,5 +1,11 @@
 # Phase 0 本機基礎設施:PostgreSQL(含 PostGIS)+ Redis
 # 啟動:docker compose up -d
+x-local-logging: &local-logging
+  driver: json-file
+  options:
+    max-size: "10m"
+    max-file: "3"
+
 services:
   postgres:
     image: postgis/postgis:16-3.4
@@ -17,6 +23,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    logging: *local-logging
 
   redis:
     image: redis:7-alpine
@@ -30,6 +37,7 @@ services:
       interval: 5s
       timeout: 3s
       retries: 10
+    logging: *local-logging
 
 volumes:
   postgres-data:

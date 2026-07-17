@@ -22,6 +22,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev-stop.ps1
 及 Spring Boot actuator health；任何必要服務不健康都會回傳非零 exit code。若本機允許
 執行 PowerShell 腳本，也可在 `scripts` 目錄直接使用 `.\dev-restart.ps1`。
 
+本機 Spring Boot 應用日誌寫入 `scripts\.logs\spring-boot.log`，每個檔案最多 10 MB、
+保留 7 天且總量最多 100 MB。`spring-boot.out.log` / `spring-boot.err.log` 只保留 Maven
+啟動器輸出；ngrok 只記錄警告以上。Postgres 與 Redis 的 Docker 日誌各自限制為
+3 個 10 MB 檔案，避免長時間錯誤迴圈填滿 Docker Desktop 虛擬磁碟。
+
 ## PowerShell 腳本
 
 第一次先建地點與任務:

@@ -35,6 +35,7 @@ class CodexCliContractTest {
                 executable.toString(), "--cd", repository.toString(),
                 "--sandbox", "workspace-write", "--ask-for-approval", "never",
                 "--config", "sandbox_workspace_write.network_access=false",
+                "--config", "shell_environment_policy.include_only=[\"PATH\",\"HOME\",\"USERPROFILE\",\"TEMP\",\"TMP\",\"SystemRoot\",\"ComSpec\"]",
                 "exec", "--json", "resume",
                 "0199a213-81c0-7800-8aa1-bbab2a035a53", "-");
         assertThat(spec.command()).doesNotContain("--last", "danger-full-access");

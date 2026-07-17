@@ -1,0 +1,27 @@
+name: mms-ai-dispatcher
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: mms-ai-dispatcher-postgres
+    environment:
+      POSTGRES_DB: ai_dispatcher
+      POSTGRES_USER: ai_dispatcher
+      POSTGRES_PASSWORD: ai-dispatcher-local-dev
+    ports:
+      - "5433:5432"
+    volumes:
+      - ai-dispatcher-postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ai_dispatcher -d ai_dispatcher"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+
+volumes:
+  ai-dispatcher-postgres-data:

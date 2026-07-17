@@ -1,0 +1,24 @@
+spring:
+  application:
+    name: ai-dispatcher
+  datasource:
+    url: ${AI_DISPATCHER_DB_URL:jdbc:postgresql://localhost:5433/ai_dispatcher}
+    username: ${AI_DISPATCHER_DB_USERNAME:ai_dispatcher}
+    password: ${AI_DISPATCHER_DB_PASSWORD:ai-dispatcher-local-dev}
+  flyway:
+    enabled: true
+
+server:
+  port: ${AI_DISPATCHER_PORT:8091}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+ai-dispatcher:
+  enabled: ${AI_DISPATCHER_ENABLED:false}
+  poll-interval: ${AI_DISPATCHER_POLL_INTERVAL:1s}
+  quiet-period: ${AI_DISPATCHER_QUIET_PERIOD:5m}
+  maximum-wait: ${AI_DISPATCHER_MAXIMUM_WAIT:30m}

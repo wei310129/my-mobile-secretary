@@ -4,6 +4,7 @@ import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContex
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.shared.observability.SensitiveValueFingerprint;
 import java.nio.charset.StandardCharsets;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
@@ -75,7 +76,8 @@ public class NotificationPublisher {
                     ON CONFLICT (workspace_id, delivery_key, channel) DO NOTHING
                     """, scope.workspaceId(), scope.actorId(), deliveryId, request.deliveryKey(),
                     targetUserId, channelName, destination, request.reminderId(),
-                    request.taskId(), request.title(), request.message(), retrySafe, now, now);
+                    request.taskId(), request.title(), request.message(), retrySafe,
+                    Timestamp.from(now), Timestamp.from(now));
         }
         return inserted;
     }

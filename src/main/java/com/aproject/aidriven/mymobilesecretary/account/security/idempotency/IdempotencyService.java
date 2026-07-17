@@ -6,6 +6,7 @@ import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.sql.ResultSet;
 import java.sql.SQLException;
+import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.HexFormat;
@@ -63,7 +64,8 @@ public class IdempotencyService {
                    OR (idempotency_record.status = 'FAILED'
                        AND idempotency_record.request_hash = EXCLUDED.request_hash)
                 """, workspaceId, actorUserId, safeChannel, safeKey, requestHash,
-                now, now, now.plus(properties.retention()));
+                sqlTimestamp(now), sqlTimestamp(now),
+                sqlTimestamp(now.plus(properties.retention())));
         if (inserted == 1) {
             return new BeginResult(State.NEW, null, null);
         }
@@ -102,7 +104,8 @@ public class IdempotencyService {
                 SET status = 'UNKNOWN', response_action = 'EXECUTION_STARTED', updated_at = ?
                 WHERE workspace_id = ? AND actor_user_id = ? AND channel = ?
                     AND idempotency_key = ? AND status = 'RESERVED'
-                """, Instant.now(clock), workspaceId, actorUserId, normalizeChannel(channel),
+                """, sqlTimestamp(Instant.now(clock)), workspaceId, actorUserId,
+                normalizeChannel(channel),
                 idempotencyKey);
         requireTransition(updated, "start execution");
     }
@@ -119,7 +122,8 @@ public class IdempotencyService {
                     response_cipher_key_id = ?, updated_at = ?
                 WHERE workspace_id = ? AND actor_user_id = ? AND channel = ?
                     AND idempotency_key = ? AND status = 'UNKNOWN'
-                """, optionalText(responseAction, 80), payload, keyId, Instant.now(clock),
+                """, optionalText(responseAction, 80), payload, keyId,
+                sqlTimestamp(Instant.now(clock)),
                 workspaceId, actorUserId, normalizeChannel(channel), idempotencyKey);
         requireTransition(updated, "complete execution");
     }
@@ -133,7 +137,8 @@ public class IdempotencyService {
                 SET status = 'FAILED', response_action = ?, updated_at = ?
                 WHERE workspace_id = ? AND actor_user_id = ? AND channel = ?
                     AND idempotency_key = ? AND status = 'RESERVED'
-                """, optionalText(reasonCode, 80), Instant.now(clock), workspaceId, actorUserId,
+                """, optionalText(reasonCode, 80), sqlTimestamp(Instant.now(clock)),
+                workspaceId, actorUserId,
                 normalizeChannel(channel), idempotencyKey);
         requireTransition(updated, "fail reservation");
     }
@@ -147,14 +152,15 @@ public class IdempotencyService {
                 SET response_action = ?, updated_at = ?
                 WHERE workspace_id = ? AND actor_user_id = ? AND channel = ?
                     AND idempotency_key = ? AND status = 'UNKNOWN'
-                """, optionalText(reasonCode, 80), Instant.now(clock), workspaceId, actorUserId,
+                """, optionalText(reasonCode, 80), sqlTimestamp(Instant.now(clock)),
+                workspaceId, actorUserId,
                 normalizeChannel(channel), idempotencyKey);
     }
 
     @Transactional
     public int purgeExpired() {
         return jdbcTemplate.update("DELETE FROM idempotency_record WHERE expires_at < ?",
-                Instant.now(clock));
+                sqlTimestamp(Instant.now(clock)));
     }
 
     static String sha256(String value) {
@@ -215,6 +221,10 @@ public class IdempotencyService {
         if (updated != 1) {
             throw new IllegalStateException("Idempotency could not " + operation);
         }
+    }
+
+    private static Timestamp sqlTimestamp(Instant value) {
+        return Timestamp.from(value);
     }
 
     public enum State {

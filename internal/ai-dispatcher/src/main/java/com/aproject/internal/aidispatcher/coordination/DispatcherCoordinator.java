@@ -89,6 +89,10 @@ public class DispatcherCoordinator {
             return DispatcherTickResult.waiting(
                     lockedAggregate.eventCount(), lockedSchedule.eligibleAt());
         }
+        if (!sessionIsReady()) {
+            moveToPausedForSession(lane.state(), now);
+            return DispatcherTickResult.paused();
+        }
         return claimRun(lane, events, now);
     }
 
@@ -143,6 +147,15 @@ public class DispatcherCoordinator {
         return instant(value);
     }
 
+    private boolean sessionIsReady() {
+        Boolean ready = jdbcTemplate.queryForObject("""
+                SELECT status = 'READY' AND external_session_id IS NOT NULL
+                FROM agent_session
+                WHERE session_key = ?
+                """, Boolean.class, SESSION_KEY);
+        return Boolean.TRUE.equals(ready);
+    }
+
     private DispatchSchedule schedule(PendingAggregate aggregate,
                                       Instant previousRunFinishedAt,
                                       Instant retryNotBefore) {
@@ -184,6 +197,20 @@ public class DispatcherCoordinator {
                 """, timestamp(aggregate.firstRecordedAt()),
                 timestamp(aggregate.lastRecordedAt()),
                 timestamp(schedule.eligibleAt()), timestamp(now), LANE_KEY);
+        requireSingleLaneUpdate(updated);
+    }
+
+    private void moveToPausedForSession(DispatcherState current, Instant now) {
+        stateMachine.transition(current, DispatcherState.PAUSED);
+        int updated = jdbcTemplate.update("""
+                UPDATE dispatcher_lane
+                SET state = 'PAUSED', active_run_id = NULL,
+                    eligible_at = NULL, retry_not_before = NULL,
+                    last_error_code = 'SESSION_NOT_READY',
+                    paused_reason = 'The configured Codex session is not bound and ready',
+                    version = version + 1, updated_at = ?
+                WHERE lane_key = ?
+                """, timestamp(now), LANE_KEY);
         requireSingleLaneUpdate(updated);
     }
 

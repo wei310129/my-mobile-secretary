@@ -3,6 +3,7 @@ package com.aproject.internal.aidispatcher.coordination;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.aproject.internal.aidispatcher.config.DispatcherProperties;
+import com.aproject.internal.aidispatcher.session.AgentSessionRegistry;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
@@ -54,6 +55,12 @@ class DispatcherCoordinatorIntegrationTest {
         jdbcTemplate.update("DELETE FROM dispatcher_run_event");
         jdbcTemplate.update("DELETE FROM dispatcher_event");
         jdbcTemplate.update("DELETE FROM dispatcher_run");
+        jdbcTemplate.update("""
+                UPDATE agent_session
+                SET status = 'READY', external_session_id = 'session-test',
+                    version = version + 1, updated_at = CURRENT_TIMESTAMP
+                WHERE session_key = 'development-main'
+                """);
     }
 
     @Test
@@ -130,6 +137,50 @@ class DispatcherCoordinatorIntegrationTest {
         assertThat(countByEventState("CLAIMED")).isEqualTo(1);
         assertThat(countByEventState("PENDING")).isEqualTo(1);
         assertThat(runCount()).isEqualTo(1);
+    }
+
+    @Test
+    void pausesBeforeClaimingWhenTheSessionIsNotReady() {
+        jdbcTemplate.update("""
+                UPDATE agent_session
+                SET status = 'UNBOUND', external_session_id = NULL,
+                    version = version + 1, updated_at = CURRENT_TIMESTAMP
+                WHERE session_key = 'development-main'
+                """);
+        insertEvent("event-1", BASE);
+
+        DispatcherTickResult result = coordinatorAt(BASE.plus(Duration.ofMinutes(5)), "instance-a")
+                .tick();
+
+        assertThat(result.outcome()).isEqualTo(DispatcherTickResult.Outcome.PAUSED);
+        assertThat(laneState()).isEqualTo("PAUSED");
+        assertThat(runCount()).isZero();
+        assertThat(countByEventState("PENDING")).isEqualTo(1);
+    }
+
+    @Test
+    void bindingTheSessionResumesASessionReadinessPause() {
+        jdbcTemplate.update("""
+                UPDATE agent_session
+                SET status = 'UNBOUND', external_session_id = NULL,
+                    version = version + 1, updated_at = CURRENT_TIMESTAMP
+                WHERE session_key = 'development-main'
+                """);
+        insertEvent("event-1", BASE);
+        coordinatorAt(BASE.plus(Duration.ofMinutes(5)), "instance-a").tick();
+        AgentSessionRegistry registry = new AgentSessionRegistry(
+                jdbcTemplate,
+                new DataSourceTransactionManager(dataSource),
+                Clock.fixed(BASE.plus(Duration.ofMinutes(5)), ZoneOffset.UTC));
+
+        AgentSessionRegistry.SessionBinding binding =
+                registry.bindDevelopmentSession("bound-session-id");
+
+        assertThat(binding.externalSessionId()).isEqualTo("bound-session-id");
+        assertThat(laneState()).isEqualTo("WAITING");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT status FROM agent_session WHERE session_key = 'development-main'
+                """, String.class)).isEqualTo("READY");
     }
 
     private DispatcherCoordinator coordinatorAt(Instant now, String instanceId) {

@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.reminder.domain;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -11,7 +12,7 @@ import java.time.Instant;
  * 一次提醒在單一通道上的送出結果。成功失敗都要留紀錄,供可靠度追查。
  */
 @Entity
-public class ReminderDelivery {
+public class ReminderDelivery extends WorkspaceOwnedEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

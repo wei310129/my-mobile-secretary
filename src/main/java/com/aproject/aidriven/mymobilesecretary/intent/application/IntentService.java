@@ -11,12 +11,17 @@ import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleServ
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService.ScheduleDecision;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.OutcomeReason;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
+import com.aproject.aidriven.mymobilesecretary.intent.capability.routing.CapabilityShadowRouter;
+import com.aproject.aidriven.mymobilesecretary.intent.domain.IntentDecisionTraceDraft;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
+import com.aproject.aidriven.mymobilesecretary.shared.observability.RequestCorrelationContext;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.OffsetDateTime;
 import java.time.ZoneId;
 import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.ObjectProvider;
@@ -57,6 +62,8 @@ public class IntentService {
     private final com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService placeAliasService;
     private final int bindRadiusMeters;
     private final Clock clock;
+    private IntentDecisionTraceService decisionTraceService;
+    private CapabilityShadowRouter capabilityShadowRouter;
 
     public IntentService(ObjectProvider<IntentInterpreter> interpreterProvider,
                          TaskService taskService,
@@ -109,16 +116,64 @@ public class IntentService {
         this.clock = clock;
     }
 
-    /** 處理使用者的一句話,回傳做了什麼;聽不懂/退回保底的話語會記成意圖問題供開發追蹤。 */
-    public IntentResult handle(String text) {
-        // 場合祝賀在記錄之前套用:意圖問題與上下文都要記使用者實際看到的回覆
-        IntentResult result = OccasionGreeting.decorate(text, doHandle(text));
-        recordIssueIfUnresolved(text, result);
-        conversationContextService.rememberExchange(text, result);
-        return result;
+    /** Optional setter keeps legacy direct-construction unit tests source-compatible. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setDecisionTraceService(IntentDecisionTraceService decisionTraceService) {
+        this.decisionTraceService = decisionTraceService;
     }
 
-    private IntentResult doHandle(String text) {
+    /** Optional injection preserves the existing constructor and keeps shadow routing removable. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setCapabilityShadowRouter(CapabilityShadowRouter capabilityShadowRouter) {
+        this.capabilityShadowRouter = capabilityShadowRouter;
+    }
+
+    /** 處理使用者的一句話,回傳做了什麼;聽不懂/退回保底的話語會記成意圖問題供開發追蹤。 */
+    public IntentResult handle(String text) {
+        return handle(text, "UNKNOWN");
+    }
+
+    /** Channel-aware entry point used by REST and LINE without changing the domain command. */
+    public IntentResult handle(String text, String channel) {
+        return handle(text, channel, () -> { });
+    }
+
+    /**
+     * Channel entry point with a fail-closed hook invoked immediately before the first command
+     * that may mutate business data. Webhooks use the hook to make their reservation terminal
+     * before a mutation can commit; interpretation failures before this boundary remain retryable.
+     */
+    public IntentResult handle(String text, String channel, Runnable beforeMutation) {
+        UUID requestId = RequestCorrelationContext.currentId();
+        long startedNanos = System.nanoTime();
+        IntentFlowTrace flowTrace = new IntentFlowTrace();
+        MutationBoundary mutationBoundary = new MutationBoundary(beforeMutation);
+        IntentResult result = null;
+        try (RequestCorrelationContext.Scope ignored = RequestCorrelationContext.open(requestId);
+             IntentInterpreterTelemetryContext.Scope telemetryScope =
+                     IntentInterpreterTelemetryContext.open()) {
+            CapabilityShadowObservation shadowObservation =
+                    CapabilityShadowObservation.observe(capabilityShadowRouter, text);
+            try {
+                // 場合祝賀在記錄之前套用:意圖問題與上下文都要記使用者實際看到的回覆
+                result = OccasionGreeting.decorate(text,
+                        doHandle(text, flowTrace, mutationBoundary));
+                flowTrace.complete(result);
+                recordIssueIfUnresolved(text, result);
+                conversationContextService.rememberExchange(text, result);
+                return result;
+            } catch (RuntimeException exception) {
+                flowTrace.unexpectedFailure();
+                throw exception;
+            } finally {
+                recordDecisionTraceSafely(requestId, channel, text, result, flowTrace,
+                        telemetryScope.snapshot(), shadowObservation, startedNanos);
+            }
+        }
+    }
+
+    private IntentResult doHandle(String text, IntentFlowTrace flowTrace,
+                                  MutationBoundary mutationBoundary) {
         Optional<IntentResult> failureExplanation = FailureExplanationService.answer(
                 text, conversationContextService.snapshot());
         if (failureExplanation.isPresent()) {
@@ -153,10 +208,12 @@ public class IntentService {
             return dailyScheduleOverviewService.rejectMerge(text);
         }
         if (isScheduleMergeConfirmation(text)) {
+            mutationBoundary.beforeMutation();
             return dailyScheduleOverviewService.confirmMerge();
         }
         // 「你自己看著辦」=授權低風險安排並回報(使用者裁決 #48)
         if (isDecisionDelegation(text)) {
+            mutationBoundary.beforeMutation();
             return delegatedDecisionService.decide();
         }
         Optional<String> routineQuestion = recurringRoutineClarification(text);
@@ -170,33 +227,43 @@ public class IntentService {
         IntentScript script;
         IntentInterpreter interpreter = interpreterProvider.getIfAvailable();
         if (interpreter == null) {
-            return safeFallback(text, "意圖解析未啟用");
+            flowTrace.validationFailed("INTERPRETER_NOT_CONFIGURED");
+            return safeFallback(text, "意圖解析未啟用", mutationBoundary);
         }
         try {
             script = interpreter.interpret(text, Instant.now(clock), conversationContextService.snapshot());
         } catch (Exception e) {
             log.warn("Intent interpretation failed ({}); applying safe fallback",
                     e.getClass().getSimpleName());
-            return safeFallback(text, "AI 暫時無法使用");
+            flowTrace.validationFailed("INTERPRETER_FAILURE");
+            return safeFallback(text, "AI 暫時無法使用", mutationBoundary);
         }
         if (script == null || script.commands() == null || script.commands().isEmpty()) {
-            return safeFallback(text, "解析結果是空的");
+            flowTrace.validationFailed("EMPTY_INTERPRETATION");
+            return safeFallback(text, "解析結果是空的", mutationBoundary);
         }
 
         // 單一操作:維持原語意(驗證失敗 → 整句保底)
         if (script.commands().size() == 1) {
             IntentCommand command = script.commands().get(0);
+            flowTrace.select(command);
             try {
-                return execute(text, command);
+                mutationBoundary.before(command);
+                IntentResult executed = execute(text, command);
+                flowTrace.validationPassed();
+                return executed;
             } catch (IllegalArgumentException e) {
                 // LLM 輸出未通過驗證(時間格式爛、缺欄位)→ 同樣不丟資料
-                log.warn("Intent command invalid ({}); applying safe fallback", e.getMessage());
+                String validationCode = IntentValidationDiagnostic.code(e);
+                log.warn("Intent command invalid [code={}]; applying safe fallback", validationCode);
+                flowTrace.validationRejected(validationCode);
                 return safeFallback(text, "解析結果不完整",
-                        IntentValidationDiagnostic.explain(e), command);
+                        IntentValidationDiagnostic.explain(e), command, mutationBoundary);
             } catch (com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException e) {
                 // 業務錯誤(如 Google 查不到地點)→ 轉成可讀回覆;
                 // 絕不能往 webhook 洩漏成非 200,否則 LINE 會重送整包事件
-                log.warn("Intent command hit business rule: {}", e.getMessage());
+                log.warn("Intent command hit business rule [code={}]", e.getCode());
+                flowTrace.validationRejected(e.getCode());
                 return IntentResult.clarificationNeeded(e.getMessage());
             }
         }
@@ -204,17 +271,33 @@ public class IntentService {
         // 多操作(「取消A,B也取消,C改到11點」):逐一執行,單項失敗不拖垮其他項
         java.util.List<String> lines = new java.util.ArrayList<>();
         int failed = 0;
+        flowTrace.selectBatch(script.commands());
         for (IntentCommand command : script.commands()) {
             try {
+                mutationBoundary.before(command);
                 lines.add(execute(text, command).message());
+            } catch (IllegalArgumentException e) {
+                log.warn("Batch intent command invalid ({})", e.getClass().getSimpleName());
+                flowTrace.validationRejected(IntentValidationDiagnostic.code(e));
+                failed++;
+                lines.add("有一項我處理不了,請單獨再講一次。");
+            } catch (com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException e) {
+                log.warn("Batch intent command hit business rule ({})", e.getCode());
+                flowTrace.validationRejected(e.getCode());
+                failed++;
+                lines.add("有一項我處理不了,請單獨再講一次。");
             } catch (Exception e) {
-                log.warn("Batch intent command failed", e);
+                log.warn("Batch intent command failed ({})", e.getClass().getSimpleName());
+                flowTrace.validationFailed("BATCH_COMMAND_FAILURE");
                 failed++;
                 lines.add("有一項我處理不了,請單獨再講一次。");
             }
         }
+        if (failed == 0) {
+            flowTrace.validationPassed();
+        }
         if (failed == script.commands().size()) {
-            return safeFallback(text, "多項操作都解析失敗");
+            return safeFallback(text, "多項操作都解析失敗", mutationBoundary);
         }
         return IntentResult.batchExecuted(lines);
     }
@@ -637,6 +720,62 @@ public class IntentService {
         };
     }
 
+    /** Builds a bounded trace; any assembly or persistence failure is isolated from the reply. */
+    private void recordDecisionTraceSafely(UUID requestId, String channel, String input,
+                                           IntentResult result, IntentFlowTrace flowTrace,
+                                           IntentInterpreterTelemetryContext.Telemetry telemetry,
+                                           CapabilityShadowObservation shadowObservation,
+                                           long startedNanos) {
+        if (decisionTraceService == null) {
+            return;
+        }
+        try {
+            String normalizedChannel = channel == null || channel.isBlank()
+                    ? "UNKNOWN"
+                    : channel.strip().toUpperCase(java.util.Locale.ROOT);
+            IntentDecisionTraceDraft.Builder draft = IntentDecisionTraceDraft
+                    .builder(requestId, normalizedChannel)
+                    .versions("legacy-router-v1",
+                            telemetry == null ? null : "anthropic-prompt-v1",
+                            "intent-command-v1")
+                    .selectedCapability(flowTrace.selectedCapability())
+                    .validationOutcome(flowTrace.validationOutcome())
+                    .validationCode(flowTrace.validationCode())
+                    .executionOutcome(flowTrace.executionOutcome())
+                    .stageLatency("total", IntentInterpreterTelemetryContext.elapsedMillis(startedNanos))
+                    .rawExchange(input, result == null ? null : result.message())
+                    .redactedSummary(flowTrace.redactedSummary(result));
+            if (shadowObservation.observed()) {
+                draft.candidates(shadowObservation.candidateScores())
+                        .shadowRouting(
+                                shadowObservation.routerVersion(),
+                                shadowObservation.disposition(),
+                                shadowObservation.fallbackReason(),
+                                shadowObservation.promptVersion(),
+                                shadowObservation.promptHash(),
+                                shadowObservation.tokenEstimate(),
+                                shadowObservation.contextPlan())
+                        .stageLatency("shadow-routing", shadowObservation.latencyMs());
+            }
+            WorkspaceContextHolder.current().ifPresent(context -> draft
+                    .workspaceId(context.workspaceId())
+                    .actorId(context.actorId()));
+            if (telemetry != null) {
+                draft.modelUsage(telemetry.model(), telemetry.inputTokens(), telemetry.outputTokens());
+                if (telemetry.modelLatencyMs() != null) {
+                    draft.stageLatency("model", telemetry.modelLatencyMs());
+                }
+                if (telemetry.parsingLatencyMs() != null) {
+                    draft.stageLatency("parsing", telemetry.parsingLatencyMs());
+                }
+            }
+            decisionTraceService.recordSafely(draft.build());
+        } catch (Exception exception) {
+            log.warn("Intent decision trace assembly failed [requestId={}, cause={}]",
+                    requestId, exception.getClass().getSimpleName());
+        }
+    }
+
     /**
      * 回問與保底都代表「這句話沒被好好服務到」→ 記成意圖問題。
      * 正常完成的意圖不記;紀錄失敗不影響回覆(IntentIssueService 內部吞錯)。
@@ -872,13 +1011,16 @@ public class IntentService {
     }
 
     /** LLM 失敗時只替明確要求「提醒／記下」的原文建保底待辦；查詢與修改指令絕不異動資料。 */
-    private IntentResult safeFallback(String text, String why) {
-        return safeFallback(text, why, null, null);
+    private IntentResult safeFallback(String text, String why,
+                                      MutationBoundary mutationBoundary) {
+        return safeFallback(text, why, null, null, mutationBoundary);
     }
 
     private IntentResult safeFallback(String text, String why,
-                                      String validationReason, IntentCommand command) {
+                                      String validationReason, IntentCommand command,
+                                      MutationBoundary mutationBoundary) {
         if (hasExplicitCaptureCue(text) && !looksLikeQuestion(text)) {
+            mutationBoundary.beforeMutation();
             Task task = taskService.createTask(text, null, TaskPriority.NORMAL, null);
             return IntentResult.fallbackTaskCreated(task, why);
         }
@@ -906,6 +1048,65 @@ public class IntentService {
                 || normalized.contains("是不是") || normalized.contains("怎麼")
                 || normalized.contains("為什麼") || normalized.contains("嗎")
                 || normalized.endsWith("?") || normalized.endsWith("？");
+    }
+
+    /**
+     * Read-only commands may safely be replayed when a later conversation-log write fails.
+     * Everything not explicitly listed is treated as mutating, so newly added capabilities fail
+     * closed until their semantics are deliberately classified.
+     */
+    static boolean isPotentiallyMutating(IntentCommand.Type type) {
+        if (type == null) {
+            return true;
+        }
+        return switch (type) {
+            case EXPLAIN_LAST_FAILURE, SUGGEST_FREE_SLOT, LIST_AGENDA, ASK_TASK_INFO,
+                    ASK_AVAILABILITY, LIST_SCHEDULES_ON_DATE, LIST_RECENT,
+                    SUGGEST_ROUTE_TASKS, LIST_SHOPPING_ITEMS, ASK_PRICE_COMPARISON,
+                    ASK_WEATHER, ASK_TRAVEL_TIME, ASK_DEPARTURE_TIME, CHECK_FEASIBILITY,
+                    SOCIAL, LIST_COMPLETED_TASKS, LIST_SHOPPING_BY_PLACE, AGENDA_SUMMARY,
+                    LIST_INVENTORY, ASK_ITEM_PLACES, LIST_ITEMS_BY_PLACE,
+                    GROUP_SHOPPING_BY_PLACE, ASK_REMINDER_PREFERENCES,
+                    LIST_LOCATION_TASKS, ASK_PLACE_TASKS, ASK_TASK_GEOFENCE,
+                    ASK_NEXT_SCHEDULE, ASK_SCHEDULE_GAP, GROUP_SCHEDULES_BY_DAY,
+                    CHECK_SCHEDULE_CONFLICTS, SUGGEST_NEXT_TASK,
+                    GROUP_TASKS_BY_CATEGORY, ASK_TASK_PROGRESS, GROUP_TASKS_BY_DUE,
+                    ASK_TASK_LOAD, ASK_BUSY_TASK_DAY, ASK_BUSY_SCHEDULE_DAY,
+                    ASK_LONGEST_SCHEDULE, GROUP_SCHEDULES_BY_PLACE, ASK_ACTIVITY_COUNT,
+                    ASK_LAST_ACTIVITY, ASK_LAST_PURCHASE, ASK_PRICE_SUMMARY,
+                    ASK_FREQUENT_STORE, ASK_INVENTORY_EXTREMES,
+                    CHECK_SHOPPING_INVENTORY, LIST_UNPLACED_ITEMS,
+                    ASK_ITEM_KNOWLEDGE_SUMMARY, ASK_SCHEDULE_REMINDER,
+                    ASK_SCHEDULE_INFO, ASK_PRICE_HISTORY, ASK_PLACE, ASK_TASK_PLACE,
+                    LIST_TASKS, LIST_SCHEDULES, SUGGEST_NEARBY, BOOK_RESTAURANT,
+                    UNKNOWN -> false;
+            default -> true;
+        };
+    }
+
+    private static final class MutationBoundary {
+
+        private final Runnable beforeMutation;
+        private boolean entered;
+
+        private MutationBoundary(Runnable beforeMutation) {
+            this.beforeMutation = java.util.Objects.requireNonNull(
+                    beforeMutation, "beforeMutation is required");
+        }
+
+        private void before(IntentCommand command) {
+            if (command == null || isPotentiallyMutating(command.type())) {
+                beforeMutation();
+            }
+        }
+
+        private void beforeMutation() {
+            if (entered) {
+                return;
+            }
+            beforeMutation.run();
+            entered = true;
+        }
     }
 
     /** 地點名稱解析:先精確比對,再包含比對(規則式;不讓 LLM 決定 id)。 */

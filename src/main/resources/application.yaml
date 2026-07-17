@@ -16,9 +16,7 @@ spring:
           # 1024 曾在正式環境觸發空回應(BeanOutputConverter 收到 0 長度內容而炸開),
           # 調高以留足輸出空間；LLM 失敗仍會安全降級，這裡只是降低發生機率
           max-tokens: 4096
-  profiles:
-    # 沒指定 profile 時預設當本機開發
-    default: local
+  # 不設定預設 profile；本機開發需明確啟用 local，部署漏設時維持下方安全預設。
   threads:
     virtual:
       # Java 21 虛擬執行緒:規劃引擎平行呼叫外部 API 的基礎
@@ -36,6 +34,21 @@ management:
         include: health,info
 
 app:
+  workspace:
+    # Production must never silently fall back to another tenant.
+    legacy-fallback-enabled: false
+  security:
+    # Production must authenticate every REST endpoint. Local/test explicitly opt out below;
+    # a production deployment without JWT configuration therefore fails closed at startup.
+    enabled: true
+    workspace-context:
+      actor-claim: app_user_id
+      workspace-claim: workspace_id
+      workspace-header: X-Workspace-Id
+    audit:
+      retention: 365d
+    idempotency:
+      retention: 24h
   scheduling:
     # 背景排程(延遲提醒佇列輪詢);測試環境關閉改為直接呼叫
     enabled: true
@@ -48,7 +61,18 @@ app:
     max-escalations: 3
     # 延遲佇列輪詢間隔
     poll-interval: 5s
+    queue:
+      lease: 2m
+      retry-delay: 30s
+      max-failures: 5
+      max-batch: 100
   notification:
+    outbox:
+      poll-interval: 5s
+      lease: 2m
+      retry-delay: 30s
+      max-attempts: 5
+      max-batch: 100
     windows-toast:
       # 預設關閉;只在本機開發(local profile)打開
       enabled: false
@@ -58,6 +82,18 @@ app:
   intent:
     # LLM 意圖理解；關閉時 /api/intent 走安全降級，只有明確「提醒／記下」才建保底待辦
     enabled: true
+    capability-routing:
+      # 先只比較候選路由與舊路由，不改變實際執行；累積 trace 後再按 domain 開 ACTIVE。
+      mode: SHADOW
+      max-candidates: 8
+      legacy-prompt-characters: 14500
+      estimated-characters-per-token: 2.0
+    trace:
+      # 正式環境必填 Base64 AES key；本機/測試未填時完全不保存 raw AI I/O。
+      encryption-key: ${INTENT_TRACE_ENCRYPTION_KEY:}
+      encryption-key-id: ${INTENT_TRACE_ENCRYPTION_KEY_ID:intent-trace-v1}
+      raw-retention: 168h
+      summary-retention: 2160h
   receipt:
     # 收據照片解析(Claude 多模態);關閉時圖片訊息回覆請改用文字
     enabled: true
@@ -68,6 +104,8 @@ app:
     line:
       # 真憑證放 secrets.yaml;未設定時 webhook 直接吞掉請求(見 LineWebhookController)
       enabled: true
+      message-history:
+        retention: 90d
   feasibility:
     # 直線距離換算交通時間的假設速度(km/h);保守取低,寧可誤報要求確認
     assumed-speed-kmh: 25

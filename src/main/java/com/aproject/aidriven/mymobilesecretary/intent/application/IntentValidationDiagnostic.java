@@ -6,6 +6,27 @@ final class IntentValidationDiagnostic {
     private IntentValidationDiagnostic() {
     }
 
+    static String code(IllegalArgumentException exception) {
+        String message = exception == null ? null : exception.getMessage();
+        if (message == null || message.isBlank()) return "INVALID_COMMAND";
+        if (message.equals("missing type")) return "MISSING_COMMAND_TYPE";
+        if (message.equals("missing title")) return "MISSING_TITLE";
+        if (message.equals("schedule missing startAt/endAt")) return "MISSING_SCHEDULE_TIME_RANGE";
+        if (message.equals("schedule missing startAt")) return "MISSING_SCHEDULE_START_AT";
+        if (message.equals("reschedule missing dueAt")) return "MISSING_TASK_DUE_AT";
+        if (message.equals("schedule reschedule missing startAt")) return "MISSING_SCHEDULE_START_AT";
+        if (message.equals("daily schedule query missing startAt")) return "MISSING_QUERY_START_AT";
+        if (message.equals("recurrenceUntil before first occurrence")) return "INVALID_RECURRENCE_CUTOFF";
+        if (message.startsWith("bad time: ")) return "INVALID_TIME_FORMAT";
+        if (message.startsWith("missing ")) {
+            String field = message.substring("missing ".length())
+                    .replaceAll("[^A-Za-z0-9]+", "_")
+                    .toUpperCase(java.util.Locale.ROOT);
+            return field.isBlank() ? "MISSING_REQUIRED_FIELD" : "MISSING_" + field;
+        }
+        return "INVALID_COMMAND";
+    }
+
     static String explain(IllegalArgumentException exception) {
         String message = exception == null ? null : exception.getMessage();
         if (message == null || message.isBlank()) {

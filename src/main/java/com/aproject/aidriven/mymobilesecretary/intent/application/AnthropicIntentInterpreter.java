@@ -240,7 +240,7 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
                 .map(item -> "%s(庫存%d%s)".formatted(item.getName(), item.getInventoryQuantity(),
                         item.isShoppingNeeded() ? ",待買" : ""))
                 .collect(Collectors.joining("、"));
-        String reminderPreference = reminderPreferenceRepository.findById(1)
+        String reminderPreference = reminderPreferenceRepository.findFirstByOrderByIdAsc()
                 .map(p -> "勿擾=%s-%s,緊急例外=%s,靜音到=%s".formatted(
                         p.getQuietStart(), p.getQuietEnd(), p.isAllowHighPriority(), p.getMutedUntil()))
                 .orElse("(無)");
@@ -260,14 +260,37 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
                 schedules.isBlank() ? "(無)" : schedules,
                 shopping.isBlank() ? "(無)" : shopping,
                 reminderPreference, context, text);
-        ChatResponse response = chatClient.prompt()
-                .system(SYSTEM_PROMPT + LIFESTYLE_RULES + "\n能力目錄:\n" + capabilityCatalog)
-                // ChatClient.entity() 只讀第一個 generation。Sonnet 5 可能把 thinking block 放在
-                // 第一個、JSON text 放在後面，因此改為保留原始 ChatResponse 並挑出結構化文字。
-                .user(userPrompt + System.lineSeparator() + OUTPUT_CONVERTER.getFormat())
-                .call()
-                .chatResponse();
-        return convertStructuredResponse(response);
+        long modelStarted = System.nanoTime();
+        ChatResponse response;
+        try {
+            response = chatClient.prompt()
+                    .system(SYSTEM_PROMPT + LIFESTYLE_RULES + "\n能力目錄:\n" + capabilityCatalog)
+                    // ChatClient.entity() 只讀第一個 generation。Sonnet 5 可能把 thinking block 放在
+                    // 第一個、JSON text 放在後面，因此改為保留原始 ChatResponse 並挑出結構化文字。
+                    .user(userPrompt + System.lineSeparator() + OUTPUT_CONVERTER.getFormat())
+                    .call()
+                    .chatResponse();
+        } catch (RuntimeException exception) {
+            IntentInterpreterTelemetryContext.record(new IntentInterpreterTelemetryContext.Telemetry(
+                    null, null, null,
+                    IntentInterpreterTelemetryContext.elapsedMillis(modelStarted), null));
+            throw exception;
+        }
+
+        long modelLatencyMs = IntentInterpreterTelemetryContext.elapsedMillis(modelStarted);
+        var metadata = response == null ? null : response.getMetadata();
+        var usage = metadata == null ? null : metadata.getUsage();
+        long parsingStarted = System.nanoTime();
+        try {
+            return convertStructuredResponse(response);
+        } finally {
+            IntentInterpreterTelemetryContext.record(new IntentInterpreterTelemetryContext.Telemetry(
+                    metadata == null ? null : metadata.getModel(),
+                    usage == null ? null : usage.getPromptTokens(),
+                    usage == null ? null : usage.getCompletionTokens(),
+                    modelLatencyMs,
+                    IntentInterpreterTelemetryContext.elapsedMillis(parsingStarted)));
+        }
     }
 
     static IntentScript convertStructuredResponse(ChatResponse response) {

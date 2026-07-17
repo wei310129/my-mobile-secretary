@@ -1,10 +1,11 @@
 package com.aproject.aidriven.mymobilesecretary.schedule.application;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.TenantRedisKeys;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.LocationExitRecorded;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationSender;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.ReminderNotification;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationPublisher;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationRequest;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.FollowUpStatus;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.OutcomeReason;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleFollowUp;
@@ -54,7 +55,7 @@ public class ScheduleFollowUpService {
     private final ScheduleFollowUpRepository followUpRepository;
     private final ScheduleOutcomeRepository outcomeRepository;
     private final PlaceRepository placeRepository;
-    private final List<NotificationSender> senders;
+    private final NotificationPublisher notificationPublisher;
     private final StringRedisTemplate redis;
     private final ApplicationEventPublisher eventPublisher;
     private final FollowUpProperties properties;
@@ -64,7 +65,7 @@ public class ScheduleFollowUpService {
                                    ScheduleFollowUpRepository followUpRepository,
                                    ScheduleOutcomeRepository outcomeRepository,
                                    PlaceRepository placeRepository,
-                                   List<NotificationSender> senders,
+                                   NotificationPublisher notificationPublisher,
                                    StringRedisTemplate redis,
                                    ApplicationEventPublisher eventPublisher,
                                    FollowUpProperties properties,
@@ -73,7 +74,7 @@ public class ScheduleFollowUpService {
         this.followUpRepository = followUpRepository;
         this.outcomeRepository = outcomeRepository;
         this.placeRepository = placeRepository;
-        this.senders = senders;
+        this.notificationPublisher = notificationPublisher;
         this.redis = redis;
         this.eventPublisher = eventPublisher;
         this.properties = properties;
@@ -224,7 +225,8 @@ public class ScheduleFollowUpService {
      * (寧可少發一則,不可能因通知失敗重試而爆量)。
      */
     private boolean tryAcquireDailyQuota(Instant now) {
-        String key = DAILY_COUNT_KEY_PREFIX + LocalDate.ofInstant(now, TAIPEI);
+        String key = TenantRedisKeys.current(
+                DAILY_COUNT_KEY_PREFIX + LocalDate.ofInstant(now, TAIPEI));
         Long count = redis.opsForValue().increment(key);
         if (count != null && count == 1L) {
             // 第一則設過期:留 48 小時方便跨日排查,之後自動清掉
@@ -237,13 +239,9 @@ public class ScheduleFollowUpService {
     private void sendPrompt(ScheduleItem item) {
         String message = "「%s」結束了嗎?\n\n請回覆:\n準時或超時\n超時多久\n原因（例如會議超時、交通意外、上下班尖峰）"
                 .formatted(item.getTitle());
-        for (NotificationSender sender : senders) {
-            try {
-                sender.send(new ReminderNotification(null, null, "行程結果回報", message));
-            } catch (Exception e) {
-                log.warn("Follow-up prompt delivery failed [schedule={}]", item.getId(), e);
-            }
-        }
+        notificationPublisher.enqueue(new NotificationRequest(
+                item.getCreatedByUserId(), "schedule-follow-up:" + item.getId(), null, null,
+                "行程結果回報", message));
     }
 
     /** 自然語言回報的結果:行程 + 已存的 outcome(表達層組回覆用)。 */

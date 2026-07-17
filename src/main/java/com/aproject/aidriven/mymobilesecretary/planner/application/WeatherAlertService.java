@@ -1,8 +1,8 @@
 package com.aproject.aidriven.mymobilesecretary.planner.application;
 
-import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationChannel;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationSender;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.ReminderNotification;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.TenantRedisKeys;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationPublisher;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationRequest;
 import com.aproject.aidriven.mymobilesecretary.integration.weather.CwaWeatherClient;
 import com.aproject.aidriven.mymobilesecretary.integration.weather.WeatherForecast;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
@@ -43,7 +43,7 @@ public class WeatherAlertService {
 
     private final CwaWeatherClient weatherClient;
     private final ScheduleItemRepository scheduleItemRepository;
-    private final List<NotificationSender> senders;
+    private final NotificationPublisher notificationPublisher;
     private final StringRedisTemplate redis;
     private final WeatherRuleProperties weatherProperties;
     private final WeatherAlertProperties alertProperties;
@@ -51,14 +51,14 @@ public class WeatherAlertService {
 
     public WeatherAlertService(CwaWeatherClient weatherClient,
                                ScheduleItemRepository scheduleItemRepository,
-                               List<NotificationSender> senders,
+                               NotificationPublisher notificationPublisher,
                                StringRedisTemplate redis,
                                WeatherRuleProperties weatherProperties,
                                WeatherAlertProperties alertProperties,
                                Clock clock) {
         this.weatherClient = weatherClient;
         this.scheduleItemRepository = scheduleItemRepository;
-        this.senders = senders;
+        this.notificationPublisher = notificationPublisher;
         this.redis = redis;
         this.weatherProperties = weatherProperties;
         this.alertProperties = alertProperties;
@@ -147,29 +147,17 @@ public class WeatherAlertService {
 
     /** 一天一次:SETNX 台北日期 key,TTL 36 小時跨日自動失效。 */
     private boolean acquireDailyOnce(String prefix, Instant now) {
-        String key = prefix + LocalDate.ofInstant(now, TAIPEI);
+        String key = TenantRedisKeys.current(prefix + LocalDate.ofInstant(now, TAIPEI));
         return Boolean.TRUE.equals(redis.opsForValue()
                 .setIfAbsent(key, now.toString(), Duration.ofHours(36)));
     }
 
-    /** 逐通道送出;單一通道失敗只記錄。 */
+    /** 寫入可靠 outbox；實際通道送出由背景 worker 完成。 */
     private void send(String title, String message) {
-        for (NotificationSender sender : senders) {
-            try {
-                sender.send(new ReminderNotification(null, null, title, message));
-            } catch (Exception e) {
-                log.warn("Weather alert delivery failed [channel={}]", channelName(sender), e);
-            }
-        }
-        log.info("Weather alert sent: {}", message);
-    }
-
-    private String channelName(NotificationSender sender) {
-        try {
-            NotificationChannel channel = sender.channel();
-            return channel == null ? "?" : channel.name();
-        } catch (Exception e) {
-            return "?";
-        }
+        Instant now = Instant.now(clock);
+        String deliveryKey = "weather:" + LocalDate.ofInstant(now, TAIPEI) + ":" + title;
+        notificationPublisher.enqueue(new NotificationRequest(
+                null, deliveryKey, null, null, title, message));
+        log.info("Weather alert queued [kind={}]", title.equals("天氣警示") ? "adjust" : "umbrella");
     }
 }

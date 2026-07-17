@@ -1,8 +1,16 @@
 package com.aproject.aidriven.mymobilesecretary.intent.domain;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.EnumType;
+import jakarta.persistence.Enumerated;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 
 /**
@@ -12,10 +20,18 @@ import java.time.Instant;
  * Phase 5 多使用者化時再按使用者拆分;目前固定 id=1。
  */
 @Entity
-public class ConversationContext {
+@Table(uniqueConstraints = @UniqueConstraint(
+        name = "uq_conversation_context_scope",
+        columnNames = {"workspace_id", "created_by_user_id", "channel"}))
+public class ConversationContext extends WorkspaceOwnedEntity {
 
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
+
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 40, updatable = false)
+    private WorkspaceChannel channel;
 
     private Long lastTaskId;
     private Long lastScheduleId;
@@ -42,13 +58,16 @@ public class ConversationContext {
     protected ConversationContext() {
     }
 
-    private ConversationContext(Instant now) {
-        this.id = 1;
+    private ConversationContext(WorkspaceChannel channel, Instant now) {
+        this.channel = channel;
         this.updatedAt = now;
     }
 
-    public static ConversationContext create(Instant now) {
-        return new ConversationContext(now);
+    public static ConversationContext create(WorkspaceChannel channel, Instant now) {
+        if (channel == null) {
+            throw new IllegalArgumentException("channel is required");
+        }
+        return new ConversationContext(channel, now);
     }
 
     public void rememberExchange(String action, String userText, String assistantText, Instant now) {
@@ -91,6 +110,8 @@ public class ConversationContext {
     }
 
     public Long getLastTaskId() { return lastTaskId; }
+    public Integer getId() { return id; }
+    public WorkspaceChannel getChannel() { return channel; }
     public Long getLastScheduleId() { return lastScheduleId; }
     public Long getLastPlaceId() { return lastPlaceId; }
     public String getLastTaskListIds() { return lastTaskListIds; }

@@ -1,5 +1,11 @@
 # 本機開發:連 compose.yaml 起的 PostGIS 與 Redis
 app:
+  workspace:
+    # Compatibility while local HTTP/LINE/background entry points are being context-enabled.
+    legacy-fallback-enabled: true
+  security:
+    # Local developer APIs retain the current no-login workflow.
+    enabled: false
   notification:
     windows-toast:
       # 本機開發時提醒直接跳 Windows 桌面通知

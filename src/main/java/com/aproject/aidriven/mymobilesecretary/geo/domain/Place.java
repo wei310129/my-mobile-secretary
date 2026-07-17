@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.geo.domain;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -14,7 +15,7 @@ import java.time.Instant;
  * ST_MakePoint(longitude, latitude) 動態組 geography,不需要另外的 geometry 欄位。
  */
 @Entity
-public class Place {
+public class Place extends WorkspaceOwnedEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

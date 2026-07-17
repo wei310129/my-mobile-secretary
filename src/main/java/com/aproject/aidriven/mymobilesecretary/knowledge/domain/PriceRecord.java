@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.knowledge.domain;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -13,7 +14,7 @@ import java.time.LocalDate;
  * 價格紀錄:某品項某天在某店的單價(收據解析落地的最小事實單位)。
  */
 @Entity
-public class PriceRecord {
+public class PriceRecord extends WorkspaceOwnedEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

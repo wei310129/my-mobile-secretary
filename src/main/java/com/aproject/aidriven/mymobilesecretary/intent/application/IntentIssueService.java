@@ -36,7 +36,8 @@ public class IntentIssueService {
         try {
             repository.save(IntentIssue.open(utterance, botReply, category, Instant.now(clock)));
         } catch (Exception e) {
-            log.warn("Intent issue logging failed [utterance={}]", utterance, e);
+            log.warn("Intent issue logging failed [category={}, cause={}]",
+                    category, e.getClass().getSimpleName());
         }
     }
 

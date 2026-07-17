@@ -1,9 +1,12 @@
 package com.aproject.aidriven.mymobilesecretary.integration.notification;
 
+import com.aproject.aidriven.mymobilesecretary.account.domain.LegacyAccountIds;
 import java.awt.GraphicsEnvironment;
 import java.awt.SystemTray;
 import java.awt.TrayIcon;
 import java.awt.image.BufferedImage;
+import java.util.Optional;
+import java.util.UUID;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
 import org.springframework.stereotype.Component;
 
@@ -30,7 +33,21 @@ public class WindowsToastNotificationSender implements NotificationSender {
     }
 
     @Override
+    public Optional<String> destinationFor(UUID workspaceId, UUID targetUserId) {
+        if (LegacyAccountIds.WORKSPACE_ID.equals(workspaceId)
+                && LegacyAccountIds.USER_ID.equals(targetUserId)) {
+            return Optional.of("local-windows");
+        }
+        return Optional.empty();
+    }
+
+    @Override
     public void send(ReminderNotification notification) {
+        if (!"local-windows".equals(notification.destination())
+                || !LegacyAccountIds.WORKSPACE_ID.equals(notification.workspaceId())
+                || !LegacyAccountIds.USER_ID.equals(notification.targetUserId())) {
+            throw new NotificationException("Windows toast destination is not the local owner");
+        }
         try {
             ensureTrayIcon().displayMessage(
                     notification.title(), notification.message(), TrayIcon.MessageType.INFO);

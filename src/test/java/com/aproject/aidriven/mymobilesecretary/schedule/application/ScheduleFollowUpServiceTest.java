@@ -7,12 +7,15 @@ import static org.mockito.ArgumentMatchers.anyList;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.aproject.aidriven.mymobilesecretary.account.domain.LegacyAccountIds;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.LocationExitRecorded;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationChannel;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationSender;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.ReminderNotification;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationPublisher;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationRequest;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.FollowUpStatus;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleFollowUp;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
@@ -23,12 +26,14 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -40,6 +45,19 @@ import org.springframework.data.redis.core.ValueOperations;
  */
 @ExtendWith(MockitoExtension.class)
 class ScheduleFollowUpServiceTest {
+
+    private WorkspaceContextHolder.Scope workspaceScope;
+
+    @BeforeEach
+    void openWorkspaceScope() {
+        workspaceScope = WorkspaceContextHolder.open(new WorkspaceContext(
+                LegacyAccountIds.USER_ID, LegacyAccountIds.WORKSPACE_ID, WorkspaceChannel.TEST));
+    }
+
+    @AfterEach
+    void closeWorkspaceScope() {
+        workspaceScope.close();
+    }
 
     private static final Instant NOW = Instant.parse("2026-07-14T02:00:00Z");
 
@@ -57,28 +75,13 @@ class ScheduleFollowUpServiceTest {
     private ValueOperations<String, String> valueOps;
     @Mock
     private org.springframework.context.ApplicationEventPublisher eventPublisher;
-
-    /** 記下收到通知的假 sender。 */
-    private static class RecordingSender implements NotificationSender {
-        final List<ReminderNotification> received = new ArrayList<>();
-
-        @Override
-        public NotificationChannel channel() {
-            return NotificationChannel.LOG;
-        }
-
-        @Override
-        public void send(ReminderNotification notification) {
-            received.add(notification);
-        }
-    }
-
-    private final RecordingSender sender = new RecordingSender();
+    @Mock
+    private NotificationPublisher notificationPublisher;
 
     private ScheduleFollowUpService service() {
         return new ScheduleFollowUpService(
                 scheduleItemRepository, followUpRepository, outcomeRepository, placeRepository,
-                List.of(sender), redis, eventPublisher,
+                notificationPublisher, redis, eventPublisher,
                 new FollowUpProperties(Duration.ofMinutes(15), Duration.ofMinutes(5),
                         50, Duration.ofHours(24), 200),
                 Clock.fixed(NOW, ZoneOffset.UTC));
@@ -105,8 +108,9 @@ class ScheduleFollowUpServiceTest {
 
         assertThat(asked).isEqualTo(1);
         assertThat(due.getStatus()).isEqualTo(FollowUpStatus.ASKED);
-        assertThat(sender.received).hasSize(1);
-        assertThat(sender.received.get(0).message()).contains("跟客戶開會");
+        ArgumentCaptor<NotificationRequest> captured = ArgumentCaptor.forClass(NotificationRequest.class);
+        org.mockito.Mockito.verify(notificationPublisher).enqueue(captured.capture());
+        assertThat(captured.getValue().message()).contains("跟客戶開會");
     }
 
     /** 日上限(50)已滿 → 不發、留在 SCHEDULED 隔天再發,不丟失。 */
@@ -122,7 +126,7 @@ class ScheduleFollowUpServiceTest {
 
         assertThat(asked).isZero();
         assertThat(due.getStatus()).isEqualTo(FollowUpStatus.SCHEDULED);
-        assertThat(sender.received).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(notificationPublisher);
     }
 
     /** GPS 離開行程地點 → 對進行中的行程建立 exitAt+5 分鐘的詢問。 */

@@ -27,13 +27,13 @@ public class LineOwnerGuard {
     /** 這位發訊者可否使用本系統。 */
     public boolean allows(String sourceUserId) {
         if (properties.ownerUserId().isBlank()) {
-            log.error("LINE owner-user-id not configured; blocking message from userId={} "
-                    + "until app.integration.line.owner-user-id is set", sourceUserId);
+            log.error("LINE owner-user-id not configured; blocking incoming message until "
+                    + "app.integration.line.owner-user-id is set");
             return false;
         }
         boolean allowed = properties.ownerUserId().equals(sourceUserId);
         if (!allowed) {
-            log.warn("Ignoring LINE message from non-owner userId={}", sourceUserId);
+            log.warn("Ignoring LINE message from an unrecognized sender");
         }
         return allowed;
     }

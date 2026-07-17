@@ -5,6 +5,10 @@ import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLogSe
 import java.time.Instant;
 import java.util.List;
 import org.springframework.web.bind.annotation.GetMapping;
+import org.springframework.web.bind.annotation.DeleteMapping;
+import org.springframework.web.bind.annotation.PatchMapping;
+import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
@@ -28,18 +32,34 @@ public class LineMessageLogController {
         return messageLogService.listRecent(limit).stream().map(MessageLogResponse::from).toList();
     }
 
+    @PatchMapping("/{messageId}/pin")
+    public MessageLogResponse pin(@PathVariable long messageId, @RequestBody PinRequest request) {
+        return MessageLogResponse.from(messageLogService.setPinned(messageId, request.pinned()));
+    }
+
+    @DeleteMapping("/{messageId}")
+    public void delete(@PathVariable long messageId) {
+        messageLogService.delete(messageId);
+    }
+
+    public record PinRequest(boolean pinned) {
+    }
+
     /** 對話紀錄的 API 回應。 */
     public record MessageLogResponse(
             Long id,
             LineMessageLog.Direction direction,
             String messageType,
             String content,
-            Instant createdAt
+            Instant createdAt,
+            boolean pinned,
+            Instant expiresAt
     ) {
 
         static MessageLogResponse from(LineMessageLog entry) {
             return new MessageLogResponse(entry.getId(), entry.getDirection(),
-                    entry.getMessageType(), entry.getContent(), entry.getCreatedAt());
+                    entry.getMessageType(), entry.getContent(), entry.getCreatedAt(),
+                    entry.isPinned(), entry.getExpiresAt());
         }
     }
 }

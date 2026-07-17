@@ -1,17 +1,11 @@
 package com.aproject.aidriven.mymobilesecretary.reminder.application;
 
-import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationSender;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.ReminderNotification;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationPublisher;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationRequest;
 import com.aproject.aidriven.mymobilesecretary.planner.application.WeatherAdvisoryService;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Reminder;
-import com.aproject.aidriven.mymobilesecretary.reminder.domain.ReminderDelivery;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
-import com.aproject.aidriven.mymobilesecretary.reminder.persistence.ReminderDeliveryRepository;
-import java.time.Clock;
-import java.time.Instant;
-import java.util.List;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
+import com.aproject.aidriven.mymobilesecretary.shared.observability.SensitiveValueFingerprint;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -25,22 +19,13 @@ import org.springframework.transaction.annotation.Transactional;
 @Transactional
 public class ReminderDeliveryService {
 
-    private static final Logger log = LoggerFactory.getLogger(ReminderDeliveryService.class);
-
-    private final List<NotificationSender> senders;
-    private final ReminderDeliveryRepository deliveryRepository;
+    private final NotificationPublisher notificationPublisher;
     private final WeatherAdvisoryService weatherAdvisoryService;
-    private final Clock clock;
 
-    /** senders 由 Spring 注入所有啟用的 NotificationSender(LOG 永遠在;toast 依設定)。 */
-    public ReminderDeliveryService(List<NotificationSender> senders,
-                                   ReminderDeliveryRepository deliveryRepository,
-                                   WeatherAdvisoryService weatherAdvisoryService,
-                                   Clock clock) {
-        this.senders = senders;
-        this.deliveryRepository = deliveryRepository;
+    public ReminderDeliveryService(NotificationPublisher notificationPublisher,
+                                   WeatherAdvisoryService weatherAdvisoryService) {
+        this.notificationPublisher = notificationPublisher;
         this.weatherAdvisoryService = weatherAdvisoryService;
-        this.clock = clock;
     }
 
     /**
@@ -59,20 +44,10 @@ public class ReminderDeliveryService {
         String finalMessage = weatherAdvisoryService.currentAdvisory()
                 .map(advisory -> message + "\n\n天氣提醒:\n" + advisory)
                 .orElse(message);
-        ReminderNotification notification = new ReminderNotification(
-                reminder.getId(), task.getId(), task.getTitle(), finalMessage);
-
-        for (NotificationSender sender : senders) {
-            String channel = sender.channel().name();
-            Instant now = Instant.now(clock);
-            try {
-                sender.send(notification);
-                deliveryRepository.save(ReminderDelivery.success(reminder.getId(), channel, now));
-            } catch (Exception e) {
-                // 只記錄,不中斷:其他通道照送,提醒核心不受影響
-                log.warn("Notification delivery failed [channel={} reminder={}]", channel, reminder.getId(), e);
-                deliveryRepository.save(ReminderDelivery.failure(reminder.getId(), channel, e.getMessage(), now));
-            }
-        }
+        String deliveryKey = "reminder:" + reminder.getId() + ":"
+                + SensitiveValueFingerprint.of(finalMessage);
+        notificationPublisher.enqueue(new NotificationRequest(
+                task.getCreatedByUserId(), deliveryKey, reminder.getId(), task.getId(),
+                task.getTitle(), finalMessage));
     }
 }

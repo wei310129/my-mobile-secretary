@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.reminder.domain;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -16,7 +17,7 @@ import java.time.Instant;
  * Phase 1A 只建立模型;實際由 geofence 命中或排程觸發是 Phase 1B/1C 的事。
  */
 @Entity
-public class Reminder {
+public class Reminder extends WorkspaceOwnedEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

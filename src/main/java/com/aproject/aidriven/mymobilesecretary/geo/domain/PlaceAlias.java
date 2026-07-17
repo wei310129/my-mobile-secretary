@@ -1,20 +1,25 @@
 package com.aproject.aidriven.mymobilesecretary.geo.domain;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 
 /** 使用者自己的地點叫法,例如「公司」「常去的全聯」。 */
 @Entity
-public class PlaceAlias {
+@Table(uniqueConstraints = @UniqueConstraint(
+        name = "uq_place_alias_workspace_alias", columnNames = {"workspace_id", "alias"}))
+public class PlaceAlias extends WorkspaceOwnedEntity {
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 100, unique = true)
+    @Column(nullable = false, length = 100)
     private String alias;
 
     @Column(nullable = false)

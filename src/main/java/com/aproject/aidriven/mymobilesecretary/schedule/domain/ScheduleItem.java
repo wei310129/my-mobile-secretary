@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.schedule.domain;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -19,7 +20,7 @@ import java.time.ZoneId;
  * 「可行才放行」的驗算在 planner 的 FeasibilityService,這裡只管狀態一致性。
  */
 @Entity
-public class ScheduleItem {
+public class ScheduleItem extends WorkspaceOwnedEntity {
 
     private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
 

@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.integration.line;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -14,7 +15,7 @@ import java.time.Instant;
  * 純留底用,不參與任何業務判斷;單人系統,無隱私共享議題。
  */
 @Entity
-public class LineMessageLog {
+public class LineMessageLog extends WorkspaceOwnedEntity {
 
     /** 訊息方向。 */
     public enum Direction {
@@ -43,21 +44,35 @@ public class LineMessageLog {
     @Column(nullable = false)
     private Instant createdAt;
 
+    @Column(nullable = false)
+    private boolean pinned;
+
+    @Column(nullable = false)
+    private Instant expiresAt;
+
     /** JPA 專用。 */
     protected LineMessageLog() {
     }
 
-    private LineMessageLog(Direction direction, String messageType, String content, Instant now) {
+    private LineMessageLog(Direction direction, String messageType, String content,
+                           Instant now, Instant expiresAt) {
         this.direction = direction;
         this.messageType = messageType;
         this.content = truncate(content);
         this.createdAt = now;
+        this.pinned = false;
+        this.expiresAt = expiresAt;
     }
 
     /** 記一筆訊息;內容截斷防爆欄位。 */
     public static LineMessageLog of(Direction direction, String messageType, String content, Instant now) {
+        return of(direction, messageType, content, now, now.plus(java.time.Duration.ofDays(90)));
+    }
+
+    public static LineMessageLog of(Direction direction, String messageType, String content,
+                                    Instant now, Instant expiresAt) {
         return new LineMessageLog(direction, messageType,
-                content == null || content.isBlank() ? "(空)" : content, now);
+                content == null || content.isBlank() ? "(空)" : content, now, expiresAt);
     }
 
     private static String truncate(String text) {
@@ -82,5 +97,17 @@ public class LineMessageLog {
 
     public Instant getCreatedAt() {
         return createdAt;
+    }
+
+    public boolean isPinned() {
+        return pinned;
+    }
+
+    public Instant getExpiresAt() {
+        return expiresAt;
+    }
+
+    public void setPinned(boolean pinned) {
+        this.pinned = pinned;
     }
 }

@@ -1,138 +1,80 @@
 package com.aproject.aidriven.mymobilesecretary.reminder.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.assertj.core.api.Assertions.assertThatCode;
-import static org.mockito.Mockito.times;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
+import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
-import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationChannel;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationException;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationSender;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.ReminderNotification;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationPublisher;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationRequest;
 import com.aproject.aidriven.mymobilesecretary.planner.application.WeatherAdvisoryService;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Reminder;
-import com.aproject.aidriven.mymobilesecretary.reminder.domain.ReminderDelivery;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskPriority;
-import com.aproject.aidriven.mymobilesecretary.reminder.persistence.ReminderDeliveryRepository;
-import java.time.Clock;
 import java.time.Instant;
-import java.time.ZoneOffset;
-import java.util.ArrayList;
-import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.test.util.ReflectionTestUtils;
 
-/**
- * 提醒送出測試:每通道各記一筆成敗,單一通道失敗不影響其他通道、不往外丟例外。
- */
 @ExtendWith(MockitoExtension.class)
 class ReminderDeliveryServiceTest {
 
     private static final Instant NOW = Instant.parse("2026-07-09T10:00:00Z");
 
-    @Mock
-    private ReminderDeliveryRepository deliveryRepository;
-
-    @Mock
-    private WeatherAdvisoryService weatherAdvisoryService;
-
-    /** 記下收到的通知、可設定為失敗的假 sender。 */
-    private static class StubSender implements NotificationSender {
-        private final NotificationChannel channel;
-        private final boolean failing;
-        final List<ReminderNotification> received = new ArrayList<>();
-
-        StubSender(NotificationChannel channel, boolean failing) {
-            this.channel = channel;
-            this.failing = failing;
-        }
-
-        @Override
-        public NotificationChannel channel() {
-            return channel;
-        }
-
-        @Override
-        public void send(ReminderNotification notification) {
-            received.add(notification);
-            if (failing) {
-                throw new NotificationException("channel down");
-            }
-        }
-    }
-
-    private Reminder reminder() {
-        return Reminder.triggered(1L, "ENTER geofence: 全聯", NOW);
-    }
-
-    private Task task() {
-        return Task.create("買排骨", null, TaskPriority.NORMAL, null, NOW);
-    }
+    @Mock private NotificationPublisher publisher;
+    @Mock private WeatherAdvisoryService weatherAdvisoryService;
 
     @Test
-    void successfulDeliveryIsRecordedPerChannel() {
-        StubSender logSender = new StubSender(NotificationChannel.LOG, false);
-        StubSender toastSender = new StubSender(NotificationChannel.WINDOWS_TOAST, false);
+    void reminderIsPersistedToOutboxWithStableBusinessReferences() {
         when(weatherAdvisoryService.currentAdvisory()).thenReturn(java.util.Optional.empty());
-        ReminderDeliveryService service = new ReminderDeliveryService(
-                List.of(logSender, toastSender), deliveryRepository, weatherAdvisoryService,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+        Reminder reminder = reminder();
+        Task task = task();
 
-        service.deliver(reminder(), task());
+        new ReminderDeliveryService(publisher, weatherAdvisoryService).deliver(reminder, task);
 
-        ArgumentCaptor<ReminderDelivery> captor = ArgumentCaptor.forClass(ReminderDelivery.class);
-        verify(deliveryRepository, times(2)).save(captor.capture());
-        assertThat(captor.getAllValues())
-                .extracting(ReminderDelivery::getChannel, ReminderDelivery::isSuccess)
-                .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple("LOG", true),
-                        org.assertj.core.groups.Tuple.tuple("WINDOWS_TOAST", true));
-        assertThat(logSender.received).hasSize(1);
-        assertThat(logSender.received.get(0).title()).isEqualTo("買排骨");
+        ArgumentCaptor<NotificationRequest> captured = ArgumentCaptor.forClass(NotificationRequest.class);
+        verify(publisher).enqueue(captured.capture());
+        assertThat(captured.getValue().reminderId()).isEqualTo(9L);
+        assertThat(captured.getValue().taskId()).isEqualTo(7L);
+        assertThat(captured.getValue().title()).isEqualTo("買排骨");
+        assertThat(captured.getValue().deliveryKey()).startsWith("reminder:9:");
     }
 
-    /** 有天氣風險時,通知內文附上建議。 */
     @Test
-    void weatherAdvisoryIsAppendedToMessage() {
-        StubSender logSender = new StubSender(NotificationChannel.LOG, false);
-        when(weatherAdvisoryService.currentAdvisory())
-                .thenReturn(java.util.Optional.of("降雨機率 70%,記得帶傘、東西別買太多"));
-        ReminderDeliveryService service = new ReminderDeliveryService(
-                List.of(logSender), deliveryRepository, weatherAdvisoryService,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+    void weatherAdvisoryIsIncludedBeforeOutboxPersistence() {
+        when(weatherAdvisoryService.currentAdvisory()).thenReturn(
+                java.util.Optional.of("降雨機率 70%,記得帶傘"));
 
-        service.deliver(reminder(), task());
+        new ReminderDeliveryService(publisher, weatherAdvisoryService).deliver(reminder(), task());
 
-        assertThat(logSender.received.get(0).message())
-                .isEqualTo("🔔 ENTER geofence: 全聯\n\n"
-                        + "🌦️ 天氣提醒:\n- 降雨機率 70%,記得帶傘、東西別買太多");
+        ArgumentCaptor<NotificationRequest> captured = ArgumentCaptor.forClass(NotificationRequest.class);
+        verify(publisher).enqueue(captured.capture());
+        assertThat(captured.getValue().message()).contains("天氣提醒").contains("帶傘");
     }
 
-    /** 一個通道失敗:記失敗、不丟例外、其他通道照送。 */
     @Test
-    void failingChannelIsRecordedAndOthersStillDeliver() {
-        StubSender failing = new StubSender(NotificationChannel.WINDOWS_TOAST, true);
-        StubSender logSender = new StubSender(NotificationChannel.LOG, false);
+    void outboxFailureIsNotSwallowedSoTheBusinessTransactionCanRetry() {
         when(weatherAdvisoryService.currentAdvisory()).thenReturn(java.util.Optional.empty());
-        ReminderDeliveryService service = new ReminderDeliveryService(
-                List.of(failing, logSender), deliveryRepository, weatherAdvisoryService,
-                Clock.fixed(NOW, ZoneOffset.UTC));
+        when(publisher.enqueue(any())).thenThrow(new IllegalStateException("database unavailable"));
 
-        // 關鍵:通知失敗絕不能讓提醒核心炸掉
-        assertThatCode(() -> service.deliver(reminder(), task())).doesNotThrowAnyException();
+        assertThatThrownBy(() -> new ReminderDeliveryService(publisher, weatherAdvisoryService)
+                .deliver(reminder(), task()))
+                .isInstanceOf(IllegalStateException.class);
+    }
 
-        ArgumentCaptor<ReminderDelivery> captor = ArgumentCaptor.forClass(ReminderDelivery.class);
-        verify(deliveryRepository, times(2)).save(captor.capture());
-        assertThat(captor.getAllValues())
-                .extracting(ReminderDelivery::getChannel, ReminderDelivery::isSuccess, ReminderDelivery::getErrorMessage)
-                .containsExactly(
-                        org.assertj.core.groups.Tuple.tuple("WINDOWS_TOAST", false, "channel down"),
-                        org.assertj.core.groups.Tuple.tuple("LOG", true, null));
-        assertThat(logSender.received).hasSize(1);
+    private static Reminder reminder() {
+        Reminder reminder = Reminder.triggered(7L, "ENTER geofence: 全聯", NOW);
+        ReflectionTestUtils.setField(reminder, "id", 9L);
+        return reminder;
+    }
+
+    private static Task task() {
+        Task task = Task.create("買排骨", null, TaskPriority.NORMAL, null, NOW);
+        ReflectionTestUtils.setField(task, "id", 7L);
+        return task;
     }
 }

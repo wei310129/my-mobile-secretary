@@ -1,7 +1,9 @@
 package com.aproject.aidriven.mymobilesecretary.geo.persistence;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -15,12 +17,20 @@ public interface PlaceRepository extends JpaRepository<Place, Long> {
      */
     @Query(value = """
             SELECT p.* FROM place p
-            WHERE ST_DWithin(
+            WHERE p.workspace_id = :workspaceId
+              AND ST_DWithin(
                   ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326)::geography,
                   ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography,
                   :radiusMeters)
             """, nativeQuery = true)
-    List<Place> findWithinRadius(@Param("latitude") double latitude,
-                                 @Param("longitude") double longitude,
-                                 @Param("radiusMeters") double radiusMeters);
+    List<Place> findWithinRadiusInWorkspace(@Param("workspaceId") UUID workspaceId,
+                                            @Param("latitude") double latitude,
+                                            @Param("longitude") double longitude,
+                                            @Param("radiusMeters") double radiusMeters);
+
+    default List<Place> findWithinRadius(double latitude, double longitude, double radiusMeters) {
+        return findWithinRadiusInWorkspace(
+                WorkspaceContextHolder.requireContext().workspaceId(),
+                latitude, longitude, radiusMeters);
+    }
 }

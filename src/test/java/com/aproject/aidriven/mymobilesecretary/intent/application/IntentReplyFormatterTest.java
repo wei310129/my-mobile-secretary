@@ -50,6 +50,10 @@ class IntentReplyFormatterTest {
     @Test
     void notificationUsesItsTitleToSelectEmoji() {
         ReminderNotification notification = new ReminderNotification(
+                java.util.UUID.fromString("10000000-0000-0000-0000-000000000101"),
+                java.util.UUID.fromString("10000000-0000-0000-0000-000000000001"),
+                java.util.UUID.randomUUID(),
+                "test",
                 null,
                 null,
                 "待安排事項",

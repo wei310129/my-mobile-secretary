@@ -36,7 +36,7 @@ public class IntentController {
 
     @PostMapping
     public IntentResponse handle(@Valid @RequestBody IntentRequest request) {
-        IntentResult result = intentService.handle(request.text());
+        IntentResult result = intentService.handle(request.text(), "REST");
         return new IntentResponse(
                 result.action().name(),
                 result.message(),

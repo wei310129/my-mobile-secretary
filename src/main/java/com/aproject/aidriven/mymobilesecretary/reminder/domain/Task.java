@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.reminder.domain;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -17,7 +18,7 @@ import java.time.Instant;
  * 每次轉換都先問 TaskStatus 是否合法,非法轉換一律丟 BusinessException。
  */
 @Entity
-public class Task {
+public class Task extends WorkspaceOwnedEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

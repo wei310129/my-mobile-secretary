@@ -1,10 +1,13 @@
 package com.aproject.aidriven.mymobilesecretary.knowledge.domain;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 
 /**
@@ -15,13 +18,15 @@ import java.time.Instant;
  * 這裡只負責統計正確。
  */
 @Entity
-public class BufferRule {
+@Table(uniqueConstraints = @UniqueConstraint(
+        name = "uq_buffer_rule_workspace_place", columnNames = {"workspace_id", "place_id"}))
+public class BufferRule extends WorkspaceOwnedEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private Long placeId;
 
     @Column(nullable = false)

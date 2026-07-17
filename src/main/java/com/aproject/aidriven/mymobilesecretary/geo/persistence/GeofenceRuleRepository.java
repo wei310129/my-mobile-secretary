@@ -1,8 +1,10 @@
 package com.aproject.aidriven.mymobilesecretary.geo.persistence;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.GeofenceRule;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -28,14 +30,25 @@ public interface GeofenceRuleRepository extends JpaRepository<GeofenceRule, Long
     @Query(value = """
             SELECT gr.* FROM geofence_rule gr
             JOIN place p ON p.id = gr.place_id
-            WHERE gr.enabled = TRUE
+            WHERE gr.workspace_id = :workspaceId
+              AND p.workspace_id = :workspaceId
+              AND gr.enabled = TRUE
               AND gr.trigger_type = :triggerType
               AND ST_DWithin(
                     ST_SetSRID(ST_MakePoint(p.longitude, p.latitude), 4326)::geography,
                     ST_SetSRID(ST_MakePoint(:longitude, :latitude), 4326)::geography,
                     gr.radius_meters)
             """, nativeQuery = true)
-    List<GeofenceRule> findEnabledRulesMatching(@Param("triggerType") String triggerType,
-                                                @Param("latitude") double latitude,
-                                                @Param("longitude") double longitude);
+    List<GeofenceRule> findEnabledRulesMatchingInWorkspace(@Param("workspaceId") UUID workspaceId,
+                                                           @Param("triggerType") String triggerType,
+                                                           @Param("latitude") double latitude,
+                                                           @Param("longitude") double longitude);
+
+    default List<GeofenceRule> findEnabledRulesMatching(String triggerType,
+                                                        double latitude,
+                                                        double longitude) {
+        return findEnabledRulesMatchingInWorkspace(
+                WorkspaceContextHolder.requireContext().workspaceId(),
+                triggerType, latitude, longitude);
+    }
 }

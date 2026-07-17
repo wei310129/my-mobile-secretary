@@ -6,9 +6,12 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
-import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationChannel;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationSender;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.ReminderNotification;
+import com.aproject.aidriven.mymobilesecretary.account.domain.LegacyAccountIds;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationPublisher;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationRequest;
 import com.aproject.aidriven.mymobilesecretary.integration.weather.CwaWeatherClient;
 import com.aproject.aidriven.mymobilesecretary.integration.weather.WeatherForecast;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
@@ -19,11 +22,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -34,6 +39,19 @@ import org.springframework.data.redis.core.ValueOperations;
  */
 @ExtendWith(MockitoExtension.class)
 class WeatherAlertServiceTest {
+
+    private WorkspaceContextHolder.Scope workspaceScope;
+
+    @BeforeEach
+    void openWorkspaceScope() {
+        workspaceScope = WorkspaceContextHolder.open(new WorkspaceContext(
+                LegacyAccountIds.USER_ID, LegacyAccountIds.WORKSPACE_ID, WorkspaceChannel.TEST));
+    }
+
+    @AfterEach
+    void closeWorkspaceScope() {
+        workspaceScope.close();
+    }
 
     /** 2026-07-15 10:00 台北時間(提醒時窗內)。 */
     private static final Instant DAYTIME = Instant.parse("2026-07-15T02:00:00Z");
@@ -49,25 +67,12 @@ class WeatherAlertServiceTest {
     @Mock
     private ValueOperations<String, String> valueOps;
 
-    private static class RecordingSender implements NotificationSender {
-        final List<ReminderNotification> received = new ArrayList<>();
-
-        @Override
-        public NotificationChannel channel() {
-            return NotificationChannel.LOG;
-        }
-
-        @Override
-        public void send(ReminderNotification notification) {
-            received.add(notification);
-        }
-    }
-
-    private final RecordingSender sender = new RecordingSender();
+    @Mock
+    private NotificationPublisher notificationPublisher;
 
     private WeatherAlertService service(Instant now) {
         return new WeatherAlertService(weatherClient, scheduleItemRepository,
-                List.of(sender), redis,
+                notificationPublisher, redis,
                 new WeatherRuleProperties(true, "新北市", 60, 34),
                 new WeatherAlertProperties(LocalTime.of(7, 0), LocalTime.of(21, 0),
                         80, Duration.ofHours(6)),
@@ -90,8 +95,9 @@ class WeatherAlertServiceTest {
         redisAllows(true);
 
         assertThat(service(DAYTIME).remindUmbrellaIfRainy()).isTrue();
-        assertThat(sender.received).hasSize(1);
-        assertThat(sender.received.get(0).message()).contains("帶傘").contains("70%").contains("短暫陣雨");
+        ArgumentCaptor<NotificationRequest> captured = ArgumentCaptor.forClass(NotificationRequest.class);
+        org.mockito.Mockito.verify(notificationPublisher).enqueue(captured.capture());
+        assertThat(captured.getValue().message()).contains("帶傘").contains("70%").contains("短暫陣雨");
     }
 
     /** 一天只提醒一次:Redis key 已存在 → 不重複。 */
@@ -101,7 +107,7 @@ class WeatherAlertServiceTest {
         redisAllows(false);
 
         assertThat(service(DAYTIME).remindUmbrellaIfRainy()).isFalse();
-        assertThat(sender.received).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(notificationPublisher);
     }
 
     @Test
@@ -109,7 +115,7 @@ class WeatherAlertServiceTest {
         forecast(30);
 
         assertThat(service(DAYTIME).remindUmbrellaIfRainy()).isFalse();
-        assertThat(sender.received).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(notificationPublisher);
     }
 
     /** 夜間(23:00)不吵人,天氣也不用查。 */
@@ -140,8 +146,9 @@ class WeatherAlertServiceTest {
                 .thenReturn(List.of(item));
 
         assertThat(service(DAYTIME).askScheduleAdjustmentIfHeavyRain()).isTrue();
-        assertThat(sender.received).hasSize(1);
-        assertThat(sender.received.get(0).message())
+        ArgumentCaptor<NotificationRequest> captured = ArgumentCaptor.forClass(NotificationRequest.class);
+        org.mockito.Mockito.verify(notificationPublisher).enqueue(captured.capture());
+        assertThat(captured.getValue().message())
                 .contains("回診").contains("85%").contains("要調整行程嗎");
     }
 
@@ -153,7 +160,7 @@ class WeatherAlertServiceTest {
                 .thenReturn(List.of());
 
         assertThat(service(DAYTIME).askScheduleAdjustmentIfHeavyRain()).isFalse();
-        assertThat(sender.received).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(notificationPublisher);
     }
 
     /** 普通雨(70%<80%)不觸發調整詢問(帶傘提醒管這段)。 */

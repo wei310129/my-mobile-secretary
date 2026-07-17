@@ -5,9 +5,12 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.lenient;
 import static org.mockito.Mockito.when;
 
-import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationChannel;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationSender;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.ReminderNotification;
+import com.aproject.aidriven.mymobilesecretary.account.domain.LegacyAccountIds;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationPublisher;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationRequest;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItemRepository;
@@ -16,11 +19,13 @@ import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneOffset;
-import java.util.ArrayList;
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.AfterEach;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
+import org.mockito.ArgumentCaptor;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.data.redis.core.StringRedisTemplate;
 import org.springframework.data.redis.core.ValueOperations;
@@ -30,6 +35,19 @@ import org.springframework.data.redis.core.ValueOperations;
  */
 @ExtendWith(MockitoExtension.class)
 class PendingPromptServiceTest {
+
+    private WorkspaceContextHolder.Scope workspaceScope;
+
+    @BeforeEach
+    void openWorkspaceScope() {
+        workspaceScope = WorkspaceContextHolder.open(new WorkspaceContext(
+                LegacyAccountIds.USER_ID, LegacyAccountIds.WORKSPACE_ID, WorkspaceChannel.TEST));
+    }
+
+    @AfterEach
+    void closeWorkspaceScope() {
+        workspaceScope.close();
+    }
 
     /** 2026-07-12 10:00 台北時間(白天,可詢問時段)。 */
     private static final Instant DAYTIME = Instant.parse("2026-07-12T02:00:00Z");
@@ -45,26 +63,12 @@ class PendingPromptServiceTest {
     @Mock
     private ValueOperations<String, String> valueOps;
 
-    /** 記下收到通知的假 sender。 */
-    private static class RecordingSender implements NotificationSender {
-        final List<ReminderNotification> received = new ArrayList<>();
-
-        @Override
-        public NotificationChannel channel() {
-            return NotificationChannel.LOG;
-        }
-
-        @Override
-        public void send(ReminderNotification notification) {
-            received.add(notification);
-        }
-    }
-
-    private final RecordingSender sender = new RecordingSender();
+    @Mock
+    private NotificationPublisher notificationPublisher;
 
     private PendingPromptService service(Instant now) {
         return new PendingPromptService(
-                scheduleItemRepository, List.of(sender), redis,
+                scheduleItemRepository, notificationPublisher, redis,
                 new PendingPromptProperties(Duration.ofHours(1), Duration.ofHours(4),
                         LocalTime.of(8, 0), LocalTime.of(21, 0)),
                 Clock.fixed(now, ZoneOffset.UTC));
@@ -92,8 +96,9 @@ class PendingPromptServiceTest {
         boolean prompted = service(DAYTIME).promptIfIdle();
 
         assertThat(prompted).isTrue();
-        assertThat(sender.received).hasSize(1);
-        assertThat(sender.received.get(0).message()).contains("待安排事項（2 件）").contains("剪頭髮");
+        ArgumentCaptor<NotificationRequest> captured = ArgumentCaptor.forClass(NotificationRequest.class);
+        org.mockito.Mockito.verify(notificationPublisher).enqueue(captured.capture());
+        assertThat(captured.getValue().message()).contains("待安排事項（2 件）").contains("剪頭髮");
     }
 
     @Test
@@ -101,7 +106,7 @@ class PendingPromptServiceTest {
         pendingPool();
 
         assertThat(service(DAYTIME).promptIfIdle()).isFalse();
-        assertThat(sender.received).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(notificationPublisher);
     }
 
     /** 安靜時段(23:00 台北)不吵人。 */
@@ -110,7 +115,7 @@ class PendingPromptServiceTest {
         pendingPool(pendingItem("剪頭髮"));
 
         assertThat(service(NIGHT).promptIfIdle()).isFalse();
-        assertThat(sender.received).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(notificationPublisher);
     }
 
     /** 未來一小時內有已確認行程 → 不算空閒。 */
@@ -133,6 +138,6 @@ class PendingPromptServiceTest {
         lenient().when(valueOps.setIfAbsent(any(), any(), any(Duration.class))).thenReturn(false);
 
         assertThat(service(DAYTIME).promptIfIdle()).isFalse();
-        assertThat(sender.received).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(notificationPublisher);
     }
 }

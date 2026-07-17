@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.intent.domain;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -17,7 +18,7 @@ import java.time.Instant;
  * 補強後標 RESOLVED;超出服務範圍(如要求寫程式)標 OUT_OF_SCOPE。
  */
 @Entity
-public class IntentIssue {
+public class IntentIssue extends WorkspaceOwnedEntity {
 
     /** 問題來源分類。 */
     public enum Category {

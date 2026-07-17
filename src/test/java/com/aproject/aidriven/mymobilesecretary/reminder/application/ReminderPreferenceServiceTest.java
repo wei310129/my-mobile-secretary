@@ -36,7 +36,7 @@ class ReminderPreferenceServiceTest {
     @Test
     void overnightQuietHoursDeferUntilNextMorning() {
         ReminderPreference preference = preference(true);
-        when(repository.findById(1)).thenReturn(Optional.of(preference));
+        when(repository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(preference));
 
         Optional<Instant> deferred = service.deferUntil(task(TaskPriority.NORMAL), NOW);
 
@@ -46,7 +46,7 @@ class ReminderPreferenceServiceTest {
     @Test
     void highPriorityCanBypassQuietHoursWhenAllowed() {
         ReminderPreference preference = preference(true);
-        when(repository.findById(1)).thenReturn(Optional.of(preference));
+        when(repository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(preference));
 
         assertThat(service.deferUntil(task(TaskPriority.HIGH), NOW)).isEmpty();
     }
@@ -54,7 +54,7 @@ class ReminderPreferenceServiceTest {
     @Test
     void highPriorityIsDeferredWhenExceptionDisabled() {
         ReminderPreference preference = preference(false);
-        when(repository.findById(1)).thenReturn(Optional.of(preference));
+        when(repository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(preference));
 
         assertThat(service.deferUntil(task(TaskPriority.HIGH), NOW))
                 .contains(Instant.parse("2030-08-01T23:00:00Z"));
@@ -64,7 +64,7 @@ class ReminderPreferenceServiceTest {
     void temporaryMuteEndingInsideQuietHoursExtendsToQuietEnd() {
         ReminderPreference preference = preference(false);
         preference.muteUntil(Instant.parse("2030-08-01T20:00:00Z"), NOW); // 台北 04:00
-        when(repository.findById(1)).thenReturn(Optional.of(preference));
+        when(repository.findFirstByOrderByIdAsc()).thenReturn(Optional.of(preference));
 
         assertThat(service.deferUntil(task(TaskPriority.NORMAL), NOW))
                 .contains(Instant.parse("2030-08-01T23:00:00Z"));

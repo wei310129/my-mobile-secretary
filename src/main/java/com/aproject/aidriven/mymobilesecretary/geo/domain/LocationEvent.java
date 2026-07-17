@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.geo.domain;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -16,7 +17,7 @@ import java.time.Instant;
  * 不得假設有連續 GPS 軌跡——這是電池與隱私的底線(architecture.md §12)。
  */
 @Entity
-public class LocationEvent {
+public class LocationEvent extends WorkspaceOwnedEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)

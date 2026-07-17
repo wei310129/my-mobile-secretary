@@ -1,6 +1,12 @@
 # 測試環境:資料庫與 Redis 連線由 Testcontainers @ServiceConnection 動態注入,
 # 這裡不寫死連線資訊,只放測試專屬的行為設定。
 app:
+  workspace:
+    # Existing integration tests predate explicit workspace scopes and run in the legacy tenant.
+    legacy-fallback-enabled: true
+  security:
+    # Existing MockMvc tests focus on domain behavior; dedicated security tests enable auth.
+    enabled: false
   scheduling:
     # 測試不跑背景輪詢:worker 由測試直接呼叫,確保時序可控
     enabled: false

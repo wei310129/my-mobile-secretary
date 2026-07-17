@@ -1,5 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.knowledge.domain;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import jakarta.persistence.CollectionTable;
 import jakarta.persistence.Column;
 import jakarta.persistence.ElementCollection;
@@ -9,9 +11,12 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.JoinColumn;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.Set;
+import java.util.stream.Collectors;
 
 /**
  * 物品知識:某個品項可以在哪些地點買到。
@@ -20,20 +25,21 @@ import java.util.Set;
  * Phase 2 先存地點 id 的直接關聯;之後知識庫擴充(冷藏需求、重量、營業時間風險)再加欄位。
  */
 @Entity
-public class Item {
+@Table(uniqueConstraints = @UniqueConstraint(
+        name = "uq_item_workspace_name", columnNames = {"workspace_id", "name"}))
+public class Item extends WorkspaceOwnedEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, length = 100, unique = true)
+    @Column(nullable = false, length = 100)
     private String name;
 
     /** 可購買地點 id 集合。 */
     @ElementCollection(fetch = FetchType.EAGER)
     @CollectionTable(name = "item_place", joinColumns = @JoinColumn(name = "item_id"))
-    @Column(name = "place_id", nullable = false)
-    private Set<Long> placeIds = new LinkedHashSet<>();
+    private Set<ItemPlaceReference> placeReferences = new LinkedHashSet<>();
 
     @Column(nullable = false)
     private Instant createdAt;
@@ -55,7 +61,9 @@ public class Item {
 
     private Item(String name, Set<Long> placeIds, Instant now) {
         this.name = name;
-        this.placeIds = new LinkedHashSet<>(placeIds);
+        this.placeReferences = placeIds.stream()
+                .map(ItemPlaceReference::of)
+                .collect(Collectors.toCollection(LinkedHashSet::new));
         this.inventoryQuantity = 0;
         this.shoppingNeeded = false;
         this.createdAt = now;
@@ -94,8 +102,13 @@ public class Item {
     }
 
     public void addPlace(Long placeId, Instant now) {
-        this.placeIds.add(placeId);
+        this.placeReferences.add(ItemPlaceReference.of(placeId));
         this.updatedAt = now;
+    }
+
+    @Override
+    protected void onWorkspaceOwnershipApplied(WorkspaceContext context) {
+        placeReferences.forEach(reference -> reference.applyOwnership(context));
     }
 
     public Long getId() {
@@ -107,7 +120,9 @@ public class Item {
     }
 
     public Set<Long> getPlaceIds() {
-        return Set.copyOf(placeIds);
+        return placeReferences.stream()
+                .map(ItemPlaceReference::placeId)
+                .collect(Collectors.toUnmodifiableSet());
     }
 
     public Instant getCreatedAt() {

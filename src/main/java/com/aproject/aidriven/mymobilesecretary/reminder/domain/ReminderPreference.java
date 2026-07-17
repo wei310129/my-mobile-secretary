@@ -1,16 +1,24 @@
 package com.aproject.aidriven.mymobilesecretary.reminder.domain;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 import java.time.LocalTime;
 
 /** 單人提醒偏好：固定勿擾時段、臨時靜音，以及緊急任務是否例外。 */
 @Entity
-public class ReminderPreference {
+@Table(uniqueConstraints = @UniqueConstraint(
+        name = "uq_reminder_preference_workspace", columnNames = "workspace_id"))
+public class ReminderPreference extends WorkspaceOwnedEntity {
     @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Integer id;
 
     private LocalTime quietStart;
@@ -27,7 +35,6 @@ public class ReminderPreference {
     }
 
     private ReminderPreference(Instant now) {
-        this.id = 1;
         this.allowHighPriority = true;
         this.updatedAt = now;
     }
@@ -62,6 +69,7 @@ public class ReminderPreference {
         this.updatedAt = now;
     }
 
+    public Integer getId() { return id; }
     public LocalTime getQuietStart() { return quietStart; }
     public LocalTime getQuietEnd() { return quietEnd; }
     public Instant getMutedUntil() { return mutedUntil; }

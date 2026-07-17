@@ -1,5 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.intent.domain.ConversationContext;
 import com.aproject.aidriven.mymobilesecretary.intent.persistence.ConversationContextRepository;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
@@ -26,7 +28,8 @@ public class ConversationContextService {
 
     @Transactional(readOnly = true)
     public ConversationSnapshot snapshot() {
-        return repository.findById(1)
+        WorkspaceContext scope = WorkspaceContextHolder.requireContext();
+        return findCurrent(scope)
                 .map(c -> new ConversationSnapshot(c.getLastTaskId(), c.getLastScheduleId(),
                         c.getLastPlaceId(), parseIds(c.getLastTaskListIds()),
                         parseIds(c.getLastScheduleListIds()), c.getLastAction(),
@@ -83,8 +86,14 @@ public class ConversationContextService {
     }
 
     private ConversationContext current() {
-        return repository.findById(1).orElseGet(() ->
-                repository.save(ConversationContext.create(Instant.now(clock))));
+        WorkspaceContext scope = WorkspaceContextHolder.requireContext();
+        return findCurrent(scope).orElseGet(() -> repository.save(
+                ConversationContext.create(scope.channel(), Instant.now(clock))));
+    }
+
+    private java.util.Optional<ConversationContext> findCurrent(WorkspaceContext scope) {
+        return repository.findByWorkspaceIdAndCreatedByUserIdAndChannel(
+                scope.workspaceId(), scope.actorId(), scope.channel());
     }
 
     private static Long at(List<Long> ids, int ordinal) {

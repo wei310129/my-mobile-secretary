@@ -7,6 +7,14 @@ import org.junit.jupiter.api.Test;
 class IntentValidationDiagnosticTest {
 
     @Test
+    void mutationBoundaryDefaultsNewCommandsToFailClosed() {
+        assertThat(IntentService.isPotentiallyMutating(IntentCommand.Type.ASK_LAST_ACTIVITY)).isFalse();
+        assertThat(IntentService.isPotentiallyMutating(IntentCommand.Type.CREATE_TASK)).isTrue();
+        assertThat(IntentService.isPotentiallyMutating(IntentCommand.Type.CANCEL_TASK)).isTrue();
+        assertThat(IntentService.isPotentiallyMutating(null)).isTrue();
+    }
+
+    @Test
     void explainsKnownJavaValidationFailuresInPlainLanguage() {
         assertThat(IntentValidationDiagnostic.explain(
                 new IllegalArgumentException("schedule missing startAt/endAt")))
@@ -28,5 +36,16 @@ class IntentValidationDiagnosticTest {
         assertThat(IntentValidationDiagnostic.summarize(command))
                 .isEqualTo("type=CREATE_SCHEDULE; title=倒垃圾; dueAt=(空); "
                         + "startAt=2026-07-16T22:00:00+08:00; endAt=(空); placeName=(空)");
+    }
+
+    @Test
+    void exposesStableValidationCodesWithoutIncludingRejectedValues() {
+        assertThat(IntentValidationDiagnostic.code(
+                new IllegalArgumentException("schedule missing startAt")))
+                .isEqualTo("MISSING_SCHEDULE_START_AT");
+        assertThat(IntentValidationDiagnostic.code(
+                new IllegalArgumentException("bad time: private malformed value")))
+                .isEqualTo("INVALID_TIME_FORMAT")
+                .doesNotContain("private malformed value");
     }
 }

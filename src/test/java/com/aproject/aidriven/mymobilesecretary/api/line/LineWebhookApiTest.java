@@ -1,11 +1,13 @@
 package com.aproject.aidriven.mymobilesecretary.api.line;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aproject.aidriven.mymobilesecretary.IntegrationTestBase;
 import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubIntentInterpreter;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
+import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
 import javax.crypto.Mac;
@@ -27,6 +29,8 @@ class LineWebhookApiTest extends IntegrationTestBase {
 
     @Autowired
     private StubIntentInterpreter stub;
+    @Autowired
+    private TaskRepository taskRepository;
 
     private String sign(byte[] body) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
@@ -35,10 +39,16 @@ class LineWebhookApiTest extends IntegrationTestBase {
     }
 
     private byte[] textMessageEvent(String text) {
+        return textMessageEvent(text, "event-" + java.util.UUID.randomUUID());
+    }
+
+    private byte[] textMessageEvent(String text, String eventId) {
         return """
-                {"events":[{"type":"message","replyToken":"rt-1","source":{"userId":"%s"},\
-                "message":{"type":"text","text":"%s"}}]}
-                """.formatted(OWNER_USER_ID, text).getBytes(StandardCharsets.UTF_8);
+                {"events":[{"type":"message","replyToken":"rt-1","webhookEventId":"%s",\
+                "source":{"userId":"%s"},\
+                "message":{"id":"message-%s","type":"text","text":"%s"}}]}
+                """.formatted(eventId, OWNER_USER_ID, eventId, text)
+                .getBytes(StandardCharsets.UTF_8);
     }
 
     /** 驗簽失敗 → 401,且不得處理內容(不建任務)。 */
@@ -75,6 +85,32 @@ class LineWebhookApiTest extends IntegrationTestBase {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk());
+    }
+
+    /** LINE 重送同一 webhookEventId 時不得再次執行已完成的 mutation。 */
+    @Test
+    void duplicateWebhookEventCreatesTaskOnlyOnce() throws Exception {
+        String title = "LINE 冪等測試-" + java.util.UUID.randomUUID();
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_TASK, title, null, null, null, null, "NORMAL", null,
+                null, null, null, null, null));
+        byte[] body = textMessageEvent("幫我記下冪等測試", "same-event-" + java.util.UUID.randomUUID());
+        String signature = sign(body);
+
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", signature)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", signature)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        assertThat(taskRepository.findAll().stream()
+                .filter(task -> title.equals(task.getTitle())))
+                .hasSize(1);
     }
 
     /** 非文字事件(如 follow)一樣回 200,只是不觸發意圖處理。 */

@@ -73,5 +73,5 @@ cd D:\my-project\my-mobile-secretary\scripts
 
 ## 提醒
 
-- 後端要活著才會響:`.\mvnw.cmd spring-boot:run` 的視窗別關(電腦休眠時提醒不會來,醒來後到期的會補響)
+- 後端要活著才會響:`.\mvnw.cmd spring-boot:run -Dspring-boot.run.profiles=local` 的視窗別關(電腦休眠時提醒不會來,醒來後到期的會補響)
 - 忘記編號:`.\tasks.ps1`、`.\places.ps1`

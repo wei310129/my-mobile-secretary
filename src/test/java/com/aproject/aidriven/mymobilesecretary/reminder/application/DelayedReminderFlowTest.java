@@ -40,7 +40,7 @@ class DelayedReminderFlowTest extends IntegrationTestBase {
     @Autowired
     private ReminderRepository reminderRepository;
 
-    /** 佇列基本行為:到期的撈得到且被移除;未到期的留在佇列。 */
+    /** 佇列基本行為:到期項目取得 lease；成功 ack 才永久移除。 */
     @Test
     void claimReturnsOnlyDueEntriesAndRemovesThem() {
         Instant now = Instant.now();
@@ -55,6 +55,31 @@ class DelayedReminderFlowTest extends IntegrationTestBase {
         // 已被 claim 的不會再出現;未到期的還在
         assertThat(scheduleService.peekDue(900_001L)).isEmpty();
         assertThat(scheduleService.peekDue(900_002L)).isPresent();
+        ScheduledEntry leased = claimed.stream()
+                .filter(entry -> entry.id() == 900_001L)
+                .findFirst().orElseThrow();
+        assertThat(scheduleService.acknowledge(leased)).isTrue();
+        scheduleService.removeDueReminder(900_002L);
+    }
+
+    /** 處理失敗會回 ready 重試，成功後才 ack 並清除 failure count。 */
+    @Test
+    void failedLeaseCanRetryAndThenAcknowledge() {
+        Instant now = Instant.now();
+        scheduleService.scheduleDueReminder(900_003L, now.minusSeconds(1));
+        ScheduledEntry firstLease = scheduleService.claimDue(now).stream()
+                .filter(entry -> entry.id() == 900_003L)
+                .findFirst().orElseThrow();
+
+        assertThat(scheduleService.retry(firstLease, now))
+                .isEqualTo(ReminderScheduleService.RetryOutcome.RETRIED);
+        assertThat(scheduleService.failureCount(firstLease)).isEqualTo(1);
+
+        ScheduledEntry secondLease = scheduleService.claimDue(now.plusSeconds(31)).stream()
+                .filter(entry -> entry.id() == 900_003L)
+                .findFirst().orElseThrow();
+        assertThat(scheduleService.acknowledge(secondLease)).isTrue();
+        assertThat(scheduleService.failureCount(secondLease)).isZero();
     }
 
     /** 驗收 1+2:建立未來時間提醒,到期後由 worker 觸發。 */

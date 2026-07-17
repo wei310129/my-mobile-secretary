@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.geo.domain;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -19,7 +20,7 @@ import java.time.Instant;
  * - 上限 {@value #MAX_RADIUS_METERS} 公尺:太大則「到地點」失去意義且互相重疊。
  */
 @Entity
-public class GeofenceRule {
+public class GeofenceRule extends WorkspaceOwnedEntity {
 
     public static final int MIN_RADIUS_METERS = 50;
     public static final int MAX_RADIUS_METERS = 5000;

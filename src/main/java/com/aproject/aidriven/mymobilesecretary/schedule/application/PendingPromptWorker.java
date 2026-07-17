@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.schedule.application;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceBackgroundRunner;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -10,13 +11,17 @@ import org.springframework.stereotype.Component;
 public class PendingPromptWorker {
 
     private final PendingPromptService promptService;
+    private final WorkspaceBackgroundRunner workspaceRunner;
 
-    public PendingPromptWorker(PendingPromptService promptService) {
+    public PendingPromptWorker(PendingPromptService promptService,
+                               WorkspaceBackgroundRunner workspaceRunner) {
         this.promptService = promptService;
+        this.workspaceRunner = workspaceRunner;
     }
 
     @Scheduled(fixedDelayString = "${app.pending.prompt.poll-interval:10m}")
     public void poll() {
-        promptService.promptIfIdle();
+        workspaceRunner.forEachWorkspace("pending-prompt",
+                ignored -> promptService.promptIfIdle());
     }
 }

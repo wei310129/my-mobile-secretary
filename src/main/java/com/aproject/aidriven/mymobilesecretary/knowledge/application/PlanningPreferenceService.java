@@ -27,18 +27,18 @@ public class PlanningPreferenceService {
 
     @Transactional(readOnly = true)
     public Duration extraTransferBuffer() {
-        return repository.findById(1)
+        return repository.findFirstByOrderByIdAsc()
                 .map(p -> Duration.ofMinutes(p.getExtraTransferMinutes())).orElse(Duration.ZERO);
     }
 
     @Transactional(readOnly = true)
     public Duration mealBuffer() {
-        return repository.findById(1)
+        return repository.findFirstByOrderByIdAsc()
                 .map(p -> Duration.ofMinutes(p.getMealBufferMinutes())).orElse(Duration.ZERO);
     }
 
     private PlanningPreference current() {
-        return repository.findById(1).orElseGet(() ->
+        return repository.findFirstByOrderByIdAsc().orElseGet(() ->
                 repository.save(PlanningPreference.create(Instant.now(clock))));
     }
 }

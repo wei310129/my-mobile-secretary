@@ -10,7 +10,8 @@ import java.util.List;
 public record LineWebhookPayload(List<Event> events) {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Event(String type, String replyToken, Message message, Source source) {
+    public record Event(String type, String replyToken, String webhookEventId,
+                        Long timestamp, Message message, Source source) {
 
         /** 是否為使用者傳來的純文字訊息。 */
         public boolean isTextMessage() {
@@ -25,6 +26,15 @@ public record LineWebhookPayload(List<Event> events) {
         /** 發訊者的 LINE userId;LINE 平台驗證請求等無來源事件為 null。 */
         public String sourceUserId() {
             return source == null ? null : source.userId();
+        }
+
+        /** LINE retries preserve this event id; older fixtures may only contain a message id. */
+        public String idempotencyKey() {
+            if (webhookEventId != null && !webhookEventId.isBlank()) {
+                return webhookEventId;
+            }
+            return message == null || message.id() == null || message.id().isBlank()
+                    ? null : "message:" + message.id();
         }
     }
 

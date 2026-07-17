@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.schedule.domain;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
@@ -8,6 +9,8 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
+import jakarta.persistence.Table;
+import jakarta.persistence.UniqueConstraint;
 import java.time.Instant;
 
 /**
@@ -17,13 +20,16 @@ import java.time.Instant;
  * 超時必須有正的分鐘數(原因可不填,使用者常只說「晚了半小時」)。
  */
 @Entity
-public class ScheduleOutcome {
+@Table(uniqueConstraints = @UniqueConstraint(
+        name = "uq_schedule_outcome_workspace_item",
+        columnNames = {"workspace_id", "schedule_item_id"}))
+public class ScheduleOutcome extends WorkspaceOwnedEntity {
 
     @Id
     @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(nullable = false, unique = true)
+    @Column(nullable = false)
     private Long scheduleItemId;
 
     @Column(nullable = false)

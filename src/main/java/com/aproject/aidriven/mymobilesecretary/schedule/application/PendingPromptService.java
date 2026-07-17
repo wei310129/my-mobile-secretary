@@ -1,8 +1,8 @@
 package com.aproject.aidriven.mymobilesecretary.schedule.application;
 
-import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationChannel;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationSender;
-import com.aproject.aidriven.mymobilesecretary.integration.notification.ReminderNotification;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.TenantRedisKeys;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationPublisher;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationRequest;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItemRepository;
@@ -36,18 +36,18 @@ public class PendingPromptService {
     static final String PROMPT_GUARD_KEY = "pending:prompt:last";
 
     private final ScheduleItemRepository scheduleItemRepository;
-    private final List<NotificationSender> senders;
+    private final NotificationPublisher notificationPublisher;
     private final StringRedisTemplate redis;
     private final PendingPromptProperties properties;
     private final Clock clock;
 
     public PendingPromptService(ScheduleItemRepository scheduleItemRepository,
-                                List<NotificationSender> senders,
+                                 NotificationPublisher notificationPublisher,
                                 StringRedisTemplate redis,
                                 PendingPromptProperties properties,
                                 Clock clock) {
         this.scheduleItemRepository = scheduleItemRepository;
-        this.senders = senders;
+        this.notificationPublisher = notificationPublisher;
         this.redis = redis;
         this.properties = properties;
         this.clock = clock;
@@ -58,6 +58,7 @@ public class PendingPromptService {
      *
      * @return true 表示這次真的問了(測試與除錯用)
      */
+    @Transactional
     public boolean promptIfIdle() {
         List<ScheduleItem> pending = scheduleItemRepository
                 .findByStatusOrderByStartAtAsc(ScheduleStatus.PENDING);
@@ -82,7 +83,8 @@ public class PendingPromptService {
 
         // SETNX + TTL:minInterval 內只問一次(key 還在就代表問過)
         Boolean acquired = redis.opsForValue()
-                .setIfAbsent(PROMPT_GUARD_KEY, now.toString(), properties.minInterval());
+                .setIfAbsent(TenantRedisKeys.current(PROMPT_GUARD_KEY),
+                        now.toString(), properties.minInterval());
         if (!Boolean.TRUE.equals(acquired)) {
             return false;
         }
@@ -94,24 +96,9 @@ public class PendingPromptService {
         String message = "你現在有空檔。\n\n待安排事項（%d 件）:\n%s\n\n要排進行程嗎?"
                 .formatted(pending.size(), titles);
 
-        // 逐通道送出;單一通道失敗只記錄(詢問屬 nice-to-have,不建 delivery 紀錄)
-        for (NotificationSender sender : senders) {
-            try {
-                sender.send(new ReminderNotification(null, null, "待安排事項", message));
-            } catch (Exception e) {
-                log.warn("Pending prompt delivery failed [channel={}]", channelName(sender), e);
-            }
-        }
-        log.info("Pending prompt sent ({} items)", pending.size());
+        notificationPublisher.enqueue(new NotificationRequest(
+                null, "pending-prompt:" + now, null, null, "待安排事項", message));
+        log.info("Pending prompt queued [items={}]", pending.size());
         return true;
-    }
-
-    private String channelName(NotificationSender sender) {
-        try {
-            NotificationChannel channel = sender.channel();
-            return channel == null ? "?" : channel.name();
-        } catch (Exception e) {
-            return "?";
-        }
     }
 }

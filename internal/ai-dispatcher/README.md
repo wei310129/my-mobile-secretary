@@ -17,6 +17,8 @@ reasoning and it is not part of the main application's runtime.
 See [ARCHITECTURE.md](ARCHITECTURE.md) for the dependency and failure boundaries.
 See [DESIGN.md](DESIGN.md) for the state machine, lifecycle, data model, race analysis and
 operations checklist.
+See [SESSION_BINDING.md](SESSION_BINDING.md) for securely binding the durable
+`development-main` lane to the Codex thread displayed as `開發主要對話`.
 
 ## Local commands
 
@@ -64,6 +66,10 @@ but never changes main-application state and never blocks recovery of an existin
 Consumed event payloads are cleared after 90 days by default while event/run audit identities are
 retained. Configure `AI_DISPATCHER_CONSUMED_PAYLOAD_RETENTION` to match the main application's
 LINE-history replay window. Pending and claimed payloads are never purged.
+
+The session-binding management API is independently disabled by default. Enabling it does not
+enable dispatching or launch Codex. It requires a separate administrator token and is intended for
+explicit setup, verification and controlled rebinding only.
 
 ## Removal
 

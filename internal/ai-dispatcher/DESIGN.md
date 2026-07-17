@@ -137,10 +137,11 @@ log monitor.
 | Table | Purpose | Important invariant |
 | --- | --- | --- |
 | `agent_session` | Named `development-main` / `開發主要對話` binding | Rebinding forbidden while a run may be active |
+| `agent_session_binding_audit` | Immutable binding/rebinding history | Every mutation records actor, reason and resulting version |
 | `trigger_cursor` | Opaque cursor per source | Locked while events and cursor are committed |
 | `dispatcher_event` | Durable queue item and payload | Unique `(source_key, source_event_id)` deduplicates replay |
 | `dispatcher_lane` | Singleton coordination row | Row lock serializes state transitions |
-| `dispatcher_run` | Attempt/audit/fencing/heartbeat | Partial unique index allows one active run globally |
+| `dispatcher_run` | Attempt/audit/fencing/heartbeat plus immutable session snapshot | Partial unique index allows one active run globally |
 | `dispatcher_run_event` | Ordered batch membership | A source event belongs once at a position in a run |
 
 PostgreSQL is the lock and queue. Redis locks, file locks, JVM semaphores and `AtomicBoolean` are
@@ -158,6 +159,12 @@ one process; DB constraints and fencing remain authoritative across processes an
 - Finish is idempotent. A duplicate terminal callback does not consume/release events twice.
 - Successful events become `CONSUMED`; failed confirmed runs release the batch to `PENDING` with backoff.
 - An uncertain launch or stale heartbeat becomes `OUTCOME_UNKNOWN`, retaining the global active-run lock.
+- A binding mutation locks the lane before the session row and is rejected whenever `active_run_id`
+  is present, including a paused run with an unknown outcome.
+- Binding updates use an expected version. Concurrent administrators cannot overwrite one another;
+  exactly one request can advance a given version.
+- Claim stores the display name, provider, technical session id and binding version on the run.
+  Launch and recovery use that snapshot, never a later mutable binding.
 
 The merge strategy is batching, not summarization. Fifty messages create one run with fifty ordered
 event records and their metadata. Dispatcher never performs AI interpretation.
@@ -193,8 +200,8 @@ heartbeat does not automatically kill or replace Codex. Recovery first queries t
    `DEVELOPMENT_FEED_WORKSPACE_ID` / `DEVELOPMENT_FEED_ACTOR_ID`.
 3. Configure Dispatcher with the same token and main base URL.
 4. Supply a `CodexExecutionPort` adapter. This repository deliberately does not control Codex Desktop.
-5. Bind the adapter's real session id through `AgentSessionRegistry.bindDevelopmentSession`; the
-   durable display name remains `開發主要對話`.
+5. Bind the adapter's real technical session id through the protected management API documented in
+   `SESSION_BINDING.md`; the durable display name remains `開發主要對話`.
 6. Keep `AI_DISPATCHER_ENABLED=false` until steps 1-5 are verified, then enable the scheduler.
 7. Confirm `/actuator/health` contains the `aiDispatcher` component and no `PAUSED` state.
 
@@ -229,6 +236,9 @@ Implemented tests cover:
 - main feed token/method/cursor/pagination and inbound-only filtering.
 - real PostgreSQL RLS under a `NOBYPASSRLS` runtime role.
 - build/source isolation and consumed-payload retention.
+- authenticated session binding, optimistic version conflicts and immutable audit history.
+- concurrent binding with exactly one winner and run-snapshot launch/recovery correlation.
+- non-sensitive session readiness/version details in Dispatcher health.
 
 Before changing locking, migrations, callbacks, security, cursor format or retention, run both:
 

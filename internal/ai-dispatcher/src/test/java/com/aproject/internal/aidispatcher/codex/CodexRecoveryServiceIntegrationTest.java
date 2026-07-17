@@ -19,6 +19,7 @@ import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -198,6 +199,37 @@ class CodexRecoveryServiceIntegrationTest {
             releaseQuery.countDown();
             executor.shutdownNow();
         }
+    }
+
+    @Test
+    void recoveryUsesTheRunSessionSnapshotAfterTheCurrentBindingChanges() {
+        startRunningEvent();
+        jdbcTemplate.update("""
+                UPDATE agent_session
+                SET external_session_id = 'replacement-session', version = version + 1,
+                    last_verified_at = CURRENT_TIMESTAMP, updated_at = CURRENT_TIMESTAMP
+                WHERE session_key = 'development-main'
+                """);
+        AtomicReference<CodexExecutionQuery> capturedQuery = new AtomicReference<>();
+        Instant observedAt = BASE.plus(Duration.ofMinutes(8));
+        CodexExecutionPort port = new CodexExecutionPort() {
+            @Override
+            public CodexStartReceipt startCodex(CodexStartCommand command) {
+                throw new UnsupportedOperationException();
+            }
+
+            @Override
+            public CodexExecutionObservation queryExecution(CodexExecutionQuery query) {
+                capturedQuery.set(query);
+                return CodexExecutionObservation.running(
+                        query.externalExecutionId(), observedAt);
+            }
+        };
+
+        CodexRecoveryResult result = recoveryAt(observedAt, port).recover();
+
+        assertThat(result.outcome()).isEqualTo(CodexRecoveryResult.Outcome.RECOVERED_RUNNING);
+        assertThat(capturedQuery.get().externalSessionId()).isEqualTo("codex-session-123");
     }
 
     private UUID claimEvent() {

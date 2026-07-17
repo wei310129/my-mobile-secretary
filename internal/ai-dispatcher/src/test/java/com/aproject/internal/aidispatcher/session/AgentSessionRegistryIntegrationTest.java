@@ -8,6 +8,10 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.flywaydb.core.Flyway;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -33,10 +37,11 @@ class AgentSessionRegistryIntegrationTest {
 
     private JdbcTemplate jdbcTemplate;
     private AgentSessionRegistry registry;
+    private DriverManagerDataSource dataSource;
 
     @BeforeEach
     void prepareDatabase() {
-        DriverManagerDataSource dataSource = new DriverManagerDataSource(
+        dataSource = new DriverManagerDataSource(
                 POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword());
         Flyway.configure().dataSource(dataSource).load().migrate();
         jdbcTemplate = new JdbcTemplate(dataSource);
@@ -185,6 +190,60 @@ class AgentSessionRegistryIntegrationTest {
         assertThatThrownBy(() -> registry.bindDevelopmentSession("開發主要對話"))
                 .isInstanceOf(IllegalArgumentException.class)
                 .hasMessageContaining("opaque technical id");
+    }
+
+    @Test
+    void concurrentBindingsForTheSameVersionHaveExactlyOneWinner() throws Exception {
+        AgentSessionRegistry competingRegistry = new AgentSessionRegistry(
+                jdbcTemplate,
+                new DataSourceTransactionManager(dataSource),
+                Clock.fixed(NOW, ZoneOffset.UTC));
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        var executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<Object> first = executor.submit(() -> attemptBinding(
+                    registry, FIRST_SESSION_ID, "operator-a", ready, start));
+            Future<Object> second = executor.submit(() -> attemptBinding(
+                    competingRegistry, SECOND_SESSION_ID, "operator-b", ready, start));
+
+            assertThat(ready.await(5, TimeUnit.SECONDS)).isTrue();
+            start.countDown();
+            Object firstResult = first.get(5, TimeUnit.SECONDS);
+            Object secondResult = second.get(5, TimeUnit.SECONDS);
+
+            assertThat(java.util.List.of(firstResult, secondResult)
+                    .stream().filter(SessionBinding.class::isInstance).count()).isEqualTo(1);
+            assertThat(java.util.List.of(firstResult, secondResult)
+                    .stream().filter(SessionBindingConflictException.class::isInstance).count())
+                    .isEqualTo(1);
+            assertThat(registry.developmentSession().version()).isEqualTo(1);
+            assertThat(jdbcTemplate.queryForObject(
+                    "SELECT COUNT(*) FROM agent_session_binding_audit", Long.class)).isEqualTo(1);
+        } finally {
+            start.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    private Object attemptBinding(AgentSessionRegistry target,
+                                  String sessionId,
+                                  String actor,
+                                  CountDownLatch ready,
+                                  CountDownLatch start) {
+        ready.countDown();
+        try {
+            if (!start.await(5, TimeUnit.SECONDS)) {
+                return new IllegalStateException("Timed out waiting for concurrent start");
+            }
+            return target.bindDevelopmentSession(new BindDevelopmentSessionCommand(
+                    sessionId, 0L, actor, "concurrent binding test"));
+        } catch (RuntimeException failure) {
+            return failure;
+        } catch (InterruptedException interrupted) {
+            Thread.currentThread().interrupt();
+            return interrupted;
+        }
     }
 
     private void insertPendingEvent() {

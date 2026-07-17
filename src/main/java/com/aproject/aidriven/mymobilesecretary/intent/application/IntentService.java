@@ -615,7 +615,8 @@ public class IntentService {
             }
             case ASK_LAST_ACTIVITY -> {
                 requireText(command.title(), "title");
-                yield lastActivityAnswerService.answerTopic(command.title());
+                yield lastActivityAnswerService.answerTopic(
+                        command.title(), command.placeName(), command.safeOptions().filter());
             }
             case ASK_ACTIVITY_COUNT -> {
                 requireText(command.title(), "title");

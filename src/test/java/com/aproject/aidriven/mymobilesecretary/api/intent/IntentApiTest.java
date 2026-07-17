@@ -581,6 +581,21 @@ class IntentApiTest extends IntegrationTestBase {
         org.assertj.core.api.Assertions.assertThat(taskService.listTasks()).hasSize(before);
     }
 
+    /** 指定健身房的歷史查詢不可退化成任何運動；沒有紀錄時要提出安全的放寬選項。 */
+    @Test
+    void gymHistoryQuestionKeepsBrandScopeAndNeverCreatesTask() throws Exception {
+        int before = taskService.listTasks().size();
+
+        say("我之前有去World Gym運動過嗎？",
+                jsonPath("$.action").value("RECENT_ACTIVITY_LISTED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
+                        "沒有找到在「World Gym」的運動紀錄")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("其他健身房")),
+                jsonPath("$.task").value(org.hamcrest.Matchers.nullValue()));
+
+        org.assertj.core.api.Assertions.assertThat(taskService.listTasks()).hasSize(before);
+    }
+
     /** 歷史活動次數由本機資料統計，沒有紀錄也不能交給故障 fallback 建待辦。 */
     @Test
     void lastMonthExerciseCountNeverFallsBackToTask() throws Exception {

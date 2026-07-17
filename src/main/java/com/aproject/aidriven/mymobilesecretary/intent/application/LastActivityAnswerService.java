@@ -1,5 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
+import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
@@ -12,8 +14,10 @@ import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Optional;
 import java.util.Set;
+import java.util.stream.Collectors;
 import org.springframework.stereotype.Service;
 
 /** 確定性回答「我上次做某件事是何時」，AI 故障時也不會把問句存成待辦。 */
@@ -25,23 +29,34 @@ public class LastActivityAnswerService {
             DateTimeFormatter.ofPattern("yyyy/MM/dd（EEE）HH:mm", Locale.TAIWAN);
     private static final DateTimeFormatter TIME = DateTimeFormatter.ofPattern("HH:mm");
     private static final List<String> QUESTION_SUFFIXES = List.of(
-            "是什麼時候", "在什麼時候", "什麼時候", "是哪一天", "是哪天", "何時", "哪一天", "哪天");
+            "是什麼時候", "在什麼時候", "什麼時候", "是哪一天", "是哪天", "是何時", "何時", "哪一天", "哪天");
     private static final List<Set<String>> SYNONYM_GROUPS = List.of(
             Set.of("運動", "健身", "跑步", "慢跑", "重訓", "游泳", "瑜伽", "騎單車", "騎腳踏車"),
             Set.of("看醫生", "就醫", "回診", "門診"),
             Set.of("剪頭髮", "理髮"));
+    private static final List<String> PLACE_ACTIVITY_TERMS = List.of(
+            "騎腳踏車", "騎單車", "運動", "健身", "跑步", "慢跑", "重訓", "游泳", "瑜伽");
 
     private final TaskService taskService;
     private final ScheduleService scheduleService;
+    private final PlaceService placeService;
     private final Clock clock;
 
-    public LastActivityAnswerService(TaskService taskService, ScheduleService scheduleService, Clock clock) {
+    public LastActivityAnswerService(TaskService taskService, ScheduleService scheduleService,
+                                     PlaceService placeService, Clock clock) {
         this.taskService = taskService;
         this.scheduleService = scheduleService;
+        this.placeService = placeService;
         this.clock = clock;
     }
 
     public Optional<IntentResult> answer(String text) {
+        Optional<PlaceActivityQuery> placeQuery = requestedPlaceActivity(text);
+        if (placeQuery.isPresent()) {
+            PlaceActivityQuery query = placeQuery.get();
+            return Optional.of(answerPlaceTopic(
+                    query.topic(), query.placeName(), query.mode(), query.allBranches()));
+        }
         Optional<String> requestedTopic = requestedTopic(text);
         if (requestedTopic.isEmpty()) {
             return Optional.empty();
@@ -51,23 +66,158 @@ public class LastActivityAnswerService {
     }
 
     public IntentResult answerTopic(String topic) {
+        return answerTopic(topic, null, null);
+    }
+
+    public IntentResult answerTopic(String topic, String placeName, String filter) {
+        if (placeName != null && !placeName.isBlank()) {
+            QueryMode mode = "EVER".equalsIgnoreCase(filter) ? QueryMode.EVER : QueryMode.LAST;
+            boolean allBranches = "ALL_BRANCHES".equalsIgnoreCase(filter);
+            return answerPlaceTopic(topic, placeName, mode, allBranches);
+        }
+
+        List<Activity> activities = activities(topic);
+        Optional<Activity> latest = activities.stream()
+                .max(Comparator.comparing(Activity::occurredAt));
+        return latest.map(activity -> answerFound(topic, activity))
+                .orElseGet(() -> answerMissing(topic));
+    }
+
+    private List<Activity> activities(String topic) {
         Instant now = Instant.now(clock);
+        Map<Long, PlaceLabel> places = placeService.listPlaces().stream()
+                .filter(place -> place.getId() != null)
+                .collect(Collectors.toMap(Place::getId, PlaceLabel::from,
+                        (first, ignored) -> first));
         List<Activity> scheduleActivities = scheduleService.listSchedules(null).stream()
                 .filter(item -> isPastActivity(item, now))
                 .filter(item -> matchesTopic(topic, item.getTitle()))
-                .map(Activity::fromSchedule)
+                .map(item -> Activity.fromSchedule(item, places.get(item.getPlaceId())))
                 .toList();
         List<Activity> taskActivities = taskService.listCompletedTasks().stream()
                 .filter(task -> matchesTopic(topic, task.getTitle()))
                 .map(task -> new Activity(task.getTitle(), task.getUpdatedAt(), null,
-                        Source.COMPLETED_TASK))
+                        Source.COMPLETED_TASK, null))
                 .toList();
 
-        Optional<Activity> latest = java.util.stream.Stream
+        return java.util.stream.Stream
                 .concat(scheduleActivities.stream(), taskActivities.stream())
-                .max(Comparator.comparing(Activity::occurredAt));
-        return latest.map(activity -> answerFound(topic, activity))
-                .orElseGet(() -> answerMissing(topic));
+                .toList();
+    }
+
+    private IntentResult answerPlaceTopic(String topic, String placeName,
+                                          QueryMode mode, boolean allBranches) {
+        String displayPlace = displayPlaceQuery(placeName);
+        List<Activity> matches = activities(topic).stream()
+                .filter(activity -> activity.place() != null
+                        && placeMatches(placeName, activity.place().name()))
+                .toList();
+        if (matches.isEmpty()) {
+            String broader = isGymQuery(placeName)
+                    ? "其他健身房的%s紀錄".formatted(topic)
+                    : "其他地點的%s紀錄".formatted(topic);
+            return IntentResult.message(IntentResult.Action.RECENT_ACTIVITY_LISTED,
+                    "🔎 沒有找到在「%s」的%s紀錄。\n- 我沒有把其他地點的紀錄混進來"
+                            .formatted(displayPlace, topic)
+                            + "\n- 我沒有新增任何待辦或行程"
+                            + "\n\n❓ 要改查%s嗎？".formatted(broader));
+        }
+
+        List<String> branches = matches.stream()
+                .map(activity -> activity.place().display())
+                .distinct()
+                .toList();
+        if (mode == QueryMode.LAST && branches.size() > 1 && !allBranches) {
+            return IntentResult.clarificationNeeded(
+                    "「%s」有多個地點紀錄，請選一個分店，或說「所有分店」：\n%s"
+                            .formatted(displayPlace, branches.stream()
+                                    .map(branch -> "- " + branch)
+                                    .collect(Collectors.joining("\n"))));
+        }
+
+        Activity latest = matches.stream()
+                .max(Comparator.comparing(Activity::occurredAt))
+                .orElseThrow();
+        String heading = mode == QueryMode.EVER
+                ? "✅ 有在「%s」%s的紀錄：".formatted(displayPlace, topic)
+                : "🕘 最近一次在「%s」%s的紀錄：".formatted(displayPlace, topic);
+        return answerFoundWithHeading(heading, latest);
+    }
+
+    private static Optional<PlaceActivityQuery> requestedPlaceActivity(String text) {
+        String normalized = normalize(text);
+        if (normalized.isBlank() || normalized.length() > 80 || isPurchaseQuestion(normalized)
+                || normalized.contains("使用者") || normalized.contains("你要告訴我")) {
+            return Optional.empty();
+        }
+
+        QueryMode mode;
+        int start;
+        boolean durationQuestion = false;
+        int marker = normalized.indexOf("最近一次");
+        int markerLength = "最近一次".length();
+        if (marker < 0) {
+            marker = normalized.indexOf("上次");
+            markerLength = "上次".length();
+        }
+        if (marker >= 0) {
+            mode = QueryMode.LAST;
+            start = marker + markerLength;
+        } else if ((marker = normalized.indexOf("多久沒")) >= 0) {
+            mode = QueryMode.LAST;
+            start = marker + "多久沒".length();
+            durationQuestion = true;
+        } else {
+            String[] everMarkers = {"之前有去", "之前有在", "有去", "有在", "去過"};
+            int found = -1;
+            int length = 0;
+            for (String everMarker : everMarkers) {
+                int candidate = normalized.indexOf(everMarker);
+                if (candidate >= 0 && (found < 0 || candidate < found)) {
+                    found = candidate;
+                    length = everMarker.length();
+                }
+            }
+            if (found < 0 || !normalized.endsWith("嗎")) {
+                return Optional.empty();
+            }
+            mode = QueryMode.EVER;
+            start = found + length;
+        }
+
+        String segment = normalized.substring(start).replaceFirst("^(?:去|在)", "");
+        String activityTerm = PLACE_ACTIVITY_TERMS.stream()
+                .filter(segment::contains)
+                .max(Comparator.comparingInt(segment::lastIndexOf))
+                .orElse(null);
+        if (activityTerm == null) {
+            return Optional.empty();
+        }
+        int activityAt = segment.lastIndexOf(activityTerm);
+        if (activityAt <= 0) {
+            return Optional.empty();
+        }
+        String place = segment.substring(0, activityAt);
+        String tail = segment.substring(activityAt + activityTerm.length());
+        if (mode == QueryMode.EVER && !Set.of("嗎", "過嗎", "過呢").contains(tail)) {
+            return Optional.empty();
+        }
+        if (mode == QueryMode.LAST && !durationQuestion && QUESTION_SUFFIXES.stream().noneMatch(suffix ->
+                tail.startsWith(suffix)
+                        && isStandaloneQuestionTail(tail.substring(suffix.length())))) {
+            return Optional.empty();
+        }
+        if (mode == QueryMode.LAST && durationQuestion
+                && !Set.of("", "了", "呢", "嗎").contains(tail)) {
+            return Optional.empty();
+        }
+        boolean allBranches = normalized.contains("分店")
+                && (normalized.contains("所有") || normalized.contains("全部")
+                || normalized.contains("各分店") || normalized.contains("任何"));
+        if (allBranches) {
+            place = place.replaceFirst("^(?:所有|全部|各|任何)", "").replace("分店", "");
+        }
+        return Optional.of(new PlaceActivityQuery(activityTerm, place, mode, allBranches));
     }
 
     static Optional<String> requestedTopic(String text) {
@@ -147,12 +297,18 @@ public class LastActivityAnswerService {
     }
 
     private static IntentResult answerFound(String topic, Activity activity) {
+        return answerFoundWithHeading("🕘 最近一次「%s」紀錄：".formatted(topic), activity);
+    }
+
+    private static IntentResult answerFoundWithHeading(String heading, Activity activity) {
         String interval = format(activity.occurredAt());
         if (activity.endedAt() != null) {
             interval += "–" + ZonedDateTime.ofInstant(activity.endedAt(), TAIPEI).format(TIME);
         }
-        String message = "🕘 最近一次「%s」紀錄：\n- 紀錄｜%s\n- 時間｜%s\n- 來源｜%s"
-                .formatted(topic, activity.title(), interval, activity.source().label);
+        String message = "%s\n- 紀錄｜%s\n- 時間｜%s\n- 地點｜%s\n- 來源｜%s"
+                .formatted(heading, activity.title(), interval,
+                        activity.place() == null ? "未記錄" : activity.place().display(),
+                        activity.source().label);
         if (activity.source() == Source.CONFIRMED_PAST_SCHEDULE) {
             message += "\n\n⚠️ 這筆行程沒有完成回報。"
                     + "\n- 我只能確認當時有排入行程，不能確定實際完成。";
@@ -173,6 +329,37 @@ public class LastActivityAnswerService {
                 .toLowerCase(Locale.ROOT);
     }
 
+    private static boolean placeMatches(String query, String actual) {
+        String normalizedQuery = normalize(query);
+        String normalizedActual = normalize(actual);
+        if (normalizedQuery.isBlank() || normalizedActual.isBlank()) {
+            return false;
+        }
+        if (normalizedActual.contains(normalizedQuery)
+                || normalizedQuery.contains(normalizedActual)) {
+            return true;
+        }
+        if (normalizedQuery.contains("worldgym") && normalizedActual.contains("worldgym")) {
+            String queryBranch = normalizedQuery.replace("worldgym", "").replace("分店", "");
+            String actualBranch = normalizedActual.replace("worldgym", "")
+                    .replace("分店", "").replaceFirst("店$", "");
+            return queryBranch.isBlank() || actualBranch.contains(queryBranch)
+                    || queryBranch.contains(actualBranch);
+        }
+        return false;
+    }
+
+    private static boolean isGymQuery(String placeName) {
+        String normalized = normalize(placeName);
+        return normalized.contains("gym") || normalized.contains("健身房");
+    }
+
+    private static String displayPlaceQuery(String placeName) {
+        String value = placeName == null ? "" : placeName.strip();
+        return value.replaceAll("(?i)world\\s*gym", "World Gym")
+                .replace("worldgym", "World Gym");
+    }
+
     private static String format(Instant instant) {
         return ZonedDateTime.ofInstant(instant, TAIPEI).format(DATE_TIME);
     }
@@ -189,11 +376,31 @@ public class LastActivityAnswerService {
         }
     }
 
-    private record Activity(String title, Instant occurredAt, Instant endedAt, Source source) {
-        private static Activity fromSchedule(ScheduleItem item) {
+    private enum QueryMode {
+        LAST,
+        EVER
+    }
+
+    private record PlaceActivityQuery(
+            String topic, String placeName, QueryMode mode, boolean allBranches) {
+    }
+
+    private record PlaceLabel(String name, String address) {
+        private static PlaceLabel from(Place place) {
+            return new PlaceLabel(place.getName(), place.getAddress());
+        }
+
+        private String display() {
+            return address == null || address.isBlank() ? name : "%s（%s）".formatted(name, address);
+        }
+    }
+
+    private record Activity(
+            String title, Instant occurredAt, Instant endedAt, Source source, PlaceLabel place) {
+        private static Activity fromSchedule(ScheduleItem item, PlaceLabel place) {
             Source source = item.getStatus() == ScheduleStatus.COMPLETED
                     ? Source.COMPLETED_SCHEDULE : Source.CONFIRMED_PAST_SCHEDULE;
-            return new Activity(item.getTitle(), item.getStartAt(), item.getEndAt(), source);
+            return new Activity(item.getTitle(), item.getStartAt(), item.getEndAt(), source, place);
         }
     }
 }

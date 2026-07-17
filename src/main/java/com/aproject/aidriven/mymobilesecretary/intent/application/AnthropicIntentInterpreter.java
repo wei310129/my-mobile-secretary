@@ -170,7 +170,9 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               最近漲跌或紀錄筆數用 ASK_PRICE_SUMMARY;問最常在哪家店買用 ASK_FREQUENT_STORE。
               價格紀錄沒有購買數量,不可把單價加總成支出；使用者問支出時要 UNKNOWN 說明資料不足。
             - 問上次做某個活動的時間(「我上次運動是什麼時候」「多久沒健身了」)用 ASK_LAST_ACTIVITY,
-              title 放活動關鍵字；這是查詢,絕不可建立待辦。購買紀錄仍用 ASK_LAST_PURCHASE。
+              title 放活動關鍵字；若指定場館、品牌或分店(「World Gym」「公館 World Gym」),一定保留在
+              placeName,不可只留下「運動」。問「之前有去過嗎」時 options.filter=EVER；明確說所有分店時
+              filter=ALL_BRANCHES。這是查詢,絕不可建立待辦。購買紀錄仍用 ASK_LAST_PURCHASE。
             - 問一段期間做某活動幾次(「我上個月運動幾次」)用 ASK_ACTIVITY_COUNT,title 放活動關鍵字,
               options.filter 填 LAST_MONTH、THIS_MONTH、LAST_WEEK 或 THIS_WEEK；這是歷史統計,不可建立待辦。
             - 問正庫存最多／最少／範圍用 ASK_INVENTORY_EXTREMES,filter 填 HIGH/LOW/RANGE;

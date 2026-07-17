@@ -1,8 +1,11 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
+import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskPriority;
@@ -26,6 +29,8 @@ class LastActivityAnswerServiceTest {
     private TaskService taskService;
     @Mock
     private ScheduleService scheduleService;
+    @Mock
+    private PlaceService placeService;
 
     @Test
     void answersExactLastExerciseQuestionFromPastConfirmedSchedule() {
@@ -96,8 +101,86 @@ class LastActivityAnswerServiceTest {
                 .contains("運動");
     }
 
+    @Test
+    void placeScopedQuestionDoesNotReturnGenericExerciseFromAnotherPlace() {
+        ScheduleItem genericExercise = ScheduleItem.propose("運動",
+                Instant.parse("2026-07-15T12:53:00Z"),
+                Instant.parse("2026-07-15T13:53:00Z"), null, NOW.minusSeconds(172800));
+        genericExercise.confirm(NOW.minusSeconds(172700));
+        when(scheduleService.listSchedules(null)).thenReturn(List.of(genericExercise));
+        when(taskService.listCompletedTasks()).thenReturn(List.of());
+        when(placeService.listPlaces()).thenReturn(List.of());
+
+        IntentResult result = service().answer("我之前有去world gym運動過嗎？").orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.RECENT_ACTIVITY_LISTED);
+        assertThat(result.message())
+                .contains("沒有找到在「World Gym」的運動紀錄", "其他健身房", "沒有新增")
+                .doesNotContain("2026/07/15");
+    }
+
+    @Test
+    void placeScopedQuestionReturnsLatestMatchingBranchAndItsAddress() {
+        Place worldGym = place(7L, "World Gym 公館店", "台北市羅斯福路四段");
+        ScheduleItem workout = ScheduleItem.propose("重訓",
+                Instant.parse("2026-07-15T02:00:00Z"),
+                Instant.parse("2026-07-15T03:00:00Z"), 7L, NOW.minusSeconds(172800));
+        workout.confirm(NOW.minusSeconds(172700));
+        workout.complete(NOW.minusSeconds(86400));
+        when(scheduleService.listSchedules(null)).thenReturn(List.of(workout));
+        when(taskService.listCompletedTasks()).thenReturn(List.of());
+        when(placeService.listPlaces()).thenReturn(List.of(worldGym));
+
+        IntentResult result = service().answer("我之前有去 World Gym 運動過嗎？").orElseThrow();
+        IntentResult branchResult = service().answer(
+                "我上次去公館 World Gym健身是何時？").orElseThrow();
+
+        assertThat(result.message()).contains(
+                "有在「World Gym」運動", "重訓", "World Gym 公館店", "台北市羅斯福路四段");
+        assertThat(branchResult.message()).contains(
+                "公館World Gym", "重訓", "World Gym 公館店", "台北市羅斯福路四段");
+    }
+
+    @Test
+    void lastVisitToChainAsksWhichBranchButAllBranchesReturnsLatest() {
+        Place gongguan = place(7L, "World Gym 公館店", null);
+        Place xinyi = place(8L, "World Gym 信義店", null);
+        ScheduleItem older = completedExercise(7L, "2026-07-14T02:00:00Z");
+        ScheduleItem latest = completedExercise(8L, "2026-07-15T02:00:00Z");
+        when(scheduleService.listSchedules(null)).thenReturn(List.of(older, latest));
+        when(taskService.listCompletedTasks()).thenReturn(List.of());
+        when(placeService.listPlaces()).thenReturn(List.of(gongguan, xinyi));
+
+        IntentResult ambiguous = service().answer(
+                "我上次去 World Gym 運動是什麼時候？").orElseThrow();
+        IntentResult allBranches = service().answer(
+                "我上次去所有 World Gym 分店運動是什麼時候？").orElseThrow();
+
+        assertThat(ambiguous.action()).isEqualTo(IntentResult.Action.CLARIFICATION_NEEDED);
+        assertThat(ambiguous.message()).contains("World Gym 公館店", "World Gym 信義店", "所有分店");
+        assertThat(allBranches.action()).isEqualTo(IntentResult.Action.RECENT_ACTIVITY_LISTED);
+        assertThat(allBranches.message()).contains("World Gym 信義店", "2026/07/15");
+    }
+
+    private Place place(long id, String name, String address) {
+        Place place = mock(Place.class);
+        when(place.getId()).thenReturn(id);
+        when(place.getName()).thenReturn(name);
+        when(place.getAddress()).thenReturn(address);
+        return place;
+    }
+
+    private ScheduleItem completedExercise(long placeId, String start) {
+        Instant startAt = Instant.parse(start);
+        ScheduleItem item = ScheduleItem.propose("運動", startAt, startAt.plusSeconds(3600),
+                placeId, NOW.minusSeconds(172800));
+        item.confirm(NOW.minusSeconds(172700));
+        item.complete(NOW.minusSeconds(86400));
+        return item;
+    }
+
     private LastActivityAnswerService service() {
-        return new LastActivityAnswerService(taskService, scheduleService,
+        return new LastActivityAnswerService(taskService, scheduleService, placeService,
                 Clock.fixed(NOW, ZoneOffset.UTC));
     }
 }

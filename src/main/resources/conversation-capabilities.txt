@@ -248,3 +248,23 @@
 248|上禮拜五的行程|LIST_SCHEDULES_ON_DATE|startAt=上週五00:00台北時區;列該日歷史行程,不可退化成未來行程
 249|為什麼失敗？|EXPLAIN_LAST_FAILURE|讀上一筆失敗診斷;列Java驗證原因與AI欄位摘要;不可重新執行
 250|今天晚上10點要去倒垃圾|CREATE_TASK|title=倒垃圾;dueAt=今天22:00台北時區;單一時點生活事項不可輸出缺endAt的行程
+251|我之前有去World Gym運動過嗎|ASK_LAST_ACTIVITY|title=運動;placeName=World Gym;options.filter=EVER;有紀錄回最近一次與實際地點,沒有則問是否查其他健身房
+252|我上次去World Gym運動是什麼時候|ASK_LAST_ACTIVITY|title=運動;placeName=World Gym;品牌不可丟失或退化成所有運動
+253|我上次去公館World Gym健身是何時|ASK_LAST_ACTIVITY|title=健身;placeName=公館World Gym;只比對該分店
+254|所有World Gym分店中我最近去哪間運動|ASK_LAST_ACTIVITY|title=運動;placeName=World Gym;options.filter=ALL_BRANCHES;回最近分店與地址
+255|我上次去哪間World Gym運動|ASK_LAST_ACTIVITY|title=運動;placeName=World Gym;有多個分店紀錄先列分店回問,不可自行猜
+256|World Gym沒有紀錄的話幫我查其他健身房嗎|ASK_LAST_ACTIVITY|title=運動;placeName=World Gym;無紀錄只詢問是否放寬範圍,不可直接混入別家
+257|我最後一次在健身房運動的地點是哪裡|ASK_LAST_ACTIVITY|title=運動;placeName=健身房;回地點名稱,有地址一併列出
+258|我多久沒去World Gym健身了|ASK_LAST_ACTIVITY|title=健身;placeName=World Gym;回最近時間與實際分店
+259|我以前有在公館運動過嗎|ASK_LAST_ACTIVITY|title=運動;placeName=公館;options.filter=EVER;場所與活動都要符合
+260|我上次在家做瑜伽是什麼時候|ASK_LAST_ACTIVITY|title=瑜伽;placeName=家;只查有家庭地點的瑜伽紀錄
+261|我上次在河濱跑步是哪天|ASK_LAST_ACTIVITY|title=跑步;placeName=河濱;不可用室內健身代替
+262|我之前有在游泳池游泳過嗎|ASK_LAST_ACTIVITY|title=游泳;placeName=游泳池;options.filter=EVER;有才回最近一次
+263|我上次在公園騎單車是什麼時候|ASK_LAST_ACTIVITY|title=騎單車;placeName=公園;同義活動仍須符合地點
+264|我之前有在運動中心重訓嗎|ASK_LAST_ACTIVITY|title=重訓;placeName=運動中心;options.filter=EVER;回實際場館
+265|這筆運動沒有綁地點嗎|ASK_LAST_ACTIVITY|title=運動;回覆地點未記錄,不可從標題或品牌猜地址
+266|上次運動只是排了行程還是真的完成|ASK_LAST_ACTIVITY|title=運動;區分已完成回報與只有已確認的過往行程
+267|同一天有兩筆World Gym紀錄要回哪筆|ASK_LAST_ACTIVITY|title=運動;placeName=World Gym;同時間以最新可辨識紀錄回覆並列實際分店
+268|world gym跟WorldGym要視為同一品牌嗎|ASK_LAST_ACTIVITY|title=運動;placeName=World Gym;比對忽略大小寫與空白
+269|查不到指定健身房時不要幫我新增任何東西|ASK_LAST_ACTIVITY|title=運動;placeName=指定健身房;查詢失敗不得建立待辦、行程或地點
+270|我是在說查運動紀錄,不是叫你排運動|FEEDBACK|保留為改善問題;不可被活動查詢攔截,也不可新增待辦或行程

@@ -81,6 +81,21 @@ class LastActivityAnswerServiceTest {
                 .isEmpty();
     }
 
+    @Test
+    void feedbackParagraphThatQuotesLastActivityQuestionIsNotIntercepted() {
+        String feedback = "而且我上次什麼時候運動是個提問，是要你幫我查之前的行程最後一次"
+                + "在什麼時候回報給我，而不是把它當成一個待辦事項來儲存。"
+                + "有時候我會問我上一次運動是什麼時候，你還要分辨運動種類。";
+
+        assertThat(LastActivityAnswerService.requestedTopic(feedback)).isEmpty();
+    }
+
+    @Test
+    void naturalQuestionParticleStillCountsAsStandaloneQuestion() {
+        assertThat(LastActivityAnswerService.requestedTopic("我上次運動是什麼時候啊"))
+                .contains("運動");
+    }
+
     private LastActivityAnswerService service() {
         return new LastActivityAnswerService(taskService, scheduleService,
                 Clock.fixed(NOW, ZoneOffset.UTC));

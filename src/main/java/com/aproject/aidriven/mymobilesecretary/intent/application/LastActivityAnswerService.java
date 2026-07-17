@@ -86,7 +86,8 @@ public class LastActivityAnswerService {
             String afterMarker = normalized.substring(marker + markerLength);
             for (String suffix : QUESTION_SUFFIXES) {
                 int suffixAt = afterMarker.indexOf(suffix);
-                if (suffixAt >= 0) {
+                if (suffixAt >= 0 && isStandaloneQuestionTail(
+                        afterMarker.substring(suffixAt + suffix.length()))) {
                     return cleanTopic(afterMarker.substring(0, suffixAt));
                 }
             }
@@ -103,6 +104,15 @@ public class LastActivityAnswerService {
                     .replaceFirst("了$", ""));
         }
         return Optional.empty();
+    }
+
+    /**
+     * High-priority deterministic routing must only consume a standalone question. A quoted
+     * question followed by correction or product feedback belongs to the interpreter instead of
+     * turning the entire explanation into an activity topic.
+     */
+    private static boolean isStandaloneQuestionTail(String tail) {
+        return tail.isBlank() || Set.of("呢", "啊", "呀", "了", "嗎", "嘛").contains(tail);
     }
 
     private static Optional<String> cleanTopic(String value) {

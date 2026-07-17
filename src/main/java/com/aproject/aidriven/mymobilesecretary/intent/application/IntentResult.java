@@ -430,7 +430,7 @@ public record IntentResult(
 
     static IntentResult feedbackReceived() {
         return new IntentResult(Action.FEEDBACK_RECEIVED,
-                "收到,這個問題我記下來了,下次開發會處理。", null, null);
+                "🛠️ 收到，這則內容只會存進功能改善問題紀錄，不會建立待辦或行程。", null, null);
     }
 
     static IntentResult placeInfo(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {

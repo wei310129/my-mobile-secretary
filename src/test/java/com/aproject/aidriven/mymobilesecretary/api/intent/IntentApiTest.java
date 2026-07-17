@@ -218,7 +218,8 @@ class IntentApiTest extends IntegrationTestBase {
                 null, null, null, null, null));
         say("你是不是重複建立任務了",
                 jsonPath("$.action").value("FEEDBACK_RECEIVED"),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("記下來")));
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("功能改善問題紀錄")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不會建立待辦或行程")));
     }
 
     /** 取消待辦:「取消買排骨」→ 唯一命中的任務 CANCELED。 */

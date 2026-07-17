@@ -1,6 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.integration.line;
 
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
+import java.time.Instant;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -8,7 +9,6 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import java.time.Instant;
 
 /**
  * LINE 對話紀錄:一筆 = 一則進(使用者)或出(bot)的訊息。

@@ -15,12 +15,12 @@ import com.aproject.aidriven.mymobilesecretary.intent.capability.WeightedKeyword
 import com.aproject.aidriven.mymobilesecretary.intent.capability.core.CoreCapabilityConfiguration;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
-import jakarta.validation.Validation;
-import jakarta.validation.Validator;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import org.junit.jupiter.api.Test;
 
 class CapabilityShadowRouterTest {

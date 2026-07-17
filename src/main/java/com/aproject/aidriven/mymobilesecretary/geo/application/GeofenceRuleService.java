@@ -4,10 +4,10 @@ import com.aproject.aidriven.mymobilesecretary.geo.domain.GeofenceRule;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.GeofenceRuleRepository;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
+import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
-import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 

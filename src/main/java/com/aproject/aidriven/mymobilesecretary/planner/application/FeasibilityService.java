@@ -5,10 +5,10 @@ import com.aproject.aidriven.mymobilesecretary.geo.persistence.LocationEventRepo
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.BufferRuleService;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PlanningPreferenceService;
-import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskStatus;
-import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityResult;
+import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskStatus;
+import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItemRepository;

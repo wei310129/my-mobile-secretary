@@ -10,12 +10,12 @@ import com.aproject.aidriven.mymobilesecretary.intent.capability.CapabilityRegis
 import com.aproject.aidriven.mymobilesecretary.intent.capability.CapabilityRisk;
 import com.aproject.aidriven.mymobilesecretary.intent.capability.ContextRequirement;
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.validation.Validation;
-import jakarta.validation.Validator;
 import java.util.List;
 import java.util.Map;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import jakarta.validation.Validation;
+import jakarta.validation.Validator;
 import org.junit.jupiter.api.Test;
 import org.springframework.context.annotation.AnnotationConfigApplicationContext;
 

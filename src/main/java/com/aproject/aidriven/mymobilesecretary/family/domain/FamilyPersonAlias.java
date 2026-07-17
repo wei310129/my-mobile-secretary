@@ -1,6 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.family.domain;
 
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
+import java.time.Instant;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -8,7 +9,6 @@ import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-import java.time.Instant;
 
 /** Actor-private term that resolves to a stable family person profile. */
 @Entity

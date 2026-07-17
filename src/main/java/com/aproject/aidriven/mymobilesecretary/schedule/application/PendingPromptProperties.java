@@ -2,6 +2,7 @@ package com.aproject.aidriven.mymobilesecretary.schedule.application;
 
 import java.time.Duration;
 import java.time.LocalTime;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 

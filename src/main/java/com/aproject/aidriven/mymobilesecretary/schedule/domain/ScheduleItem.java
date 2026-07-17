@@ -2,6 +2,9 @@ package com.aproject.aidriven.mymobilesecretary.schedule.domain;
 
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -9,9 +12,6 @@ import jakarta.persistence.Enumerated;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneId;
 
 /**
  * 行程:有時間(可選地點)的承諾。後端行程是 source of truth。

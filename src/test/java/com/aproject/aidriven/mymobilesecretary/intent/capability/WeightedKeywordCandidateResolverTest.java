@@ -4,10 +4,10 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
-import jakarta.validation.Validation;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
+import jakarta.validation.Validation;
 import org.junit.jupiter.api.Test;
 
 class WeightedKeywordCandidateResolverTest {

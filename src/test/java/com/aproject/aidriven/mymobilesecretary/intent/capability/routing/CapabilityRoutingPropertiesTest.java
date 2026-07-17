@@ -2,8 +2,8 @@ package com.aproject.aidriven.mymobilesecretary.intent.capability.routing;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import jakarta.validation.Validation;
 import java.util.Set;
+import jakarta.validation.Validation;
 import org.junit.jupiter.api.Test;
 
 class CapabilityRoutingPropertiesTest {

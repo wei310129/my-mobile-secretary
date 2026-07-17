@@ -1,12 +1,12 @@
 package com.aproject.aidriven.mymobilesecretary.reminder.domain;
 
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
+import java.time.Instant;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
-import java.time.Instant;
 
 /**
  * 一次提醒在單一通道上的送出結果。成功失敗都要留紀錄,供可靠度追查。

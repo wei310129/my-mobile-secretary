@@ -1,9 +1,9 @@
 package com.aproject.aidriven.mymobilesecretary.planner.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
-import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.never;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 import com.aproject.aidriven.mymobilesecretary.integration.IntegrationException;

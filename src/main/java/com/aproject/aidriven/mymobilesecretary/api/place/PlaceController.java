@@ -1,8 +1,8 @@
 package com.aproject.aidriven.mymobilesecretary.api.place;
 
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
-import jakarta.validation.Valid;
 import java.util.List;
+import jakarta.validation.Valid;
 import org.springframework.http.HttpStatus;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PostMapping;

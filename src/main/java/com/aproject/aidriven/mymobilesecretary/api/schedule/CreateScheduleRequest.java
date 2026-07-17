@@ -1,11 +1,11 @@
 package com.aproject.aidriven.mymobilesecretary.api.schedule;
 
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
+import java.time.Instant;
+import java.time.LocalDate;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import java.time.Instant;
-import java.time.LocalDate;
 
 /**
  * 提出行程的請求。

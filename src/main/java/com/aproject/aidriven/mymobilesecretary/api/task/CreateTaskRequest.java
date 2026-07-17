@@ -1,9 +1,9 @@
 package com.aproject.aidriven.mymobilesecretary.api.task;
 
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskPriority;
+import java.time.Instant;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
-import java.time.Instant;
 
 /**
  * 建立任務的請求。

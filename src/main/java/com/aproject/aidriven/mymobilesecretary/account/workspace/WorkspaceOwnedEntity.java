@@ -1,10 +1,11 @@
 package com.aproject.aidriven.mymobilesecretary.account.workspace;
 
+import java.util.UUID;
 import jakarta.persistence.Column;
 import jakarta.persistence.MappedSuperclass;
 import jakarta.persistence.PrePersist;
 import jakarta.persistence.PreUpdate;
-import java.util.UUID;
+
 import org.hibernate.annotations.TenantId;
 
 /** Common immutable ownership metadata for every tenant-owned business entity. */

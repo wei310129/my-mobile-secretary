@@ -1,7 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.account.persistence;
 
-import com.aproject.aidriven.mymobilesecretary.account.domain.WorkspaceMember;
 import com.aproject.aidriven.mymobilesecretary.account.domain.AppUserStatus;
+import com.aproject.aidriven.mymobilesecretary.account.domain.WorkspaceMember;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;

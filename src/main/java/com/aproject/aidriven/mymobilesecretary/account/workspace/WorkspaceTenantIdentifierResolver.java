@@ -1,6 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.account.workspace;
 
 import java.util.UUID;
+
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 
 public final class WorkspaceTenantIdentifierResolver implements CurrentTenantIdentifierResolver<UUID> {

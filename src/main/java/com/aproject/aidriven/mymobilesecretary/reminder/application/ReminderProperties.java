@@ -1,6 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.reminder.application;
 
 import java.time.Duration;
+
 import org.springframework.boot.context.properties.ConfigurationProperties;
 import org.springframework.boot.context.properties.bind.DefaultValue;
 

@@ -1,11 +1,11 @@
 package com.aproject.aidriven.mymobilesecretary.api.location;
 
 import com.aproject.aidriven.mymobilesecretary.geo.domain.LocationEventType;
+import java.time.Instant;
 import jakarta.validation.constraints.DecimalMax;
 import jakarta.validation.constraints.DecimalMin;
 import jakarta.validation.constraints.NotNull;
 import jakarta.validation.constraints.Size;
-import java.time.Instant;
 
 /**
  * 回報位置事件的請求。

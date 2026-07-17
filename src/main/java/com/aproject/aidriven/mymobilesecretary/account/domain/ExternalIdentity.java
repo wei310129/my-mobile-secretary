@@ -1,14 +1,14 @@
 package com.aproject.aidriven.mymobilesecretary.account.domain;
 
+import java.time.Instant;
+import java.util.Locale;
+import java.util.Objects;
+import java.util.UUID;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
 import jakarta.persistence.UniqueConstraint;
-import java.time.Instant;
-import java.util.Locale;
-import java.util.Objects;
-import java.util.UUID;
 
 @Entity
 @Table(name = "external_identity", uniqueConstraints = {

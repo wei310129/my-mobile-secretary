@@ -10,14 +10,14 @@ import com.aproject.aidriven.mymobilesecretary.planner.application.FreeSlotServi
 import com.aproject.aidriven.mymobilesecretary.planner.application.RouteSuggestionService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.TravelPlanningService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.WeatherAdvisoryService;
-import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
-import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskInsightService;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.ReminderPreferenceService;
+import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskInsightService;
+import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.ReminderPreference;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskPriority;
-import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleInsightService;
+import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import java.time.Clock;

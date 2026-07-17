@@ -1,10 +1,10 @@
 package com.aproject.aidriven.mymobilesecretary.knowledge.domain;
 
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
-import jakarta.persistence.Column;
-import jakarta.persistence.Embeddable;
 import java.util.Objects;
 import java.util.UUID;
+import jakarta.persistence.Column;
+import jakarta.persistence.Embeddable;
 
 /** Tenant-owned row in the item_place collection table. */
 @Embeddable

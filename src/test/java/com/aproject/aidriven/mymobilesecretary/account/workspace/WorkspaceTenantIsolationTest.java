@@ -14,8 +14,8 @@ import com.aproject.aidriven.mymobilesecretary.knowledge.domain.PlanningPreferen
 import com.aproject.aidriven.mymobilesecretary.knowledge.persistence.ItemRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.persistence.PlanningPreferenceRepository;
 import java.time.Instant;
-import java.util.Set;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import java.util.function.Supplier;
 import org.junit.jupiter.api.Test;

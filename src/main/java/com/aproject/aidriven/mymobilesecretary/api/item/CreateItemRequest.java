@@ -1,9 +1,9 @@
 package com.aproject.aidriven.mymobilesecretary.api.item;
 
+import java.util.Set;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.NotEmpty;
 import jakarta.validation.constraints.Size;
-import java.util.Set;
 
 /**
  * 登錄品項知識的請求。

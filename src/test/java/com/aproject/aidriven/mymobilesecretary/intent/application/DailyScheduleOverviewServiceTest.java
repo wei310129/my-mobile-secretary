@@ -4,11 +4,11 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue;
+import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityResult;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService.ScheduleDecision;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
-import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue;
-import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityResult;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.List;

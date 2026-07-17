@@ -2,6 +2,7 @@ package com.aproject.aidriven.mymobilesecretary.integration.developmentfeed;
 
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Component;
 import org.springframework.web.server.ResponseStatusException;

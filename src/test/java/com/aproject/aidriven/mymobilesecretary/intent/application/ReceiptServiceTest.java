@@ -16,6 +16,11 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.Arrays;
 import java.util.List;
+import com.aproject.aidriven.mymobilesecretary.travel.application.TravelItineraryDraftService;
+import com.aproject.aidriven.mymobilesecretary.travel.application.TravelItineraryDraftService.DraftView;
+import com.aproject.aidriven.mymobilesecretary.travel.application.TravelItineraryDraftService.Entry;
+import com.aproject.aidriven.mymobilesecretary.travel.application.TravelItineraryDraftService.Payload;
+import com.aproject.aidriven.mymobilesecretary.travel.domain.TravelItineraryDraft.Status;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
@@ -101,5 +106,32 @@ class ReceiptServiceTest {
         service((bytes, mime) -> command).handleImage(IMAGE, "image/jpeg");
 
         verify(priceRecordService).record("鮮奶", null, 95, LocalDate.parse("2026-07-14"));
+    }
+
+    @Test
+    void itineraryImageCreatesPreviewDraftWithoutSavingPrices() {
+        ReceiptCommand command = new ReceiptCommand(null, null, List.of(),
+                ReceiptCommand.DocumentType.TRAVEL_ITINERARY, "測試郵輪行程",
+                List.of(new ReceiptCommand.ItineraryEntry(
+                        "11-18", "08:00", "09:00", "下船", "那霸港", null)),
+                List.of("岸上活動"), List.of("攜帶護照"));
+        TravelItineraryDraftService draftService = mock(TravelItineraryDraftService.class);
+        TravelItineraryDraftAnswerService answerService = mock(
+                TravelItineraryDraftAnswerService.class);
+        DraftView draft = new DraftView(1L, "測試郵輪行程", Status.PENDING,
+                new Payload(List.of(new Entry(
+                        "11-18", "08:00", "09:00", "下船", "那霸港", null)),
+                        List.of("岸上活動"), List.of("攜帶護照")), NOW.plusSeconds(3600));
+        when(draftService.create(command)).thenReturn(draft);
+        when(answerService.previewMessage(draft)).thenReturn("行程草稿預覽");
+        ReceiptService receiptService = service((bytes, mime) -> command);
+        receiptService.setTravelItineraryServices(draftService, answerService);
+
+        ReceiptService.ReceiptResult result = receiptService.handleImage(IMAGE, "image/jpeg");
+
+        assertThat(result.action()).isEqualTo("TRAVEL_ITINERARY_DRAFTED");
+        assertThat(result.savedCount()).isZero();
+        assertThat(result.message()).contains("行程草稿預覽");
+        verify(priceRecordService, never()).record(anyString(), any(), anyInt(), any());
     }
 }

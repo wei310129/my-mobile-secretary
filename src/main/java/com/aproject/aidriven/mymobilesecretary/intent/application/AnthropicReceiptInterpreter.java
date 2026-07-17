@@ -9,27 +9,33 @@ import org.springframework.stereotype.Component;
 import org.springframework.util.MimeType;
 import org.springframework.util.MimeTypeUtils;
 
-/**
- * Spring AI + Claude 多模態的收據解析器(使用者 2026-07-14 拍板允許多模態)。
- *
- * 鐵律不變:LLM 只做「理解」——把照片轉成結構化收據;
- * 存什麼、怎麼連結品項知識庫,由 ReceiptService 驗證後以確定性規則處理。
- */
+/** One-pass image classifier and extractor for receipts and travel itineraries. */
 @Component
 @ConditionalOnProperty(prefix = "app.receipt", name = "enabled", havingValue = "true", matchIfMissing = true)
 public class AnthropicReceiptInterpreter implements ReceiptInterpreter {
 
     private static final String SYSTEM_PROMPT = """
-            你是收據解析器。從使用者傳來的收據/發票照片抽出結構化資料,只輸出符合 schema 的 JSON。
+            你是文件圖片分類與擷取器。只輸出符合 schema 的 JSON；看不清楚的欄位留空，禁止猜測。
 
             規則:
+            - documentType 只能是 RECEIPT、TRAVEL_ITINERARY、UNKNOWN。
+            - 收據/發票才用 RECEIPT，旅行社行程表、郵輪日程、上下船時刻表用 TRAVEL_ITINERARY；
+              兩者都不是或無法辨識用 UNKNOWN。
+            - RECEIPT:
             - items:逐行品項。name 用照片上的品名(可正規化明顯縮寫,如「衛?紙」→「衛生紙」);
               price 是該品項單價(台幣整數);quantity 沒印就 1。
             - 折扣、載具、統編、總計、找零這些「不是商品」的行,不要放進 items。
             - 讀不出價格的品項直接略過,不要猜數字。
             - storeName:看得出店名才填。
             - purchasedAt:照片上有日期才填,格式 yyyy-MM-dd。
-            - 這張照片若根本不是收據,items 回空陣列。
+            - TRAVEL_ITINERARY:
+            - documentTitle 放文件上可辨識的旅程名稱。
+            - itineraryEntries 依照片順序擷取。date 有完整年月日用 yyyy-MM-dd，只有月日用 MM-dd；
+              startTime/endTime 只在明確印出時填 HH:mm。title、placeName、details 只抄可辨識內容。
+            - activities 放加購活動、岸上觀光、抽獎或報名活動；notices 放集合、證件、截止日、
+              上下船限制及其他重要注意事項。不要把宣傳文案當確定行程。
+            - TRAVEL_ITINERARY 與 UNKNOWN 的 items 必須是空陣列；RECEIPT 的 itineraryEntries、
+              activities、notices 必須是空陣列。
             """;
 
     private final ChatClient chatClient;
@@ -44,7 +50,7 @@ public class AnthropicReceiptInterpreter implements ReceiptInterpreter {
         return chatClient.prompt()
                 .system(SYSTEM_PROMPT)
                 .user(user -> user
-                        .text("請解析這張收據。")
+                        .text("請分類並解析這張文件圖片。")
                         .media(new Media(type, new ByteArrayResource(imageBytes))))
                 .call()
                 .entity(ReceiptCommand.class);

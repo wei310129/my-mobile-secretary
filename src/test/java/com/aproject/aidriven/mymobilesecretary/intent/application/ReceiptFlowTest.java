@@ -11,6 +11,8 @@ import com.aproject.aidriven.mymobilesecretary.knowledge.domain.Item;
 import com.aproject.aidriven.mymobilesecretary.knowledge.domain.PriceRecord;
 import com.aproject.aidriven.mymobilesecretary.knowledge.persistence.ItemRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.persistence.PriceRecordRepository;
+import com.aproject.aidriven.mymobilesecretary.travel.domain.TravelItineraryDraft;
+import com.aproject.aidriven.mymobilesecretary.travel.persistence.TravelItineraryDraftRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
@@ -33,6 +35,8 @@ class ReceiptFlowTest extends IntegrationTestBase {
     private PriceRecordRepository priceRecordRepository;
     @Autowired
     private ItemRepository itemRepository;
+    @Autowired
+    private TravelItineraryDraftRepository itineraryDraftRepository;
 
     /** 名稱吻合的品項自動連結;查詢 API 以品名模糊比對撈得到。 */
     @Test
@@ -70,5 +74,34 @@ class ReceiptFlowTest extends IntegrationTestBase {
 
         assertThat(result.savedCount()).isZero();
         assertThat(priceRecordRepository.count()).isEqualTo(before);
+    }
+
+    /** 行程表照片只建立待確認草稿；使用者明確確認後才改為 CONFIRMED。 */
+    @Test
+    void itineraryImageIsClassifiedDraftedAndExplicitlyConfirmed() throws Exception {
+        stub.nextCommand(new ReceiptCommand(null, null, List.of(),
+                ReceiptCommand.DocumentType.TRAVEL_ITINERARY, "整合測試郵輪行程",
+                List.of(new ReceiptCommand.ItineraryEntry(
+                        "11-18", "08:00", "09:00", "靠港", "那霸港", "集合下船")),
+                List.of("岸上觀光抽獎"), List.of("護照須隨身攜帶")));
+
+        ReceiptService.ReceiptResult result = receiptService.handleImage(IMAGE, "image/jpeg");
+
+        assertThat(result.action()).isEqualTo("TRAVEL_ITINERARY_DRAFTED");
+        assertThat(result.message()).contains("整合測試郵輪行程", "那霸港", "確認匯入行程表");
+        assertThat(itineraryDraftRepository.findAll())
+                .anyMatch(draft -> draft.getTitle().equals("整合測試郵輪行程")
+                        && draft.getStatus() == TravelItineraryDraft.Status.PENDING);
+
+        mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                        .post("/api/intent")
+                        .contentType(org.springframework.http.MediaType.APPLICATION_JSON)
+                        .content("{\"text\":\"確認匯入行程表\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.action").value("TRAVEL_ITINERARY_CONFIRMED"));
+
+        assertThat(itineraryDraftRepository.findAll())
+                .anyMatch(draft -> draft.getTitle().equals("整合測試郵輪行程")
+                        && draft.getStatus() == TravelItineraryDraft.Status.CONFIRMED);
     }
 }

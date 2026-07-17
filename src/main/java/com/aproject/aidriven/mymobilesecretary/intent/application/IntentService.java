@@ -55,6 +55,7 @@ public class IntentService {
     private final ActivityCountAnswerService activityCountAnswerService;
     private final TravelPlanningIntakeService travelPlanningIntakeService;
     private final TravelPackingAnswerService travelPackingAnswerService;
+    private final TravelItineraryDraftAnswerService travelItineraryDraftAnswerService;
     private final ScheduleTaskConflictAnswerService scheduleTaskConflictAnswerService;
     private final TaskDetailAnswerService taskDetailAnswerService;
     private final RestaurantBookingService restaurantBookingService;
@@ -84,6 +85,7 @@ public class IntentService {
                          ActivityCountAnswerService activityCountAnswerService,
                          TravelPlanningIntakeService travelPlanningIntakeService,
                          TravelPackingAnswerService travelPackingAnswerService,
+                         TravelItineraryDraftAnswerService travelItineraryDraftAnswerService,
                          ScheduleTaskConflictAnswerService scheduleTaskConflictAnswerService,
                          TaskDetailAnswerService taskDetailAnswerService,
                          RestaurantBookingService restaurantBookingService,
@@ -111,6 +113,7 @@ public class IntentService {
         this.activityCountAnswerService = activityCountAnswerService;
         this.travelPlanningIntakeService = travelPlanningIntakeService;
         this.travelPackingAnswerService = travelPackingAnswerService;
+        this.travelItineraryDraftAnswerService = travelItineraryDraftAnswerService;
         this.scheduleTaskConflictAnswerService = scheduleTaskConflictAnswerService;
         this.taskDetailAnswerService = taskDetailAnswerService;
         this.restaurantBookingService = restaurantBookingService;
@@ -184,6 +187,11 @@ public class IntentService {
                 text, conversationContextService.snapshot());
         if (failureExplanation.isPresent()) {
             return failureExplanation.get();
+        }
+        Optional<IntentResult> itineraryDraft = travelItineraryDraftAnswerService.answer(
+                text, mutationBoundary::beforeMutation);
+        if (itineraryDraft.isPresent()) {
+            return itineraryDraft.get();
         }
         Optional<IntentResult> activityCount = activityCountAnswerService.answer(text);
         if (activityCount.isPresent()) {
@@ -646,6 +654,11 @@ public class IntentService {
                 yield travelPackingAnswerService.setPreference(
                         command.title(), command.safeOptions().filter(), command.reason());
             }
+            case SHOW_TRAVEL_ITINERARY_DRAFT -> travelItineraryDraftAnswerService.showLatest();
+            case CONFIRM_TRAVEL_ITINERARY_DRAFT ->
+                    travelItineraryDraftAnswerService.confirmLatest();
+            case DISCARD_TRAVEL_ITINERARY_DRAFT ->
+                    travelItineraryDraftAnswerService.discardLatest();
             case LIST_SCHEDULES_ON_DATE -> {
                 Instant dateTime = parseTime(command.startAt());
                 if (dateTime == null) {
@@ -1098,6 +1111,7 @@ public class IntentService {
                     ASK_TASK_LOAD, ASK_BUSY_TASK_DAY, ASK_BUSY_SCHEDULE_DAY,
                     ASK_LONGEST_SCHEDULE, GROUP_SCHEDULES_BY_PLACE, ASK_ACTIVITY_COUNT,
                     ASK_LAST_ACTIVITY, PLAN_TRIP, PLAN_PACKING_LIST, LIST_PACKING_PREFERENCES,
+                    SHOW_TRAVEL_ITINERARY_DRAFT,
                     ASK_LAST_PURCHASE, ASK_PRICE_SUMMARY,
                     ASK_FREQUENT_STORE, ASK_INVENTORY_EXTREMES,
                     CHECK_SHOPPING_INVENTORY, LIST_UNPLACED_ITEMS,

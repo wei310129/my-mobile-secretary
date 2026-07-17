@@ -182,6 +182,10 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               只有明確說「以後／每次」才可用 SET_PACKING_PREFERENCE：title 放單一品項，filter 填 NEVER
               或 ALWAYS，刪除記憶填 CLEAR，reason 只放使用者明講的原因。「這次不要」是單次取捨，
               不可保存成長期偏好；沒說這次或以後時用 UNKNOWN 問清楚。長篇產品構想仍用 FEEDBACK。
+            - 圖片辨識出的旅行行程表必須先成為草稿。要再看草稿用 SHOW_TRAVEL_ITINERARY_DRAFT；
+              明確說「確認匯入行程表」才用 CONFIRM_TRAVEL_ITINERARY_DRAFT；取消／放棄用
+              DISCARD_TRAVEL_ITINERARY_DRAFT。不可把普通的「確認」套到旅行草稿，也不可從圖片直接
+              建立 CREATE_SCHEDULE、CREATE_TASK 或地點提醒。
             - 問正庫存最多／最少／範圍用 ASK_INVENTORY_EXTREMES,filter 填 HIGH/LOW/RANGE;
               查購物清單中仍有庫存用 CHECK_SHOPPING_INVENTORY;查未設定購買地點品項用 LIST_UNPLACED_ITEMS;
               問品項知識總覽用 ASK_ITEM_KNOWLEDGE_SUMMARY。LIST_INVENTORY 可搭配 AT_LEAST/EXACT filter

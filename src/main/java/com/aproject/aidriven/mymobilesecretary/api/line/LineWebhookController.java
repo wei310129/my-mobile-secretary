@@ -214,12 +214,12 @@ public class LineWebhookController {
 
     private PreparedReply prepareImageReply(LineWebhookPayload.Event event,
                                             ExecutionBoundary executionBoundary) throws Exception {
-        messageLogService.recordSafely(LineMessageLog.Direction.IN, "IMAGE", "[收據圖片]");
+        messageLogService.recordSafely(LineMessageLog.Direction.IN, "IMAGE", "[圖片]");
         LineContentClient.MessageContent content = contentClient.fetchContent(event.message().id());
         executionBoundary.beforeMutation();
         ReceiptService.ReceiptResult result = receiptService.handleImage(
                 content.bytes(), content.mimeType());
-        return new PreparedReply("RECEIPT_IMPORTED", result.message());
+        return new PreparedReply(result.action(), result.message());
     }
 
     private void handleExistingDelivery(LineWebhookPayload.Event event,

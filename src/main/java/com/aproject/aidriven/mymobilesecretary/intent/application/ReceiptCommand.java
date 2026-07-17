@@ -13,8 +13,26 @@ import java.util.List;
 public record ReceiptCommand(
         String storeName,
         String purchasedAt,
-        List<Line> items
+        List<Line> items,
+        DocumentType documentType,
+        String documentTitle,
+        List<ItineraryEntry> itineraryEntries,
+        List<String> activities,
+        List<String> notices
 ) {
+
+    /** Backward-compatible receipt constructor used by existing callers and tests. */
+    public ReceiptCommand(String storeName, String purchasedAt, List<Line> items) {
+        this(storeName, purchasedAt, items,
+                items == null || items.isEmpty() ? DocumentType.UNKNOWN : DocumentType.RECEIPT,
+                null, List.of(), List.of(), List.of());
+    }
+
+    public enum DocumentType {
+        RECEIPT,
+        TRAVEL_ITINERARY,
+        UNKNOWN
+    }
 
     /**
      * 收據上的一行品項。
@@ -24,5 +42,16 @@ public record ReceiptCommand(
      * @param quantity 數量(沒印就 1)
      */
     public record Line(String name, Integer price, Integer quantity) {
+    }
+
+    /** A printed itinerary line. Missing values stay null; the model must never infer times. */
+    public record ItineraryEntry(
+            String date,
+            String startTime,
+            String endTime,
+            String title,
+            String placeName,
+            String details
+    ) {
     }
 }

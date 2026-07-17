@@ -15,6 +15,12 @@ class IntentValidationDiagnosticTest {
                 IntentCommand.Type.LIST_PACKING_PREFERENCES)).isFalse();
         assertThat(IntentService.isPotentiallyMutating(
                 IntentCommand.Type.SET_PACKING_PREFERENCE)).isTrue();
+        assertThat(IntentService.isPotentiallyMutating(
+                IntentCommand.Type.SHOW_TRAVEL_ITINERARY_DRAFT)).isFalse();
+        assertThat(IntentService.isPotentiallyMutating(
+                IntentCommand.Type.CONFIRM_TRAVEL_ITINERARY_DRAFT)).isTrue();
+        assertThat(IntentService.isPotentiallyMutating(
+                IntentCommand.Type.DISCARD_TRAVEL_ITINERARY_DRAFT)).isTrue();
         assertThat(IntentService.isPotentiallyMutating(IntentCommand.Type.CREATE_TASK)).isTrue();
         assertThat(IntentService.isPotentiallyMutating(IntentCommand.Type.CANCEL_TASK)).isTrue();
         assertThat(IntentService.isPotentiallyMutating(null)).isTrue();

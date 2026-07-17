@@ -1,6 +1,5 @@
 package com.aproject.aidriven.mymobilesecretary.integration.line;
 
-import com.aproject.aidriven.mymobilesecretary.integration.IntegrationException;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentReplyFormatter;
 import java.util.List;
 import java.util.Map;
@@ -53,7 +52,8 @@ public class LineMessagingClient {
                     .retrieve()
                     .toBodilessEntity();
         } catch (Exception e) {
-            log.warn("LINE reply failed", new IntegrationException("LINE reply failed", e));
+            // Do not log the one-time reply token, message body, access token, or a large stack.
+            log.warn("LINE reply failed [cause={}]", e.getClass().getSimpleName());
         }
     }
 }

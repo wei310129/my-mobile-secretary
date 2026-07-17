@@ -288,3 +288,13 @@
 288|我的行李偏好有哪些|LIST_PACKING_PREFERENCES|只列目前使用者自己的偏好與明講原因,家庭成員互相隔離
 289|這趟有游泳池,幫我重整行李清單|PLAN_PACKING_LIST|有明確水上活動才加入泳衣、防水袋等條件用品
 290|使用者刪掉清單項目就代表以後永遠不要帶|FEEDBACK|錯誤推論;一次刪除不得升級為長期偏好
+291|傳送旅行社行程表照片|TRAVEL_ITINERARY_IMAGE|單次多模態分類與擷取;保存個人待確認草稿,不可直接建行程
+292|這張是郵輪上下船時刻表|TRAVEL_ITINERARY_IMAGE|擷取明確日期、時間、港口;看不清楚留空不可猜
+293|行程表裡有岸上觀光活動|TRAVEL_ITINERARY_IMAGE|附加活動獨立整理;宣傳內容不可當成已報名
+294|把抽獎和報名截止日也整理出來|TRAVEL_ITINERARY_IMAGE|抽獎歸活動、截止日歸注意事項;等待使用者核對
+295|顯示剛才的旅行行程表草稿|SHOW_TRAVEL_ITINERARY_DRAFT|只讀最近未過期的個人草稿
+296|確認匯入行程表|CONFIRM_TRAVEL_ITINERARY_DRAFT|只確認最近待確認草稿;不可套用普通確認或直接建行程待辦
+297|放棄剛才的行程表草稿|DISCARD_TRAVEL_ITINERARY_DRAFT|標記放棄並保留稽核狀態;不可誤刪正式行程
+298|照片看不清楚的時間幫我猜一下|TRAVEL_ITINERARY_IMAGE|拒絕猜時間;回報缺漏讓使用者補正
+299|家庭成員可以看到我的旅行圖片草稿嗎|SHOW_TRAVEL_ITINERARY_DRAFT|不可;草稿按workspace與actor雙重隔離
+300|收據照片不要被當成旅行行程表|RECEIPT_IMAGE|先分類再擷取;收據仍走價格匯入且只呼叫一次模型

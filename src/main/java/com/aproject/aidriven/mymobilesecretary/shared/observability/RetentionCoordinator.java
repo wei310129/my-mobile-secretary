@@ -5,6 +5,7 @@ import com.aproject.aidriven.mymobilesecretary.account.security.idempotency.Idem
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceBackgroundRunner;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLogService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentTraceRetentionService;
+import com.aproject.aidriven.mymobilesecretary.travel.application.TravelItineraryDraftService;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.LongSupplier;
 import org.slf4j.Logger;
@@ -26,17 +27,20 @@ public class RetentionCoordinator {
     private final SecurityAuditService securityAuditService;
     private final IdempotencyService idempotencyService;
     private final WorkspaceBackgroundRunner workspaceRunner;
+    private final TravelItineraryDraftService itineraryDraftService;
 
     public RetentionCoordinator(IntentTraceRetentionService traceRetentionService,
                                 LineMessageLogService lineMessageLogService,
                                 SecurityAuditService securityAuditService,
                                 IdempotencyService idempotencyService,
-                                WorkspaceBackgroundRunner workspaceRunner) {
+                                WorkspaceBackgroundRunner workspaceRunner,
+                                TravelItineraryDraftService itineraryDraftService) {
         this.traceRetentionService = traceRetentionService;
         this.lineMessageLogService = lineMessageLogService;
         this.securityAuditService = securityAuditService;
         this.idempotencyService = idempotencyService;
         this.workspaceRunner = workspaceRunner;
+        this.itineraryDraftService = itineraryDraftService;
     }
 
     @Scheduled(cron = "${app.retention.cleanup-cron:0 17 3 * * *}",
@@ -63,13 +67,16 @@ public class RetentionCoordinator {
                 () -> workspaceRunner.runSystem(securityAuditService::purgeExpired));
         long idempotencyRecordsDeleted = purge("idempotency",
                 () -> workspaceRunner.runSystem(idempotencyService::purgeExpired));
+        long itineraryDraftsDeleted = purge("travel-itinerary-draft",
+                () -> workspaceRunner.runSystem(itineraryDraftService::purgeExpired));
         CleanupResult result = new CleanupResult(rawTracesCleared, traceSummariesDeleted,
-                lineMessagesDeleted, securityAuditsDeleted, idempotencyRecordsDeleted);
+                lineMessagesDeleted, securityAuditsDeleted, idempotencyRecordsDeleted,
+                itineraryDraftsDeleted);
         log.info("Retention cleanup completed [rawTraces={}, traceSummaries={}, lineMessages={}, "
-                        + "securityAudits={}, idempotencyRecords={}]",
+                        + "securityAudits={}, idempotencyRecords={}, itineraryDrafts={}]",
                 result.rawTracesCleared(), result.traceSummariesDeleted(),
                 result.lineMessagesDeleted(), result.securityAuditsDeleted(),
-                result.idempotencyRecordsDeleted());
+                result.idempotencyRecordsDeleted(), result.itineraryDraftsDeleted());
         return result;
     }
 
@@ -98,6 +105,6 @@ public class RetentionCoordinator {
 
     public record CleanupResult(int rawTracesCleared, int traceSummariesDeleted,
                                 long lineMessagesDeleted, long securityAuditsDeleted,
-                                long idempotencyRecordsDeleted) {
+                                long idempotencyRecordsDeleted, long itineraryDraftsDeleted) {
     }
 }

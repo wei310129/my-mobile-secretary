@@ -130,6 +130,12 @@ public record IntentCommand(
         LIST_PACKING_PREFERENCES,
         /** 設定長期行李偏好；title=品項，options.filter=ALWAYS/NEVER/CLEAR。 */
         SET_PACKING_PREFERENCE,
+        /** 顯示最近一次由圖片擷取、尚待確認的旅行行程表。 */
+        SHOW_TRAVEL_ITINERARY_DRAFT,
+        /** 確認最近一次旅行行程表草稿。 */
+        CONFIRM_TRAVEL_ITINERARY_DRAFT,
+        /** 放棄最近一次旅行行程表草稿。 */
+        DISCARD_TRAVEL_ITINERARY_DRAFT,
         ASK_LAST_PURCHASE,
         ASK_PRICE_SUMMARY,
         ASK_FREQUENT_STORE,

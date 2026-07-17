@@ -16,6 +16,7 @@ import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContex
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLogService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentTraceRetentionService;
+import com.aproject.aidriven.mymobilesecretary.travel.application.TravelItineraryDraftService;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
@@ -38,6 +39,7 @@ class RetentionCoordinatorTest {
         LineMessageLogService line = mock(LineMessageLogService.class);
         SecurityAuditService audit = mock(SecurityAuditService.class);
         IdempotencyService idempotency = mock(IdempotencyService.class);
+        TravelItineraryDraftService itinerary = mock(TravelItineraryDraftService.class);
         WorkspaceBackgroundRunner runner = runnerFor(List.of(backgroundContext()));
         when(trace.purgeExpired()).thenAnswer(ignored -> {
             assertSystemScope();
@@ -56,12 +58,16 @@ class RetentionCoordinatorTest {
             assertSystemScope();
             return 6;
         });
+        when(itinerary.purgeExpired()).thenAnswer(ignored -> {
+            assertSystemScope();
+            return 7;
+        });
 
         RetentionCoordinator.CleanupResult result =
-                new RetentionCoordinator(trace, line, audit, idempotency, runner).cleanup();
+                new RetentionCoordinator(trace, line, audit, idempotency, runner, itinerary).cleanup();
 
-        assertThat(result).isEqualTo(new RetentionCoordinator.CleanupResult(3, 2, 4, 5, 6));
-        verify(runner, times(3)).runSystem(any());
+        assertThat(result).isEqualTo(new RetentionCoordinator.CleanupResult(3, 2, 4, 5, 6, 7));
+        verify(runner, times(4)).runSystem(any());
         verify(runner).forEachWorkspace(eq("line-message-retention"), any());
     }
 
@@ -71,17 +77,19 @@ class RetentionCoordinatorTest {
         LineMessageLogService line = mock(LineMessageLogService.class);
         SecurityAuditService audit = mock(SecurityAuditService.class);
         IdempotencyService idempotency = mock(IdempotencyService.class);
+        TravelItineraryDraftService itinerary = mock(TravelItineraryDraftService.class);
         WorkspaceBackgroundRunner runner = runnerFor(List.of(backgroundContext()));
         when(trace.purgeExpired()).thenThrow(new IllegalStateException("unavailable"));
 
         RetentionCoordinator.CleanupResult result =
-                new RetentionCoordinator(trace, line, audit, idempotency, runner).cleanup();
+                new RetentionCoordinator(trace, line, audit, idempotency, runner, itinerary).cleanup();
 
         assertThat(result.rawTracesCleared()).isEqualTo(-1);
         assertThat(result.traceSummariesDeleted()).isEqualTo(-1);
         verify(line).purgeExpired();
         verify(audit).purgeExpired();
         verify(idempotency).purgeExpired();
+        verify(itinerary).purgeExpired();
     }
 
     @Test
@@ -90,6 +98,7 @@ class RetentionCoordinatorTest {
         LineMessageLogService line = mock(LineMessageLogService.class);
         SecurityAuditService audit = mock(SecurityAuditService.class);
         IdempotencyService idempotency = mock(IdempotencyService.class);
+        TravelItineraryDraftService itinerary = mock(TravelItineraryDraftService.class);
         WorkspaceContext first = backgroundContext();
         WorkspaceContext second = backgroundContext();
         WorkspaceBackgroundRunner runner = runnerFor(List.of(first, second));
@@ -103,7 +112,7 @@ class RetentionCoordinatorTest {
         });
 
         RetentionCoordinator.CleanupResult result =
-                new RetentionCoordinator(trace, line, audit, idempotency, runner).cleanup();
+                new RetentionCoordinator(trace, line, audit, idempotency, runner, itinerary).cleanup();
 
         assertThat(result.lineMessagesDeleted()).isEqualTo(11L);
         assertThat(observedWorkspaces)
@@ -117,6 +126,7 @@ class RetentionCoordinatorTest {
         LineMessageLogService line = mock(LineMessageLogService.class);
         SecurityAuditService audit = mock(SecurityAuditService.class);
         IdempotencyService idempotency = mock(IdempotencyService.class);
+        TravelItineraryDraftService itinerary = mock(TravelItineraryDraftService.class);
         WorkspaceBackgroundRunner runner = runnerFor(List.of(
                 backgroundContext(), backgroundContext()));
         when(trace.purgeExpired()).thenReturn(new IntentTraceRetentionService.PurgeResult(
@@ -126,12 +136,13 @@ class RetentionCoordinatorTest {
                 .thenReturn(7L);
 
         RetentionCoordinator.CleanupResult result =
-                new RetentionCoordinator(trace, line, audit, idempotency, runner).cleanup();
+                new RetentionCoordinator(trace, line, audit, idempotency, runner, itinerary).cleanup();
 
         assertThat(result.lineMessagesDeleted()).isEqualTo(7L);
         verify(line, times(2)).purgeExpired();
         verify(audit).purgeExpired();
         verify(idempotency).purgeExpired();
+        verify(itinerary).purgeExpired();
     }
 
     private static WorkspaceBackgroundRunner runnerFor(List<WorkspaceContext> contexts) {

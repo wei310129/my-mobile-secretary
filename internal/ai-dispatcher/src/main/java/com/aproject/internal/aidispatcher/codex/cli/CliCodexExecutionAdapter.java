@@ -288,6 +288,8 @@ public final class CliCodexExecutionAdapter implements CodexExecutionPort {
         } catch (RuntimeException callbackFailure) {
             LOGGER.error("Could not deliver Codex CLI terminal callback for execution {}",
                     execution.executionId, callbackFailure);
+        } finally {
+            executions.remove(execution.executionId, execution);
         }
     }
 

@@ -24,8 +24,9 @@ public record DispatcherProperties(
         requirePositive(pollInterval, "pollInterval");
         requirePositive(quietPeriod, "quietPeriod");
         requirePositive(maximumWait, "maximumWait");
-        requirePositive(maxEventsPerRun, "maxEventsPerRun");
-        requirePositive(maxEventPayloadBytesPerRun, "maxEventPayloadBytesPerRun");
+        requireRange(maxEventsPerRun, 1, 100, "maxEventsPerRun");
+        requireRange(maxEventPayloadBytesPerRun, 4096, 1_048_576,
+                "maxEventPayloadBytesPerRun");
         if (maximumWait.compareTo(quietPeriod) < 0) {
             throw new IllegalArgumentException("maximumWait must not be shorter than quietPeriod");
         }
@@ -37,9 +38,10 @@ public record DispatcherProperties(
         }
     }
 
-    private static void requirePositive(int value, String name) {
-        if (value <= 0) {
-            throw new IllegalArgumentException(name + " must be positive");
+    private static void requireRange(int value, int minimum, int maximum, String name) {
+        if (value < minimum || value > maximum) {
+            throw new IllegalArgumentException(
+                    name + " must be between " + minimum + " and " + maximum);
         }
     }
 }

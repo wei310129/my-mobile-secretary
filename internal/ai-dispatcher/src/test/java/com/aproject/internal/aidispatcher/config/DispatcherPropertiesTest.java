@@ -28,4 +28,14 @@ class DispatcherPropertiesTest {
                 false, Duration.ofSeconds(1), Duration.ofMinutes(5), Duration.ofMinutes(30),
                 20, 0));
     }
+
+    @Test
+    void rejectsRunLimitsAboveTheOperationalCeiling() {
+        assertThatIllegalArgumentException().isThrownBy(() -> new DispatcherProperties(
+                false, Duration.ofSeconds(1), Duration.ofMinutes(5), Duration.ofMinutes(30),
+                101, 65_536));
+        assertThatIllegalArgumentException().isThrownBy(() -> new DispatcherProperties(
+                false, Duration.ofSeconds(1), Duration.ofMinutes(5), Duration.ofMinutes(30),
+                20, 1_048_577));
+    }
 }

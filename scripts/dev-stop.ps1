@@ -78,6 +78,7 @@ Write-DevState -Updates @{
     dispatcherPid = $null
     ngrokPid      = $null
     ngrokUrl      = $null
+    dispatcherArmed = $false
 }
 
 if ($Docker) {

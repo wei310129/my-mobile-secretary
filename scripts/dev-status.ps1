@@ -14,6 +14,7 @@ param(
 )
 
 . "$PSScriptRoot\_devops-common.ps1"
+$state = Read-DevState
 
 Write-Host "=== Development environment status ===" -ForegroundColor Cyan
 $allHealthy = $true
@@ -58,6 +59,9 @@ $dispatcherLaneColor = if (Test-DispatcherLaneActive -State $dispatcherLaneState
     "DarkGray"
 }
 Write-Host "Dispatcher lane: $dispatcherLaneDisplay" -ForegroundColor $dispatcherLaneColor
+$dispatcherMode = if ([bool]$state.dispatcherArmed) { "ARMED" } else { "DISARMED" }
+$dispatcherModeColor = if ([bool]$state.dispatcherArmed) { "Yellow" } else { "DarkGray" }
+Write-Host "Dispatcher mode: $dispatcherMode (last managed start)" -ForegroundColor $dispatcherModeColor
 
 $dispatcherPortPid = Get-PortOwnerPid -Port $DispatcherPort
 $dispatcherHealthy = $false
@@ -88,7 +92,6 @@ if ($ngrokPortPid) {
     if (-not $NoNgrokRequired) { $allHealthy = $false }
 }
 
-$state = Read-DevState
 if ($state.startedAt) {
     Write-Host ""
     Write-Host "Last dev-start.ps1 time: $($state.startedAt)" -ForegroundColor DarkGray

@@ -10,11 +10,16 @@
 
 .PARAMETER SkipDispatcher
   Restarts only the main application and does not touch the AI Dispatcher.
+
+.PARAMETER ArmDispatcher
+  Restarts both applications with explicitly armed Dispatcher automation.
 #>
 param(
     [switch]$Full,
     [string]$Profile = "local",
-    [switch]$SkipDispatcher
+    [switch]$SkipDispatcher,
+    [switch]$ArmDispatcher,
+    [switch]$AllowDirtyWorktree
 )
 
 . "$PSScriptRoot\_devops-common.ps1"
@@ -22,6 +27,15 @@ Set-Location $RepoRoot
 
 $startParameters = @{ Profile = $Profile }
 if ($SkipDispatcher) { $startParameters["SkipDispatcher"] = $true }
+if ($ArmDispatcher) {
+    if ($SkipDispatcher) { throw "-SkipDispatcher cannot be combined with -ArmDispatcher." }
+    Enable-DispatcherAutomationEnvironment -AllowDirtyWorktree:$AllowDirtyWorktree
+    Assert-DispatcherSessionReady
+    $startParameters["ArmDispatcher"] = $true
+    if ($AllowDirtyWorktree) { $startParameters["AllowDirtyWorktree"] = $true }
+} elseif ($AllowDirtyWorktree) {
+    throw "-AllowDirtyWorktree requires -ArmDispatcher."
+}
 
 if ($Full) {
     Write-Host "=== Full restart ===" -ForegroundColor Cyan

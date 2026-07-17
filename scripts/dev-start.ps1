@@ -13,17 +13,28 @@
 
 .PARAMETER SkipDispatcher
   Does not start the AI Dispatcher application or its PostgreSQL container.
+
+.PARAMETER ArmDispatcher
+  Explicitly enables the read-only issue feed, scheduler, and Codex CLI adapter after preflight.
 #>
 param(
     [string]$Profile = "local",
     [switch]$NoNgrok,
     [switch]$SkipDocker,
-    [switch]$SkipDispatcher
+    [switch]$SkipDispatcher,
+    [switch]$ArmDispatcher,
+    [switch]$AllowDirtyWorktree
 )
 
 . "$PSScriptRoot\_devops-common.ps1"
 Normalize-ProcessPathEnvironment
-Disable-DispatcherAutomationEnvironment
+if ($SkipDispatcher -and $ArmDispatcher) { throw "-SkipDispatcher cannot be combined with -ArmDispatcher." }
+if ($AllowDirtyWorktree -and -not $ArmDispatcher) { throw "-AllowDirtyWorktree requires -ArmDispatcher." }
+if ($ArmDispatcher) {
+    Enable-DispatcherAutomationEnvironment -AllowDirtyWorktree:$AllowDirtyWorktree
+} else {
+    Disable-DispatcherAutomationEnvironment
+}
 Ensure-LogsDir
 Set-Location $RepoRoot
 
@@ -31,6 +42,7 @@ try {
     Assert-CommandAvailable -Name "docker"
     if (-not (Test-Path "$RepoRoot\mvnw.cmd")) { throw "Missing Maven wrapper: $RepoRoot\mvnw.cmd" }
     if (-not (Test-DockerDaemon)) { throw "Docker daemon is not running. Start Docker Desktop first." }
+    if ($ArmDispatcher) { Assert-DispatcherSessionReady }
     Assert-PortAvailableOrManaged -Port $AppPort -Kind "SpringBoot"
     if (-not $NoNgrok) { Assert-PortAvailableOrManaged -Port $NgrokApiPort -Kind "Ngrok" }
 } catch {
@@ -39,7 +51,9 @@ try {
 }
 
 Write-Host "=== Starting development environment (profile=$Profile) ===" -ForegroundColor Cyan
-Write-Host "  Dispatcher automation is DISARMED (service health only)." -ForegroundColor DarkGray
+$automationMode = if ($ArmDispatcher) { "ARMED" } else { "DISARMED" }
+$automationColor = if ($ArmDispatcher) { "Yellow" } else { "DarkGray" }
+Write-Host "  Dispatcher automation is $automationMode." -ForegroundColor $automationColor
 
 # 1) Main application infrastructure is required.
 if (-not $SkipDocker) {
@@ -64,6 +78,7 @@ if (-not $SkipDocker) {
         exit 1
     }
 }
+
 Write-Host "  Main Postgres and Redis are healthy." -ForegroundColor Green
 
 # 2) ngrok is part of the main application lifecycle.
@@ -104,6 +119,10 @@ if (-not $NoNgrok) {
 Write-Host "[3/5] Starting the main Spring Boot application..." -ForegroundColor Yellow
 $existingAppPid = Resolve-ManagedProcessId -TrackedProcessId $null -Port $AppPort -Kind "SpringBoot"
 if ($existingAppPid) {
+    $previousState = Read-DevState
+    if ([bool]$previousState.dispatcherArmed -ne [bool]$ArmDispatcher) {
+        throw "Existing main application mode differs from the requested mode; use dev-restart.ps1."
+    }
     if (-not (Wait-HttpOk -Url "http://localhost:$AppPort/actuator/health" -TimeoutSec 10)) {
         Write-Host "Main PID $existingAppPid exists but its health check failed." -ForegroundColor Red
         exit 1
@@ -173,6 +192,10 @@ if ($SkipDispatcher) {
         $existingDispatcherPid = Resolve-ManagedProcessId -TrackedProcessId $null `
             -Port $DispatcherPort -Kind "Dispatcher"
         if ($existingDispatcherPid) {
+            $previousState = Read-DevState
+            if ([bool]$previousState.dispatcherArmed -ne [bool]$ArmDispatcher) {
+                throw "Existing Dispatcher mode differs from the requested mode; use dev-restart.ps1."
+            }
             if (Wait-HttpOk -Url "http://localhost:$DispatcherPort/actuator/health" -TimeoutSec 10) {
                 $dispatcherPid = $existingDispatcherPid
                 Write-Host "  AI Dispatcher is already healthy (PID $dispatcherPid)." -ForegroundColor DarkGray
@@ -205,6 +228,7 @@ Write-DevState -Updates @{
     ngrokPid      = $ngrokPid
     ngrokUrl      = $ngrokUrl
     profile       = $Profile
+    dispatcherArmed = [bool]$ArmDispatcher
     startedAt     = (Get-Date).ToString("o")
 }
 
@@ -212,9 +236,10 @@ Write-Host ""
 Write-Host "=== Status ===" -ForegroundColor Cyan
 Write-Host "Main:          http://localhost:$AppPort"
 if ($dispatcherPid) {
-    Write-Host "AI Dispatcher: http://localhost:$DispatcherPort (scheduler disabled by default)"
+    Write-Host "AI Dispatcher: http://localhost:$DispatcherPort ($automationMode)"
 }
 if ($ngrokUrl) { Write-Host "LINE webhook:  $ngrokUrl/api/line/webhook" -ForegroundColor Cyan }
 Write-Host "Logs:          scripts\.logs\"
 Write-Host "Inspect:       .\scripts\dev-status.ps1"
 Write-Host "Stop:          .\scripts\dev-stop.ps1"
+if ($ArmDispatcher -and -not $dispatcherPid) { exit 2 }

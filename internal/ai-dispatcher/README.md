@@ -75,8 +75,10 @@ enable dispatching or launch Codex. It requires a separate administrator token a
 explicit setup, verification and controlled rebinding only.
 
 Repository development scripts intentionally disarm automation on ordinary startup. This keeps
-routine main-application work and test runs from consuming Codex tokens. Follow `CODEX_CLI.md` when
-running an explicitly armed Dispatcher process.
+routine main-application work and test runs from consuming Codex tokens. After the required
+environment and session binding are ready, use `scripts/dispatcher-arm.ps1`; return to the safe
+default with `scripts/dispatcher-disarm.ps1`. Follow `CODEX_CLI.md` for the guarded preflight and
+first-run procedure.
 
 ## Removal
 

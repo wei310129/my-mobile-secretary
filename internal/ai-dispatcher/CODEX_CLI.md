@@ -71,8 +71,31 @@ conditions are also satisfied:
 - no active or uncertain run exists
 
 The standard `scripts/dev-start.ps1` deliberately sets all automation flags to false. This is a
-safety feature for ordinary local development. Run an explicitly configured standalone Dispatcher
-process for the initial rollout; do not silently remove the disarm behavior from routine scripts.
+safety feature for ordinary local development. The explicit guarded commands are:
+
+```powershell
+.\scripts\dispatcher-arm.ps1
+.\scripts\dispatcher-disarm.ps1
+```
+
+`dispatcher-arm.ps1` reads credentials only from the process environment, verifies matching
+32-character feed tokens, non-zero actor/workspace UUIDs, a READY bound session, an absolute Codex
+executable, a Git working tree and (by default) a clean worktree. It then restarts the two
+applications with their independent feed/adapter flags. `dispatcher-disarm.ps1` returns both to
+their normal disabled configuration. Both operations refuse to interrupt a durable active run.
+
+Required arm environment variables are:
+
+```text
+DEVELOPMENT_FEED_TOKEN=<dedicated-read-only-token>
+AI_DISPATCHER_MAIN_FEED_TOKEN=<same-dedicated-read-only-token>
+DEVELOPMENT_FEED_WORKSPACE_ID=<non-zero-uuid>
+DEVELOPMENT_FEED_ACTOR_ID=<non-zero-uuid>
+```
+
+The executable is discovered from `PATH` when `AI_DISPATCHER_CODEX_CLI_EXECUTABLE` is absent. The
+repository defaults to this Git working tree. Neither secret nor the session ID is written to the
+development state file or normal logs.
 
 ## Process lifecycle
 

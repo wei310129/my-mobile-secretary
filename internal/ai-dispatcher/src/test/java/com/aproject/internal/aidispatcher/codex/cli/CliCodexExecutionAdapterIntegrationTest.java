@@ -107,6 +107,7 @@ class CliCodexExecutionAdapterIntegrationTest {
             process.release();
         }
         if (adapter != null) {
+            await(() -> runningAuditCount() == 0);
             adapter.close();
         }
     }
@@ -331,6 +332,12 @@ class CliCodexExecutionAdapterIntegrationTest {
         return jdbcTemplate.queryForObject(
                 "SELECT COUNT(*) FROM dispatcher_event WHERE processing_state = ?",
                 Long.class, state);
+    }
+
+    private long runningAuditCount() {
+        return jdbcTemplate.queryForObject(
+                "SELECT COUNT(*) FROM codex_execution_attempt WHERE status = 'RUNNING'",
+                Long.class);
     }
 
     private String singleString(String sql) {

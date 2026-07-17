@@ -213,18 +213,111 @@ function Get-DispatcherLaneState {
     return $null
 }
 
+function Get-DispatcherSessionSnapshot {
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { return $null }
+    if ((Get-ContainerHealth -ContainerName "mms-ai-dispatcher-postgres") -ne "healthy") {
+        return $null
+    }
+    $value = docker exec mms-ai-dispatcher-postgres `
+        psql -U ai_dispatcher -d ai_dispatcher -tA `
+        -c "SELECT status || '|' || COALESCE(external_session_id, '') FROM agent_session WHERE session_key = 'development-main';" 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+    $parts = (($value | Out-String).Trim()) -split '\|', 2
+    if ($parts.Count -ne 2) { return $null }
+    return [pscustomobject]@{
+        Status            = $parts[0]
+        ExternalSessionId = $parts[1]
+    }
+}
+
+function Assert-DispatcherSessionReady {
+    $session = Get-DispatcherSessionSnapshot
+    if (-not $session) {
+        throw "Dispatcher session state cannot be inspected."
+    }
+    if ($session.Status -ne "READY" -or [string]::IsNullOrWhiteSpace($session.ExternalSessionId)) {
+        throw "Dispatcher session development-main is not READY and bound."
+    }
+}
+
 function Test-DispatcherLaneActive {
     param([AllowNull()][string]$State)
     return @("STARTING", "RUNNING", "RECOVERING") -contains $State
 }
 
-# Starting the development environment is deliberately disarmed. A future explicit arm command
-# may override these values only after the execution adapter and per-run event bound are ready.
 function Disable-DispatcherAutomationEnvironment {
     $env:DEVELOPMENT_FEED_ENABLED = "false"
     $env:AI_DISPATCHER_MAIN_FEED_ENABLED = "false"
     $env:AI_DISPATCHER_CODEX_CLI_ENABLED = "false"
     $env:AI_DISPATCHER_ENABLED = "false"
+}
+
+function Enable-DispatcherAutomationEnvironment {
+    param([switch]$AllowDirtyWorktree)
+
+    $required = @(
+        "DEVELOPMENT_FEED_TOKEN",
+        "DEVELOPMENT_FEED_WORKSPACE_ID",
+        "DEVELOPMENT_FEED_ACTOR_ID",
+        "AI_DISPATCHER_MAIN_FEED_TOKEN"
+    )
+    foreach ($name in $required) {
+        $value = [Environment]::GetEnvironmentVariable($name, "Process")
+        if ([string]::IsNullOrWhiteSpace($value)) {
+            throw "Required arm environment variable is missing: $name"
+        }
+    }
+    if ($env:DEVELOPMENT_FEED_TOKEN -cne $env:AI_DISPATCHER_MAIN_FEED_TOKEN) {
+        throw "Main feed and Dispatcher feed tokens must match."
+    }
+    if ($env:DEVELOPMENT_FEED_TOKEN.Length -lt 32) {
+        throw "Development feed token must contain at least 32 characters."
+    }
+    foreach ($name in @("DEVELOPMENT_FEED_WORKSPACE_ID", "DEVELOPMENT_FEED_ACTOR_ID")) {
+        $parsed = [guid]::Empty
+        $value = [Environment]::GetEnvironmentVariable($name, "Process")
+        if (-not [guid]::TryParse($value, [ref]$parsed) -or $parsed -eq [guid]::Empty) {
+            throw "$name must be a non-zero UUID."
+        }
+    }
+
+    $codexExecutable = $env:AI_DISPATCHER_CODEX_CLI_EXECUTABLE
+    if ([string]::IsNullOrWhiteSpace($codexExecutable)) {
+        $codexCommand = Get-Command codex -CommandType Application -ErrorAction SilentlyContinue
+        if ($codexCommand) { $codexExecutable = $codexCommand.Source }
+    }
+    if ([string]::IsNullOrWhiteSpace($codexExecutable) -or
+            -not [System.IO.Path]::IsPathRooted($codexExecutable) -or
+            -not (Test-Path -LiteralPath $codexExecutable -PathType Leaf)) {
+        throw "AI_DISPATCHER_CODEX_CLI_EXECUTABLE must be an absolute Codex executable path."
+    }
+
+    $repository = $env:AI_DISPATCHER_CODEX_REPOSITORY
+    if ([string]::IsNullOrWhiteSpace($repository)) { $repository = $RepoRoot }
+    if (-not [System.IO.Path]::IsPathRooted($repository) -or
+            -not (Test-Path -LiteralPath (Join-Path $repository ".git"))) {
+        throw "AI_DISPATCHER_CODEX_REPOSITORY must be an absolute Git working tree."
+    }
+    if (-not $AllowDirtyWorktree) {
+        $worktreeChanges = & git -C $repository status --porcelain=v1 --untracked-files=all
+        if ($LASTEXITCODE -ne 0) { throw "Could not inspect the Codex worktree." }
+        if ($worktreeChanges) {
+            throw "Codex worktree is not clean. Commit/stash changes or explicitly use -AllowDirtyWorktree."
+        }
+    }
+
+    $env:AI_DISPATCHER_CODEX_CLI_EXECUTABLE = [System.IO.Path]::GetFullPath($codexExecutable)
+    $env:AI_DISPATCHER_CODEX_REPOSITORY = [System.IO.Path]::GetFullPath($repository)
+    $env:DEVELOPMENT_FEED_ENABLED = "true"
+    $env:AI_DISPATCHER_MAIN_FEED_ENABLED = "true"
+    $env:AI_DISPATCHER_CODEX_CLI_ENABLED = "true"
+    $env:AI_DISPATCHER_ENABLED = "true"
+    if ([string]::IsNullOrWhiteSpace($env:AI_DISPATCHER_MAX_EVENTS_PER_RUN)) {
+        $env:AI_DISPATCHER_MAX_EVENTS_PER_RUN = "20"
+    }
+    if ([string]::IsNullOrWhiteSpace($env:AI_DISPATCHER_MAX_EVENT_PAYLOAD_BYTES_PER_RUN)) {
+        $env:AI_DISPATCHER_MAX_EVENT_PAYLOAD_BYTES_PER_RUN = "65536"
+    }
 }
 
 # 從 ngrok 本機 API(4040)讀目前的公開 URL;剛啟動時 API 還沒 ready,輪詢幾秒。

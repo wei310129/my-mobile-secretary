@@ -10,7 +10,7 @@ import org.springframework.web.server.ResponseStatusException;
 @Component
 public class DevelopmentFeedCursorCodec {
 
-    private static final String VERSION_PREFIX = "v1:";
+    private static final String VERSION_PREFIX = "v2:";
 
     public String encode(long id) {
         if (id < 0) {

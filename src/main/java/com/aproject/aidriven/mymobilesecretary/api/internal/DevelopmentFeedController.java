@@ -12,7 +12,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.web.server.ResponseStatusException;
 
 @RestController
-@RequestMapping("/internal/integration/v1/development-events")
+@RequestMapping("/internal/integration/v2/development-issues")
 @ConditionalOnProperty(
         prefix = "app.integration.development-feed", name = "enabled", havingValue = "true")
 public class DevelopmentFeedController {

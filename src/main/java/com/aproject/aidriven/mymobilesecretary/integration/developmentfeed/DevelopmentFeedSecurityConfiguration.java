@@ -15,7 +15,7 @@ import org.springframework.security.web.access.intercept.AuthorizationFilter;
         prefix = "app.integration.development-feed", name = "enabled", havingValue = "true")
 public class DevelopmentFeedSecurityConfiguration {
 
-    static final String FEED_PATH = "/internal/integration/v1/development-events";
+    static final String FEED_PATH = "/internal/integration/v2/development-issues";
 
     @Bean
     @Order(1)

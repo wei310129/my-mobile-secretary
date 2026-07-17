@@ -65,6 +65,7 @@ class CodexRecoveryServiceIntegrationTest {
         jdbcTemplate.update("""
                 UPDATE agent_session
                 SET status = 'READY', external_session_id = 'codex-session-123',
+                    bound_at = CURRENT_TIMESTAMP, last_verified_at = CURRENT_TIMESTAMP,
                     version = version + 1, updated_at = CURRENT_TIMESTAMP
                 WHERE session_key = 'development-main'
                 """);

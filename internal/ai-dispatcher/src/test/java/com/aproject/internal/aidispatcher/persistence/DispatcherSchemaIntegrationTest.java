@@ -69,6 +69,7 @@ class DispatcherSchemaIntegrationTest {
 
         assertThat(tables).contains(
                 "agent_session",
+                "agent_session_binding_audit",
                 "dispatcher_event",
                 "dispatcher_lane",
                 "dispatcher_run",

@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import com.aproject.internal.aidispatcher.config.DispatcherProperties;
 import com.aproject.internal.aidispatcher.session.AgentSessionRegistry;
+import com.aproject.internal.aidispatcher.session.SessionBinding;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
@@ -58,6 +59,7 @@ class DispatcherCoordinatorIntegrationTest {
         jdbcTemplate.update("""
                 UPDATE agent_session
                 SET status = 'READY', external_session_id = 'session-test',
+                    bound_at = CURRENT_TIMESTAMP, last_verified_at = CURRENT_TIMESTAMP,
                     version = version + 1, updated_at = CURRENT_TIMESTAMP
                 WHERE session_key = 'development-main'
                 """);
@@ -144,6 +146,7 @@ class DispatcherCoordinatorIntegrationTest {
         jdbcTemplate.update("""
                 UPDATE agent_session
                 SET status = 'UNBOUND', external_session_id = NULL,
+                    bound_at = NULL, last_verified_at = NULL,
                     version = version + 1, updated_at = CURRENT_TIMESTAMP
                 WHERE session_key = 'development-main'
                 """);
@@ -163,6 +166,7 @@ class DispatcherCoordinatorIntegrationTest {
         jdbcTemplate.update("""
                 UPDATE agent_session
                 SET status = 'UNBOUND', external_session_id = NULL,
+                    bound_at = NULL, last_verified_at = NULL,
                     version = version + 1, updated_at = CURRENT_TIMESTAMP
                 WHERE session_key = 'development-main'
                 """);
@@ -173,8 +177,7 @@ class DispatcherCoordinatorIntegrationTest {
                 new DataSourceTransactionManager(dataSource),
                 Clock.fixed(BASE.plus(Duration.ofMinutes(5)), ZoneOffset.UTC));
 
-        AgentSessionRegistry.SessionBinding binding =
-                registry.bindDevelopmentSession("bound-session-id");
+        SessionBinding binding = registry.bindDevelopmentSession("bound-session-id");
 
         assertThat(binding.externalSessionId()).isEqualTo("bound-session-id");
         assertThat(laneState()).isEqualTo("WAITING");

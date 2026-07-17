@@ -2,7 +2,8 @@
 
 ## 為什麼縮小日常測試範圍
 
-專案目前有 57 份測試來源，其中多數 API／repository 測試會啟動 Spring、PostgreSQL/PostGIS 與 Redis Testcontainers。
+專案目前有 147 份測試來源（2026-07-17 計數；文件初版時為 57 份），其中多數 API／repository 測試會啟動
+Spring、PostgreSQL/PostGIS 與 Redis Testcontainers。
 這些完整整合測試適合驗收關鍵節點，但每個小修改都全跑，等待時間與輸出量會快速放大。
 
 近期可觀察結果（2026-07-16）：
@@ -71,3 +72,10 @@
 ```
 
 測試範圍以「變更的依賴圖與失敗後果」決定，不用固定成功率門檻猜測品質；每次交付都要明確列出實際跑過與尚未跑的範圍。
+
+## 現況快照（2026-07-17）
+
+- 主應用：356 份主程式來源、147 份測試來源（其中 `*Test.java` 143 份）。
+- `internal/ai-dispatcher`（獨立 Maven 專案）：72 份 Java 來源、13 份測試類別；測試指令
+  `.\mvnw.cmd -f internal/ai-dispatcher/pom.xml test`，與主應用測試互不影響。
+- 上方逐波觀察紀錄保留為歷史 log；新的觀察請依日期續記，不回改舊紀錄。

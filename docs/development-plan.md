@@ -16,11 +16,17 @@
 | 可行性把關 | 「要可行才放行」：Phase 2 先做簡化版（時間重疊 + 直線距離粗估交通），TDX 路線時間接上後自動變準 |
 | Pending 池 | 未定案的行程/任務進 PENDING，系統在空閒時段主動詢問要不要安排 |
 | 緩衝學習 | 追蹤行程實際結果（超時/交通意外/尖峰），累積各類行程所需緩衝，排程時自動加上 |
-| 家庭共享 | 排 Phase 5；Phase 2-4 新資料表「不」預加 user_id，Phase 5 開工時一次遷移 |
+| 家庭共享 | 功能排 Phase 5；「新表不預加 user_id」已被 workspace 隔離決策取代（見下方 workspace 隔離列與 §20.3） |
 | debounce | 同一任務兩次提醒最小間隔 10 分鐘（app.reminder.debounce-window 可調） |
 | 升級提醒 | 提醒後未確認，間隔 15 分鐘再提醒，最多升級 3 次 |
 | Phase 1E | 使用者決定跳過一週測試（2026-07-11）；arrive/提醒流程已人工驗證可用 |
 | Phase 2 順序 | 2A 知識庫+自動綁定 → 2B 行程模型+可行性把關 → 2C 外部資料整合 → 2D planner v1+pending 池 |
+| LLM provider | Spring AI 1.1.5 + Anthropic;意圖解析與收據多模態皆用(2026-07 定案) |
+| LINE bot | 已實作(webhook + 簽章驗證 + owner guard),為目前主要互動介面 |
+| 通知通道 | LogNotificationSender + WindowsToastNotificationSender + notification outbox |
+| workspace 隔離 | account/workspace + PostgreSQL RLS 提前落地(V18/V25/V30);「新表不預加 user_id」規則作廢,新表一律掛 workspace_id(2026-07) |
+| 開發自動化 | `internal/ai-dispatcher` 獨立應用控制 Codex 開發 agent;與產品 runtime 完全隔離(2026-07) |
+| 進度盤點 | 2026-07-17 全面盤點:Phase 0-2 完成、Phase 3 進行中,詳見 §20 |
 
 ## 2. Spring Boot 版本建議
 
@@ -216,7 +222,7 @@ integration -> external systems
 - `api` 不直接呼叫 repository。
 - `integration` 不把外部 API response 直接洩漏到 domain。
 
-## 7. Phase 0：後端基礎工程
+## 7. Phase 0：後端基礎工程（✅ 已完成）
 
 預估：3-5 天。
 
@@ -262,7 +268,7 @@ integration -> external systems
 - 若本機 Docker 無法跑 PostGIS，需要決定改用本機 PostgreSQL、遠端 DB，或先修 Docker 環境。
 - 若某個 dependency 與 Spring Boot 3.5.16 不相容，需要決定升降 patch 版或更換套件。
 
-## 8. Phase 1A：任務與地點模型
+## 8. Phase 1A：任務與地點模型（✅ 已完成）
 
 預估：1-2 週。
 
@@ -327,7 +333,7 @@ API：
 - 任務狀態名稱若要調整，例如是否加入 `CANCELED`。
 - 地點類型是否先固定 enum，或先用自由文字。
 
-## 9. Phase 1B：位置事件與 geofence 命中
+## 9. Phase 1B：位置事件與 geofence 命中（✅ 已完成）
 
 預估：1-2 週。
 
@@ -374,7 +380,7 @@ API：
 - debounce 預設時間。建議先用 10 分鐘。
 - manual ping 是否要保留，或只接受 enter/exit。
 
-## 10. Phase 1C：提醒引擎與通知替代方案
+## 10. Phase 1C：提醒引擎與通知替代方案（✅ 已完成）
 
 預估：1 週。
 
@@ -417,7 +423,7 @@ API：
 - Phase 1 是否需要簡易 web dashboard 查看提醒。
 - 是否要做 Windows toast 通知作為 server log 以外的替代方案。
 
-## 11. Phase 1D：Redis 延遲提醒與升級提醒
+## 11. Phase 1D：Redis 延遲提醒與升級提醒（✅ 已完成）
 
 預估：1 週。
 
@@ -451,7 +457,7 @@ API：
 - 升級提醒間隔：**15 分鐘**。
 - 最多升級次數：**3 次**。
 
-## 12. Phase 1E：本機真實使用測試
+## 12. Phase 1E：本機真實使用測試（⏭️ 2026-07-11 決定跳過；arrive/提醒流程已人工驗證）
 
 預估：1 週。
 
@@ -478,7 +484,7 @@ API：
 - 如果缺少使用感，是否先做簡易 web dashboard。
 - 如果準備好 Mac，是否切到 iOS 薄殼開發。
 
-## 13. Phase 2：規劃引擎與外部資料
+## 13. Phase 2：規劃引擎與外部資料（✅ 已完成，對照見 §20.1）
 
 預估：4-6 週。
 
@@ -531,7 +537,7 @@ API：
 - 粗估交通的速度參數與把關保守程度（建議：寧可誤報要求確認，不可漏報放行）。
 - 空閒偵測的條件與睡眠時段定義。
 
-## 14. Phase 3：AI 與輸入摩擦降低
+## 14. Phase 3：AI 與輸入摩擦降低（🔨 進行中，多數已完成，對照見 §20.2）
 
 預估：4-6 週。
 
@@ -563,7 +569,7 @@ API：
 - LINE bot 是否在 Phase 3 必做。
 - 行程結束後多久發追蹤詢問、一天最多幾則（避免變成騷擾）。
 
-## 15. Phase 4：學習導向技術升級
+## 15. Phase 4：學習導向技術升級（⬜ 未開始）
 
 預估：持續演進。
 
@@ -580,7 +586,7 @@ API：
 - 只有當 Phase 1-3 的核心體驗穩定後才升級基礎設施。
 - Kafka、Spring Cloud、K8s 是學習與擴展目標，不是 MVP 前置條件。
 
-## 16. Phase 5：家庭共享（遠期）
+## 16. Phase 5：家庭共享（⬜ 功能未開始；部分前置架構已提前落地，見 §20.3）
 
 預估：核心穩定後再排程。
 
@@ -630,18 +636,14 @@ API：
 4. 不改變行為的重構。
 5. 不跨版本線的 patch 更新。
 
-## 18. 建議下一步
+## 18. 建議下一步（2026-07-17 更新）
 
-第一個實作 PR 建議只做 Phase 0：
+Phase 0-2 已完成、Phase 3 進行中（見 §20）。目前的開發節奏：
 
-1. 補 Maven dependencies。
-2. 建 Docker Compose。
-3. 建 application profiles。
-4. 建 package skeleton。
-5. 建全域錯誤格式。
-6. 建第一批 context load 與 health check 測試。
-
-這個 PR 不碰業務模型，先讓工程地基站穩。Phase 0 通過後，再進 Phase 1A 的任務與地點模型。
+1. 每次開發前先查 OPEN 的 intent issues（LINE 實際使用回饋），優先修真實問題。
+2. Phase 3 殘項收尾（見 §20.2 的未完成清單）。
+3. `internal/ai-dispatcher` 由 Codex 持續開發中，屬開發自動化基礎設施，不影響產品 Phase 進度。
+4. Phase 4（Redis Streams/Kafka/Spring Cloud/K8s）維持「核心體驗穩定後才動」的原則，尚未啟動。
 
 ## 19. 需求擴充紀錄與衝突檢視（2026-07-10）
 
@@ -671,3 +673,56 @@ API：
 - **Phase 1C 通知/提醒**：無需調整。NotificationSender 與 delivery 紀錄會被 pending 詢問、行程追蹤詢問、共享變更通知直接重用——介面不用改。
 
 **結論：目前程式碼零修改**；新需求全部落在尚未動工的 Phase 2+。
+
+## 20. 進度盤點與計畫修訂（2026-07-17）
+
+長期由 Codex 並行開發後的全面盤點。此章是「計畫 vs 實際」的對照紀錄；日後更新進度請沿用此格式追加日期章節。
+
+### 20.1 Phase 2 完成對照
+
+| 計畫項 | 實際狀態 |
+|---|---|
+| 店家與物品知識庫 | ✅ `knowledge` 模組：物品、庫存、價格歷史（V5、V9） |
+| 氣象署 API client | ✅ `CwaWeatherClient`（含天氣提醒 `WeatherAlertService`/`Worker`） |
+| TDX API client | ✅ `TdxRoutingClient` + `TdxTokenManager` |
+| Google Places API client | ✅ `GooglePlacesClient`（建地點自動補全） |
+| Redis 外部 API 快取 | ✅ Spring Cache + Redis |
+| planner v1 | ✅ `FeasibilityService`、`FreeSlotService`、`NearbySuggestionService`、`RouteSuggestionService`、天氣規則 |
+| 交通時間估算 | ✅ `CompositeTravelTimeEstimator`：TDX 為主、`StraightLineTravelTimeEstimator` 直線粗估為備援 |
+| 行程模型（schedule 模組） | ✅ ScheduleItem 狀態機 + 週期行程（V6、V12、V16、V17） |
+| 可行性把關（要可行才放行） | ✅ 建行程時檢查時間重疊與位置可行性 |
+| Pending 池與空閒詢問 | ✅ `PendingPromptService`/`PendingPromptWorker` |
+| 緩衝規則 | ✅ buffer_rule（V8）+ SET_PLANNING_BUFFER 意圖 |
+
+### 20.2 Phase 3 完成對照
+
+| 計畫項 | 實際狀態 |
+|---|---|
+| Spring AI 導入 | ✅ Spring AI 1.1.5 + Anthropic（`AnthropicIntentInterpreter`） |
+| 自然語言建立任務 / structured output | ✅ 108 種意圖（`IntentCommand.Type`），schema 驗證 + 確定性攔截（`VagueTimeGuard` 等） |
+| LINE bot webhook | ✅ 簽章驗證、owner guard、訊息記錄與保留政策（V11）；為目前主要互動介面 |
+| 收據照片解析 | ✅ `AnthropicReceiptInterpreter` 多模態 → 價格歷史 |
+| 價格歷史 | ✅ 價格紀錄、比價、最近購買、常去店家等查詢意圖 |
+| 任務閉環強化 | ✅ 勿擾時段、靜音、提醒偏好（V15）、週期任務暫停/跳過（V14） |
+| 行程結果追蹤閉環 | ✅ `ScheduleFollowUpService`/`Worker` + RECORD_OUTCOME（V7） |
+| 緩衝學習（手動累積） | ✅ 依回報結果寫入 buffer 規則 |
+| 尚未完成 | typed capability registry 仍在 shadow 驗證模式（10 個 capability，V21），free-form → typed 遷移未收尾；Live Activities 等 iOS 端項目全數未動（無 Mac） |
+
+### 20.3 計畫外新增（原計畫沒有、實際已存在）
+
+1. **account/workspace 多租戶基礎（V18-V25、V30）**：帳號、workspace、PostgreSQL Row-Level Security、security audit、webhook idempotency、對話歷史按 actor 隔離（V22）。這把原 Phase 5 的「多使用者前置工程」提前以 workspace 形式落地——**「新表不預加 user_id」規則自此作廢**，新表一律掛 `workspace_id`（V26-V29 均已遵循）。家庭「共享/共編」功能本身仍在 Phase 5。
+2. **family 模組（V28、V29）**：家人通知理解（如老師停課通知）、隱私家人身分檔案（識別但不外洩至 LLM）。
+3. **travel 模組（V26、V27）**：旅行規劃引導（PLAN_TRIP）、行李清單與長期偏好、行程表圖片匯入草稿與確認流程。
+4. **notification outbox（V23）**：通知送出改走 outbox pattern；另新增 `WindowsToastNotificationSender`（Phase 1C 當時的決策點，後來實作了）。
+5. **intent issue 回饋閉環（V10、V19、V21）**：LINE 使用者回饋 → intent issue 記錄 → 開發前查 OPEN issues 修正，並有 decision trace（AES-GCM 加密）供除錯。
+
+### 20.4 internal/ai-dispatcher（開發自動化）
+
+同 repo 內完全隔離的獨立 Spring Boot 應用（自有 pom/DB/Flyway V1-V5/Compose），控制 Codex 開發 agent 的啟動、run 生命週期與當機恢復；透過主應用的 development feed（唯讀、獨立 token）取得觸發事件。它是**開發基礎設施**，不是產品 runtime 的一部分；詳見 `internal/ai-dispatcher/README.md`、`ARCHITECTURE.md`、`DESIGN.md`。
+
+### 20.5 已知缺口與待辦
+
+1. 事件匯流排仍是 Spring Events——原計畫「Phase 2-3 換 Redis Streams」未執行，順延至 Phase 4 一併評估。
+2. pgvector 尚未啟用（architecture.md 已改標「規劃中」）。
+3. `internal/ai-dispatcher/DESIGN.md` 尚未涵蓋 V5（session snapshot）變更，由 Codex 在該區域接續補齊。
+4. iOS 端全線未動（無 Mac）；手機事件仍以 API 模擬。

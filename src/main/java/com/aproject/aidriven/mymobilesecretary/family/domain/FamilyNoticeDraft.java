@@ -62,6 +62,16 @@ public class FamilyNoticeDraft extends WorkspaceOwnedEntity {
         this.updatedAt = now;
     }
 
+    public void replaceTitleAndPayload(String title, String payload, Instant now) {
+        requirePending(now);
+        if (title == null || title.isBlank() || title.length() > 160) {
+            throw new IllegalArgumentException("family notice title is invalid");
+        }
+        this.title = title.strip();
+        this.payload = payload;
+        this.updatedAt = now;
+    }
+
     public void confirm(Instant now) {
         requirePending(now);
         status = Status.CONFIRMED;

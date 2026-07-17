@@ -50,6 +50,10 @@ public class FamilyMessageService {
             "(?<!\\d)([01]?\\d|2[0-3])(?:[:：]([0-5]\\d))?\\s*點?\\s*(?:結束|散場)");
     private static final Pattern EVENT_TITLE = Pattern.compile(
             "(?:明天|明日)是(.{2,100}?)(?:[，,。\\n]|以下)");
+    private static final Pattern NOTICE_TITLE_CORRECTION = Pattern.compile(
+            "活動名稱(?:應該)?(?:是)?(?:改成|改為)([^，,。！？!?\\n]{2,100}?活動)");
+    private static final Pattern SCHOOL_NAME = Pattern.compile(
+            "([\\p{IsHan}A-Za-z0-9]{2,40}?(?:幼兒園|學校))");
     private static final Pattern RAINBOW_GATE = Pattern.compile(
             "(?s)([^，。\\n]{1,40}?)(?:的)?彩虹門.*?(?:位於|在)「?([^」，。\\n]{2,100})」?(?:的)?後門");
 
@@ -61,6 +65,7 @@ public class FamilyMessageService {
     private final ObjectMapper objectMapper;
     private final Clock clock;
     private final Duration retention;
+    private FamilyPersonService familyPersonService;
 
     public FamilyMessageService(
             FamilyNoticeDraftRepository repository,
@@ -81,6 +86,11 @@ public class FamilyMessageService {
         this.retention = retention;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setFamilyPersonService(FamilyPersonService familyPersonService) {
+        this.familyPersonService = familyPersonService;
+    }
+
     public Optional<IntentResult> answer(String text, Runnable beforeMutation) {
         if (text == null || text.isBlank()) {
             return Optional.empty();
@@ -92,6 +102,11 @@ public class FamilyMessageService {
         }
         if (isConfirmation(normalized)) {
             return Optional.of(confirm(beforeMutation));
+        }
+        Optional<String> correctedTitle = correctedNoticeTitle(text);
+        if (correctedTitle.isPresent() && latestPendingEntity().isPresent()) {
+            beforeMutation.run();
+            return Optional.of(updateTitle(text, correctedTitle.get(), beforeMutation));
         }
         Optional<LocalTime> suppliedEnd = spokenEndTime(text);
         if (suppliedEnd.isPresent() && latestPendingEntity().isPresent()) {
@@ -170,6 +185,26 @@ public class FamilyMessageService {
         draft.replacePayload(serialize(updated), Instant.now(clock));
         return IntentResult.message(IntentResult.Action.FAMILY_NOTICE_DRAFTED,
                 preview(view(draft, updated)));
+    }
+
+    private IntentResult updateTitle(String text, String title, Runnable beforeMutation) {
+        FamilyNoticeDraft draft = latestPendingEntity().orElseThrow();
+        Payload current = deserialize(draft.getPayload());
+        Payload updated = new Payload(title, current.eventDate(), current.reportTime(),
+                current.endTime(), current.preparation(), current.arrival(), current.notes(),
+                current.followUps());
+        Instant now = Instant.now(clock);
+        draft.replaceTitleAndPayload(title, serialize(updated), now);
+
+        String remembered = schoolName(title)
+                .filter(school -> familyPersonService != null
+                        && familyPersonService.rememberSchoolForMention(
+                                text, school, beforeMutation))
+                .map(school -> "👤 我也已記住這位家人的學校是「%s」。\n\n".formatted(school))
+                .orElse("");
+        return IntentResult.message(IntentResult.Action.FAMILY_NOTICE_DRAFTED,
+                "✏️ 已修正活動名稱為「%s」。\n\n%s%s".formatted(
+                        title, remembered, preview(view(draft, updated))));
     }
 
     private IntentResult noticeStatus() {
@@ -398,6 +433,17 @@ public class FamilyMessageService {
         Matcher matcher = EVENT_TITLE.matcher(text);
         if (!matcher.find()) return Optional.empty();
         return Optional.of(bounded(matcher.group(1).strip(), 160));
+    }
+
+    private static Optional<String> correctedNoticeTitle(String text) {
+        Matcher matcher = NOTICE_TITLE_CORRECTION.matcher(text);
+        if (!matcher.find()) return Optional.empty();
+        return Optional.of(bounded(matcher.group(1).strip(), 160));
+    }
+
+    private static Optional<String> schoolName(String title) {
+        Matcher matcher = SCHOOL_NAME.matcher(title);
+        return matcher.find() ? Optional.of(matcher.group(1)) : Optional.empty();
     }
 
     private static List<String> noticeLines(String text) {

@@ -127,6 +127,20 @@ public class FamilyPersonService {
         missing.forEach(this::ensure);
     }
 
+    /** Remembers a school explicitly supplied while correcting a family notice title. */
+    public boolean rememberSchoolForMention(String text, String school, Runnable beforeMutation) {
+        Optional<PersonDefinition> definition = mentions(text).stream()
+                .map(Mention::definition)
+                .findFirst();
+        if (definition.isEmpty() || school == null || school.isBlank()) {
+            return false;
+        }
+        beforeMutation.run();
+        FamilyPersonProfile person = ensure(definition.get());
+        rememberAttribute(person, Key.SCHOOL, bounded(school, 100, "school"));
+        return true;
+    }
+
     /** Adds a small resolution note only when the current sentence contains a known family term. */
     @Transactional(readOnly = true)
     public String enrichForIntent(String text) {
@@ -178,9 +192,13 @@ public class FamilyPersonService {
     private String personDescription(FamilyPersonProfile person) {
         Optional<FamilyPersonAttribute> name = attributeRepository
                 .findByCreatedByUserIdAndPersonIdAndKey(actorId(), person.getId(), Key.NAME);
-        return name.map(attribute -> "%s（姓名：%s）".formatted(
+        String identity = name.map(attribute -> "%s（姓名：%s）".formatted(
                         person.getDisplayLabel(), attribute.getValue()))
                 .orElseGet(() -> person.getDisplayLabel() + "（姓名尚未提供）");
+        return attributeRepository
+                .findByCreatedByUserIdAndPersonIdAndKey(actorId(), person.getId(), Key.SCHOOL)
+                .map(attribute -> identity + "／學校：" + attribute.getValue())
+                .orElse(identity);
     }
 
     private static List<Mention> mentions(String text) {

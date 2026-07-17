@@ -42,6 +42,15 @@ class FamilyNoticeIntentApiTest extends IntegrationTestBase {
                 jsonPath("$.schedule").doesNotExist(),
                 jsonPath("$.task").doesNotExist());
 
+        say("大女兒的幼兒園是哪一間你要知道，因此活動名稱應該是改成滬江幼兒園的父親節活動才對，要能夠自動理解",
+                jsonPath("$.action").value("FAMILY_NOTICE_DRAFTED"),
+                jsonPath("$.message").value(containsString("滬江幼兒園的父親節活動")),
+                jsonPath("$.message").value(containsString("家人的學校是「滬江幼兒園」")));
+
+        say("你知道我女兒是誰嗎？",
+                jsonPath("$.action").value("FAMILY_PERSON_RECOGNIZED"),
+                jsonPath("$.message").value(containsString("學校：滬江幼兒園")));
+
         say("你有把老師的提醒幫我加到行程了嗎？",
                 jsonPath("$.action").value("FAMILY_NOTICE_STATUS"),
                 jsonPath("$.message").value(containsString("還沒有建立正式行程")));

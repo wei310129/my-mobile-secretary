@@ -48,6 +48,16 @@ $dispatcherDbStatus = if ($dockerAvailable) {
 $dispatcherDbHealthy = $dispatcherDbStatus -eq "healthy"
 $dispatcherDbDisplay = if ($dispatcherDbStatus) { $dispatcherDbStatus } else { "not running" }
 Write-Host "Dispatcher DB:  $dispatcherDbDisplay"
+$dispatcherLaneState = if ($dispatcherDbHealthy) { Get-DispatcherLaneState } else { $null }
+$dispatcherLaneDisplay = if ($dispatcherLaneState) { $dispatcherLaneState } else { "unknown" }
+$dispatcherLaneColor = if (Test-DispatcherLaneActive -State $dispatcherLaneState) {
+    "Yellow"
+} elseif ($dispatcherLaneState -eq "PAUSED") {
+    "Yellow"
+} else {
+    "DarkGray"
+}
+Write-Host "Dispatcher lane: $dispatcherLaneDisplay" -ForegroundColor $dispatcherLaneColor
 
 $dispatcherPortPid = Get-PortOwnerPid -Port $DispatcherPort
 $dispatcherHealthy = $false

@@ -35,6 +35,14 @@ Write-Host "=== Restarting main application and AI Dispatcher ===" -ForegroundCo
 $state = Read-DevState
 
 if (-not $SkipDispatcher) {
+    $laneState = Get-DispatcherLaneState
+    if (Test-DispatcherLaneActive -State $laneState) {
+        Write-Host "Dispatcher lane is $laneState; restart refused to avoid terminating an active Codex run." `
+            -ForegroundColor Red
+        Write-Host "Wait for the run to finish. Use -SkipDispatcher only when restarting the main app is unavoidable." `
+            -ForegroundColor Yellow
+        exit 2
+    }
     $dispatcherPid = Resolve-ManagedProcessId -TrackedProcessId $state.dispatcherPid `
         -Port $DispatcherPort -Kind "Dispatcher"
     if ($dispatcherPid) {

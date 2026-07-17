@@ -23,6 +23,7 @@ param(
 
 . "$PSScriptRoot\_devops-common.ps1"
 Normalize-ProcessPathEnvironment
+Disable-DispatcherAutomationEnvironment
 Ensure-LogsDir
 Set-Location $RepoRoot
 
@@ -38,6 +39,7 @@ try {
 }
 
 Write-Host "=== Starting development environment (profile=$Profile) ===" -ForegroundColor Cyan
+Write-Host "  Dispatcher automation is DISARMED (service health only)." -ForegroundColor DarkGray
 
 # 1) Main application infrastructure is required.
 if (-not $SkipDocker) {
@@ -153,7 +155,15 @@ if ($SkipDispatcher) {
 # 5) Dispatcher is best-effort and cannot roll back a successful main startup.
 $dispatcherPid = $null
 if ($SkipDispatcher) {
-    Write-Host "[5/5] AI Dispatcher was not requested." -ForegroundColor DarkGray
+    $previousState = Read-DevState
+    $dispatcherPid = Resolve-ManagedProcessId -TrackedProcessId $previousState.dispatcherPid `
+        -Port $DispatcherPort -Kind "Dispatcher"
+    if ($dispatcherPid) {
+        Write-Host "[5/5] Preserving existing AI Dispatcher PID $dispatcherPid (-SkipDispatcher)." `
+            -ForegroundColor DarkGray
+    } else {
+        Write-Host "[5/5] AI Dispatcher was not requested." -ForegroundColor DarkGray
+    }
 } elseif (-not $dispatcherDbReady) {
     Write-Host "[5/5] AI Dispatcher was not started because its DB is unavailable." -ForegroundColor Yellow
 } else {

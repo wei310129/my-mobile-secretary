@@ -179,6 +179,38 @@ function Test-DockerDaemon {
     return $LASTEXITCODE -eq 0
 }
 
+# Reads only the single local Dispatcher lane state. This is used to avoid killing a supervised
+# Codex child process during an ordinary restart. Failure to inspect returns $null and never claims
+# that an execution is safe to interrupt.
+function Get-DispatcherLaneState {
+    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { return $null }
+    if ((Get-ContainerHealth -ContainerName "mms-ai-dispatcher-postgres") -ne "healthy") {
+        return $null
+    }
+    $value = docker exec mms-ai-dispatcher-postgres `
+        psql -U ai_dispatcher -d ai_dispatcher -tA `
+        -c "SELECT state FROM dispatcher_lane WHERE lane_key = 'CODEX_DEVELOPMENT';" 2>$null
+    if ($LASTEXITCODE -ne 0) { return $null }
+    $state = ($value | Out-String).Trim()
+    $known = @("IDLE", "WAITING", "STARTING", "RUNNING", "RECOVERING", "PAUSED")
+    if ($known -contains $state) { return $state }
+    return $null
+}
+
+function Test-DispatcherLaneActive {
+    param([AllowNull()][string]$State)
+    return @("STARTING", "RUNNING", "RECOVERING") -contains $State
+}
+
+# Starting the development environment is deliberately disarmed. A future explicit arm command
+# may override these values only after the execution adapter and per-run event bound are ready.
+function Disable-DispatcherAutomationEnvironment {
+    $env:DEVELOPMENT_FEED_ENABLED = "false"
+    $env:AI_DISPATCHER_MAIN_FEED_ENABLED = "false"
+    $env:AI_DISPATCHER_CODEX_CLI_ENABLED = "false"
+    $env:AI_DISPATCHER_ENABLED = "false"
+}
+
 # 從 ngrok 本機 API(4040)讀目前的公開 URL;剛啟動時 API 還沒 ready,輪詢幾秒。
 function Get-NgrokPublicUrl {
     param([int]$TimeoutSec = 20)

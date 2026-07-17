@@ -22,6 +22,11 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev-stop.ps1
 及 Spring Boot actuator health；任何必要服務不健康都會回傳非零 exit code。若本機允許
 執行 PowerShell 腳本，也可在 `scripts` 目錄直接使用 `.\dev-restart.ps1`。
 
+一般啟動與重啟會明確關閉 development feed、Dispatcher scheduler 與 Codex CLI adapter；
+目前只啟動 Dispatcher 服務做健康檢查，不會自動開發。當 Dispatcher lane 處於 `STARTING`、
+`RUNNING` 或 `RECOVERING` 時，`dev-restart.ps1` 與 `dev-stop.ps1` 會拒絕終止程序樹，避免把
+正在執行的 Codex 連同 Dispatcher 一起強制殺掉。`dev-status.ps1` 會顯示目前 lane 狀態。
+
 本機 Spring Boot 應用日誌寫入 `scripts\.logs\spring-boot.log`，每個檔案最多 10 MB、
 保留 7 天且總量最多 100 MB。`spring-boot.out.log` / `spring-boot.err.log` 只保留 Maven
 啟動器輸出；ngrok 只記錄警告以上。Postgres 與 Redis 的 Docker 日誌各自限制為

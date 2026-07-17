@@ -24,6 +24,14 @@ if ($RemoveVolumes -and -not $Docker) {
 Write-Host "=== Stopping development environment ===" -ForegroundColor Cyan
 $state = Read-DevState
 
+$laneState = Get-DispatcherLaneState
+if (Test-DispatcherLaneActive -State $laneState) {
+    Write-Host "Dispatcher lane is $laneState; stop refused to avoid terminating an active Codex run." `
+        -ForegroundColor Red
+    Write-Host "Wait for the run to finish before stopping the environment." -ForegroundColor Yellow
+    exit 2
+}
+
 # Stop Dispatcher first so it cannot poll while the main application is shutting down.
 $dispatcherPid = Resolve-ManagedProcessId -TrackedProcessId $state.dispatcherPid `
     -Port $DispatcherPort -Kind "Dispatcher"

@@ -199,6 +199,10 @@ public class IntentService {
 
     private IntentResult doHandle(String text, IntentFlowTrace flowTrace,
                                   MutationBoundary mutationBoundary) {
+        Optional<IntentResult> productFeedback = ProductFeedbackBoundary.answer(text);
+        if (productFeedback.isPresent()) {
+            return productFeedback.get();
+        }
         if (familyPersonService != null) {
             Optional<IntentResult> person = familyPersonService.answer(
                     text, mutationBoundary::beforeMutation);

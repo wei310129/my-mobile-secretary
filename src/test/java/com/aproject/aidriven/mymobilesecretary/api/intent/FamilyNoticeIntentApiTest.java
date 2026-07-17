@@ -50,6 +50,26 @@ class FamilyNoticeIntentApiTest extends IntegrationTestBase {
                 jsonPath("$.action").value("CLARIFICATION_NEEDED"),
                 jsonPath("$.message").value(containsString("活動結束時間")));
 
+        String mixedProductRequirement = """
+                明天的父親節活動是12點結束，而且結束後女兒同學的爸爸有約大家一起午餐。
+
+                對了，每天一般都有早餐、午餐、晚餐等生活硬需求，當時間太緊的時候你要提醒要預留用餐行程，這比較不算一個行程，比較像生活建議，就好比會影響睡覺時間。給使用者決定後只要註記會受到影響即可。
+
+                但前提是每個人的三餐時間並不一樣，你要先和使用者確認想要的時間。固定行程可能有類似設定，要有個優先順序來整合，例如上班日和週末的早餐時間不同。
+                """;
+        say(mixedProductRequirement,
+                jsonPath("$.action").value("FEEDBACK_RECEIVED"),
+                jsonPath("$.message").value(containsString("不會建立待辦或行程")));
+
+        // Product feedback must not consume the embedded 12:00 or mutate the pending draft.
+        say("確認老師通知",
+                jsonPath("$.action").value("CLARIFICATION_NEEDED"),
+                jsonPath("$.message").value(containsString("活動結束時間")));
+
+        say("你沒有聽懂",
+                jsonPath("$.action").value("FEEDBACK_RECEIVED"),
+                jsonPath("$.message").value(containsString("理解錯了")));
+
         say("12點結束",
                 jsonPath("$.action").value("FAMILY_NOTICE_DRAFTED"),
                 jsonPath("$.message").value(containsString("12:00")),

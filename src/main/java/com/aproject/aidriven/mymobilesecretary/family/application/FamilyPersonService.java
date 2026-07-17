@@ -70,6 +70,13 @@ public class FamilyPersonService {
             return Optional.empty();
         }
 
+        // Relationship teaching belongs to FamilyMessageService. A sentence such as
+        // 「我是我女兒的家長，也是爸爸，這層關係你能理解嗎」looks like a recognition
+        // question too, but answering here would prevent the relationship from being persisted.
+        if (looksLikeRelationshipTeaching(text)) {
+            return Optional.empty();
+        }
+
         Matcher nameTeaching = NAME_TEACHING.matcher(text);
         if (nameTeaching.find() && !isRecognitionQuestion(text)) {
             PersonDefinition definition = definitionForAlias(nameTeaching.group(1)).orElseThrow();
@@ -205,6 +212,12 @@ public class FamilyPersonService {
                 || text.contains("誰") || text.contains("什麼");
         return question && containsAny(text, "認得", "辨認", "分辨", "知道", "理解",
                 "是誰", "叫什麼", "名字");
+    }
+
+    private static boolean looksLikeRelationshipTeaching(String text) {
+        String compact = text.replaceAll("\\s+", "");
+        return compact.startsWith("我是我") && compact.contains("的家長")
+                && (compact.contains("爸爸") || compact.contains("媽媽"));
     }
 
     private static UUID actorId() {

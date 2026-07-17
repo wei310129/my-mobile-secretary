@@ -649,6 +649,52 @@ class IntentApiTest extends IntegrationTestBase {
         org.assertj.core.api.Assertions.assertThat(taskService.listTasks()).hasSize(before);
     }
 
+    /** 行李草案沿用上一則旅行上下文，但不把條件用品當成既定需求。 */
+    @Test
+    void packingDraftUsesRecentCruiseContextWithoutInventingPoolItems() throws Exception {
+        int before = taskService.listTasks().size();
+        say("11月17-22日搭郵輪去日本玩",
+                jsonPath("$.action").value("TRAVEL_INFO"));
+
+        say("幫我草擬一份行李清單",
+                jsonPath("$.action").value("PACKING_LIST_INFO"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("日本郵輪旅行")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("護照")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("沒有明確水上活動")));
+
+        org.assertj.core.api.Assertions.assertThat(taskService.listTasks()).hasSize(before);
+    }
+
+    /** 明確永久偏好會保存原因、可以查詢，也可以清除。 */
+    @Test
+    void permanentPackingPreferenceCanBeRememberedListedAndCleared() throws Exception {
+        say("以後行李清單都不要建議測試護目鏡，因為這是整合測試",
+                jsonPath("$.action").value("PACKING_PREFERENCE_UPDATED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("測試護目鏡")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("這是整合測試")));
+
+        say("我的行李偏好有哪些",
+                jsonPath("$.action").value("PACKING_LIST_INFO"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("測試護目鏡")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不主動建議")));
+
+        say("清除測試護目鏡的行李偏好",
+                jsonPath("$.action").value("PACKING_PREFERENCE_UPDATED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("已清除")));
+    }
+
+    /** 「這次不要」只改草案，不能暗中升級成永久記憶。 */
+    @Test
+    void oneOffPackingOmissionDoesNotBecomeLongTermPreference() throws Exception {
+        say("這次不要帶測試泳帽",
+                jsonPath("$.action").value("PACKING_LIST_INFO"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不會改動長期偏好")));
+
+        say("我的行李偏好有哪些",
+                jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("測試泳帽"))));
+    }
+
     /** 歷史活動次數由本機資料統計，沒有紀錄也不能交給故障 fallback 建待辦。 */
     @Test
     void lastMonthExerciseCountNeverFallsBackToTask() throws Exception {

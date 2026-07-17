@@ -124,6 +124,12 @@ public record IntentCommand(
         ASK_LAST_ACTIVITY,
         /** 開始蒐集旅行／出遊規劃資料；只回問與分類，不直接建立任何資料。 */
         PLAN_TRIP,
+        /** 依目前旅行上下文與個人偏好產生行李清單草案。 */
+        PLAN_PACKING_LIST,
+        /** 列出已明確保存的長期行李偏好。 */
+        LIST_PACKING_PREFERENCES,
+        /** 設定長期行李偏好；title=品項，options.filter=ALWAYS/NEVER/CLEAR。 */
+        SET_PACKING_PREFERENCE,
         ASK_LAST_PURCHASE,
         ASK_PRICE_SUMMARY,
         ASK_FREQUENT_STORE,

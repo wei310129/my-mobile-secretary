@@ -54,6 +54,7 @@ public class IntentService {
     private final LastActivityAnswerService lastActivityAnswerService;
     private final ActivityCountAnswerService activityCountAnswerService;
     private final TravelPlanningIntakeService travelPlanningIntakeService;
+    private final TravelPackingAnswerService travelPackingAnswerService;
     private final ScheduleTaskConflictAnswerService scheduleTaskConflictAnswerService;
     private final TaskDetailAnswerService taskDetailAnswerService;
     private final RestaurantBookingService restaurantBookingService;
@@ -82,6 +83,7 @@ public class IntentService {
                          LastActivityAnswerService lastActivityAnswerService,
                          ActivityCountAnswerService activityCountAnswerService,
                          TravelPlanningIntakeService travelPlanningIntakeService,
+                         TravelPackingAnswerService travelPackingAnswerService,
                          ScheduleTaskConflictAnswerService scheduleTaskConflictAnswerService,
                          TaskDetailAnswerService taskDetailAnswerService,
                          RestaurantBookingService restaurantBookingService,
@@ -108,6 +110,7 @@ public class IntentService {
         this.lastActivityAnswerService = lastActivityAnswerService;
         this.activityCountAnswerService = activityCountAnswerService;
         this.travelPlanningIntakeService = travelPlanningIntakeService;
+        this.travelPackingAnswerService = travelPackingAnswerService;
         this.scheduleTaskConflictAnswerService = scheduleTaskConflictAnswerService;
         this.taskDetailAnswerService = taskDetailAnswerService;
         this.restaurantBookingService = restaurantBookingService;
@@ -189,6 +192,11 @@ public class IntentService {
         Optional<IntentResult> lastActivity = lastActivityAnswerService.answer(text);
         if (lastActivity.isPresent()) {
             return lastActivity.get();
+        }
+        Optional<IntentResult> packing = travelPackingAnswerService.answer(
+                text, mutationBoundary::beforeMutation);
+        if (packing.isPresent()) {
+            return packing.get();
         }
         Optional<IntentResult> travelPlanning = travelPlanningIntakeService.answer(text);
         if (travelPlanning.isPresent()) {
@@ -631,6 +639,13 @@ public class IntentService {
                         command.title(), command.safeOptions().filter());
             }
             case PLAN_TRIP -> travelPlanningIntakeService.intake(text);
+            case PLAN_PACKING_LIST -> travelPackingAnswerService.draft(text);
+            case LIST_PACKING_PREFERENCES -> travelPackingAnswerService.listPreferences();
+            case SET_PACKING_PREFERENCE -> {
+                requireText(command.title(), "title");
+                yield travelPackingAnswerService.setPreference(
+                        command.title(), command.safeOptions().filter(), command.reason());
+            }
             case LIST_SCHEDULES_ON_DATE -> {
                 Instant dateTime = parseTime(command.startAt());
                 if (dateTime == null) {
@@ -1082,7 +1097,8 @@ public class IntentService {
                     GROUP_TASKS_BY_CATEGORY, ASK_TASK_PROGRESS, GROUP_TASKS_BY_DUE,
                     ASK_TASK_LOAD, ASK_BUSY_TASK_DAY, ASK_BUSY_SCHEDULE_DAY,
                     ASK_LONGEST_SCHEDULE, GROUP_SCHEDULES_BY_PLACE, ASK_ACTIVITY_COUNT,
-                    ASK_LAST_ACTIVITY, PLAN_TRIP, ASK_LAST_PURCHASE, ASK_PRICE_SUMMARY,
+                    ASK_LAST_ACTIVITY, PLAN_TRIP, PLAN_PACKING_LIST, LIST_PACKING_PREFERENCES,
+                    ASK_LAST_PURCHASE, ASK_PRICE_SUMMARY,
                     ASK_FREQUENT_STORE, ASK_INVENTORY_EXTREMES,
                     CHECK_SHOPPING_INVENTORY, LIST_UNPLACED_ITEMS,
                     ASK_ITEM_KNOWLEDGE_SUMMARY, ASK_SCHEDULE_REMINDER,

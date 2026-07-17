@@ -278,3 +278,13 @@
 278|到港口前提醒我檢查證件|PLAN_TRIP|先確認港口、觸發方向與半徑;較大半徑仍須由使用者確認
 279|我上次出國玩是什麼時候|ASK_LAST_ACTIVITY|查歷史旅行紀錄;不可啟動新旅行規劃或建立待辦
 280|功能改善：旅行要詢問出發地點和交通方式|FEEDBACK|自由文字提到地點仍是改善建議;不可接回舊任務的缺地點追問
+281|幫我草擬一份行李清單|PLAN_PACKING_LIST|沿用最近旅行上下文與個人偏好產生草案;不直接建立待辦
+282|幫我列日本郵輪旅行的行李清單|PLAN_PACKING_LIST|加入護照、登船文件與郵輪用品;沒有水上活動不可猜泳衣
+283|這次不要帶泳衣|PLAN_PACKING_LIST|只改本次草案;不可寫入長期偏好
+284|行李清單不要泳衣|UNKNOWN|缺少只限本次或永久範圍;先回問不可猜
+285|以後行李清單都不要建議泳衣,因為我不游泳|SET_PACKING_PREFERENCE|title=泳衣;options.filter=NEVER;reason=我不游泳;保存個人長期偏好
+286|以後每次都要提醒我帶常備藥|SET_PACKING_PREFERENCE|title=常備藥;options.filter=ALWAYS;保存個人長期偏好
+287|清除泳衣的行李偏好|SET_PACKING_PREFERENCE|title=泳衣;options.filter=CLEAR;之後依實際行程重新判斷
+288|我的行李偏好有哪些|LIST_PACKING_PREFERENCES|只列目前使用者自己的偏好與明講原因,家庭成員互相隔離
+289|這趟有游泳池,幫我重整行李清單|PLAN_PACKING_LIST|有明確水上活動才加入泳衣、防水袋等條件用品
+290|使用者刪掉清單項目就代表以後永遠不要帶|FEEDBACK|錯誤推論;一次刪除不得升級為長期偏好

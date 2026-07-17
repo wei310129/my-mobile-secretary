@@ -1,34 +1,35 @@
-﻿<#
+<#
 .SYNOPSIS
-  一鍵啟動本機開發環境:Docker(Postgres/Redis) → ngrok 隧道 → Spring Boot。
+  Starts the main development environment and the isolated AI Dispatcher.
 
 .PARAMETER Profile
-  Spring profile,預設 local(桌面通知、連 compose 起的 DB)。
+  Spring profile for the main application. Defaults to local.
 
 .PARAMETER NoNgrok
-  跳過 ngrok,只在本機測試(不需要 LINE 真的能打進來時用)。
+  Skips ngrok for local-only development.
 
 .PARAMETER SkipDocker
-  跳過 docker compose(假設 Postgres/Redis 已經在跑)。
+  Does not run compose up. Required containers must already be healthy.
 
-.EXAMPLE
-  .\dev-start.ps1
-  .\dev-start.ps1 -NoNgrok
+.PARAMETER SkipDispatcher
+  Does not start the AI Dispatcher application or its PostgreSQL container.
 #>
 param(
     [string]$Profile = "local",
     [switch]$NoNgrok,
-    [switch]$SkipDocker
+    [switch]$SkipDocker,
+    [switch]$SkipDispatcher
 )
 
 . "$PSScriptRoot\_devops-common.ps1"
+Normalize-ProcessPathEnvironment
 Ensure-LogsDir
 Set-Location $RepoRoot
 
 try {
     Assert-CommandAvailable -Name "docker"
-    if (-not (Test-Path "$RepoRoot\mvnw.cmd")) { throw "找不到 $RepoRoot\mvnw.cmd" }
-    if (-not (Test-DockerDaemon)) { throw "Docker daemon 尚未啟動，請先開啟 Docker Desktop。" }
+    if (-not (Test-Path "$RepoRoot\mvnw.cmd")) { throw "Missing Maven wrapper: $RepoRoot\mvnw.cmd" }
+    if (-not (Test-DockerDaemon)) { throw "Docker daemon is not running. Start Docker Desktop first." }
     Assert-PortAvailableOrManaged -Port $AppPort -Kind "SpringBoot"
     if (-not $NoNgrok) { Assert-PortAvailableOrManaged -Port $NgrokApiPort -Kind "Ngrok" }
 } catch {
@@ -36,49 +37,47 @@ try {
     exit 1
 }
 
-Write-Host "=== 啟動開發環境(profile=$Profile) ===" -ForegroundColor Cyan
+Write-Host "=== Starting development environment (profile=$Profile) ===" -ForegroundColor Cyan
 
-# 1) Docker:Postgres + Redis -----------------------------------------------
+# 1) Main application infrastructure is required.
 if (-not $SkipDocker) {
-    Write-Host "[1/3] docker compose up -d ..." -ForegroundColor Yellow
+    Write-Host "[1/5] Starting main Postgres and Redis..." -ForegroundColor Yellow
     docker compose up -d
     if ($LASTEXITCODE -ne 0) {
-        Write-Host "docker compose 啟動失敗,請確認 Docker Desktop 有在跑。" -ForegroundColor Red
+        Write-Host "Main docker compose startup failed." -ForegroundColor Red
         exit 1
     }
     $pgOk = Wait-ContainerHealthy -ContainerName "mms-postgres" -TimeoutSec 60
     $redisOk = Wait-ContainerHealthy -ContainerName "mms-redis" -TimeoutSec 60
     if (-not $pgOk -or -not $redisOk) {
-        Write-Host "Postgres/Redis 一直沒 healthy,檢查 docker compose logs。" -ForegroundColor Red
+        Write-Host "Main Postgres or Redis did not become healthy." -ForegroundColor Red
         exit 1
     }
-    Write-Host "  Postgres + Redis 已 healthy。" -ForegroundColor Green
 } else {
-    Write-Host "[1/3] 不執行 docker compose，驗證既有容器(-SkipDocker)..." -ForegroundColor Yellow
+    Write-Host "[1/5] Checking existing main containers (-SkipDocker)..." -ForegroundColor Yellow
     $pgOk = (Get-ContainerHealth -ContainerName "mms-postgres") -eq "healthy"
     $redisOk = (Get-ContainerHealth -ContainerName "mms-redis") -eq "healthy"
     if (-not $pgOk -or -not $redisOk) {
-        Write-Host "-SkipDocker 要求既有 mms-postgres 與 mms-redis 都為 healthy。" -ForegroundColor Red
+        Write-Host "-SkipDocker requires healthy mms-postgres and mms-redis containers." -ForegroundColor Red
         exit 1
     }
-    Write-Host "  Postgres + Redis 已 healthy。" -ForegroundColor Green
 }
+Write-Host "  Main Postgres and Redis are healthy." -ForegroundColor Green
 
-# 2) ngrok --------------------------------------------------------------
+# 2) ngrok is part of the main application lifecycle.
 $ngrokUrl = $null
 $ngrokPid = $null
 if (-not $NoNgrok) {
-    Write-Host "[2/3] 啟動 ngrok ..." -ForegroundColor Yellow
-    $existingNgrokPid = Resolve-ManagedProcessId -TrackedProcessId $null `
-        -Port $NgrokApiPort -Kind "Ngrok"
+    Write-Host "[2/5] Starting ngrok..." -ForegroundColor Yellow
+    $existingNgrokPid = Resolve-ManagedProcessId -TrackedProcessId $null -Port $NgrokApiPort -Kind "Ngrok"
     if ($existingNgrokPid) {
-        Write-Host "  ngrok 已經在跑(PID $existingNgrokPid),沿用現有隧道。" -ForegroundColor DarkGray
         $ngrokPid = $existingNgrokPid
         $ngrokUrl = Get-NgrokPublicUrl -TimeoutSec 10
+        Write-Host "  Reusing ngrok PID $ngrokPid." -ForegroundColor DarkGray
     } else {
         $ngrokExe = Resolve-NgrokExe
         if (-not $ngrokExe) {
-            Write-Host "  找不到 ngrok.exe。設定 `$env:NGROK_EXE 指到執行檔,或用 -NoNgrok 跳過。" -ForegroundColor Red
+            Write-Host "ngrok.exe was not found. Set `$env:NGROK_EXE or use -NoNgrok." -ForegroundColor Red
             exit 1
         }
         $proc = Start-Process -FilePath $ngrokExe `
@@ -89,51 +88,110 @@ if (-not $NoNgrok) {
         $ngrokPid = $proc.Id
         $ngrokUrl = Get-NgrokPublicUrl -TimeoutSec 20
         if (-not $ngrokUrl) {
-            Write-Host "  ngrok 起了(PID $ngrokPid)但拿不到公開 URL,看 scripts\.logs\ngrok.err.log。" -ForegroundColor Red
-            Stop-ProcessTree -ProcessId $ngrokPid -Label "ngrok(啟動失敗)"
+            Write-Host "ngrok did not expose a public URL. Check scripts\.logs\ngrok.err.log." -ForegroundColor Red
+            Stop-ProcessTree -ProcessId $ngrokPid -Label "ngrok (failed startup)"
             exit 1
-        } else {
-            Write-Host "  ngrok 就緒(PID $ngrokPid)。" -ForegroundColor Green
         }
+        Write-Host "  ngrok is ready (PID $ngrokPid)." -ForegroundColor Green
     }
 } else {
-    Write-Host "[2/3] 跳過 ngrok(-NoNgrok)。" -ForegroundColor DarkGray
+    Write-Host "[2/5] Skipping ngrok (-NoNgrok)." -ForegroundColor DarkGray
 }
 
-# 3) Spring Boot ----------------------------------------------------------
-Write-Host "[3/3] 啟動 Spring Boot ..." -ForegroundColor Yellow
-$existingAppPid = Resolve-ManagedProcessId -TrackedProcessId $null `
-    -Port $AppPort -Kind "SpringBoot"
+# 3) The main application is required and becomes healthy before any Dispatcher work.
+Write-Host "[3/5] Starting the main Spring Boot application..." -ForegroundColor Yellow
+$existingAppPid = Resolve-ManagedProcessId -TrackedProcessId $null -Port $AppPort -Kind "SpringBoot"
 if ($existingAppPid) {
-    $existingHealthy = Wait-HttpOk -Url "http://localhost:$AppPort/actuator/health" -TimeoutSec 10
-    if (-not $existingHealthy) {
-        Write-Host "  偵測到本專案行程 PID $existingAppPid，但 health check 未通過。" -ForegroundColor Red
+    if (-not (Wait-HttpOk -Url "http://localhost:$AppPort/actuator/health" -TimeoutSec 10)) {
+        Write-Host "Main PID $existingAppPid exists but its health check failed." -ForegroundColor Red
         exit 1
     }
-    Write-Host "  Spring Boot 已啟動且健康(PID $existingAppPid),不重複啟動。" -ForegroundColor DarkGray
-    Write-Host "  要重啟請用 .\dev-restart.ps1" -ForegroundColor DarkGray
     $appPid = $existingAppPid
+    Write-Host "  Main application is already healthy (PID $appPid)." -ForegroundColor DarkGray
 } else {
-    $appLog = Join-Path $LogsDir "spring-boot.out.log"
-    $appErrLog = Join-Path $LogsDir "spring-boot.err.log"
     $proc = Start-Process -FilePath "$RepoRoot\mvnw.cmd" `
         -ArgumentList "spring-boot:run", "-Dspring-boot.run.profiles=$Profile" `
         -WorkingDirectory $RepoRoot -WindowStyle Hidden -PassThru `
-        -RedirectStandardOutput $appLog -RedirectStandardError $appErrLog
+        -RedirectStandardOutput (Join-Path $LogsDir "spring-boot.out.log") `
+        -RedirectStandardError (Join-Path $LogsDir "spring-boot.err.log")
     $appPid = $proc.Id
-    Write-Host "  已送出啟動指令(PID $appPid),等後端 health check ..." -ForegroundColor DarkGray
-    $ok = Wait-HttpOk -Url "http://localhost:$AppPort/actuator/health" -TimeoutSec 120
-    if ($ok) {
-        Write-Host "  Spring Boot 就緒。" -ForegroundColor Green
-    } else {
-        Write-Host "  120 秒內沒看到 health check 過,看 scripts\.logs\spring-boot.err.log 排查。" -ForegroundColor Red
-        Stop-ProcessTree -ProcessId $appPid -Label "Spring Boot(啟動失敗)"
+    if (-not (Wait-HttpOk -Url "http://localhost:$AppPort/actuator/health" -TimeoutSec 120)) {
+        Write-Host "Main health check failed. Check scripts\.logs\spring-boot.err.log." -ForegroundColor Red
+        Stop-ProcessTree -ProcessId $appPid -Label "Spring Boot (failed startup)"
         exit 1
+    }
+    Write-Host "  Main application is ready (PID $appPid)." -ForegroundColor Green
+}
+
+# 4) Dispatcher database failure cannot delay the main application becoming ready.
+$dispatcherDbReady = $false
+if ($SkipDispatcher) {
+    Write-Host "[4/5] Skipping AI Dispatcher database (-SkipDispatcher)." -ForegroundColor DarkGray
+} elseif (-not (Test-Path $DispatcherComposeFile) -or -not (Test-Path $DispatcherPom)) {
+    Write-Host "[4/5] AI Dispatcher files are incomplete. Main application remains available." -ForegroundColor Yellow
+} elseif (-not $SkipDocker) {
+    Write-Host "[4/5] Starting the isolated Dispatcher PostgreSQL..." -ForegroundColor Yellow
+    docker compose -f $DispatcherComposeFile up -d
+    if ($LASTEXITCODE -eq 0) {
+        $dispatcherDbReady = Wait-ContainerHealthy -ContainerName "mms-ai-dispatcher-postgres" -TimeoutSec 60
+    }
+    if ($dispatcherDbReady) {
+        Write-Host "  Dispatcher PostgreSQL is healthy (isolated DB and volume)." -ForegroundColor Green
+    } else {
+        Write-Host "  Dispatcher PostgreSQL failed. Dispatcher is skipped; main application remains up." -ForegroundColor Yellow
+    }
+} else {
+    Write-Host "[4/5] Checking existing Dispatcher PostgreSQL (-SkipDocker)..." -ForegroundColor Yellow
+    $dispatcherDbReady = (Get-ContainerHealth -ContainerName "mms-ai-dispatcher-postgres") -eq "healthy"
+    if ($dispatcherDbReady) {
+        Write-Host "  Dispatcher PostgreSQL is healthy." -ForegroundColor Green
+    } else {
+        Write-Host "  Dispatcher DB is not healthy. Dispatcher is skipped; main application remains up." -ForegroundColor Yellow
+    }
+}
+
+# 5) Dispatcher is best-effort and cannot roll back a successful main startup.
+$dispatcherPid = $null
+if ($SkipDispatcher) {
+    Write-Host "[5/5] AI Dispatcher was not requested." -ForegroundColor DarkGray
+} elseif (-not $dispatcherDbReady) {
+    Write-Host "[5/5] AI Dispatcher was not started because its DB is unavailable." -ForegroundColor Yellow
+} else {
+    Write-Host "[5/5] Starting AI Dispatcher..." -ForegroundColor Yellow
+    try {
+        Assert-PortAvailableOrManaged -Port $DispatcherPort -Kind "Dispatcher"
+        $existingDispatcherPid = Resolve-ManagedProcessId -TrackedProcessId $null `
+            -Port $DispatcherPort -Kind "Dispatcher"
+        if ($existingDispatcherPid) {
+            if (Wait-HttpOk -Url "http://localhost:$DispatcherPort/actuator/health" -TimeoutSec 10) {
+                $dispatcherPid = $existingDispatcherPid
+                Write-Host "  AI Dispatcher is already healthy (PID $dispatcherPid)." -ForegroundColor DarkGray
+            } else {
+                Write-Host "  Dispatcher exists but is unhealthy. It was not interrupted; use dev-restart.ps1." -ForegroundColor Yellow
+            }
+        } else {
+            $proc = Start-Process -FilePath "$RepoRoot\mvnw.cmd" `
+                -ArgumentList "-f", "internal\ai-dispatcher\pom.xml", "spring-boot:run" `
+                -WorkingDirectory $RepoRoot -WindowStyle Hidden -PassThru `
+                -RedirectStandardOutput (Join-Path $LogsDir "ai-dispatcher.out.log") `
+                -RedirectStandardError (Join-Path $LogsDir "ai-dispatcher.err.log")
+            $dispatcherPid = $proc.Id
+            if (Wait-HttpOk -Url "http://localhost:$DispatcherPort/actuator/health" -TimeoutSec 120) {
+                Write-Host "  AI Dispatcher is ready (PID $dispatcherPid)." -ForegroundColor Green
+            } else {
+                Write-Host "  Dispatcher health check failed. It was stopped; the main application remains up." -ForegroundColor Yellow
+                Stop-ProcessTree -ProcessId $dispatcherPid -Label "AI Dispatcher (failed startup)"
+                $dispatcherPid = $null
+            }
+        }
+    } catch {
+        Write-Host "  Dispatcher skipped: $($_.Exception.Message)" -ForegroundColor Yellow
     }
 }
 
 Write-DevState -Updates @{
     springBootPid = $appPid
+    dispatcherPid = $dispatcherPid
     ngrokPid      = $ngrokPid
     ngrokUrl      = $ngrokUrl
     profile       = $Profile
@@ -141,12 +199,12 @@ Write-DevState -Updates @{
 }
 
 Write-Host ""
-Write-Host "=== 狀態 ===" -ForegroundColor Cyan
-Write-Host "後端:      http://localhost:$AppPort"
-if ($ngrokUrl) {
-    Write-Host "LINE webhook: $ngrokUrl/api/line/webhook" -ForegroundColor Cyan
-    Write-Host "  (網址每次重啟 ngrok 會換,記得回 LINE Developers Console 更新)" -ForegroundColor DarkGray
+Write-Host "=== Status ===" -ForegroundColor Cyan
+Write-Host "Main:          http://localhost:$AppPort"
+if ($dispatcherPid) {
+    Write-Host "AI Dispatcher: http://localhost:$DispatcherPort (scheduler disabled by default)"
 }
-Write-Host "log:        scripts\.logs\spring-boot.log (10 MB 分卷，總量上限 100 MB)"
-Write-Host "查狀態:     .\dev-status.ps1"
-Write-Host "停止:       .\dev-stop.ps1"
+if ($ngrokUrl) { Write-Host "LINE webhook:  $ngrokUrl/api/line/webhook" -ForegroundColor Cyan }
+Write-Host "Logs:          scripts\.logs\"
+Write-Host "Inspect:       .\scripts\dev-status.ps1"
+Write-Host "Stop:          .\scripts\dev-stop.ps1"

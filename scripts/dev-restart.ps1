@@ -1,49 +1,66 @@
-﻿<#
+<#
 .SYNOPSIS
-  重啟開發環境。預設只重啟 Spring Boot(改了程式碼後最常見的動作),
-  Docker/ngrok 若沒在跑會順便補起來,已經在跑的不動它。
+  Restarts the main application and AI Dispatcher. Databases and ngrok stay up by default.
 
 .PARAMETER Full
-  全部停掉再全部重開(含 Docker/ngrok),用於環境卡死想整個重來時。
+  Stops both Compose projects and then starts the full environment. Volumes are retained.
 
 .PARAMETER Profile
-  Spring profile,預設 local。
+  Spring profile for the main application. Defaults to local.
 
-.EXAMPLE
-  .\dev-restart.ps1          # 只重啟 Spring Boot
-  .\dev-restart.ps1 -Full    # 全部重來
+.PARAMETER SkipDispatcher
+  Restarts only the main application and does not touch the AI Dispatcher.
 #>
 param(
     [switch]$Full,
-    [string]$Profile = "local"
+    [string]$Profile = "local",
+    [switch]$SkipDispatcher
 )
 
 . "$PSScriptRoot\_devops-common.ps1"
 Set-Location $RepoRoot
 
+$startParameters = @{ Profile = $Profile }
+if ($SkipDispatcher) { $startParameters["SkipDispatcher"] = $true }
+
 if ($Full) {
-    Write-Host "=== 全部重啟 ===" -ForegroundColor Cyan
+    Write-Host "=== Full restart ===" -ForegroundColor Cyan
     & "$PSScriptRoot\dev-stop.ps1" -Docker
-    & "$PSScriptRoot\dev-start.ps1" -Profile $Profile
-    return
+    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    & "$PSScriptRoot\dev-start.ps1" @startParameters
+    exit $LASTEXITCODE
 }
 
-Write-Host "=== 重啟 Spring Boot(Docker/ngrok 維持原狀,沒在跑的會補起來) ===" -ForegroundColor Cyan
-
+Write-Host "=== Restarting main application and AI Dispatcher ===" -ForegroundColor Cyan
 $state = Read-DevState
+
+if (-not $SkipDispatcher) {
+    $dispatcherPid = Resolve-ManagedProcessId -TrackedProcessId $state.dispatcherPid `
+        -Port $DispatcherPort -Kind "Dispatcher"
+    if ($dispatcherPid) {
+        Stop-ProcessTree -ProcessId $dispatcherPid -Label "AI Dispatcher (old)"
+    } else {
+        $dispatcherPortOwner = Get-PortOwnerPid -Port $DispatcherPort
+        if ($dispatcherPortOwner) {
+            Write-Host "  Dispatcher port is owned by unmanaged PID $dispatcherPortOwner; main restart will continue." -ForegroundColor Yellow
+        } else {
+            Write-Host "  AI Dispatcher was not running." -ForegroundColor DarkGray
+        }
+    }
+}
+
 $appPid = Resolve-ManagedProcessId -TrackedProcessId $state.springBootPid `
     -Port $AppPort -Kind "SpringBoot"
 if ($appPid) {
-    Stop-ProcessTree -ProcessId $appPid -Label "Spring Boot(舊)"
+    Stop-ProcessTree -ProcessId $appPid -Label "Spring Boot (old)"
 } else {
-    $portOwner = Get-PortOwnerPid -Port $AppPort
-    if ($portOwner) {
-        Write-Host "port $AppPort 被未受管理的 PID $portOwner 使用，為避免誤殺已停止重啟。" -ForegroundColor Red
+    $appPortOwner = Get-PortOwnerPid -Port $AppPort
+    if ($appPortOwner) {
+        Write-Host "Main port $AppPort belongs to unmanaged PID $appPortOwner. Restart aborted to avoid killing it." -ForegroundColor Red
         exit 1
     }
-    Write-Host "  Spring Boot 本來就沒在跑。" -ForegroundColor DarkGray
+    Write-Host "  Spring Boot was not running." -ForegroundColor DarkGray
 }
 
-# dev-start.ps1 本身具冪等性:Docker/ngrok 已在跑就沿用,8080 沒人聽才會真的啟動。
-& "$PSScriptRoot\dev-start.ps1" -Profile $Profile
+& "$PSScriptRoot\dev-start.ps1" @startParameters
 exit $LASTEXITCODE

@@ -6,7 +6,11 @@ $RepoRoot = Split-Path -Parent $PSScriptRoot
 $LogsDir = Join-Path $PSScriptRoot ".logs"
 $StateFile = Join-Path $PSScriptRoot ".dev-state.json"
 $AppPort = 8080
+$DispatcherPort = 8091
 $NgrokApiPort = 4040
+$DispatcherRoot = Join-Path $RepoRoot "internal\ai-dispatcher"
+$DispatcherPom = Join-Path $DispatcherRoot "pom.xml"
+$DispatcherComposeFile = Join-Path $DispatcherRoot "compose.yaml"
 
 function Assert-CommandAvailable {
     param([Parameter(Mandatory)][string]$Name)
@@ -19,6 +23,16 @@ function Ensure-LogsDir {
     if (-not (Test-Path $LogsDir)) {
         New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
     }
+}
+
+# Some launchers provide both Path and PATH in the native environment block. Windows PowerShell
+# treats environment keys as case-insensitive, so Start-Process rejects that inherited block.
+# Rebuild only this script process's PATH entry; system and user environment settings are untouched.
+function Normalize-ProcessPathEnvironment {
+    $processPath = [System.Environment]::GetEnvironmentVariable("Path", "Process")
+    if (-not $processPath) { return }
+    [System.Environment]::SetEnvironmentVariable("PATH", $null, "Process")
+    [System.Environment]::SetEnvironmentVariable("Path", $processPath, "Process")
 }
 
 function Read-DevState {
@@ -52,7 +66,7 @@ function Get-PortOwnerPid {
 function Test-ManagedProcess {
     param(
         [Parameter(Mandatory)][int]$ProcessId,
-        [Parameter(Mandatory)][ValidateSet("SpringBoot", "Ngrok")][string]$Kind
+        [Parameter(Mandatory)][ValidateSet("SpringBoot", "Dispatcher", "Ngrok")][string]$Kind
     )
     $process = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
     if (-not $process) { return $false }
@@ -60,6 +74,9 @@ function Test-ManagedProcess {
     try {
         $commandLine = (Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" `
                 -ErrorAction Stop).CommandLine
+        if ($Kind -eq "Dispatcher") {
+            return $commandLine -match "internal[\\/]ai-dispatcher[\\/]pom\.xml|AiDispatcherApplication|ai-dispatcher"
+        }
         return $commandLine -match "mvnw\.cmd|spring-boot:run|MyMobileSecretaryApplication|my-mobile-secretary"
     } catch {
         return $false
@@ -70,7 +87,7 @@ function Resolve-ManagedProcessId {
     param(
         [AllowNull()]$TrackedProcessId,
         [Parameter(Mandatory)][int]$Port,
-        [Parameter(Mandatory)][ValidateSet("SpringBoot", "Ngrok")][string]$Kind
+        [Parameter(Mandatory)][ValidateSet("SpringBoot", "Dispatcher", "Ngrok")][string]$Kind
     )
     if ($TrackedProcessId -and (Test-ManagedProcess -ProcessId $TrackedProcessId -Kind $Kind)) {
         return [int]$TrackedProcessId
@@ -85,7 +102,7 @@ function Resolve-ManagedProcessId {
 function Assert-PortAvailableOrManaged {
     param(
         [Parameter(Mandatory)][int]$Port,
-        [Parameter(Mandatory)][ValidateSet("SpringBoot", "Ngrok")][string]$Kind
+        [Parameter(Mandatory)][ValidateSet("SpringBoot", "Dispatcher", "Ngrok")][string]$Kind
     )
     $owner = Get-PortOwnerPid -Port $Port
     if ($owner -and -not (Test-ManagedProcess -ProcessId $owner -Kind $Kind)) {

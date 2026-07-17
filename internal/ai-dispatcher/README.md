@@ -20,7 +20,25 @@ operations checklist.
 
 ## Local commands
 
+The repository-level development scripts manage the main application and this isolated service
+together. Dispatcher startup is best-effort: its failure is reported but never fails the main
+application startup.
+
 From the repository root:
+
+```powershell
+.\scripts\dev-start.ps1                 # starts both applications and both Compose projects
+.\scripts\dev-status.ps1                # Dispatcher is reported but remains non-blocking
+.\scripts\dev-status.ps1 -RequireDispatcher
+.\scripts\dev-restart.ps1               # restarts both Java applications
+.\scripts\dev-stop.ps1                  # stops both Java applications, retains both databases
+.\scripts\dev-stop.ps1 -Docker          # also stops both Compose projects
+```
+
+Use `-SkipDispatcher` with `dev-start.ps1` or `dev-restart.ps1` when working only on the main
+application. If Windows execution policy blocks direct `.ps1` invocation, call the script with
+`powershell -NoProfile -ExecutionPolicy Bypass -File`. The equivalent standalone commands remain
+available:
 
 ```powershell
 docker compose -f internal/ai-dispatcher/compose.yaml up -d
@@ -29,7 +47,9 @@ docker compose -f internal/ai-dispatcher/compose.yaml up -d
 ```
 
 The application is disabled by default. Set `AI_DISPATCHER_ENABLED=true` only after its durable
-state machine and recovery behavior have been configured. The main-application feed is also
+state machine, the named Codex session and a concrete Codex execution adapter have been configured.
+Starting the service with the default configuration therefore proves that its database, migrations
+and HTTP health endpoint are ready; it does not start Codex. The main-application feed is also
 disabled independently. Its minimum settings are:
 
 ```text

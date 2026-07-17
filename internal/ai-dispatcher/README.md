@@ -39,6 +39,10 @@ AI_DISPATCHER_MAIN_FEED_TOKEN=<dedicated-read-only-token>
 The feed uses bounded connect/read timeouts. A failed poll prevents a new Codex run from starting,
 but never changes main-application state and never blocks recovery of an existing run.
 
+Consumed event payloads are cleared after 90 days by default while event/run audit identities are
+retained. Configure `AI_DISPATCHER_CONSUMED_PAYLOAD_RETENTION` to match the main application's
+LINE-history replay window. Pending and claimed payloads are never purged.
+
 ## Removal
 
 Stop its Compose project, remove its dedicated volume if desired, then delete this directory.

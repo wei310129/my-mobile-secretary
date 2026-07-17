@@ -3,9 +3,11 @@ package com.aproject.internal.aidispatcher.codex;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import com.aproject.internal.aidispatcher.config.CodexLifecycleProperties;
+import com.aproject.internal.aidispatcher.config.DispatcherRetentionProperties;
 import com.aproject.internal.aidispatcher.config.DispatcherProperties;
 import com.aproject.internal.aidispatcher.coordination.DispatcherCoordinator;
 import com.aproject.internal.aidispatcher.coordination.DispatcherInstanceIdentity;
+import com.aproject.internal.aidispatcher.retention.DispatcherDataRetentionService;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
@@ -151,6 +153,32 @@ class CodexLifecycleServiceIntegrationTest {
         assertThat(eventCount("CLAIMED")).isEqualTo(1);
     }
 
+    @Test
+    void retentionPurgesOnlyAnExpiredConsumedPayloadWhilePreservingAuditIdentity() {
+        UUID runId = startRunningEvent("event-1");
+        long token = fencingToken(runId);
+        Instant completedAt = BASE.plus(Duration.ofMinutes(6));
+        lifecycleAt(completedAt).onCodexFinish(
+                runId, token,
+                new CodexCompletion(CodexCompletion.Status.SUCCEEDED, "COMPLETED", completedAt));
+        DispatcherDataRetentionService retention = new DispatcherDataRetentionService(
+                jdbcTemplate,
+                Clock.fixed(completedAt.plus(Duration.ofDays(91)), ZoneOffset.UTC),
+                new DispatcherRetentionProperties(Duration.ofDays(90), Duration.ofHours(1)));
+
+        int purged = retention.purgeExpiredConsumedPayloads();
+
+        assertThat(purged).isEqualTo(1);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT metadata::text FROM dispatcher_event WHERE source_event_id = 'event-1'
+                """, String.class)).isEqualTo("{}");
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT payload_purged_at IS NOT NULL
+                FROM dispatcher_event WHERE source_event_id = 'event-1'
+                """, Boolean.class)).isTrue();
+        assertThat(runStatus(runId)).isEqualTo("SUCCEEDED");
+    }
+
     private UUID startRunningEvent(String eventId) {
         insertEvent(eventId, BASE);
         Clock launchClock = Clock.fixed(BASE.plus(Duration.ofMinutes(5)), ZoneOffset.UTC);
@@ -188,7 +216,8 @@ class CodexLifecycleServiceIntegrationTest {
                     source_key, source_event_id, trigger_type, subject_ref,
                     schema_version, occurred_at, recorded_at, processing_state, metadata)
                 VALUES ('main-conversation-feed-v1', ?,
-                        'line.conversation.recorded', ?, 1, ?, ?, 'PENDING', '{}'::jsonb)
+                        'line.conversation.recorded', ?, 1, ?, ?, 'PENDING',
+                        '{"text":"request"}'::jsonb)
                 """, eventId, "line-message:" + eventId,
                 Timestamp.from(recordedAt), Timestamp.from(recordedAt));
     }

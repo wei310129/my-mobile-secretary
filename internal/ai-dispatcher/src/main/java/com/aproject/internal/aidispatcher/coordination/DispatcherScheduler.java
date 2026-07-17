@@ -1,5 +1,6 @@
 package com.aproject.internal.aidispatcher.coordination;
 
+import com.aproject.internal.aidispatcher.retention.DispatcherDataRetentionService;
 import java.util.concurrent.atomic.AtomicBoolean;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -16,10 +17,13 @@ public class DispatcherScheduler {
     private static final Logger LOGGER = LoggerFactory.getLogger(DispatcherScheduler.class);
 
     private final DispatcherEngine engine;
+    private final DispatcherDataRetentionService retentionService;
     private final AtomicBoolean tickInProgress = new AtomicBoolean();
 
-    public DispatcherScheduler(DispatcherEngine engine) {
+    public DispatcherScheduler(DispatcherEngine engine,
+                               DispatcherDataRetentionService retentionService) {
         this.engine = engine;
+        this.retentionService = retentionService;
     }
 
     @EventListener(ApplicationReadyEvent.class)
@@ -30,6 +34,16 @@ public class DispatcherScheduler {
     @Scheduled(fixedDelayString = "${ai-dispatcher.poll-interval}")
     public void scheduledTick() {
         runOneTick();
+    }
+
+    @Scheduled(fixedDelayString = "${ai-dispatcher.retention.sweep-interval}")
+    public void retentionSweep() {
+        try {
+            int purged = retentionService.purgeExpiredConsumedPayloads();
+            LOGGER.debug("Dispatcher payload retention purged {} events", purged);
+        } catch (RuntimeException failure) {
+            LOGGER.error("Dispatcher payload retention sweep failed", failure);
+        }
     }
 
     void runOneTick() {

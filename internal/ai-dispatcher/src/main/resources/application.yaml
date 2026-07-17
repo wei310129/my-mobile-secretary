@@ -35,3 +35,6 @@ ai-dispatcher:
     bearer-token: ${AI_DISPATCHER_MAIN_FEED_TOKEN:}
     connect-timeout: ${AI_DISPATCHER_MAIN_FEED_CONNECT_TIMEOUT:2s}
     read-timeout: ${AI_DISPATCHER_MAIN_FEED_READ_TIMEOUT:5s}
+  retention:
+    consumed-payload-retention: ${AI_DISPATCHER_CONSUMED_PAYLOAD_RETENTION:90d}
+    sweep-interval: ${AI_DISPATCHER_RETENTION_SWEEP_INTERVAL:1h}

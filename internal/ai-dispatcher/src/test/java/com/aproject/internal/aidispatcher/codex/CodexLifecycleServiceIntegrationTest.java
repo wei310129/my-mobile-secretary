@@ -155,6 +155,35 @@ class CodexLifecycleServiceIntegrationTest {
     }
 
     @Test
+    void uncertainCliExitPausesWithoutReleasingPossiblyAppliedWork() {
+        UUID runId = startRunningEvent("event-1");
+        long token = fencingToken(runId);
+        Instant observedAt = BASE.plus(Duration.ofMinutes(6));
+        CodexLifecycleService service = lifecycleAt(observedAt);
+
+        CodexLifecycleResult retained = service.onCodexOutcomeUnknown(
+                runId, token, "CLI_EXIT_AFTER_TURN_STARTED", observedAt);
+        CodexLifecycleResult duplicate = service.onCodexOutcomeUnknown(
+                runId, token, "CLI_EXIT_AFTER_TURN_STARTED", observedAt);
+
+        assertThat(retained.outcome())
+                .isEqualTo(CodexLifecycleResult.Outcome.OUTCOME_RETAINED);
+        assertThat(duplicate.outcome())
+                .isEqualTo(CodexLifecycleResult.Outcome.OUTCOME_RETAINED);
+        assertThat(runStatus(runId)).isEqualTo("OUTCOME_UNKNOWN");
+        assertThat(laneState()).isEqualTo("PAUSED");
+        assertThat(eventCount("CLAIMED")).isEqualTo(1);
+        assertThat(eventCount("PENDING")).isZero();
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT active_run_id FROM dispatcher_lane
+                WHERE lane_key = 'CODEX_DEVELOPMENT'
+                """, UUID.class)).isEqualTo(runId);
+        assertThat(jdbcTemplate.queryForObject("""
+                SELECT last_error_code FROM dispatcher_run WHERE run_id = ?
+                """, String.class, runId)).isEqualTo("CLI_EXIT_AFTER_TURN_STARTED");
+    }
+
+    @Test
     void retentionPurgesOnlyAnExpiredConsumedPayloadWhilePreservingAuditIdentity() {
         UUID runId = startRunningEvent("event-1");
         long token = fencingToken(runId);

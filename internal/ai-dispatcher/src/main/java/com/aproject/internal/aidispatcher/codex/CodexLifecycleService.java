@@ -59,6 +59,24 @@ public class CodexLifecycleService {
         return result;
     }
 
+    public CodexLifecycleResult onCodexOutcomeUnknown(UUID runId,
+                                                      long fencingToken,
+                                                      String errorCode,
+                                                      Instant observedAt) {
+        if (runId == null || fencingToken <= 0 || observedAt == null) {
+            throw new IllegalArgumentException(
+                    "runId, positive fencingToken and observedAt are required");
+        }
+        String boundedErrorCode = requireErrorCode(errorCode);
+        CodexLifecycleResult result = transactionTemplate.execute(status ->
+                retainUnknownOutcomeLocked(
+                        runId, fencingToken, boundedErrorCode, observedAt));
+        if (result == null) {
+            throw new IllegalStateException("Unknown outcome transaction returned no result");
+        }
+        return result;
+    }
+
     private CodexLifecycleResult finishLocked(UUID runId,
                                               long fencingToken,
                                               CodexCompletion completion) {
@@ -121,6 +139,62 @@ public class CodexLifecycleService {
         }
         return CodexLifecycleResult.of(
                 CodexLifecycleResult.Outcome.HEARTBEAT_ACCEPTED, pendingEventCount());
+    }
+
+    private CodexLifecycleResult retainUnknownOutcomeLocked(UUID runId,
+                                                             long fencingToken,
+                                                             String errorCode,
+                                                             Instant observedAt) {
+        LaneRow lane = lockLane();
+        List<RunRow> runs = jdbcTemplate.query("""
+                SELECT status, fencing_token, event_count
+                FROM dispatcher_run
+                WHERE run_id = ?
+                FOR UPDATE
+                """, (resultSet, rowNumber) -> new RunRow(
+                        resultSet.getString("status"),
+                        resultSet.getLong("fencing_token"),
+                        resultSet.getInt("event_count")), runId);
+        if (runs.isEmpty()) {
+            return CodexLifecycleResult.of(CodexLifecycleResult.Outcome.NOT_FOUND, 0);
+        }
+        RunRow run = runs.getFirst();
+        if (!ACTIVE_RUN_STATUSES.contains(run.status())) {
+            return CodexLifecycleResult.of(
+                    CodexLifecycleResult.Outcome.DUPLICATE, pendingEventCount());
+        }
+        if (!runId.equals(lane.activeRunId())
+                || fencingToken != lane.fencingToken()
+                || fencingToken != run.fencingToken()) {
+            return CodexLifecycleResult.of(
+                    CodexLifecycleResult.Outcome.STALE, pendingEventCount());
+        }
+        if ("OUTCOME_UNKNOWN".equals(run.status()) && "PAUSED".equals(lane.state())) {
+            return CodexLifecycleResult.of(
+                    CodexLifecycleResult.Outcome.OUTCOME_RETAINED, pendingEventCount());
+        }
+
+        int runUpdated = jdbcTemplate.update("""
+                UPDATE dispatcher_run
+                SET status = 'OUTCOME_UNKNOWN', last_error_code = ?,
+                    heartbeat_deadline = NULL, updated_at = ?
+                WHERE run_id = ? AND fencing_token = ?
+                  AND status IN ('STARTING', 'RUNNING', 'OUTCOME_UNKNOWN')
+                """, errorCode, timestamp(observedAt), runId, fencingToken);
+        int laneUpdated = jdbcTemplate.update("""
+                UPDATE dispatcher_lane
+                SET state = 'PAUSED', last_error_code = ?,
+                    paused_reason = 'Codex execution may have repository side effects; operator verification required',
+                    version = version + 1, updated_at = ?
+                WHERE lane_key = 'CODEX_DEVELOPMENT'
+                  AND active_run_id = ? AND fencing_token = ?
+                  AND state IN ('STARTING', 'RUNNING', 'RECOVERING', 'PAUSED')
+                """, errorCode, timestamp(observedAt), runId, fencingToken);
+        if (runUpdated != 1 || laneUpdated != 1) {
+            throw new IllegalStateException("Could not retain uncertain Codex outcome atomically");
+        }
+        return CodexLifecycleResult.of(
+                CodexLifecycleResult.Outcome.OUTCOME_RETAINED, pendingEventCount());
     }
 
     private LaneRow lockLane() {
@@ -227,6 +301,17 @@ public class CodexLifecycleService {
 
     private static Instant instant(Timestamp timestamp) {
         return timestamp == null ? null : timestamp.toInstant();
+    }
+
+    private static String requireErrorCode(String value) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException("errorCode is required");
+        }
+        String result = value.strip();
+        if (result.length() > 100) {
+            throw new IllegalArgumentException("errorCode must not exceed 100 characters");
+        }
+        return result;
     }
 
     private record LaneRow(String state, UUID activeRunId, long fencingToken) {

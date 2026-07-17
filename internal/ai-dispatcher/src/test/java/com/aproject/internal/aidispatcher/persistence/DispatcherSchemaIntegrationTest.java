@@ -48,6 +48,7 @@ class DispatcherSchemaIntegrationTest {
                     """);
             statement.executeUpdate("DELETE FROM dispatcher_run_event");
             statement.executeUpdate("DELETE FROM dispatcher_event");
+            statement.executeUpdate("DELETE FROM codex_execution_attempt");
             statement.executeUpdate("DELETE FROM dispatcher_run");
         }
     }
@@ -70,6 +71,7 @@ class DispatcherSchemaIntegrationTest {
         assertThat(tables).contains(
                 "agent_session",
                 "agent_session_binding_audit",
+                "codex_execution_attempt",
                 "dispatcher_event",
                 "dispatcher_lane",
                 "dispatcher_run",

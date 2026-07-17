@@ -12,6 +12,7 @@ public record CodexLifecycleResult(Outcome outcome, long pendingEventCount) {
         STALE,
         NOT_FOUND,
         HEARTBEAT_ACCEPTED,
-        HEARTBEAT_REJECTED
+        HEARTBEAT_REJECTED,
+        OUTCOME_RETAINED
     }
 }

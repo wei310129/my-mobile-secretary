@@ -27,7 +27,17 @@ docker compose -f internal/ai-dispatcher/compose.yaml up -d
 ```
 
 The application is disabled by default. Set `AI_DISPATCHER_ENABLED=true` only after its durable
-state machine and recovery behavior have been configured.
+state machine and recovery behavior have been configured. The main-application feed is also
+disabled independently. Its minimum settings are:
+
+```text
+AI_DISPATCHER_MAIN_FEED_ENABLED=true
+AI_DISPATCHER_MAIN_FEED_BASE_URL=http://localhost:8080
+AI_DISPATCHER_MAIN_FEED_TOKEN=<dedicated-read-only-token>
+```
+
+The feed uses bounded connect/read timeouts. A failed poll prevents a new Codex run from starting,
+but never changes main-application state and never blocks recovery of an existing run.
 
 ## Removal
 

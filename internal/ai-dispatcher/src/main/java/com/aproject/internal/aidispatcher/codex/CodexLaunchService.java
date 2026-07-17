@@ -93,6 +93,7 @@ public class CodexLaunchService {
         List<CodexEventReference> events = jdbcTemplate.query("""
                 SELECT e.source_key, e.source_event_id, e.trigger_type, e.subject_ref,
                        e.schema_version, e.occurred_at
+                       , e.metadata::text AS metadata_json
                 FROM dispatcher_run_event re
                 JOIN dispatcher_event e ON e.id = re.event_id
                 WHERE re.run_id = ?
@@ -103,7 +104,8 @@ public class CodexLaunchService {
                         resultSet.getString("trigger_type"),
                         resultSet.getString("subject_ref"),
                         resultSet.getInt("schema_version"),
-                        resultSet.getTimestamp("occurred_at").toInstant()), runId);
+                        resultSet.getTimestamp("occurred_at").toInstant(),
+                        resultSet.getString("metadata_json")), runId);
 
         Instant dispatchedAt = Instant.now(clock);
         int updated = jdbcTemplate.update("""

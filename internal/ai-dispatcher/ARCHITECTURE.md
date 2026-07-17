@@ -52,7 +52,8 @@ GET /internal/integration/v1/development-events?after=<opaque-cursor>&limit=<n>
       "type": "line.conversation.recorded",
       "occurredAt": "instant",
       "subjectRef": "opaque-reference",
-      "schemaVersion": 1
+      "schemaVersion": 1,
+      "metadata": {"messageType": "TEXT", "text": "development request"}
     }
   ],
   "nextCursor": "opaque-cursor",
@@ -60,7 +61,7 @@ GET /internal/integration/v1/development-events?after=<opaque-cursor>&limit=<n>
 }
 ```
 
-The concrete contract will be introduced in its own commit. Requirements:
+The implemented contract has these requirements:
 
 - Results are ordered and replayable.
 - `eventId` is stable so Dispatcher can deduplicate replays.
@@ -68,6 +69,10 @@ The concrete contract will be introduced in its own commit. Requirements:
 - Polling the feed has no side effects in the main application.
 - Feed unavailability only delays Dispatcher work.
 - Dispatcher persists an event before advancing its local cursor.
+
+The quiet-period batch is the merge boundary. Fifty feed events become one Codex run containing
+fifty ordered event references; Dispatcher does not summarize or semantically merge user text.
+This avoids data loss and keeps AI reasoning outside Dispatcher.
 
 ## Database boundary
 

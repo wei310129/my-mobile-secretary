@@ -37,6 +37,16 @@ public class JdbcTriggerEventStore {
         return result;
     }
 
+    public String currentCursor(String sourceKey) {
+        List<String> cursors = jdbcTemplate.query("""
+                SELECT cursor_value FROM trigger_cursor WHERE source_key = ?
+                """, (resultSet, rowNumber) -> resultSet.getString("cursor_value"), sourceKey);
+        if (cursors.isEmpty()) {
+            throw new IllegalArgumentException("Unknown trigger source: " + sourceKey);
+        }
+        return cursors.getFirst();
+    }
+
     private TriggerIngestionResult ingestLocked(TriggerEventPage page) {
         List<String> cursors = jdbcTemplate.query("""
                 SELECT cursor_value

@@ -26,3 +26,12 @@ ai-dispatcher:
     heartbeat-timeout: ${AI_DISPATCHER_CODEX_HEARTBEAT_TIMEOUT:2m}
     retry-delay: ${AI_DISPATCHER_CODEX_RETRY_DELAY:5m}
     max-recovery-attempts: ${AI_DISPATCHER_CODEX_MAX_RECOVERY_ATTEMPTS:3}
+  trigger-polling:
+    page-size: ${AI_DISPATCHER_TRIGGER_PAGE_SIZE:100}
+    max-pages-per-poll: ${AI_DISPATCHER_TRIGGER_MAX_PAGES:10}
+  main-feed:
+    enabled: ${AI_DISPATCHER_MAIN_FEED_ENABLED:false}
+    base-url: ${AI_DISPATCHER_MAIN_FEED_BASE_URL:http://localhost:8080}
+    bearer-token: ${AI_DISPATCHER_MAIN_FEED_TOKEN:}
+    connect-timeout: ${AI_DISPATCHER_MAIN_FEED_CONNECT_TIMEOUT:2s}
+    read-timeout: ${AI_DISPATCHER_MAIN_FEED_READ_TIMEOUT:5s}

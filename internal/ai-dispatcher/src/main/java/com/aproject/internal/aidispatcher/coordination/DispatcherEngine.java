@@ -4,6 +4,8 @@ import com.aproject.internal.aidispatcher.codex.CodexLaunchResult;
 import com.aproject.internal.aidispatcher.codex.CodexLaunchService;
 import com.aproject.internal.aidispatcher.codex.CodexRecoveryResult;
 import com.aproject.internal.aidispatcher.codex.CodexRecoveryService;
+import com.aproject.internal.aidispatcher.trigger.source.TriggerPollingResult;
+import com.aproject.internal.aidispatcher.trigger.source.TriggerPollingService;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnBean;
 import org.springframework.stereotype.Service;
 
@@ -14,16 +16,30 @@ public class DispatcherEngine {
     private final DispatcherCoordinator coordinator;
     private final CodexLaunchService launchService;
     private final CodexRecoveryService recoveryService;
+    private final TriggerPollingService triggerPollingService;
 
     public DispatcherEngine(DispatcherCoordinator coordinator,
                             CodexLaunchService launchService,
-                            CodexRecoveryService recoveryService) {
+                            CodexRecoveryService recoveryService,
+                            TriggerPollingService triggerPollingService) {
         this.coordinator = coordinator;
         this.launchService = launchService;
         this.recoveryService = recoveryService;
+        this.triggerPollingService = triggerPollingService;
     }
 
     public DispatcherEngineResult tick() {
+        CodexRecoveryResult activeRecovery = recoveryService.recover();
+        if (activeRecovery.outcome() != CodexRecoveryResult.Outcome.NO_ACTIVE_RUN) {
+            triggerPollingService.pollAll();
+            return handleRecovery(activeRecovery);
+        }
+
+        TriggerPollingResult triggerPolling = triggerPollingService.pollAll();
+        if (!triggerPolling.successful()) {
+            return DispatcherEngineResult.of(
+                    DispatcherEngineResult.Action.TRIGGER_UNAVAILABLE, null);
+        }
         DispatcherTickResult coordinated = coordinator.tick();
         return switch (coordinated.outcome()) {
             case IDLE -> DispatcherEngineResult.of(DispatcherEngineResult.Action.IDLE, null);
@@ -35,7 +51,10 @@ public class DispatcherEngine {
     }
 
     private DispatcherEngineResult recoverActiveRun() {
-        CodexRecoveryResult recovered = recoveryService.recover();
+        return handleRecovery(recoveryService.recover());
+    }
+
+    private DispatcherEngineResult handleRecovery(CodexRecoveryResult recovered) {
         return switch (recovered.outcome()) {
             case LAUNCH_REQUIRED -> launch(recovered.runId());
             case HEALTHY -> DispatcherEngineResult.of(

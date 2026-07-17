@@ -8,6 +8,7 @@ public record CodexEventReference(
         String triggerType,
         String subjectRef,
         int schemaVersion,
-        Instant occurredAt
+        Instant occurredAt,
+        String metadataJson
 ) {
 }

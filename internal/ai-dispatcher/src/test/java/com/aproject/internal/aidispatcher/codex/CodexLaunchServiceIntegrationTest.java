@@ -90,6 +90,7 @@ class CodexLaunchServiceIntegrationTest {
         assertThat(captured.get().sessionDisplayName()).isEqualTo("開發主要對話");
         assertThat(captured.get().externalSessionId()).isEqualTo("codex-session-123");
         assertThat(captured.get().events()).hasSize(1);
+        assertThat(captured.get().events().getFirst().metadataJson()).isEqualTo("{}");
     }
 
     @Test

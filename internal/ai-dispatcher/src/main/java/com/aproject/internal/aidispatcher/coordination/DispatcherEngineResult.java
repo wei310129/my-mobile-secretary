@@ -11,6 +11,7 @@ public record DispatcherEngineResult(Action action, UUID runId) {
     public enum Action {
         IDLE,
         WAITING,
+        TRIGGER_UNAVAILABLE,
         LAUNCHED,
         ACTIVE,
         RECOVERED,

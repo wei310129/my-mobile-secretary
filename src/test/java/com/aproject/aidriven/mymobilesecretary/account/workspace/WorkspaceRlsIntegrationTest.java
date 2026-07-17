@@ -60,6 +60,8 @@ class WorkspaceRlsIntegrationTest extends IntegrationTestBase {
                 secondActor, secondWorkspace, WorkspaceChannel.TEST);
         WorkspaceContext peer = new WorkspaceContext(
                 householdPeer, firstWorkspace, WorkspaceChannel.TEST);
+        WorkspaceContext integration = new WorkspaceContext(
+                firstActor, firstWorkspace, WorkspaceChannel.INTEGRATION);
 
         assertThat(inRuntimeTransaction(first,
                 () -> jdbcTemplate.queryForList("SELECT id FROM item ORDER BY id", Long.class)))
@@ -75,6 +77,10 @@ class WorkspaceRlsIntegrationTest extends IntegrationTestBase {
                 () -> jdbcTemplate.queryForList(
                         "SELECT content FROM line_message_log ORDER BY id", String.class)))
                 .containsExactly("peer private message");
+        assertThat(inRuntimeTransaction(integration,
+                () -> jdbcTemplate.queryForList(
+                        "SELECT content FROM line_message_log ORDER BY id", String.class)))
+                .containsExactly("first private message");
 
         assertThat(inRuntimeTransaction(WorkspaceContext.authentication(),
                 () -> jdbcTemplate.queryForObject("SELECT count(*) FROM item", Long.class)))

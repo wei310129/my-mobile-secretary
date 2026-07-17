@@ -4,6 +4,7 @@ package com.aproject.aidriven.mymobilesecretary.account.workspace;
 public enum WorkspaceChannel {
     AUTHENTICATION,
     SYSTEM,
+    INTEGRATION,
     REST,
     LINE,
     BACKGROUND,

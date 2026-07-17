@@ -16,5 +16,12 @@ public interface LineMessageLogRepository extends JpaRepository<LineMessageLog, 
     Optional<LineMessageLog> findByIdAndWorkspaceIdAndCreatedByUserId(
             Long id, UUID workspaceId, UUID actorId);
 
+    List<LineMessageLog> findAllByDirectionAndWorkspaceIdAndCreatedByUserIdAndIdGreaterThanOrderByIdAsc(
+            LineMessageLog.Direction direction,
+            UUID workspaceId,
+            UUID actorId,
+            Long afterId,
+            Pageable pageable);
+
     long deleteByWorkspaceIdAndPinnedFalseAndExpiresAtBefore(UUID workspaceId, Instant cutoff);
 }

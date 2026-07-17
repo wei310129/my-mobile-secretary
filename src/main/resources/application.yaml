@@ -103,6 +103,13 @@ app:
     # 收據照片解析(Claude 多模態);關閉時圖片訊息回覆請改用文字
     enabled: true
   integration:
+    development-feed:
+      # Disabled by default. Enable only with a dedicated token bound to one actor/workspace.
+      enabled: ${DEVELOPMENT_FEED_ENABLED:false}
+      bearer-token: ${DEVELOPMENT_FEED_TOKEN:}
+      workspace-id: ${DEVELOPMENT_FEED_WORKSPACE_ID:00000000-0000-0000-0000-000000000000}
+      actor-id: ${DEVELOPMENT_FEED_ACTOR_ID:00000000-0000-0000-0000-000000000000}
+      max-page-size: ${DEVELOPMENT_FEED_MAX_PAGE_SIZE:1000}
     google-places:
       # 建地點的資訊補全(計費服務,按次計);api-key 放 secrets.yaml,沒設就要求自帶座標
       enabled: true

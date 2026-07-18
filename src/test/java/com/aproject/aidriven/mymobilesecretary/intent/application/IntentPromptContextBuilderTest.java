@@ -11,6 +11,7 @@ import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.persistence.ItemRepository;
 import com.aproject.aidriven.mymobilesecretary.reminder.persistence.ReminderPreferenceRepository;
 import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
+import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItemRepository;
 import java.time.Instant;
 import java.util.List;
@@ -61,6 +62,31 @@ class IntentPromptContextBuilderTest {
                 org.mockito.ArgumentMatchers.any());
         verifyNoInteractions(placeRepository, taskRepository, itemRepository,
                 reminderRepository);
+    }
+
+    @Test
+    void scheduleContextIncludesEndRecurrenceAndResolvedPlace() {
+        ScheduleItem item = mock(ScheduleItem.class);
+        Place place = mock(Place.class);
+        when(item.getId()).thenReturn(8L);
+        when(item.getTitle()).thenReturn("專案週會");
+        when(item.getStartAt()).thenReturn(Instant.parse("2026-07-20T01:00:00Z"));
+        when(item.getEndAt()).thenReturn(Instant.parse("2026-07-20T02:30:00Z"));
+        when(item.getRecurrence()).thenReturn(ScheduleItem.Recurrence.WEEKLY);
+        when(item.getPlaceId()).thenReturn(42L);
+        when(place.getId()).thenReturn(42L);
+        when(place.getName()).thenReturn("信義辦公室");
+        when(scheduleRepository.findByStatusInOrderByStartAtAsc(
+                org.mockito.ArgumentMatchers.any())).thenReturn(List.of(item));
+        when(placeRepository.findAllById(List.of(42L))).thenReturn(List.of(place));
+
+        String prompt = builder.build("排在專案週會後面", NOW, ConversationSnapshot.empty());
+
+        assertThat(prompt).contains(
+                "8:專案週會@start=2026-07-20T01:00:00Z",
+                "end=2026-07-20T02:30:00Z",
+                "recurrence=WEEKLY",
+                "place=信義辦公室");
     }
 
     @Test

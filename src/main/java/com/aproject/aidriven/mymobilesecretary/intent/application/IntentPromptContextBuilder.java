@@ -14,7 +14,10 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.EnumSet;
+import java.util.Map;
+import java.util.function.Function;
 import java.util.stream.Collectors;
+import java.util.stream.StreamSupport;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
 
@@ -88,13 +91,24 @@ public final class IntentPromptContextBuilder {
     }
 
     private String schedules() {
-        return scheduleRepository.findByStatusInOrderByStartAtAsc(EnumSet.of(
+        var items = scheduleRepository.findByStatusInOrderByStartAtAsc(EnumSet.of(
                         ScheduleStatus.PROPOSED, ScheduleStatus.CONFIRMED,
-                        ScheduleStatus.PENDING))
-                .stream()
-                .limit(MAX_STATE_ROWS)
-                .map(item -> "%d:%s@%s".formatted(
-                        item.getId(), item.getTitle(), item.getStartAt()))
+                        ScheduleStatus.PENDING)).stream()
+                .limit(MAX_STATE_ROWS).toList();
+        var placeIds = items.stream().map(item -> item.getPlaceId())
+                .filter(java.util.Objects::nonNull).distinct().toList();
+        Map<Long, Place> places = placeIds.isEmpty()
+                ? Map.of()
+                : StreamSupport.stream(placeRepository.findAllById(placeIds).spliterator(), false)
+                        .collect(Collectors.toMap(Place::getId, Function.identity()));
+        return items.stream()
+                .map(item -> "%d:%s@start=%s;end=%s;recurrence=%s%s;place=%s".formatted(
+                        item.getId(), item.getTitle(), item.getStartAt(), item.getEndAt(),
+                        item.getRecurrence(), item.getRecurrenceUntil() == null
+                                ? "" : ";until=" + item.getRecurrenceUntil(),
+                        item.getPlaceId() == null ? "(未設定)"
+                                : java.util.Optional.ofNullable(places.get(item.getPlaceId()))
+                                        .map(Place::getName).orElse("id:" + item.getPlaceId())))
                 .collect(Collectors.joining("、"));
     }
 

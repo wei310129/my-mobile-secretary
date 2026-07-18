@@ -11,6 +11,7 @@ import static org.mockito.Mockito.when;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
+import com.aproject.aidriven.mymobilesecretary.family.application.FamilyMessageService.Payload;
 import com.aproject.aidriven.mymobilesecretary.family.domain.FamilyNoticeDraft;
 import com.aproject.aidriven.mymobilesecretary.family.persistence.FamilyNoticeDraftRepository;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService;
@@ -24,6 +25,8 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
+import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.Optional;
 import java.util.UUID;
@@ -84,7 +87,7 @@ class FamilyMessageServiceTest {
         assertThat(result.action()).isEqualTo(IntentResult.Action.FAMILY_NOTICE_DRAFTED);
         assertThat(result.message())
                 .contains("父親節活動")
-                .contains("2026-07-18")
+                .contains("2026/07/18（六）")
                 .contains("10:00")
                 .contains("活動結束時間")
                 .contains("換洗衣物")
@@ -93,6 +96,47 @@ class FamilyMessageServiceTest {
         verify(repository).save(any(FamilyNoticeDraft.class));
         verify(scheduleService, never()).createSchedule(any(), any(), any(), any());
         verify(taskService, never()).createTask(any(), any(), any(), any());
+    }
+
+    @Test
+    void knownChildSchoolEnrichesTheDraftTitle() {
+        FamilyPersonService familyPersonService = mock(FamilyPersonService.class);
+        when(familyPersonService.schoolForMention(any())).thenReturn(Optional.of("滬江幼兒園"));
+        service.setFamilyPersonService(familyPersonService);
+
+        IntentResult result = service.answer(
+                "明日是大女兒幼兒園的父親節活動，老師通知明天10:00報到、12:00結束",
+                () -> { }).orElseThrow();
+
+        assertThat(result.message()).contains("活動：滬江幼兒園的父親節活動");
+    }
+
+    @Test
+    void missingEventQuestionRecoversPendingDraftAndAsksWhetherToIncludeIt() throws Exception {
+        FamilyNoticeDraft draft = pendingDraft("滬江幼兒園父親節活動");
+        when(repository.findFirstByCreatedByUserIdAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
+                any(), eq(FamilyNoticeDraft.Status.PENDING), any())).thenReturn(Optional.of(draft));
+
+        IntentResult result = service.answer("怎麼沒有父親節活動", () -> { }).orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FAMILY_NOTICE_STATUS);
+        assertThat(result.message()).contains("滬江幼兒園父親節活動", "2026/07/18（六）",
+                "等待確認", "尚未納入正式行程", "確認老師通知", "不會重複建立");
+        verify(scheduleService, never()).createSchedule(any(), any(), any(), any());
+    }
+
+    @Test
+    void wrongActivityNameRequestsAnExactCorrectionWithoutCreatingAnything() throws Exception {
+        FamilyNoticeDraft draft = pendingDraft("大女兒幼兒園父親節活動");
+        when(repository.findFirstByCreatedByUserIdAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
+                any(), eq(FamilyNoticeDraft.Status.PENDING), any())).thenReturn(Optional.of(draft));
+
+        IntentResult result = service.answer("而且這個活動名稱你也理解錯誤", () -> { }).orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.CLARIFICATION_NEEDED);
+        assertThat(result.message()).contains("目前草稿中的活動名稱", "正確完整名稱",
+                "不會建立或重複建立");
+        verify(scheduleService, never()).createSchedule(any(), any(), any(), any());
     }
 
     @Test
@@ -148,5 +192,14 @@ class FamilyMessageServiceTest {
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.FAMILY_NOTICE_STATUS);
         assertThat(result.message()).contains("沒有等待確認").contains("原始訊息再貼一次");
+    }
+
+    private FamilyNoticeDraft pendingDraft(String title) throws Exception {
+        Payload payload = new Payload(title, LocalDate.of(2026, 7, 18),
+                LocalTime.of(10, 0), LocalTime.of(12, 0),
+                java.util.List.of(), java.util.List.of(), java.util.List.of(),
+                java.util.List.of());
+        String json = new ObjectMapper().findAndRegisterModules().writeValueAsString(payload);
+        return FamilyNoticeDraft.create(title, json, NOW.plus(Duration.ofDays(30)), NOW);
     }
 }

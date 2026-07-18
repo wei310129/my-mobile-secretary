@@ -73,4 +73,14 @@ class WeatherAdvisoryServiceTest {
         assertThat(service(false).currentAdvisory()).isEmpty();
         verify(weatherClient, never()).getForecast(anyString());
     }
+
+    @Test
+    void districtDescriptionUsesDistrictForecast() {
+        when(weatherClient.getDistrictForecast("新北市", "新店區"))
+                .thenReturn(new WeatherForecast("新北市新店區", "午後雷陣雨", 70, 27, 34));
+
+        assertThat(service(true).describeDistrictForecast("新北市", "新店區"))
+                .hasValueSatisfying(value -> assertThat(value)
+                        .contains("新北市新店區行政區預報", "降雨機率 70%", "27–34°C"));
+    }
 }

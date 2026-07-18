@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.schedule.domain;
 
+import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
@@ -38,5 +39,19 @@ class ScheduleItemTest {
                 .isInstanceOfSatisfying(BusinessException.class,
                         error -> org.assertj.core.api.Assertions.assertThat(error.getCode())
                                 .isEqualTo("INVALID_RECURRENCE_UNTIL"));
+    }
+
+    @Test
+    void familyPointEventKeepsResponsibilityWithoutInventingDurationOrActorBusyTime() {
+        Instant at = Instant.parse("2026-07-18T08:00:00Z");
+
+        ScheduleItem item = ScheduleItem.proposePoint("阿公接兒子回家", at, null, NOW);
+        item.assignResponsibility("阿公", false);
+
+        assertThat(item.getStartAt()).isEqualTo(at);
+        assertThat(item.getEndAt()).isEqualTo(at.plusSeconds(60));
+        assertThat(item.isEndTimeExplicit()).isFalse();
+        assertThat(item.getResponsiblePerson()).isEqualTo("阿公");
+        assertThat(item.isCountsForActorBusy()).isFalse();
     }
 }

@@ -28,7 +28,8 @@ final class VagueTimeGuard {
 
     /** 鐘點層級模糊:句子裡有具體鐘點(「下午兩點」)就不算模糊。 */
     private static final List<String> HOUR_VAGUE = List.of(
-            "下班後", "下班之後", "上班前", "上班之前", "早點", "晚點", "一早",
+            "下班後", "下班之後", "下班前", "下班以前", "上班前", "上班之前",
+            "早餐前", "午餐前", "晚餐前", "睡前", "起床後", "早點", "晚點", "一早",
             "早上", "上午", "中午", "下午", "傍晚", "晚上", "半夜", "凌晨");
 
     /**
@@ -63,6 +64,7 @@ final class VagueTimeGuard {
         String action = switch (command.type()) {
             case CREATE_TASK -> "建立這件待辦";
             case CREATE_SCHEDULE -> "排這個行程";
+            case SUGGEST_FREE_SLOT, ASK_AVAILABILITY -> "用猜測的時間窗查詢";
             default -> "改時間";
         };
         StringBuilder message = new StringBuilder(vague.get().startsWith("每")
@@ -87,7 +89,9 @@ final class VagueTimeGuard {
         return type == IntentCommand.Type.CREATE_TASK
                 || type == IntentCommand.Type.CREATE_SCHEDULE
                 || type == IntentCommand.Type.RESCHEDULE_TASK
-                || type == IntentCommand.Type.RESCHEDULE_SCHEDULE;
+                || type == IntentCommand.Type.RESCHEDULE_SCHEDULE
+                || type == IntentCommand.Type.SUGGEST_FREE_SLOT
+                || type == IntentCommand.Type.ASK_AVAILABILITY;
     }
 
     private static Optional<String> vagueExpression(String normalized, String title) {

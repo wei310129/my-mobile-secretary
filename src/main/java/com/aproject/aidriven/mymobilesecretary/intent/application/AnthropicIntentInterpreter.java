@@ -59,6 +59,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               只有單一明確時點的短生活事項(如「今晚十點倒垃圾」)也用 CREATE_TASK，dueAt 填該時點；
               不可輸出缺 endAt 的 CREATE_SCHEDULE。
             - 回報待辦已完成(「牛奶買到了」「電費繳完了」)→ COMPLETE_TASK,title 放該任務的關鍵字(如「牛奶」)。
+            - 「某行程／會議前 N 分鐘提醒我」→ ADD_SCHEDULE_REMINDER,title 放行程關鍵字,
+              options.leadMinutes=N；不可退化成一般 CREATE_TASK，也不可把 N 當成行程時長。
             - 取消待辦(「取消買排骨」「醬油不用買了」)→ CANCEL_TASK,title 放關鍵字。
             - 一次取消全部待辦(「全部待辦都取消」「清空待辦」)→ CANCEL_ALL_TASKS。
             - 改待辦的期限(「拿包裹改成今天11點」)→ RESCHEDULE_TASK,title 放關鍵字,dueAt 放新期限。
@@ -218,7 +220,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
 
     @Override
     public IntentScript interpret(String text, Instant now, ConversationSnapshot context) {
-        String userPrompt = promptContextBuilder.build(text, now, context);
+        String userPrompt = promptContextBuilder.build(
+                CalendarDatePolicy.normalizeForInterpretation(text), now, context);
         long modelStarted = System.nanoTime();
         ChatResponse response;
         try {
@@ -241,7 +244,9 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
         var usage = metadata == null ? null : metadata.getUsage();
         long parsingStarted = System.nanoTime();
         try {
-            return convertStructuredResponse(response);
+            IntentScript safe = IntentScriptSafetyPolicy.apply(
+                    text, convertStructuredResponse(response));
+            return IntentScriptDateRangePolicy.apply(text, safe, now);
         } finally {
             IntentInterpreterTelemetryContext.record(new IntentInterpreterTelemetryContext.Telemetry(
                     metadata == null ? null : metadata.getModel(),

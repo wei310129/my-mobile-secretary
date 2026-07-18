@@ -4,7 +4,9 @@ import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.LocationEventRepository;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.BufferRuleService;
+import com.aproject.aidriven.mymobilesecretary.knowledge.application.LifestyleWindowService;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PlanningPreferenceService;
+import com.aproject.aidriven.mymobilesecretary.knowledge.domain.LifestyleWindow;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityResult;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskStatus;
@@ -15,14 +17,17 @@ import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItem
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Set;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorService;
@@ -55,6 +60,7 @@ public class FeasibilityService {
     private final PlanningPreferenceService planningPreferenceService;
     private final TaskRepository taskRepository;
     private final Clock clock;
+    private LifestyleWindowService lifestyleWindowService;
 
     public FeasibilityService(ScheduleItemRepository scheduleItemRepository,
                               PlaceRepository placeRepository,
@@ -74,6 +80,11 @@ public class FeasibilityService {
         this.clock = clock;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setLifestyleWindowService(LifestyleWindowService lifestyleWindowService) {
+        this.lifestyleWindowService = lifestyleWindowService;
+    }
+
     /**
      * 驗算候選行程的可行性。基準只有 CONFIRMED 行程(它們才是真承諾)。
      *
@@ -83,13 +94,77 @@ public class FeasibilityService {
         List<ScheduleItem> confirmed = scheduleItemRepository
                 .findByStatusOrderByStartAtAsc(ScheduleStatus.CONFIRMED).stream()
                 .filter(other -> !Objects.equals(other.getId(), candidate.getId()))
+                .filter(ScheduleItem::isCountsForActorBusy)
                 .toList();
 
         List<FeasibilityIssue> issues = new ArrayList<>();
+        if (!candidate.isCountsForActorBusy()) {
+            return FeasibilityResult.withIssues(issues);
+        }
         checkTimeOverlap(candidate, confirmed, issues);
         checkTimedTasks(candidate, issues);
+        checkLifestyleWindows(candidate, issues);
         checkTravel(candidate, confirmed, issues);
         return FeasibilityResult.withIssues(issues);
+    }
+
+    /**
+     * 生活時間窗是規劃限制而非固定行程：有交集就提醒並等待使用者決定，
+     * 不會自行拒絕、挪動行程或建立假的餐飲／睡眠行程。
+     */
+    private void checkLifestyleWindows(ScheduleItem candidate, List<FeasibilityIssue> issues) {
+        if (lifestyleWindowService == null) {
+            return;
+        }
+        ZonedDateTime candidateStart = candidate.getStartAt().atZone(TAIPEI);
+        ZonedDateTime candidateEnd = candidate.getEndAt().atZone(TAIPEI);
+        LocalDate firstDate = candidateStart.toLocalDate().minusDays(1);
+        LocalDate lastDate = candidateEnd.toLocalDate();
+        Set<String> reported = new HashSet<>();
+
+        for (LocalDate date = firstDate; !date.isAfter(lastDate); date = date.plusDays(1)) {
+            LifestyleWindow.DayType dayType = isWeekend(date)
+                    ? LifestyleWindow.DayType.HOLIDAY : LifestyleWindow.DayType.WEEKDAY;
+            for (LifestyleWindow window : lifestyleWindowService.list(dayType)) {
+                ZonedDateTime windowStart = date.atTime(window.getStartTime()).atZone(TAIPEI);
+                ZonedDateTime windowEnd = date.atTime(window.getEndTime()).atZone(TAIPEI);
+                if (!windowEnd.isAfter(windowStart)) {
+                    windowEnd = windowEnd.plusDays(1);
+                }
+                if (!candidateStart.isBefore(windowEnd) || !windowStart.isBefore(candidateEnd)) {
+                    continue;
+                }
+                String key = date + ":" + window.getKind();
+                if (!reported.add(key)) {
+                    continue;
+                }
+                issues.add(new FeasibilityIssue(
+                        FeasibilityIssue.Type.LIFESTYLE_WINDOW_COMPRESSED,
+                        "行程「%s」會壓縮%s%s %s–%s；這是生活需求提示，不會自動建立、拒絕或移動行程，請確認是否仍照排。"
+                                .formatted(candidate.getTitle(), dayTypeLabel(dayType),
+                                        lifestyleKindLabel(window.getKind()),
+                                        window.getStartTime(), window.getEndTime()),
+                        null));
+            }
+        }
+    }
+
+    private static boolean isWeekend(LocalDate date) {
+        return date.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
+                || date.getDayOfWeek() == java.time.DayOfWeek.SUNDAY;
+    }
+
+    private static String dayTypeLabel(LifestyleWindow.DayType dayType) {
+        return dayType == LifestyleWindow.DayType.WEEKDAY ? "平日" : "假日／週末";
+    }
+
+    private static String lifestyleKindLabel(LifestyleWindow.Kind kind) {
+        return switch (kind) {
+            case BREAKFAST -> "早餐";
+            case LUNCH -> "午餐";
+            case DINNER -> "晚餐";
+            case SLEEP -> "睡眠";
+        };
     }
 
     /** 行程跨過待辦的提醒／期限時先擋下詢問，不能假裝整段都有空。 */

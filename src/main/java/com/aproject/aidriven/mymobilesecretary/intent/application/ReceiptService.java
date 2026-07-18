@@ -32,6 +32,8 @@ public class ReceiptService {
     private com.aproject.aidriven.mymobilesecretary.travel.application.TravelItineraryDraftService
             travelItineraryDraftService;
     private TravelItineraryDraftAnswerService travelItineraryDraftAnswerService;
+    private com.aproject.aidriven.mymobilesecretary.event.application.EventIntakeService
+            eventIntakeService;
 
     public ReceiptService(ObjectProvider<ReceiptInterpreter> interpreterProvider,
                           PriceRecordService priceRecordService,
@@ -49,6 +51,12 @@ public class ReceiptService {
             TravelItineraryDraftAnswerService answerService) {
         this.travelItineraryDraftService = draftService;
         this.travelItineraryDraftAnswerService = answerService;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setEventIntakeService(
+            com.aproject.aidriven.mymobilesecretary.event.application.EventIntakeService service) {
+        this.eventIntakeService = service;
     }
 
     /**
@@ -88,6 +96,9 @@ public class ReceiptService {
         }
         if (type == ReceiptCommand.DocumentType.TRAVEL_ITINERARY) {
             return handleTravelItinerary(command);
+        }
+        if (type == ReceiptCommand.DocumentType.EVENT_POSTER) {
+            return handleEventPoster(command);
         }
         if (type == ReceiptCommand.DocumentType.UNKNOWN) {
             return new ReceiptResult("UNKNOWN_IMAGE",
@@ -142,6 +153,25 @@ public class ReceiptService {
         }
     }
 
+    private ReceiptResult handleEventPoster(ReceiptCommand command) {
+        if (eventIntakeService == null) {
+            return new ReceiptResult("EVENT_POSTER_UNAVAILABLE",
+                    "活動圖片辨識目前未啟用，請先貼上活動名稱、日期、時間與地點。", 0);
+        }
+        ReceiptCommand.ItineraryEntry event = command.itineraryEntries() == null
+                ? null : command.itineraryEntries().stream()
+                        .filter(java.util.Objects::nonNull).findFirst().orElse(null);
+        if (event == null) {
+            return new ReceiptResult("EVENT_POSTER_NOT_READABLE",
+                    "這張圖片像活動海報，但讀不到可核對的活動日期或地點。請貼官方文字資訊。", 0);
+        }
+        IntentResult result = eventIntakeService.ingestImageEvent(
+                command.documentTitle() == null ? event.title() : command.documentTitle(),
+                event.date(), event.startTime(), event.endTime(), event.placeName(),
+                event.details(), () -> { });
+        return new ReceiptResult("EVENT_POSTER_DRAFTED", result.message(), 0);
+    }
+
     /** 收據日期解析失敗(缺漏、格式爛)→ 當作今天(台北時間),寧可粗略不可丟棄。 */
     private static boolean containsPromptInjection(ReceiptCommand command) {
         List<String> values = new ArrayList<>();
@@ -188,9 +218,9 @@ public class ReceiptService {
         }
 
         public ReceiptResult {
-            message = IntentReplyFormatter.format(
-                    action != null && action.startsWith("TRAVEL_ITINERARY") ? "🗺️" : "🧾",
-                    message);
+            String icon = action != null && action.startsWith("TRAVEL_ITINERARY") ? "🗺️"
+                    : action != null && action.startsWith("EVENT_POSTER") ? "🎟️" : "🧾";
+            message = IntentReplyFormatter.format(icon, message);
         }
     }
 }

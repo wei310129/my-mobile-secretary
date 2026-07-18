@@ -141,6 +141,24 @@ public class FamilyPersonService {
         return true;
     }
 
+    /** Resolves a previously saved school only when this sentence names one known family role. */
+    @Transactional(readOnly = true)
+    public Optional<String> schoolForMention(String text) {
+        Optional<PersonDefinition> definition = mentions(text).stream()
+                .map(Mention::definition)
+                .findFirst();
+        if (definition.isEmpty()) {
+            return Optional.empty();
+        }
+        UUID actorId = actorId();
+        return profileRepository
+                .findByCreatedByUserIdAndCanonicalKey(actorId, definition.get().canonicalKey())
+                .flatMap(person -> attributeRepository
+                        .findByCreatedByUserIdAndPersonIdAndKey(
+                                actorId, person.getId(), Key.SCHOOL))
+                .map(FamilyPersonAttribute::getValue);
+    }
+
     /** Adds a small resolution note only when the current sentence contains a known family term. */
     @Transactional(readOnly = true)
     public String enrichForIntent(String text) {

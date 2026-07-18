@@ -9,6 +9,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.aproject.aidriven.mymobilesecretary.event.application.EventIntakeService;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService;
 import com.aproject.aidriven.mymobilesecretary.travel.application.TravelItineraryDraftService;
 import com.aproject.aidriven.mymobilesecretary.travel.application.TravelItineraryDraftService.DraftView;
@@ -147,6 +148,29 @@ class ReceiptServiceTest {
         assertThat(result.action()).isEqualTo("TRAVEL_ITINERARY_DRAFTED");
         assertThat(result.savedCount()).isZero();
         assertThat(result.message()).contains("行程草稿預覽");
+        verify(priceRecordService, never()).record(anyString(), any(), anyInt(), any());
+    }
+
+    @Test
+    void eventPosterImageCreatesEventDraftInsteadOfBeingRejectedAsUnknown() {
+        ReceiptCommand command = new ReceiptCommand(null, null, List.of(),
+                ReceiptCommand.DocumentType.EVENT_POSTER, "JCConf 2026",
+                List.of(new ReceiptCommand.ItineraryEntry(
+                        "2026-09-11", null, null, "JCConf 2026",
+                        "臺大醫院國際會議中心", "Java 社群技術研討會")),
+                List.of(), List.of());
+        EventIntakeService eventService = mock(EventIntakeService.class);
+        when(eventService.ingestImageEvent(anyString(), anyString(), any(), any(),
+                anyString(), anyString(), any())).thenReturn(
+                        IntentResult.message(IntentResult.Action.CONTEXT_UPDATED,
+                                "活動圖片草稿預覽"));
+        ReceiptService receiptService = service((bytes, mime) -> command);
+        receiptService.setEventIntakeService(eventService);
+
+        ReceiptService.ReceiptResult result = receiptService.handleImage(IMAGE, "image/jpeg");
+
+        assertThat(result.action()).isEqualTo("EVENT_POSTER_DRAFTED");
+        assertThat(result.message()).contains("活動圖片草稿預覽");
         verify(priceRecordService, never()).record(anyString(), any(), anyInt(), any());
     }
 }

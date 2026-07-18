@@ -64,6 +64,26 @@ class VagueTimeGuardTest {
     }
 
     @Test
+    void personalTimeWindowQueryAsksForBoundsInsteadOfSearchingSevenDays() {
+        IntentCommand command = new IntentCommand(IntentCommand.Type.SUGGEST_FREE_SLOT,
+                null, null, "2026-07-18T08:00:00+08:00",
+                "2026-07-18T12:00:00+08:00", null, null, null,
+                null, null, null, null, null);
+
+        Optional<IntentResult> lunch = VagueTimeGuard.clarify("午餐前有空檔嗎", command);
+        Optional<IntentResult> sleep = VagueTimeGuard.clarify("睡前有一小時空檔嗎", command);
+        Optional<IntentResult> morning = VagueTimeGuard.clarify("上午有空嗎", command);
+
+        assertThat(lunch).isPresent();
+        assertThat(lunch.get().message()).contains("「午餐前」", "確切要定在哪天幾點",
+                "不會用猜測的時間窗查詢");
+        assertThat(sleep).isPresent();
+        assertThat(sleep.get().message()).contains("「睡前」");
+        assertThat(morning).isPresent();
+        assertThat(morning.get().message()).contains("「上午」");
+    }
+
+    @Test
     void recurringWithoutAnchorAsksForConcreteSchedule() {
         // 使用者裁決 #21/#22:每天要問幾點,每週要問週幾
         Optional<IntentResult> daily = VagueTimeGuard.clarify(

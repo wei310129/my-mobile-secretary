@@ -120,6 +120,10 @@ public class FamilyMessageService {
         if (asksWhetherNoticeWasAdded(normalized)) {
             return Optional.of(noticeStatus());
         }
+        Optional<IntentResult> noticeRecovery = recoverNoticeReference(text, normalized);
+        if (noticeRecovery.isPresent()) {
+            return noticeRecovery;
+        }
 
         List<String> learned = new ArrayList<>();
         boolean learnsRelationship = looksLikeRelationshipTeaching(normalized);
@@ -231,6 +235,65 @@ public class FamilyMessageService {
                         + preview(draft));
     }
 
+    private Optional<IntentResult> recoverNoticeReference(String text, String normalized) {
+        if (looksLikeTeacherNotice(text)) {
+            return Optional.empty();
+        }
+        Optional<FamilyNoticeDraft> pending = latestPendingEntity();
+        Optional<FamilyNoticeDraft> confirmed = pending.isPresent()
+                ? Optional.empty() : latestEntity(Status.CONFIRMED);
+        Optional<FamilyNoticeDraft> latest = pending.or(() -> confirmed);
+        if (latest.isEmpty()) {
+            return Optional.empty();
+        }
+
+        FamilyNoticeDraft draft = latest.get();
+        boolean missingQuestion = containsAny(normalized,
+                "怎麼沒有", "不也是今天的行程", "為什麼沒出現", "沒有出現在行程");
+        boolean duplicateConcern = containsAny(normalized,
+                "不要重複建行程", "不要重複建立", "別重複建", "已經給過你資料");
+        boolean titleCorrection = normalized.contains("活動名稱")
+                && containsAny(normalized, "錯", "不對", "理解錯");
+        boolean mentionsTitle = normalized.length() <= 100
+                && normalized.contains(draft.getTitle().replaceAll("\\s+", ""));
+        if (!missingQuestion && !duplicateConcern && !titleCorrection && !mentionsTitle) {
+            return Optional.empty();
+        }
+
+        if (titleCorrection) {
+            return Optional.of(IntentResult.clarificationNeeded(
+                    "目前草稿中的活動名稱是「%s」。請直接告訴我正確完整名稱，例如「改成滬江幼兒園父親節活動」；確認名稱前我不會建立或重複建立行程。"
+                            .formatted(draft.getTitle())));
+        }
+
+        Payload payload = deserialize(draft.getPayload());
+        String date = formatDate(payload.eventDate());
+        if (draft.getStatus() == Status.PENDING) {
+            List<String> missing = new ArrayList<>();
+            if (payload.eventDate() == null) missing.add("活動日期");
+            if (payload.reportTime() == null) missing.add("報到時間");
+            if (payload.endTime() == null) missing.add("活動結束時間");
+            String next = missing.isEmpty()
+                    ? "要納入行程，請回覆「確認老師通知」；在你確認前我不會建立，也不會重複建立。"
+                    : "目前還缺%s；請先補充，資料完整後我會再次詢問是否納入行程。"
+                            .formatted(String.join("、", missing));
+            return Optional.of(IntentResult.message(IntentResult.Action.FAMILY_NOTICE_STATUS,
+                    "我找到你先前提供的老師通知：\n"
+                            + "- 活動：%s\n- 日期：%s\n- 狀態：等待確認，尚未納入正式行程\n\n%s"
+                                    .formatted(payload.title(), date, next)));
+        }
+
+        boolean scheduleExists = !scheduleService
+                .findReschedulableSchedulesMatching(payload.title()).isEmpty();
+        String state = scheduleExists
+                ? "已經有對應行程，不會重複建立。"
+                : "通知已確認，但目前找不到對應行程；我不會直接補建。請確認是否要我重新建立。";
+        return Optional.of(IntentResult.message(IntentResult.Action.FAMILY_NOTICE_STATUS,
+                "我找到先前已確認的老師通知：\n"
+                        + "- 活動：%s\n- 日期：%s\n- 狀態：已確認\n\n%s"
+                                .formatted(payload.title(), date, state)));
+    }
+
     private IntentResult confirm(Runnable beforeMutation) {
         FamilyNoticeDraft draft = latestPendingEntity().orElse(null);
         if (draft == null) {
@@ -305,7 +368,8 @@ public class FamilyMessageService {
                 .or(() -> firstChineseHour(CHINESE_REPORT_TIME, text)).orElse(null);
         LocalTime endTime = firstTime(END_TIME, text)
                 .or(() -> firstChineseHour(CHINESE_END_TIME, text)).orElse(null);
-        String title = extractTitle(text).orElse("老師通知");
+        String title = enrichTitleWithKnownSchool(
+                extractTitle(text).orElse("老師通知"), text);
         List<String> lines = noticeLines(text);
         List<String> preparation = new ArrayList<>();
         List<String> arrival = new ArrayList<>();
@@ -330,6 +394,17 @@ public class FamilyMessageService {
         return new Payload(title, eventDate, reportTime, endTime,
                 distinct(preparation), distinct(arrival), distinct(notes),
                 List.copyOf(followUps));
+    }
+
+    private String enrichTitleWithKnownSchool(String title, String text) {
+        if (familyPersonService == null || !title.contains("幼兒園")) {
+            return title;
+        }
+        return familyPersonService.schoolForMention(text)
+                .map(school -> title.replaceFirst(
+                        "(?:我)?(?:大女兒|小女兒|女兒|小兒子|兒子)(?:的)?幼兒園",
+                        Matcher.quoteReplacement(school)))
+                .orElse(title);
     }
 
     private String preview(DraftView draft) {
@@ -538,7 +613,23 @@ public class FamilyMessageService {
     }
 
     private static String value(Object value) {
-        return value == null ? "尚未提供" : value.toString();
+        return value instanceof LocalDate date ? formatDate(date)
+                : value == null ? "尚未提供" : value.toString();
+    }
+
+    private static String formatDate(LocalDate date) {
+        if (date == null) return "尚未提供";
+        String weekday = switch (date.getDayOfWeek()) {
+            case MONDAY -> "一";
+            case TUESDAY -> "二";
+            case WEDNESDAY -> "三";
+            case THURSDAY -> "四";
+            case FRIDAY -> "五";
+            case SATURDAY -> "六";
+            case SUNDAY -> "日";
+        };
+        return "%04d/%02d/%02d（%s）".formatted(
+                date.getYear(), date.getMonthValue(), date.getDayOfMonth(), weekday);
     }
 
     private static String bullets(List<String> values) {

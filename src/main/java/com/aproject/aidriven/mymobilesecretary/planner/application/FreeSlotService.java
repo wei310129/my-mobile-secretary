@@ -35,7 +35,8 @@ public class FreeSlotService {
         Instant end = until == null ? start.plus(Duration.ofDays(7)) : until;
         Duration need = duration == null || duration.isNegative() || duration.isZero()
                 ? Duration.ofHours(1) : duration;
-        List<ScheduleItem> busy = repository.findByStatusOrderByStartAtAsc(ScheduleStatus.CONFIRMED);
+        List<ScheduleItem> busy = repository.findByStatusOrderByStartAtAsc(ScheduleStatus.CONFIRMED)
+                .stream().filter(ScheduleItem::isCountsForActorBusy).toList();
         List<Slot> slots = new ArrayList<>();
         ZonedDateTime cursor = ZonedDateTime.ofInstant(start, TAIPEI)
                 .withSecond(0).withNano(0);
@@ -67,7 +68,8 @@ public class FreeSlotService {
         LocalDate start = LocalDate.ofInstant(from == null ? Instant.now(clock) : from, TAIPEI);
         LocalDate end = LocalDate.ofInstant(until == null
                 ? start.plusDays(7).atStartOfDay(TAIPEI).toInstant() : until, TAIPEI);
-        List<ScheduleItem> items = repository.findByStatusOrderByStartAtAsc(ScheduleStatus.CONFIRMED);
+        List<ScheduleItem> items = repository.findByStatusOrderByStartAtAsc(ScheduleStatus.CONFIRMED)
+                .stream().filter(ScheduleItem::isCountsForActorBusy).toList();
         return start.datesUntil(end.plusDays(1))
                 .map(date -> new DayLoad(date, items.stream()
                         .filter(item -> LocalDate.ofInstant(item.getStartAt(), TAIPEI).equals(date))
@@ -78,6 +80,7 @@ public class FreeSlotService {
 
     public boolean available(Instant from, Instant until) {
         return repository.findByStatusOrderByStartAtAsc(ScheduleStatus.CONFIRMED).stream()
+                .filter(ScheduleItem::isCountsForActorBusy)
                 .noneMatch(item -> item.getStartAt().isBefore(until) && from.isBefore(item.getEndAt()));
     }
 

@@ -16,6 +16,8 @@ public record FeasibilityIssue(Type type, String message, Long relatedScheduleId
         NESTED_IN_RECURRING_SCHEDULE,
         /** 行程跨過未完成待辦的提醒／期限時間。 */
         TASK_DUE_DURING_SCHEDULE,
+        /** 行程壓縮使用者保存的三餐或睡眠生活時間窗。 */
+        LIFESTYLE_WINDOW_COMPRESSED,
         /** 從前一個行程地點趕不到。 */
         TRAVEL_FROM_PREVIOUS,
         /** 結束後趕不上下一個行程。 */

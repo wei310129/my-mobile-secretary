@@ -89,4 +89,12 @@ public record IntentOptions(
                 null, null, null, null, null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null);
     }
+
+    public IntentOptions withLeadMinutes(Integer value) {
+        return new IntentOptions(filter, ordinal, durationMinutes, value, radiusMeters,
+                triggerType, recurrence, category, itemNames, quantity, referenceTitle,
+                referenceKind, timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName,
+                bufferMinutes, clarificationQuestion, alias, newTitle, description,
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+    }
 }

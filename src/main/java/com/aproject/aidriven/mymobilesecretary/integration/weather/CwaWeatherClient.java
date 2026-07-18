@@ -73,6 +73,65 @@ public class CwaWeatherClient {
         }
     }
 
+    /**
+     * 取行政區層級的一週預報第一時段。氣象署自 2024-12 起要求查詢參數使用
+     * {@code LocationName}/{@code ElementName} 大寫格式；資料集使用全臺鄉鎮 F-D0047-091。
+     */
+    @Cacheable(cacheNames = "weather", key = "#county + ':' + #district")
+    public WeatherForecast getDistrictForecast(String county, String district) {
+        JsonNode root;
+        try {
+            root = restClient.get()
+                    .uri(uriBuilder -> uriBuilder
+                            .path("/v1/rest/datastore/F-D0047-091")
+                            .queryParam("Authorization", properties.apiKey())
+                            .queryParam("LocationName", district)
+                            .queryParam("ElementName", "天氣預報綜合描述,12小時降雨機率,最低溫度,最高溫度")
+                            .build())
+                    .retrieve()
+                    .body(JsonNode.class);
+        } catch (Exception exception) {
+            throw new IntegrationException(
+                    "CWA district forecast request failed for %s%s".formatted(county, district),
+                    exception);
+        }
+        if (root == null) {
+            throw new IntegrationException("CWA returned empty district forecast");
+        }
+        try {
+            JsonNode locations = child(child(root, "records", "Records"),
+                    "Locations", "locations");
+            JsonNode target = null;
+            for (JsonNode group : locations) {
+                String groupName = text(group, "LocationsName", "locationsName");
+                if (!county.equals(groupName)) continue;
+                for (JsonNode location : child(group, "Location", "location")) {
+                    if (district.equals(text(location, "LocationName", "locationName"))) {
+                        target = location;
+                        break;
+                    }
+                }
+            }
+            if (target == null) {
+                throw new IntegrationException(
+                        "CWA returned no district data for %s%s".formatted(county, district));
+            }
+            String description = districtElementValue(target, "天氣預報綜合描述",
+                    "WeatherDescription");
+            int rain = Integer.parseInt(districtElementValue(target, "12小時降雨機率",
+                    "ProbabilityOfPrecipitation"));
+            int min = Integer.parseInt(districtElementValue(target, "最低溫度",
+                    "MinTemperature"));
+            int max = Integer.parseInt(districtElementValue(target, "最高溫度",
+                    "MaxTemperature"));
+            return new WeatherForecast(county + district, description, rain, min, max);
+        } catch (IntegrationException exception) {
+            throw exception;
+        } catch (Exception exception) {
+            throw new IntegrationException("CWA district response has unexpected format", exception);
+        }
+    }
+
     private String elementValue(JsonNode location, String elementName) {
         for (JsonNode element : location.path("weatherElement")) {
             if (elementName.equals(element.path("elementName").asText())) {
@@ -80,5 +139,32 @@ public class CwaWeatherClient {
             }
         }
         throw new IntegrationException("CWA element missing: " + elementName);
+    }
+
+    private static String districtElementValue(JsonNode location, String elementName,
+                                               String valueName) {
+        for (JsonNode element : child(location, "WeatherElement", "weatherElement")) {
+            if (!elementName.equals(text(element, "ElementName", "elementName"))) continue;
+            JsonNode times = child(element, "Time", "time");
+            if (!times.isArray() || times.isEmpty()) break;
+            JsonNode values = child(times.get(0), "ElementValue", "elementValue");
+            if (!values.isArray() || values.isEmpty()) break;
+            String value = text(values.get(0), valueName,
+                    Character.toLowerCase(valueName.charAt(0)) + valueName.substring(1));
+            if (value != null && !value.isBlank()) return value;
+        }
+        throw new IntegrationException("CWA district element missing: " + elementName);
+    }
+
+    private static JsonNode child(JsonNode node, String primary, String fallback) {
+        if (node == null) return com.fasterxml.jackson.databind.node.MissingNode.getInstance();
+        JsonNode value = node.get(primary);
+        return value == null ? node.path(fallback) : value;
+    }
+
+    private static String text(JsonNode node, String primary, String fallback) {
+        JsonNode value = node == null ? null : node.get(primary);
+        if (value == null && node != null) value = node.get(fallback);
+        return value == null || value.isNull() ? null : value.asText();
     }
 }

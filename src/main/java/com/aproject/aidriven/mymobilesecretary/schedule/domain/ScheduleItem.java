@@ -40,6 +40,18 @@ public class ScheduleItem extends WorkspaceOwnedEntity {
     /** 行程地點;線上會議等無地點行程為 null(無地點就不做交通可行性檢查)。 */
     private Long placeId;
 
+    /** 實際負責人；null 代表建立者本人。家庭可見但非本人參與的行程會填家人稱謂。 */
+    @Column(length = 80)
+    private String responsiblePerson;
+
+    /** false 表示只供家庭查閱，不占用建立者本人的忙碌時間。 */
+    @Column(nullable = false)
+    private boolean countsForActorBusy = true;
+
+    /** false 表示原話只有單一鐘點；endAt 只保留最小技術區間，不對外宣稱時長。 */
+    @Column(nullable = false)
+    private boolean endTimeExplicit = true;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private ScheduleStatus status;
@@ -78,6 +90,21 @@ public class ScheduleItem extends WorkspaceOwnedEntity {
     /** 提出新行程,初始狀態一律 PROPOSED(等可行性驗算)。 */
     public static ScheduleItem propose(String title, Instant startAt, Instant endAt, Long placeId, Instant now) {
         return new ScheduleItem(title, startAt, endAt, placeId, now);
+    }
+
+    /** 建立只有發生鐘點、沒有持續時間的事件；不猜測實際結束時間。 */
+    public static ScheduleItem proposePoint(String title, Instant at, Long placeId, Instant now) {
+        ScheduleItem item = new ScheduleItem(title, at, at.plusSeconds(60), placeId, now);
+        item.endTimeExplicit = false;
+        return item;
+    }
+
+    public void assignResponsibility(String responsiblePerson, boolean countsForActorBusy) {
+        if (responsiblePerson == null || responsiblePerson.isBlank()) {
+            throw new IllegalArgumentException("responsible person is required");
+        }
+        this.responsiblePerson = responsiblePerson.strip();
+        this.countsForActorBusy = countsForActorBusy;
     }
 
     /** 重複週期。 */
@@ -218,6 +245,18 @@ public class ScheduleItem extends WorkspaceOwnedEntity {
 
     public Long getPlaceId() {
         return placeId;
+    }
+
+    public String getResponsiblePerson() {
+        return responsiblePerson;
+    }
+
+    public boolean isCountsForActorBusy() {
+        return countsForActorBusy;
+    }
+
+    public boolean isEndTimeExplicit() {
+        return endTimeExplicit;
     }
 
     public ScheduleStatus getStatus() {

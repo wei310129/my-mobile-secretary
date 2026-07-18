@@ -7,6 +7,7 @@ import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PlanningPreferenceService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.FreeSlotService;
+import com.aproject.aidriven.mymobilesecretary.planner.application.LocalizedWeatherService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.RouteSuggestionService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.TravelPlanningService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.WeatherAdvisoryService;
@@ -53,6 +54,7 @@ public class LifestyleIntentService {
     private final RouteSuggestionService routeSuggestionService;
     private final TravelPlanningService travelPlanningService;
     private final WeatherAdvisoryService weatherService;
+    private final LocalizedWeatherService localizedWeatherService;
     private final PlanningPreferenceService preferenceService;
     private final ConversationContextService contextService;
     private final ReminderPreferenceService reminderPreferenceService;
@@ -89,7 +91,7 @@ public class LifestyleIntentService {
                     CHECK_SHOPPING_INVENTORY, LIST_UNPLACED_ITEMS,
                     ASK_ITEM_KNOWLEDGE_SUMMARY -> itemIntentService.execute(command);
             case ASK_WEATHER -> IntentResult.message(IntentResult.Action.WEATHER_INFO,
-                    weatherService.describeCurrentForecast().orElse("目前拿不到天氣預報,稍後再試。"));
+                    localizedWeatherService.describeCurrentForecast());
             case CREATE_WEATHER_REMINDER -> createWeatherReminder(command, o);
             case ASK_TRAVEL_TIME -> askTravelTime(command, o);
             case ASK_DEPARTURE_TIME -> askDepartureTime(command, o);
@@ -130,7 +132,7 @@ public class LifestyleIntentService {
             case GROUP_TASKS_BY_DUE -> groupTasksByDue();
             case ASK_TASK_LOAD -> taskLoad(o);
             case ASK_BUSY_TASK_DAY -> busiestTaskDay();
-            case ASK_BUSY_SCHEDULE_DAY -> busiestScheduleDay(o);
+            case ASK_BUSY_SCHEDULE_DAY -> busiestScheduleDay(command, o);
             case ASK_LONGEST_SCHEDULE -> longestSchedule(o);
             case GROUP_SCHEDULES_BY_PLACE -> groupSchedulesByPlace(o);
             case ASK_SCHEDULE_REMINDER -> askScheduleReminder(command, o);
@@ -706,14 +708,29 @@ public class LifestyleIntentService {
                         "未來七天沒有設定期限的待辦。"));
     }
 
-    private IntentResult busiestScheduleDay(IntentOptions o) {
-        List<ScheduleItem> items = filterSchedules(scheduleInsightService.upcoming(), o);
+    private IntentResult busiestScheduleDay(IntentCommand command, IntentOptions o) {
+        List<ScheduleItem> items = filterSchedulesByRange(
+                filterSchedules(scheduleInsightService.upcoming(), o),
+                command.startAt(), command.endAt());
         return scheduleInsightService.busiestDay(items)
                 .map(load -> IntentResult.message(IntentResult.Action.BUSIEST_SCHEDULE_DAY_INFO,
                         "%s 的已排行程最滿，共 %d 個、約 %d 小時 %d 分鐘。".formatted(
                                 load.date(), load.count(), load.minutes() / 60, load.minutes() % 60)))
                 .orElseGet(() -> IntentResult.message(IntentResult.Action.BUSIEST_SCHEDULE_DAY_INFO,
                         "指定範圍內沒有已確認行程。"));
+    }
+
+    static List<ScheduleItem> filterSchedulesByRange(List<ScheduleItem> source,
+                                                     String startAt, String endAt) {
+        Instant start = parse(startAt);
+        Instant end = parse(endAt);
+        if (start == null && end == null) {
+            return source;
+        }
+        return source.stream()
+                .filter(item -> start == null || !item.getStartAt().isBefore(start))
+                .filter(item -> end == null || item.getStartAt().isBefore(end))
+                .toList();
     }
 
     private IntentResult longestSchedule(IntentOptions o) {

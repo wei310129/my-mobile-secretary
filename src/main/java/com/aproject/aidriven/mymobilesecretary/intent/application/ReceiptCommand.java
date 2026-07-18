@@ -31,6 +31,7 @@ public record ReceiptCommand(
     public enum DocumentType {
         RECEIPT,
         TRAVEL_ITINERARY,
+        EVENT_POSTER,
         UNKNOWN
     }
 

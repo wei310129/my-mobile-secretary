@@ -71,6 +71,17 @@ public class IntentService {
             familyMessageService;
     private com.aproject.aidriven.mymobilesecretary.family.application.FamilyPersonService
             familyPersonService;
+    private ActivityMutationDisambiguationService activityMutationDisambiguationService;
+    private SchedulePlaceBindingAnswerService schedulePlaceBindingAnswerService;
+    private com.aproject.aidriven.mymobilesecretary.event.application.EventIntakeService
+            eventIntakeService;
+    private LifestyleWindowConversationService lifestyleWindowConversationService;
+    private LunarCalendarConversationService lunarCalendarConversationService;
+    private ConditionalRecurrenceConversationService conditionalRecurrenceConversationService;
+    private FamilyTransportConversationService familyTransportConversationService;
+    private ScheduleCorrectionConversationService scheduleCorrectionConversationService;
+    private BoundedFreeSlotConversationService boundedFreeSlotConversationService;
+    private UncertainScheduleConditionConversationService uncertainScheduleConditionConversationService;
 
     public IntentService(ObjectProvider<IntentInterpreter> interpreterProvider,
                          TaskService taskService,
@@ -153,6 +164,60 @@ public class IntentService {
         this.familyPersonService = service;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setActivityMutationDisambiguationService(
+            ActivityMutationDisambiguationService service) {
+        this.activityMutationDisambiguationService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSchedulePlaceBindingAnswerService(SchedulePlaceBindingAnswerService service) {
+        this.schedulePlaceBindingAnswerService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setEventIntakeService(
+            com.aproject.aidriven.mymobilesecretary.event.application.EventIntakeService service) {
+        this.eventIntakeService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setLifestyleWindowConversationService(LifestyleWindowConversationService service) {
+        this.lifestyleWindowConversationService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setLunarCalendarConversationService(LunarCalendarConversationService service) {
+        this.lunarCalendarConversationService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setConditionalRecurrenceConversationService(
+            ConditionalRecurrenceConversationService service) {
+        this.conditionalRecurrenceConversationService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setFamilyTransportConversationService(FamilyTransportConversationService service) {
+        this.familyTransportConversationService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setScheduleCorrectionConversationService(ScheduleCorrectionConversationService service) {
+        this.scheduleCorrectionConversationService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setBoundedFreeSlotConversationService(BoundedFreeSlotConversationService service) {
+        this.boundedFreeSlotConversationService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setUncertainScheduleConditionConversationService(
+            UncertainScheduleConditionConversationService service) {
+        this.uncertainScheduleConditionConversationService = service;
+    }
+
     /** 處理使用者的一句話,回傳做了什麼;聽不懂/退回保底的話語會記成意圖問題供開發追蹤。 */
     public IntentResult handle(String text) {
         return handle(text, "UNKNOWN");
@@ -199,9 +264,76 @@ public class IntentService {
 
     private IntentResult doHandle(String text, IntentFlowTrace flowTrace,
                                   MutationBoundary mutationBoundary) {
+        if (scheduleCorrectionConversationService != null) {
+            Optional<IntentResult> correction = scheduleCorrectionConversationService.answer(
+                    text, mutationBoundary::beforeMutation);
+            if (correction.isPresent()) {
+                return correction.get();
+            }
+        }
+        if (boundedFreeSlotConversationService != null) {
+            Optional<IntentResult> freeSlots = boundedFreeSlotConversationService.answer(text);
+            if (freeSlots.isPresent()) {
+                return freeSlots.get();
+            }
+        }
+        if (uncertainScheduleConditionConversationService != null) {
+            Optional<IntentResult> uncertain = uncertainScheduleConditionConversationService.answer(text);
+            if (uncertain.isPresent()) {
+                return uncertain.get();
+            }
+        }
+        if (schedulePlaceBindingAnswerService != null) {
+            Optional<IntentResult> binding = schedulePlaceBindingAnswerService.answer(text);
+            if (binding.isPresent()) {
+                return binding.get();
+            }
+        }
+        if (familyTransportConversationService != null) {
+            Optional<IntentResult> familyTransport = familyTransportConversationService.answer(
+                    text, mutationBoundary::beforeMutation);
+            if (familyTransport.isPresent()) {
+                return familyTransport.get();
+            }
+        }
         Optional<IntentResult> productFeedback = ProductFeedbackBoundary.answer(text);
         if (productFeedback.isPresent()) {
             return productFeedback.get();
+        }
+        if (lifestyleWindowConversationService != null) {
+            Optional<IntentResult> lifestyle = lifestyleWindowConversationService.answer(
+                    text, mutationBoundary::beforeMutation);
+            if (lifestyle.isPresent()) {
+                return lifestyle.get();
+            }
+        }
+        if (conditionalRecurrenceConversationService != null) {
+            Optional<IntentResult> conditional = conditionalRecurrenceConversationService.answer(
+                    text, mutationBoundary::beforeMutation);
+            if (conditional.isPresent()) {
+                return conditional.get();
+            }
+        }
+        if (lunarCalendarConversationService != null) {
+            Optional<IntentResult> lunar = lunarCalendarConversationService.answer(text);
+            if (lunar.isPresent()) {
+                return lunar.get();
+            }
+        }
+        Optional<IntentResult> calendarDate = CalendarDatePolicy.answer(text, clock);
+        if (calendarDate.isPresent()) {
+            return calendarDate.get();
+        }
+        Optional<String> dateClarification = CalendarDatePolicy.clarification(text);
+        if (dateClarification.isPresent()) {
+            return IntentResult.clarificationNeeded(dateClarification.get());
+        }
+        if (eventIntakeService != null) {
+            Optional<IntentResult> event = eventIntakeService.answer(
+                    text, mutationBoundary::beforeMutation);
+            if (event.isPresent()) {
+                return event.get();
+            }
         }
         if (familyPersonService != null) {
             Optional<IntentResult> person = familyPersonService.answer(
@@ -244,6 +376,12 @@ public class IntentService {
         Optional<IntentResult> travelPlanning = travelPlanningIntakeService.answer(text);
         if (travelPlanning.isPresent()) {
             return travelPlanning.get();
+        }
+        if (activityMutationDisambiguationService != null) {
+            Optional<IntentResult> ambiguity = activityMutationDisambiguationService.answer(text);
+            if (ambiguity.isPresent()) {
+                return ambiguity.get();
+            }
         }
         Optional<IntentResult> taskConflict = scheduleTaskConflictAnswerService.answer(text);
         if (taskConflict.isPresent()) {
@@ -299,7 +437,10 @@ public class IntentService {
             return safeFallback(text, "意圖解析未啟用", mutationBoundary);
         }
         try {
-            script = interpreter.interpret(text, Instant.now(clock), conversationContextService.snapshot());
+            script = interpreter.interpret(text, Instant.now(clock),
+                    conversationContextService.snapshot());
+            script = IntentScriptSafetyPolicy.apply(text, script);
+            script = IntentScriptDateRangePolicy.apply(text, script, Instant.now(clock));
         } catch (Exception e) {
             log.warn("Intent interpretation failed ({}); applying safe fallback",
                     e.getClass().getSimpleName());

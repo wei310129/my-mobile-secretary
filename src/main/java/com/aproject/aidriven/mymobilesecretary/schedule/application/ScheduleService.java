@@ -50,6 +50,19 @@ public class ScheduleService {
         return createSchedule(title, startAt, endAt, placeId, false);
     }
 
+    /** 建立家庭可見、由其他家人負責的單一鐘點事件；不占用建立者忙碌時間。 */
+    public ScheduleDecision createFamilyPointSchedule(
+            String title, Instant at, Long placeId, String responsiblePerson) {
+        if (placeId != null) {
+            placeService.getPlace(placeId);
+        }
+        Instant now = Instant.now(clock);
+        ScheduleItem item = ScheduleItem.proposePoint(title, at, placeId, now);
+        item.assignResponsibility(responsiblePerson, false);
+        item = scheduleItemRepository.save(item);
+        return gate(item, now);
+    }
+
     /** 提出新行程並驗算;recurring = true 表示每週固定(結束後自動排下一週)。 */
     public ScheduleDecision createSchedule(String title, Instant startAt, Instant endAt,
                                            Long placeId, boolean recurring) {
@@ -306,6 +319,21 @@ public class ScheduleService {
     public List<ScheduleItem> findReschedulableSchedulesMatching(String keyword) {
         return findSchedulesMatching(keyword,
                 EnumSet.of(ScheduleStatus.PROPOSED, ScheduleStatus.CONFIRMED, ScheduleStatus.PENDING));
+    }
+
+    /**
+     * 依原始鐘點尋找可改期候選。口語只說「明天下午兩點的會」時，標題通常不足以比對；
+     * 呼叫端仍必須要求唯一候選，不得任選同時段其中一筆。
+     */
+    @Transactional(readOnly = true)
+    public List<ScheduleItem> findReschedulableSchedulesStartingBetween(
+            Instant fromInclusive, Instant toExclusive) {
+        return scheduleItemRepository.findByStatusInOrderByStartAtAsc(
+                        EnumSet.of(ScheduleStatus.PROPOSED,
+                                ScheduleStatus.CONFIRMED, ScheduleStatus.PENDING)).stream()
+                .filter(item -> !item.getStartAt().isBefore(fromInclusive)
+                        && item.getStartAt().isBefore(toExclusive))
+                .toList();
     }
 
     @Transactional(readOnly = true)

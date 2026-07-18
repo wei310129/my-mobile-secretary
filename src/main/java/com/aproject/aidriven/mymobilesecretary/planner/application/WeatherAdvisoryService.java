@@ -67,6 +67,26 @@ public class WeatherAdvisoryService {
                         f.minTemp(), f.maxTemp()));
     }
 
+    /** 依行政區查詢；失敗時回 empty，交由呼叫端明確降級成縣市預報。 */
+    public Optional<String> describeDistrictForecast(String county, String district) {
+        if (!properties.enabled()) return Optional.empty();
+        try {
+            WeatherForecast forecast = weatherClient.getDistrictForecast(county, district);
+            return Optional.of("%s行政區預報:%s,降雨機率 %d%%,氣溫 %d–%d°C。"
+                    .formatted(forecast.county(), forecast.description(),
+                            forecast.rainProbabilityPercent(), forecast.minTemp(),
+                            forecast.maxTemp()));
+        } catch (Exception exception) {
+            log.warn("District weather forecast unavailable [county={}, district={}]",
+                    county, district);
+            return Optional.empty();
+        }
+    }
+
+    public String configuredCounty() {
+        return properties.county();
+    }
+
     public Optional<Boolean> isRainy() {
         return currentForecast().map(f ->
                 f.rainProbabilityPercent() >= properties.rainProbabilityThreshold());

@@ -56,6 +56,16 @@ class CwaWeatherClientTest {
         });
     }
 
+    private void respondWithDistrict(int status, String body) {
+        server.createContext("/api/v1/rest/datastore/F-D0047-091", exchange -> {
+            byte[] bytes = body.getBytes(UTF_8);
+            exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(status, bytes.length);
+            exchange.getResponseBody().write(bytes);
+            exchange.close();
+        });
+    }
+
     @Test
     void parsesForecastFields() {
         respondWith(200, OK_JSON);
@@ -108,5 +118,27 @@ class CwaWeatherClientTest {
 
         assertThatThrownBy(() -> client(Duration.ofMillis(500)).getForecast("新北市"))
                 .isInstanceOf(IntegrationException.class);
+    }
+
+    @Test
+    void parsesCurrentUppercaseDistrictForecastSchema() {
+        respondWithDistrict(200, """
+                {"records":{"Locations":[{"LocationsName":"新北市","Location":[{
+                  "LocationName":"新店區","WeatherElement":[
+                    {"ElementName":"天氣預報綜合描述","Time":[{"ElementValue":[{"WeatherDescription":"多雲午後短暫雷陣雨"}]}]},
+                    {"ElementName":"12小時降雨機率","Time":[{"ElementValue":[{"ProbabilityOfPrecipitation":"70"}]}]},
+                    {"ElementName":"最低溫度","Time":[{"ElementValue":[{"MinTemperature":"27"}]}]},
+                    {"ElementName":"最高溫度","Time":[{"ElementValue":[{"MaxTemperature":"34"}]}]}
+                  ]}]}]}}
+                """);
+
+        WeatherForecast forecast = client(Duration.ofSeconds(2))
+                .getDistrictForecast("新北市", "新店區");
+
+        assertThat(forecast.county()).isEqualTo("新北市新店區");
+        assertThat(forecast.description()).contains("雷陣雨");
+        assertThat(forecast.rainProbabilityPercent()).isEqualTo(70);
+        assertThat(forecast.minTemp()).isEqualTo(27);
+        assertThat(forecast.maxTemp()).isEqualTo(34);
     }
 }

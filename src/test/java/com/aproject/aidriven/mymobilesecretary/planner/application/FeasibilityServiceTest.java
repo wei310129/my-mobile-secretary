@@ -10,7 +10,9 @@ import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.LocationEventRepository;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.BufferRuleService;
+import com.aproject.aidriven.mymobilesecretary.knowledge.application.LifestyleWindowService;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PlanningPreferenceService;
+import com.aproject.aidriven.mymobilesecretary.knowledge.domain.LifestyleWindow;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityResult;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
@@ -22,6 +24,7 @@ import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItem
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.LocalTime;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
@@ -62,6 +65,9 @@ class FeasibilityServiceTest {
     @Mock
     private TaskRepository taskRepository;
 
+    @Mock
+    private LifestyleWindowService lifestyleWindowService;
+
     private FeasibilityService service;
 
     @BeforeEach
@@ -74,11 +80,14 @@ class FeasibilityServiceTest {
                 planningPreferenceService,
                 taskRepository,
                 Clock.fixed(NOW, ZoneOffset.UTC));
+        service.setLifestyleWindowService(lifestyleWindowService);
         // 預設沒有緩衝習慣;個別測試再覆寫
         lenient().when(bufferRuleService.recommendedBuffer(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Duration.ZERO);
         lenient().when(planningPreferenceService.extraTransferBuffer()).thenReturn(Duration.ZERO);
         lenient().when(taskRepository.findByStatusIn(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(List.of());
+        lenient().when(lifestyleWindowService.list(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(List.of());
     }
 
@@ -272,5 +281,56 @@ class FeasibilityServiceTest {
                 schedule(1, "線上會議", NOW.plus(Duration.ofMinutes(5)), NOW.plus(Duration.ofHours(1)), null));
 
         assertThat(result.feasible()).isTrue();
+    }
+
+    @Test
+    void weekdayLunchWindowCompressionRequiresUserDecision() {
+        confirmedItems();
+        when(lifestyleWindowService.list(LifestyleWindow.DayType.WEEKDAY)).thenReturn(List.of(
+                LifestyleWindow.create(LifestyleWindow.DayType.WEEKDAY,
+                        LifestyleWindow.Kind.LUNCH, LocalTime.NOON, LocalTime.of(13, 0), NOW)));
+
+        FeasibilityResult result = service.check(schedule(1, "客戶電話",
+                Instant.parse("2026-07-13T04:15:00Z"),
+                Instant.parse("2026-07-13T04:45:00Z"), null));
+
+        assertThat(result.feasible()).isFalse();
+        assertThat(result.issues()).extracting(FeasibilityIssue::type)
+                .containsExactly(FeasibilityIssue.Type.LIFESTYLE_WINDOW_COMPRESSED);
+        assertThat(result.issues().getFirst().message())
+                .contains("平日午餐", "12:00–13:00", "不會自動建立", "請確認是否仍照排");
+    }
+
+    @Test
+    void previousDaysCrossMidnightSleepWindowCoversEarlyMorning() {
+        confirmedItems();
+        when(lifestyleWindowService.list(LifestyleWindow.DayType.WEEKDAY)).thenReturn(List.of(
+                LifestyleWindow.create(LifestyleWindow.DayType.WEEKDAY,
+                        LifestyleWindow.Kind.SLEEP, LocalTime.of(23, 0), LocalTime.of(7, 0), NOW)));
+
+        FeasibilityResult result = service.check(schedule(1, "清晨線上會議",
+                Instant.parse("2026-07-13T22:00:00Z"),
+                Instant.parse("2026-07-13T22:30:00Z"), null));
+
+        assertThat(result.feasible()).isFalse();
+        assertThat(result.issues()).extracting(FeasibilityIssue::type)
+                .containsExactly(FeasibilityIssue.Type.LIFESTYLE_WINDOW_COMPRESSED);
+        assertThat(result.issues().getFirst().message()).contains("平日睡眠", "23:00–07:00");
+    }
+
+    @Test
+    void familyVisibleScheduleOwnedBySomeoneElseDoesNotConsumeActorBusyTime() {
+        ScheduleItem actorMeeting = schedule(2, "本人會議",
+                Instant.parse("2026-07-18T01:00:00Z"),
+                Instant.parse("2026-07-18T02:00:00Z"), null);
+        confirmedItems(actorMeeting);
+        ScheduleItem familyPickup = ScheduleItem.proposePoint(
+                "阿公接兒子", Instant.parse("2026-07-18T01:30:00Z"), null, NOW);
+        familyPickup.assignResponsibility("阿公", false);
+
+        FeasibilityResult result = service.check(familyPickup);
+
+        assertThat(result.feasible()).isTrue();
+        assertThat(result.issues()).isEmpty();
     }
 }

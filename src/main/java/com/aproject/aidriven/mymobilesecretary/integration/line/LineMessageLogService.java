@@ -90,15 +90,21 @@ public class LineMessageLogService {
                     .map(entry -> "[圖片解析結果]\n" + entry.getContent())
                     .orElse(quoted);
         }
-        List<LineMessageLog> recent = listRecent(6);
-        String recentText = recent.stream()
-                .sorted(java.util.Comparator.comparing(LineMessageLog::getCreatedAt))
-                .map(entry -> (entry.getDirection() == LineMessageLog.Direction.IN ? "使用者：" : "助理：")
-                        + truncateContext(entry.getContent()))
-                .collect(java.util.stream.Collectors.joining("\n"));
         StringBuilder context = new StringBuilder();
-        if (quoted != null) context.append("【LINE 明確引用】").append(truncateContext(quoted)).append('\n');
-        if (!recentText.isBlank()) context.append("【近期對話】\n").append(recentText).append('\n');
+        if (quoted != null) {
+            // A resolved LINE quote is the highest-signal context. Do not also attach the
+            // recent transcript: it is redundant, may introduce another topic, and increases
+            // every structured-output request without helping the reference resolution.
+            context.append("【LINE 明確引用】").append(truncateContext(quoted)).append('\n');
+        } else {
+            List<LineMessageLog> recent = listRecent(6);
+            String recentText = recent.stream()
+                    .sorted(java.util.Comparator.comparing(LineMessageLog::getCreatedAt))
+                    .map(entry -> (entry.getDirection() == LineMessageLog.Direction.IN
+                            ? "使用者：" : "助理：") + truncateContext(entry.getContent()))
+                    .collect(java.util.stream.Collectors.joining("\n"));
+            if (!recentText.isBlank()) context.append("【近期對話】\n").append(recentText).append('\n');
+        }
         return context.append("【使用者目前訊息】").append(original).toString();
     }
 

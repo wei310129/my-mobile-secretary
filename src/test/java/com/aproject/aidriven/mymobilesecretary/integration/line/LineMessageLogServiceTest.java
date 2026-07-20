@@ -102,20 +102,19 @@ class LineMessageLogServiceTest {
     }
 
     @Test
-    void quotedMessageAndRecentHistoryBecomeBoundedInterpreterContext() {
+    void resolvedQuoteIsTheOnlyInterpreterHistoryToAvoidRedundantTokens() {
         LineMessageLog quoted = LineMessageLog.of(
                 LineMessageLog.Direction.OUT, "TEXT", "活動草稿缺少日期", NOW);
-        LineMessageLog recent = LineMessageLog.of(
-                LineMessageLog.Direction.IN, "IMAGE", "[圖片]", NOW.minusSeconds(10));
         when(repository.findFirstByWorkspaceIdAndCreatedByUserIdAndExternalMessageId(
                 WORKSPACE_ID, ACTOR_ID, "quoted-1")).thenReturn(Optional.of(quoted));
-        when(repository.findAllByWorkspaceIdAndCreatedByUserIdOrderByCreatedAtDescIdDesc(
-                WORKSPACE_ID, ACTOR_ID, PageRequest.of(0, 6))).thenReturn(List.of(recent));
 
         String context = inScope(() -> service.contextualize("7/9", "quoted-1"));
 
         assertThat(context).contains("【LINE 明確引用】活動草稿缺少日期",
-                "【近期對話】", "【使用者目前訊息】7/9");
+                "【使用者目前訊息】7/9")
+                .doesNotContain("【近期對話】");
+        verify(repository, never()).findAllByWorkspaceIdAndCreatedByUserIdOrderByCreatedAtDescIdDesc(
+                WORKSPACE_ID, ACTOR_ID, PageRequest.of(0, 6));
     }
 
     @Test
@@ -125,9 +124,6 @@ class LineMessageLogServiceTest {
                 "image-1", null, NOW, NOW.plusSeconds(3600));
         when(repository.findFirstByWorkspaceIdAndCreatedByUserIdAndExternalMessageId(
                 WORKSPACE_ID, ACTOR_ID, "image-1")).thenReturn(Optional.of(image));
-        when(repository.findAllByWorkspaceIdAndCreatedByUserIdOrderByCreatedAtDescIdDesc(
-                WORKSPACE_ID, ACTOR_ID, PageRequest.of(0, 6))).thenReturn(List.of(image));
-
         inScope(() -> {
             service.enrichImageContextSafely("image-1",
                     "已記下升級至 Windows 10/11 專業版，購買日期 2024-10-01，金額 2,999 元。");
@@ -154,9 +150,6 @@ class LineMessageLogServiceTest {
                 .findFirstByWorkspaceIdAndCreatedByUserIdAndDirectionAndIdGreaterThanOrderByIdAsc(
                         WORKSPACE_ID, ACTOR_ID, LineMessageLog.Direction.OUT, 41L))
                 .thenReturn(Optional.of(reply));
-        when(repository.findAllByWorkspaceIdAndCreatedByUserIdOrderByCreatedAtDescIdDesc(
-                WORKSPACE_ID, ACTOR_ID, PageRequest.of(0, 6))).thenReturn(List.of(reply, image));
-
         String context = inScope(() -> service.contextualize(
                 "我什麼時候買的？", "legacy-image"));
 

@@ -74,7 +74,7 @@ public class LineMessageLogService {
     @Transactional(readOnly = true)
     public String contextualize(String text, String quotedMessageId) {
         String original = text == null ? "" : text.strip();
-        if (quotedMessageId == null && !looksElliptical(original)) return original;
+        if (quotedMessageId == null && !needsConversationContext(original)) return original;
         WorkspaceContext scope = WorkspaceContextHolder.requireContext();
         LineMessageLog quotedEntry = quotedMessageId == null ? null
                 : repository.findFirstByWorkspaceIdAndCreatedByUserIdAndExternalMessageId(
@@ -111,6 +111,17 @@ public class LineMessageLogService {
     private static boolean looksElliptical(String text) {
         return text.length() <= 30 || text.matches("\\d{1,2}[/-]\\d{1,2}")
                 || text.matches("(?i)(好|要|不用|不用了|可以|對|是|不是|這個|那個)");
+    }
+
+    /** 課程名稱是語音轉錄常見的同音字位置，長句也保留近期紀錄供唯一比對。 */
+    private static boolean needsConversationContext(String text) {
+        if (looksElliptical(text)) return true;
+        String compact = text.replaceAll("\\s+", "");
+        boolean child = compact.contains("女兒") || compact.contains("兒子")
+                || compact.contains("孩子") || compact.contains("小孩");
+        boolean course = compact.contains("課") || compact.contains("補習")
+                || compact.contains("安親") || compact.contains("英文") || compact.contains("才藝");
+        return child && course;
     }
 
     private static String truncateContext(String text) {

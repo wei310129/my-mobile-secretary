@@ -376,3 +376,4 @@
 376|刷油漆的地點？|FOLLOW_UP|pending活動草稿不得只因「地點」等單一弱關鍵字接管；候選低於Java相關性門檻時必須fall through，LINE明確引用且指向同一草稿時才可接續
 377|把拿包裹的行程提醒改回沒有時間的待辦事項|CONVERT_TASK_TO_TODO|title放既有項目關鍵字；Java清除dueAt並移除提醒排程；不得轉回草稿
 378|列出目前有庫存的品項|LIST_INVENTORY|Java只列inventoryQuantity大於0的已知庫存；零筆固定回覆「📍 共找到 0 個品項：」，不得列出數量0
+379|我家地址改成新北市新店區民權路5號五樓|UPDATE_PLACE|placeName=我家;options.description=新北市新店區民權路5號五樓;外部候選街路門牌不一致時拒絕寫入

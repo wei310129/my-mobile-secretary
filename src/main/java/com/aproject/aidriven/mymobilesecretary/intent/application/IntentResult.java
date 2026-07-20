@@ -49,6 +49,7 @@ public record IntentResult(
         SUGGESTION_MADE,
         PLACE_INFO,
         PLACE_CREATED,
+        PLACE_UPDATED,
         TASK_PLACE_BOUND,
         TASK_PLACE_INFO,
         FEEDBACK_RECEIVED,

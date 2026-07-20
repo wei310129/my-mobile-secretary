@@ -70,4 +70,17 @@ class CalendarDatePolicyTest {
         assertThat(CalendarDatePolicy.clarification(
                 "戶外教學是7/31星期五", CLOCK)).isEmpty();
     }
+
+    @Test
+    void numericHourRangeIsNeverParsedAsMonthAndDay() {
+        String text = "我女兒到9月底以前的每週六10-12點都要去上夏恩英語";
+
+        assertThat(CalendarDatePolicy.clarification(text, CLOCK)).isEmpty();
+        assertThat(CalendarDatePolicy.clarification(
+                "每週六10~12點上課", CLOCK)).isEmpty();
+        assertThat(CalendarDatePolicy.clarification(
+                "每週六10～12點上課", CLOCK)).isEmpty();
+        assertThat(CalendarDatePolicy.normalizeForInterpretation(text))
+                .contains("10:00-12:00", "原文：10-12點");
+    }
 }

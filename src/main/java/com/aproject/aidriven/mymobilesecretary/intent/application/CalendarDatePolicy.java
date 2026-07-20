@@ -20,9 +20,11 @@ public final class CalendarDatePolicy {
                     + "(?<day>\\d{1,2})\\s*日?");
     private static final Pattern MONTH_DAY_TOKEN = Pattern.compile(
             "(?<!\\d)(?<month>\\d{1,2})\\s*(?:月|[./-])\\s*"
-                    + "(?<day>\\d{1,2})\\s*日?");
+                    + "(?<day>\\d{1,2})\\s*日?(?!\\d|\\s*(?:點|時|分|[:：]))");
     private static final Pattern WEEKDAY_TOKEN = Pattern.compile(
             "(?:星期|禮拜|週)(?<weekday>[一二三四五六日天])");
+    private static final Pattern NUMERIC_HOUR_RANGE = Pattern.compile(
+            "(?<!\\d)(?<start>\\d{1,2})\\s*[-~～]\\s*(?<end>\\d{1,2})\\s*點");
 
     private CalendarDatePolicy() {
     }
@@ -57,13 +59,28 @@ public final class CalendarDatePolicy {
 
     static String normalizeForInterpretation(String text) {
         if (text == null || text.isBlank()) return text;
-        Matcher matcher = DATE_TOKEN.matcher(text);
+        String withNormalizedHours = normalizeHourRanges(text);
+        Matcher matcher = DATE_TOKEN.matcher(withNormalizedHours);
         StringBuffer normalized = new StringBuffer();
         while (matcher.find()) {
             ParsedDate parsed = parse(matcher);
             if (parsed.problem() != null || parsed.date() == null) continue;
             matcher.appendReplacement(normalized,
                     Matcher.quoteReplacement(format(parsed.date()) + "（原文：" + matcher.group() + "）"));
+        }
+        matcher.appendTail(normalized);
+        return normalized.toString();
+    }
+
+    private static String normalizeHourRanges(String text) {
+        Matcher matcher = NUMERIC_HOUR_RANGE.matcher(text);
+        StringBuffer normalized = new StringBuffer();
+        while (matcher.find()) {
+            int start = Integer.parseInt(matcher.group("start"));
+            int end = Integer.parseInt(matcher.group("end"));
+            if (start > 23 || end > 23) continue;
+            matcher.appendReplacement(normalized, Matcher.quoteReplacement(
+                    "%02d:00-%02d:00（原文：%s）".formatted(start, end, matcher.group())));
         }
         matcher.appendTail(normalized);
         return normalized.toString();

@@ -27,7 +27,7 @@ class ProductFeedbackBoundaryTest {
         IntentResult result = ProductFeedbackBoundary.answer("你沒有聽懂").orElseThrow();
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
-        assertThat(result.message()).contains("理解錯了").contains("請直接告訴我");
+        assertThat(result.message()).contains("理解錯了").contains("原本的主題與訊息仍會保留").contains("從原操作續接");
     }
 
     @Test
@@ -61,5 +61,20 @@ class ProductFeedbackBoundaryTest {
                 .orElseThrow();
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+    }
+
+    @Test
+    void yesterdayMultiParagraphDevelopmentInstructionCannotFallIntoBusinessRouting() {
+        String text = """
+                1. 行程已經有說是10點到12點了，你至少先推斷我應該是在12點要接。
+                2. 如果你一次有好幾個問題要問使用者，你要用條列式。
+                3. 我認為你要記得近期的對談主題及相關內容作為動作上下文，避免每次要求使用者重新輸入完整訊息。
+                這是我的開發指示，不是要建立行程。
+                """;
+
+        IntentResult result = ProductFeedbackBoundary.answer(text).orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+        assertThat(result.message()).contains("功能改善問題紀錄");
     }
 }

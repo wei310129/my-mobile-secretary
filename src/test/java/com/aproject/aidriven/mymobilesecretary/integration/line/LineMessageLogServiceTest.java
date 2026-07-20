@@ -118,6 +118,23 @@ class LineMessageLogServiceTest {
     }
 
     @Test
+    void lengthyChildCourseMessageIncludesRecentHistoryForSpeechRecognitionDisambiguation() {
+        LineMessageLog previous = LineMessageLog.of(
+                LineMessageLog.Direction.IN, "TEXT", "女兒每週六要上夏恩英語課", NOW);
+        LineMessageLog reply = LineMessageLog.of(
+                LineMessageLog.Direction.OUT, "TEXT", "已記下夏恩英語課的接送資訊", NOW.plusSeconds(1));
+        when(repository.findAllByWorkspaceIdAndCreatedByUserIdOrderByCreatedAtDescIdDesc(
+                WORKSPACE_ID, ACTOR_ID, PageRequest.of(0, 6))).thenReturn(List.of(reply, previous));
+
+        String context = inScope(() -> service.contextualize(
+                "女兒明天英國課的上課地點可能要改到七張，請幫我確認是否和原本課程相同", null));
+
+        assertThat(context).contains("【近期對話】", "夏恩英語課", "【使用者目前訊息】女兒明天英國課");
+        verify(repository).findAllByWorkspaceIdAndCreatedByUserIdOrderByCreatedAtDescIdDesc(
+                WORKSPACE_ID, ACTOR_ID, PageRequest.of(0, 6));
+    }
+
+    @Test
     void imageInterpretationSummaryIsRetainedForLaterQuoteQuestions() {
         LineMessageLog image = LineMessageLog.of(
                 LineMessageLog.Direction.IN, "IMAGE", "[圖片]",

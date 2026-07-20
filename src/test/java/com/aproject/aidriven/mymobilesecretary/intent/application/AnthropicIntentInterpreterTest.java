@@ -29,12 +29,13 @@ class AnthropicIntentInterpreterTest {
         ChatResponse response = new ChatResponse(List.of(
                 new Generation(new AssistantMessage("")),
                 new Generation(new AssistantMessage("""
-                        {"commands":[{"type":"LIST_TASKS"}]}
+                        {"commands":[{"type":"LIST_TASKS","sourceText":"列出待辦"}]}
                         """))));
 
         IntentScript script = AnthropicIntentInterpreter.convertStructuredResponse(response);
 
         assertThat(script.commands()).hasSize(1);
         assertThat(script.commands().getFirst().type()).isEqualTo(IntentCommand.Type.LIST_TASKS);
+        assertThat(script.commands().getFirst().sourceText()).isEqualTo("列出待辦");
     }
 }

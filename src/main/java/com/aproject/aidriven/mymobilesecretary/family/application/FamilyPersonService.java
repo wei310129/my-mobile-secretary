@@ -44,8 +44,9 @@ public class FamilyPersonService {
                     List.of("小兒子", "我小兒子", "兒子", "我兒子")));
 
     private static final Pattern NAME_TEACHING = Pattern.compile(
-            "(?:我)?(老婆|妻子|太太|大女兒|女兒|小兒子|兒子)(?:的)?"
-                    + "(?:姓名|名字)?(?:是|叫)([^，。！？?\\s]{1,40})");
+            "(?:把)?(?:我)?(老婆|妻子|太太|大女兒|女兒|小兒子|兒子)(?:的)?"
+                    + "(?:(?:姓名|名字)?(?:是|叫(?:做)?)|(?:姓名|名字)(?:改成|改為|更正為))"
+                    + "[「『\"]?([^，。！？?\\s」』\"]{1,40})");
 
     private final FamilyPersonProfileRepository profileRepository;
     private final FamilyPersonAliasRepository aliasRepository;
@@ -244,6 +245,9 @@ public class FamilyPersonService {
     }
 
     private static boolean isRecognitionQuestion(String text) {
+        if (containsAny(text, "地址", "地點", "哪裡", "在哪", "分校", "怎麼去")) {
+            return false;
+        }
         boolean question = text.contains("?") || text.contains("？") || text.contains("嗎")
                 || text.contains("誰") || text.contains("什麼");
         return question && containsAny(text, "認得", "辨認", "分辨", "知道", "理解",

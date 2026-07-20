@@ -19,6 +19,8 @@ package com.aproject.aidriven.mymobilesecretary.intent.application;
  * @param outcomeReason  RECORD_OUTCOME:MEETING_OVERRUN/TRAFFIC_INCIDENT/RUSH_HOUR/OTHER(聽得出才填)
  * @param windowHours    SUGGEST_NEARBY:使用者明講的時間長度(小時);沒講就空,不要猜
  * @param recurring      CREATE_SCHEDULE/SET_SCHEDULE_RECURRING:每週固定行程為 true
+ * @param options        各意圖專用的受限附加欄位
+ * @param sourceText     此 command 對應的使用者原話片段；保留辨識前文字供多意圖完整性檢查
  */
 public record IntentCommand(
         Type type,
@@ -34,8 +36,18 @@ public record IntentCommand(
         String outcomeReason,
         Integer windowHours,
         Boolean recurring,
-        IntentOptions options
+        IntentOptions options,
+        String sourceText
 ) {
+
+    /** 現有 14 欄 command 相容建構子；沒有來源片段時不猜測多意圖覆蓋率。 */
+    public IntentCommand(Type type, String title, String dueAt, String startAt, String endAt,
+                         String placeName, String priority, String reason, Boolean onTime,
+                         Integer overrunMinutes, String outcomeReason, Integer windowHours,
+                         Boolean recurring, IntentOptions options) {
+        this(type, title, dueAt, startAt, endAt, placeName, priority, reason, onTime,
+                overrunMinutes, outcomeReason, windowHours, recurring, options, null);
+    }
 
     /** 舊的 13 欄 command 仍可用;新增能力才需要 options。 */
     public IntentCommand(Type type, String title, String dueAt, String startAt, String endAt,
@@ -43,7 +55,7 @@ public record IntentCommand(
                          Integer overrunMinutes, String outcomeReason, Integer windowHours,
                          Boolean recurring) {
         this(type, title, dueAt, startAt, endAt, placeName, priority, reason, onTime,
-                overrunMinutes, outcomeReason, windowHours, recurring, null);
+                overrunMinutes, outcomeReason, windowHours, recurring, null, null);
     }
 
     public IntentOptions safeOptions() {
@@ -210,6 +222,8 @@ public record IntentCommand(
         ASK_PLACE,
         /** 建立地點(「建立地點:蝦皮店到店中興二店」);placeName 放地點名,詳細資訊由 Google 補全。 */
         CREATE_PLACE,
+        /** 更新既有地點地址；placeName 指定既有地點，options.description 放完整地址。 */
+        UPDATE_PLACE,
         /** 把待辦綁到地點(「拿包裹是要到蝦皮店到店」);title 任務關鍵字 + placeName 地點名。 */
         BIND_TASK_PLACE,
         /** 問某待辦要去哪裡做(「我要去哪取蝦皮?」);title 任務關鍵字。 */

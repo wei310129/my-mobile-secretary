@@ -1,6 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.knowledge.tag.application;
 
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceCreatedEvent;
+import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceUpdatedEvent;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.LocationExitRecorded;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.ItemLifecycleEvent;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.ObjectAnnotationArchivedEvent;
@@ -66,6 +67,12 @@ public class UniversalDomainEventRecorder {
     public void onPlaceCreated(PlaceCreatedEvent event) {
         lifeRecordService.recordDomainEvent(TaggedLifeRecord.RecordType.PLACE,
                 event.name(), event.createdAt(), List.of("地點", "建立"));
+    }
+
+    @EventListener
+    public void onPlaceUpdated(PlaceUpdatedEvent event) {
+        lifeRecordService.recordDomainEvent(TaggedLifeRecord.RecordType.PLACE,
+                event.name(), event.updatedAt(), List.of("地點", "更新"));
     }
 
     @EventListener

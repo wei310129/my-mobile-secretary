@@ -38,6 +38,7 @@ class PlaceIntentHandlerTest {
         assertThat(handler.supportedTypes()).containsExactlyInAnyOrderElementsOf(Set.of(
                 IntentCommand.Type.ASK_PLACE,
                 IntentCommand.Type.CREATE_PLACE,
+                IntentCommand.Type.UPDATE_PLACE,
                 IntentCommand.Type.BIND_TASK_PLACE,
                 IntentCommand.Type.ASK_TASK_PLACE,
                 IntentCommand.Type.SUGGEST_NEARBY,

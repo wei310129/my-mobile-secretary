@@ -655,6 +655,7 @@ public class IntentService {
         if (deferPickupClarification) {
             script = applySchoolPickupSafeguard(script, schoolPickupQuestion.orElseThrow());
         }
+        script = IntentScriptCompletenessPolicy.apply(text, script);
 
         // 單一操作:維持原語意(驗證失敗 → 整句保底)
         if (script.commands().size() == 1) {
@@ -877,11 +878,7 @@ public class IntentService {
     }
 
     static boolean hasIndependentIntentBesidesSchoolDropOff(String text) {
-        String normalized = text == null ? "" : text.replaceAll("\\s+", "");
-        return containsAny(normalized,
-                "會議", "開會", "聚餐", "吃飯", "回診", "看醫生", "看牙", "牙醫",
-                "復健", "上班", "報告", "簡報", "買菜", "採買", "購物", "郵局",
-                "銀行", "運動", "健身", "提醒", "待辦", "繳費", "付款", "取貨");
+        return IntentScriptCompletenessPolicy.hasIndependentActionableClause(text);
     }
 
     static IntentScript applySchoolPickupSafeguard(IntentScript script, String question) {

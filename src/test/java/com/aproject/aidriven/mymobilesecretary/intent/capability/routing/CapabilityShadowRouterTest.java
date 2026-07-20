@@ -173,6 +173,22 @@ class CapabilityShadowRouterTest {
                 .counter().count()).isEqualTo(1.0d);
     }
 
+    @Test
+    void bestCandidateStillFallsBackWhenItsAbsoluteRelevanceIsTooLow() {
+        CapabilityHandler<TestPayload> weak = handler(
+                "place.weak", CapabilityRisk.QUERY, "地點", ignored -> { });
+        CapabilityRegistry registry = registry(List.of(weak));
+
+        CapabilityShadowRoute route = router(
+                new WeightedKeywordCandidateResolver(registry), registry,
+                new CapabilityRoutingProperties(), null).route("刷油漆的地點？");
+
+        assertThat(route.disposition()).isEqualTo(CapabilityRoutingDisposition.LEGACY);
+        assertThat(route.fallbackReason())
+                .isEqualTo(CapabilityFallbackReason.BELOW_RELEVANCE_THRESHOLD);
+        assertThat(route.candidates()).isEmpty();
+    }
+
     private CapabilityShadowRouter router(
             CandidateResolver resolver,
             CapabilityRegistry registry,

@@ -27,6 +27,35 @@ class IntentValidationDiagnosticTest {
     }
 
     @Test
+    void shoppingQueryMigrationDoesNotWeakenMutationBoundary() {
+        assertThat(java.util.List.of(
+                        IntentCommand.Type.ASK_FREQUENT_STORE,
+                        IntentCommand.Type.ASK_INVENTORY_EXTREMES,
+                        IntentCommand.Type.ASK_ITEM_KNOWLEDGE_SUMMARY,
+                        IntentCommand.Type.ASK_ITEM_PLACES,
+                        IntentCommand.Type.ASK_LAST_PURCHASE,
+                        IntentCommand.Type.ASK_PRICE_COMPARISON,
+                        IntentCommand.Type.ASK_PRICE_HISTORY,
+                        IntentCommand.Type.ASK_PRICE_SUMMARY,
+                        IntentCommand.Type.ASK_EXPENSE_HISTORY,
+                        IntentCommand.Type.ASK_PAYMENT_HISTORY,
+                        IntentCommand.Type.CHECK_SHOPPING_INVENTORY,
+                        IntentCommand.Type.GROUP_SHOPPING_BY_PLACE,
+                        IntentCommand.Type.LIST_INVENTORY,
+                        IntentCommand.Type.LIST_ITEMS_BY_PLACE,
+                        IntentCommand.Type.LIST_SHOPPING_BY_PLACE,
+                        IntentCommand.Type.LIST_SHOPPING_ITEMS,
+                        IntentCommand.Type.LIST_UNPLACED_ITEMS))
+                .allSatisfy(type -> assertThat(IntentService.isPotentiallyMutating(type)).isFalse());
+        assertThat(java.util.List.of(
+                        IntentCommand.Type.CLEAR_SHOPPING_LIST,
+                        IntentCommand.Type.REMOVE_SHOPPING_ITEM,
+                        IntentCommand.Type.ADJUST_INVENTORY,
+                        IntentCommand.Type.BIND_ITEM_PLACE))
+                .allSatisfy(type -> assertThat(IntentService.isPotentiallyMutating(type)).isTrue());
+    }
+
+    @Test
     void explainsKnownJavaValidationFailuresInPlainLanguage() {
         assertThat(IntentValidationDiagnostic.explain(
                 new IllegalArgumentException("schedule missing startAt/endAt")))

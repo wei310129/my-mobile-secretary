@@ -25,7 +25,8 @@ public class ConditionalRecurrenceRule extends WorkspaceOwnedEntity {
 
     public enum HolidayPolicy {
         NONE,
-        PREVIOUS_BUSINESS_DAY
+        PREVIOUS_BUSINESS_DAY,
+        SKIP
     }
 
     public enum ClosurePolicy {

@@ -1,6 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.knowledge.persistence;
 
 import com.aproject.aidriven.mymobilesecretary.knowledge.domain.PriceRecord;
+import java.time.LocalDate;
 import java.util.List;
 import org.springframework.data.jpa.repository.JpaRepository;
 
@@ -11,4 +12,7 @@ public interface PriceRecordRepository extends JpaRepository<PriceRecord, Long> 
     List<PriceRecord> findByItemNameContainingOrderByPurchasedAtDescIdDesc(String itemName);
 
     List<PriceRecord> findAllByOrderByPurchasedAtDescIdDesc();
+
+    List<PriceRecord> findByPurchasedAtBetweenOrderByPurchasedAtDescIdDesc(
+            LocalDate from, LocalDate to);
 }

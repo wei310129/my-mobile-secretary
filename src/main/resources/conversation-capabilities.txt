@@ -298,3 +298,81 @@
 298|照片看不清楚的時間幫我猜一下|TRAVEL_ITINERARY_IMAGE|拒絕猜時間;回報缺漏讓使用者補正
 299|家庭成員可以看到我的旅行圖片草稿嗎|SHOW_TRAVEL_ITINERARY_DRAFT|不可;草稿按workspace與actor雙重隔離
 300|收據照片不要被當成旅行行程表|RECEIPT_IMAGE|先分類再擷取;收據仍走價格匯入且只呼叫一次模型
+301|明晚七點先跟客戶吃飯，吃完大概九點再去公司拿電腦，拿完提醒我回家前加油|CREATE_SCHEDULE+CREATE_TASK+CREATE_TASK|依序建立19:00–21:00用餐、21:00拿公司電腦待辦；加油使用options.referenceTitle=拿公司電腦,referenceKind=AFTER_TASK_COMPLETION；前項未確認完成前不得建立或提醒加油
+302|下禮拜三上午去台大醫院，十點前到，從家裡開車，幫我抓最晚幾點出門|ASK_DEPARTURE_TIME|dueAt=抵達截止10:00;placeName=台大醫院;options.fromPlaceName=家;交通由Java估算並回顯基本轉場緩衝；沒有明講停車分鐘數不可猜bufferMinutes
+303|明天早上九點開會一小時，先不要建，檢查準備二十分鐘加後面交通四十分鐘會不會撞到|CHECK_FEASIBILITY|title=會議;startAt=09:00;endAt=10:00;options.leadMinutes=20;bufferMinutes=40;只能唯讀檢查08:40–10:40，不可建立行程
+304|把下週所有不是固定的私人行程刪掉，公司跟小孩的都留著，先列清單給我確認後才能刪|BULK_CANCEL_SCHEDULES|startAt/endAt=下週範圍;options.filter=PREVIEW_PRIVATE_ONLY;第一輪只能列PERSONAL非固定候選，WORK/FAMILY/UNKNOWN/固定全部排除，明確確認後才可刪
+305|今天下午跟王經理的會議取消，不是產品會，是後面談合約那場，產品會照常|CANCEL_SCHEDULE|title=談合約;options.referenceTitle=王經理;filter=EXCLUDE:產品會;可填下午時間窗或明確候選ordinal；Java要求唯一，只取消談合約
+306|活動時間還不確定，明天下午三點提醒我要告訴你確切時間|CREATE_TASK|title=補充活動確切時間;dueAt=明日15:00;這是獨立提醒，不得把15:00寫成活動時間或建立缺endAt行程
+307|這是醫院掛號單，請辨識看診日期、醫師和牙科|MEDICAL_APPOINTMENT_IMAGE|圖片含掛號、看診、門診、醫師、科別、牙科、診間或報到等語彙時分類為醫療預約；只存排程必要欄位並建待確認草稿，不擷取身分或診斷資料
+308|我這個月買生活用品花了多少錢|ASK_EXPENSE_HISTORY|startAt/endAt=本月台北邊界;options.category=HOUSEHOLD;依已記錄數量與單價加總
+309|上個月在全國電子消費了什麼|ASK_EXPENSE_HISTORY|startAt/endAt=上月台北邊界;placeName=全國電子;店家同時保留merchant與organization標籤
+310|這週吃麥當勞和喝手搖飲的消費紀錄|ASK_EXPENSE_HISTORY|startAt/endAt=本週台北邊界;title保留查詢關鍵字;唯讀列明細與可靠總額
+311|今年搭高鐵、火車和飛機花多少|ASK_EXPENSE_HISTORY|startAt/endAt=今年台北邊界;options.category=TRANSPORT;不可由LLM估算支出
+312|冰箱是電器的一種|UPSERT_TAG_RELATION|title=冰箱;options.referenceTitle=電器;referenceKind=IS_A;category=PRODUCT;filter=CATEGORY
+313|節能補助是政府補助的一種|UPSERT_TAG_RELATION|title=節能補助;options.referenceTitle=政府補助;referenceKind=IS_A;category=BENEFIT;filter=BENEFIT
+314|政府補助也屬於補助|UPSERT_TAG_RELATION|title=政府補助;options.referenceTitle=補助;referenceKind=IS_A;category=BENEFIT;filter=BENEFIT
+315|全國電子跟電器有關|UPSERT_TAG_RELATION|title=全國電子;options.referenceTitle=電器;referenceKind=RELATED_TO;category=ORGANIZATION;filter=CATEGORY
+316|我在七月十日申請過節能補助|RECORD_TAGGED_LIFE_EVENT|title=申請節能補助;startAt=明確日期台北時間;category=APPLICATION;itemNames=[節能補助]
+317|最近買的電器有哪些|ASK_TAGGED_RECORDS|title=電器;startAt/endAt=使用者所稱最近;filter=PURCHASE;沿IS_A子標籤查詢
+318|最近申請過哪些政府補助|ASK_TAGGED_RECORDS|title=政府補助;startAt/endAt=使用者所稱最近;filter=APPLICATION;沿標籤關係查詢
+319|這是功能建議：所有東西都要有標籤|FEEDBACK|開發需求不建立LifeRecord或tag graph資料
+320|我用 LINE 回覆先前那則活動，再補「7/9」|FOLLOW_UP|以 quotedMessageId 回查 actor-isolated 本地訊息；LINE 無法事後取回原文時才附有限近期上下文，原始新訊息仍獨立留底
+321|活動圖片日期還沒填，我只回「7/9」|FOLLOW_UP|若目前有待補日期的活動草稿，Java 以台北時區當年度解析月日並更新草稿；不得要求使用者重述完整活動
+322|這張是7月9日的颱風停班停課圖卡|WORK_SCHOOL_SUSPENSION_IMAGE|圖片模型只抄日期、縣市與狀態；Java保存為未查核草稿並詢問是否查行政院人事行政總處，不得直接宣稱官方證實
+323|停班停課圖不用查／好請查／沒有回覆|FOLLOW_UP|不用則標記DECLINED；好或要則立即查；10分鐘沒回覆由actor-isolated背景工作查官方頁並透過notification outbox通知，對不上只能回未能證實
+324|這是活動報名成功畫面，已付款並有活動日期時間|EVENT_REGISTRATION_IMAGE|明確實付報名費存為消費紀錄；完整日期時間由Java建立行程；缺欄位只存草稿並逐欄追問；不得把原價或免費活動捏造成支出
+325|把我之前上傳的收據原圖給我|ASK_STORED_MEDIA|title=收據;options.filter=IMAGE;只列本人私有原檔與需App登入的授權URL
+326|把剛才上傳的照片刪掉|ASK_STORED_MEDIA|聊天視窗只回覆請到App檔案管理確認刪除；不得呼叫刪除Service或任何destructive operation
+327|這是水電師傅的名片，幫我記下來|BUSINESS_CARD_IMAGE|先保存原圖；只擷取名片明確可讀欄位並建立本人私有外部聯絡人，不猜測缺漏資料
+328|之前那位水電師傅的電話是多少|ASK_CONTACT|title=水電；只查本人名片聯絡資料，不修改或刪除
+329|這張發票幫我當消費紀錄|RECEIPT_IMAGE|發票沿用逐品項與金額驗證的消費紀錄；原圖先保存
+330|這是房屋稅繳納證明|TAX_PAYMENT_IMAGE|只有實際繳納日期、稅目與實繳金額完整才建立稅款消費紀錄；不可把通知單當已繳
+331|這是銀行隱碼顯示收款人的訂金轉帳紀錄|BANK_TRANSFER_IMAGE|保存待補收款人草稿；隱碼名稱不得當正式公司名或由模型猜測
+332|完整收款公司是迎新淨化科技有限公司|FOLLOW_UP|只補最近本人未過期的轉帳草稿；Java 驗證完整公司名後建立一次訂金消費
+333|這是女兒學校本月菜單|SCHOOL_MENU_IMAGE|先保存原圖；只匯入完整日期、餐別與餐點，不擷取學生個資
+334|這禮拜的牛奶早餐是禮拜幾|ASK_SCHOOL_MEAL|title=牛奶;options.filter=BREAKFAST;startAt/endAt=本週台北邊界；唯讀查結構化菜單
+335|這是我的捐血紀錄|BLOOD_DONATION_RECORD_IMAGE|先保存原圖；只抄明確捐血日期、地點與圖片明載的下次最早日期，不擷取身分、血型或健康問卷，也不自行推算
+336|我上週六在公園捐血，下次最快是10月3日|RECORD_BLOOD_DONATION|startAt=捐血日;dueAt=使用者明講的最早日期;placeName=公園；Java驗證日期後保存
+337|最近那次捐血最快可以再捐是10月3日|SET_BLOOD_DONATION_ELIGIBILITY|dueAt=明確日期；只更新本人最近一筆紀錄，不建立行程或提醒
+338|我現在可以捐血了嗎|ASK_BLOOD_DONATION_ELIGIBILITY|startAt可空由注入Clock取今天；只比較已保存門檻，實際資格仍以當日健康與現場評估為準
+339|這是一桶油漆|PAINT_PRODUCT_IMAGE|先保存原圖；只抄品牌、產品、顏色與色號，依使用者草稿預設（初始7天）建立待註記草稿，不從圖片猜用途、推薦、過敏或購物提醒
+340|這是家裡室內牆和天花板用的水泥漆|RECORD_PRODUCT_USAGE|只套用本人最近待註記圖片；用途以泛用物件註記與標籤保存，不新增油漆專屬用途欄位
+341|這是朋友推薦的油漆品牌和顏色|RECORD_PRODUCT_RECOMMENDATION|只在使用者明講推薦時記錄；圖片本身不是推薦證據
+342|這個油漆害我過敏，以後買油漆提醒我|RECORD_PRODUCT_CAUTION|以泛用註記保存本人明確回報的內容，並因使用者明講而加上購物提醒標籤；不作診斷、不推廣到其他人
+343|把油漆加到購物清單|ADD_SHOPPING_ITEMS|正常加入後由Java沿購物提醒標籤找本人註記；有紀錄則提醒核對，不阻止購買或提供醫療建議
+344|預設草稿保留14天，提醒時間晚上8點|FOLLOW_UP|第一次建立限期草稿時確認預設保留天數與提醒規則；保留1到30天；刪除固定在到期日24:00；提醒最晚23:00且至少晚於收到設定5分鐘
+345|這份草稿保留30天，提醒時間到期前2天晚上9點|FOLLOW_UP|個別草稿的過期與提醒可分別覆寫預設；Java拒絕過去、少於5分鐘、晚於刪除或超過30日的設定
+346|這份草稿的提醒時間改回預設|FOLLOW_UP|只將個別提醒切回預設，個別過期設定不變；反向亦同；修改預設只同步仍使用該項預設的草稿
+347|這是尚未繳的帳單，期限前3天提醒我|PAYMENT_NOTICE_IMAGE|先保存原圖；只抄費用名稱、收款單位、期限與明確金額，不保存帳號、條碼或驗證碼；不視為已付款，也不自動付款
+348|明天整理帳務，有空時提醒我做|CREATE_FLEXIBLE_DAY_TASK|startAt=目標日期台北時區00:00；Java依已確認行程找可用提醒空檔；不建立00:00–24:00行程，完成或取消後停止提醒
+349|最近有沒有水費、電費、瓦斯費、學費或停車費等繳費紀錄|ASK_PAYMENT_HISTORY|不追問日期；列最近已保存的實際付款型消費，通知草稿與未確認付款不算已繳
+350|每週三七點上英文課做到年底，國定假日不用上，補課時間老師會另外說|FOLLOW_UP|國定假日須有官方確認才跳過；未知時等待；補課不自動建立；缺課程時長先澄清，補齊後只建待啟用條件規則草稿
+351|所有時間顯示改成12小時制|FOLLOW_UP|按使用者保存時間顯示偏好，可切換12或24小時制；聊天、LINE回覆與主動通知皆套用；API與資料庫ISO時間欄位不變；未設定預設24小時制
+352|下個月第一個禮拜一早上九點月會，之後每個月都一樣|FOLLOW_UP|缺時長先澄清；補齊後recurrence=MONTHLY_NTH_WEEKDAY；不得降級成WEEKLY
+353|明晚八點去健身房，若臨時休館就在家運動，場地明天六點再決定|FOLLOW_UP|決策時間AM/PM與時長不明先澄清；只存actor條件場地草稿與提醒；選定後只建一筆行程
+354|回覆剛才的 Windows 專業版照片問「我什麼時候買的」|FOLLOW_UP|引用圖片時帶入該圖的有限解析摘要供LLM理解；deterministic快速規則只看本次原文，不得被舊回覆中的「決定」或「草稿」誤導
+355|這是家裡的電費|FOLLOW_UP|只確認本人最近一批待匯入電費歷程的用電地點；圖片先暫存，確認地點前不併入正式歷程；同地點同月份更新且不重複新增
+356|113年各月份電費是多少以及當年度總和|FOLLOW_UP|民國年月由Java轉換；按本人與用電地點查詢並加總已知金額；缺漏或被截斷金額必須明示，不得算成0或猜測完整年總額
+357|上次買 Microsoft 相關產品或服務是什麼時候|ASK_LAST_PURCHASE|title=Microsoft;Java 同時比對品項、merchant、organization與已保存標籤；回覆實際品項、購買日期、商家與金額，不把品牌查詢誤當不存在
+358|幫這桶漆加上「客廳工程」和「第二批色差」標籤，不用連購物提醒|RECORD_PRODUCT_ANNOTATION|options.itemNames只放使用者明講標籤；註記存泛用object annotation並以tag binding連結；未明講時不得預設朋友推薦、不適或購物提醒
+359|查我記過的青葉油漆|ASK_TAGGED_RECORDS|title=青葉油漆；商品註記必須同時以完整產品、產品類別、品牌加類別及「漆」等Java建立的查詢標籤找回，不要求完整OCR標題
+360|查我記過的居家修繕或塗料商品|ASK_TAGGED_RECORDS|title=居家修繕；商品圖可由模型提出最多8個大眾通用分類，Java過濾私人用途、推薦、不適與提醒等主張，並以IMPORT或SYSTEM_RULE來源建立關聯
+361|我家113年電費|FOLLOW_UP|年份本身即為年度查詢；民國年由Java轉換，直接列已記錄月份與已知金額合計，不得落到通用價格或標籤查詢
+362|給我我家歷年9月電費|FOLLOW_UP|由Java按本人、用電地點與月份跨年度查詢；列每筆實際年月、金額與用電量，沒有資料時明確回覆無紀錄
+363|我家以前有電費超過3000嗎|FOLLOW_UP|金額門檻由Java解析並查已確認電費歷程；只比較有金額的月份，列出命中年月，不得改查通用商品價格
+364|我家113年跟112年電費比較|FOLLOW_UP|按兩年度已記錄月份分別計算已知金額與缺值，再顯示差額；不得把缺少月份推定為0或宣稱完整年度總額
+365|幫我查青葉水泥漆 Emulsion Paint 大麥白 107|ASK_TAGGED_RECORDS|查詢動詞不得當成標籤內容；完整商品句可以已存的品牌、產品或類別標籤找回object annotation主旨與註記
+366|給我113、112兩年個別的家裡電費明細與總和|FOLLOW_UP|由Java解析逗號或連接詞串接的多個民國年；每年分別列月份明細與已知金額合計，不得回退到今年
+367|這是台灣昆蟲館的參觀資訊，幫我記得，下次要去時提醒我這個活動可以預約|RECORD_VENUE_VISIT_INFO|placeName=台灣昆蟲館；保存場館參觀／展出規則，不建立行程或宣稱完成預約；圖片場館不明時先追問，不從背景猜
+368|台灣昆蟲館有什麼要先預約的參觀資訊|ASK_VENUE_VISIT_INFO|placeName=台灣昆蟲館；只讀本人已確認資訊，建立相符場館行程時一併提示，並提醒預約前確認最新公告
+369|幫我查油漆購買價格和已存註記|FOLLOW_UP|查詢路由依實際命中資料與語意線索評分，不依handler排列順序；購買與註記相關性接近時先詢問使用者要查哪類
+370|「拿包裹」是草稿、待辦還是提醒紀錄？|FOLLOW_UP|Java依實際資料分類並編號列出；無dueAt為待辦事項，有dueAt為行程提醒；不得由未完成活動草稿搶答
+371|把沒有時間的待辦改成明天下午三點提醒|CONVERT_TASK_TO_SCHEDULE_REMINDER|title放既有待辦關鍵字；dueAt放明確提醒時點；Java轉換後排提醒但不占用時段、不參與行程撞期
+372|把這個行程提醒改成需要本人到場的行程|FOLLOW_UP|行程提醒可轉行程；Java必須先驗證開始／結束、本人到場、撞期、地點與可行性，未通過前不得異動
+373|刪除第二筆油漆知識紀錄|FOLLOW_UP|只接受上一份Java編號知識清單內的object annotation；先預覽，明確確認後才做可恢復封存；購買、生命紀錄與其他類型不得順帶刪除
+374|完成這筆商品圖片草稿|FOLLOW_UP|由Java把最近待處理商品圖片草稿轉成可長期查詢的object annotation並完成草稿；不得改成行程、提醒或再次詢問保留期
+375|把第2筆知識紀錄的內容改成：客廳牆面使用大麥白107|FOLLOW_UP|只更新上一份Java編號知識清單指定的object annotation，不建立重複紀錄；保留createdAt並更新updatedAt，知識沒有完成狀態且不可轉回草稿
+376|刷油漆的地點？|FOLLOW_UP|pending活動草稿不得只因「地點」等單一弱關鍵字接管；候選低於Java相關性門檻時必須fall through，LINE明確引用且指向同一草稿時才可接續
+377|把拿包裹的行程提醒改回沒有時間的待辦事項|CONVERT_TASK_TO_TODO|title放既有項目關鍵字；Java清除dueAt並移除提醒排程；不得轉回草稿
+378|列出目前有庫存的品項|LIST_INVENTORY|Java只列inventoryQuantity大於0的已知庫存；零筆固定回覆「📍 共找到 0 個品項：」，不得列出數量0

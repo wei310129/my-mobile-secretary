@@ -25,6 +25,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 /**
  * 提醒觸發的兩道守門測試:任務狀態、debounce 視窗。
@@ -50,6 +51,8 @@ class ReminderTriggerServiceTest {
 
     @Mock
     private ReminderPreferenceService preferenceService;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     private ReminderTriggerService service;
 
@@ -59,6 +62,7 @@ class ReminderTriggerServiceTest {
                 taskRepository, reminderRepository, deliveryService, scheduleService,
                 preferenceService,
                 new ReminderProperties(WINDOW, ESCALATION_INTERVAL, 3),
+                eventPublisher,
                 Clock.fixed(NOW, ZoneOffset.UTC));
         lenient().when(preferenceService.deferUntil(any(Task.class), any(Instant.class)))
                 .thenReturn(Optional.empty());

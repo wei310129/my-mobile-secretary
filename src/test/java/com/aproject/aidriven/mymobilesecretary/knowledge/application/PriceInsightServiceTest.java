@@ -36,6 +36,8 @@ class PriceInsightServiceTest {
         PriceRecord previous = price(100, "家樂福", LocalDate.of(2030, 8, 1));
         PriceRecord oldest = price(140, "全聯", LocalDate.of(2030, 7, 20));
         when(priceRecordService.list("牛奶")).thenReturn(List.of(latest, previous, oldest));
+        when(priceRecordService.searchByKeyword("牛奶"))
+                .thenReturn(List.of(latest, previous, oldest));
 
         var summary = service.summary("牛奶").orElseThrow();
 
@@ -65,10 +67,26 @@ class PriceInsightServiceTest {
     @Test
     void emptyHistoryProducesNoInsight() {
         when(priceRecordService.list("不存在")).thenReturn(List.of());
+        when(priceRecordService.searchByKeyword("不存在")).thenReturn(List.of());
 
         assertThat(service.lastPurchase("不存在")).isEmpty();
         assertThat(service.summary("不存在")).isEmpty();
         assertThat(service.favoriteStore("不存在")).isEmpty();
+    }
+
+    @Test
+    void lastPurchaseCanMatchMerchantKeywordAndImageContext() {
+        PriceRecord windows = PriceRecord.record(null,
+                "升級至 Windows 10/11 專業版", "Microsoft", 2999,
+                LocalDate.of(2024, 10, 1), NOW);
+        when(priceRecordService.searchByKeyword("Microsoft")).thenReturn(List.of(windows));
+        when(priceRecordService.list(null)).thenReturn(List.of(windows));
+
+        assertThat(service.lastPurchase("Microsoft")).hasValueSatisfying(last ->
+                assertThat(last.record()).isSameAs(windows));
+        assertThat(service.lastPurchaseMentionedIn(
+                "[圖片解析結果] Microsoft 升級至 Windows 10/11 專業版"))
+                .hasValueSatisfying(last -> assertThat(last.record()).isSameAs(windows));
     }
 
     private static PriceRecord price(int price, String store, LocalDate date) {

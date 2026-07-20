@@ -9,7 +9,6 @@ import com.aproject.aidriven.mymobilesecretary.knowledge.application.PlanningPre
 import com.aproject.aidriven.mymobilesecretary.knowledge.domain.LifestyleWindow;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityResult;
-import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskStatus;
 import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
@@ -102,10 +101,62 @@ public class FeasibilityService {
             return FeasibilityResult.withIssues(issues);
         }
         checkTimeOverlap(candidate, confirmed, issues);
-        checkTimedTasks(candidate, issues);
+        // 定時待辦在共同語意上屬於「行程提醒」：顯示於日曆，但像鬧鐘一樣不占用時段，
+        // 因此不參與行程撞期。只有真正的 ScheduleItem busy interval 才能阻擋候選行程。
         checkLifestyleWindows(candidate, issues);
         checkTravel(candidate, confirmed, issues);
         return FeasibilityResult.withIssues(issues);
+    }
+
+    /**
+     * 唯讀分析尚未建立的行程時間窗。準備、主行程、後續交通分段檢查，
+     * 讓回覆能指出是哪一段撞期；本方法不建立或修改任何 ScheduleItem。
+     */
+    public HypotheticalWindowAnalysis analyzeHypotheticalWindow(
+            String title, Instant startAt, Instant endAt,
+            Duration preparation, Duration afterTravel) {
+        if (startAt == null || endAt == null || !endAt.isAfter(startAt)) {
+            throw new IllegalArgumentException("hypothetical schedule time range is invalid");
+        }
+        Duration before = validatedWindowBuffer(preparation, "preparation");
+        Duration after = validatedWindowBuffer(afterTravel, "after travel");
+        List<HypotheticalSegmentWindow> segments = List.of(
+                new HypotheticalSegmentWindow(
+                        HypotheticalSegment.PREPARATION, startAt.minus(before), startAt),
+                new HypotheticalSegmentWindow(HypotheticalSegment.MAIN, startAt, endAt),
+                new HypotheticalSegmentWindow(
+                        HypotheticalSegment.AFTER_TRAVEL, endAt, endAt.plus(after)));
+        List<ScheduleItem> confirmed = scheduleItemRepository
+                .findByStatusOrderByStartAtAsc(ScheduleStatus.CONFIRMED).stream()
+                .filter(ScheduleItem::isCountsForActorBusy)
+                .toList();
+        List<HypotheticalConflict> conflicts = new ArrayList<>();
+        for (HypotheticalSegmentWindow segment : segments) {
+            if (!segment.endAt().isAfter(segment.startAt())) {
+                continue;
+            }
+            for (ScheduleItem other : confirmed) {
+                Instant overlapStart = segment.startAt().isAfter(other.getStartAt())
+                        ? segment.startAt() : other.getStartAt();
+                Instant overlapEnd = segment.endAt().isBefore(other.getEndAt())
+                        ? segment.endAt() : other.getEndAt();
+                if (overlapEnd.isAfter(overlapStart)) {
+                    conflicts.add(new HypotheticalConflict(
+                            segment.segment(), other.getTitle(), overlapStart, overlapEnd));
+                }
+            }
+        }
+        return new HypotheticalWindowAnalysis(
+                title, startAt, endAt, startAt.minus(before), endAt.plus(after),
+                before, after, conflicts);
+    }
+
+    private static Duration validatedWindowBuffer(Duration value, String field) {
+        Duration buffer = value == null ? Duration.ZERO : value;
+        if (buffer.isNegative() || buffer.compareTo(Duration.ofHours(4)) > 0) {
+            throw new IllegalArgumentException(field + " must be between 0 and 240 minutes");
+        }
+        return buffer;
     }
 
     /**
@@ -167,23 +218,6 @@ public class FeasibilityService {
         };
     }
 
-    /** 行程跨過待辦的提醒／期限時先擋下詢問，不能假裝整段都有空。 */
-    private void checkTimedTasks(ScheduleItem candidate, List<FeasibilityIssue> issues) {
-        taskRepository.findByStatusIn(java.util.EnumSet.of(
-                        TaskStatus.CREATED, TaskStatus.SCHEDULED,
-                        TaskStatus.REMINDED, TaskStatus.ESCALATED)).stream()
-                .filter(task -> task.getDueAt() != null)
-                .filter(task -> !task.getDueAt().isBefore(candidate.getStartAt())
-                        && task.getDueAt().isBefore(candidate.getEndAt()))
-                .forEach(task -> issues.add(new FeasibilityIssue(
-                        FeasibilityIssue.Type.TASK_DUE_DURING_SCHEDULE,
-                        "行程「%s」%s–%s 會跨過待辦「%s」的提醒／期限 %s。"
-                                .formatted(candidate.getTitle(), format(candidate.getStartAt()),
-                                        formatTime(candidate.getEndAt()), task.getTitle(),
-                                        format(task.getDueAt())),
-                        null)));
-    }
-
     /** 時間重疊:候選 [start,end) 與任一 CONFIRMED [start,end) 相交即衝突。 */
     private void checkTimeOverlap(ScheduleItem candidate, List<ScheduleItem> confirmed,
                                   List<FeasibilityIssue> issues) {
@@ -235,6 +269,36 @@ public class FeasibilityService {
     private static String formatTime(Instant instant) {
         return ZonedDateTime.ofInstant(instant, TAIPEI)
                 .format(DateTimeFormatter.ofPattern("HH:mm"));
+    }
+
+    public enum HypotheticalSegment {
+        PREPARATION,
+        MAIN,
+        AFTER_TRAVEL
+    }
+
+    public record HypotheticalSegmentWindow(
+            HypotheticalSegment segment, Instant startAt, Instant endAt) {
+    }
+
+    public record HypotheticalConflict(
+            HypotheticalSegment segment, String existingTitle,
+            Instant overlapStart, Instant overlapEnd) {
+    }
+
+    public record HypotheticalWindowAnalysis(
+            String title, Instant startAt, Instant endAt,
+            Instant windowStart, Instant windowEnd,
+            Duration preparation, Duration afterTravel,
+            List<HypotheticalConflict> conflicts) {
+
+        public HypotheticalWindowAnalysis {
+            conflicts = List.copyOf(conflicts);
+        }
+
+        public boolean feasible() {
+            return conflicts.isEmpty();
+        }
     }
 
     /**

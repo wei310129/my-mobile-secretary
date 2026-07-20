@@ -8,6 +8,7 @@ import com.aproject.aidriven.mymobilesecretary.shared.error.NotFoundException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.Optional;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,6 +30,7 @@ public class ReminderTriggerService {
     private final ReminderScheduleService scheduleService;
     private final ReminderPreferenceService preferenceService;
     private final ReminderProperties properties;
+    private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
     public ReminderTriggerService(TaskRepository taskRepository,
@@ -37,6 +39,7 @@ public class ReminderTriggerService {
                                   ReminderScheduleService scheduleService,
                                   ReminderPreferenceService preferenceService,
                                   ReminderProperties properties,
+                                  ApplicationEventPublisher eventPublisher,
                                   Clock clock) {
         this.taskRepository = taskRepository;
         this.reminderRepository = reminderRepository;
@@ -44,6 +47,7 @@ public class ReminderTriggerService {
         this.scheduleService = scheduleService;
         this.preferenceService = preferenceService;
         this.properties = properties;
+        this.eventPublisher = eventPublisher;
         this.clock = clock;
     }
 
@@ -85,6 +89,8 @@ public class ReminderTriggerService {
 
         // 排入第一次升級催促:逾時未確認就再提醒(追蹤到底,秘書與鬧鐘的差別)
         scheduleService.scheduleEscalation(reminder.getId(), 1, now.plus(properties.escalationInterval()));
+        eventPublisher.publishEvent(new ReminderTriggeredEvent(
+                reminder.getId(), taskId, task.getTitle(), reason, now));
         return Optional.of(reminder);
     }
 }

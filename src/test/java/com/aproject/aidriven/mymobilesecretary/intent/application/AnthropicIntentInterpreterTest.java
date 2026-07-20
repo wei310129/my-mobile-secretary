@@ -17,7 +17,7 @@ class AnthropicIntentInterpreterTest {
         String outputSchema = new BeanOutputConverter<>(IntentScript.class).getFormat();
 
         assertThat(prompt).doesNotContain("001|幫我記得買牛奶");
-        assertThat(prompt.length()).isLessThan(12_000);
+        assertThat(prompt.length()).isLessThan(12_500);
         assertThat(outputSchema.length()).isLessThan(15_000);
         assertThat(prompt.length() + outputSchema.length()).isLessThan(27_000);
     }

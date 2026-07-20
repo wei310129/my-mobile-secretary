@@ -1,6 +1,9 @@
 # 測試環境:資料庫與 Redis 連線由 Testcontainers @ServiceConnection 動態注入,
 # 這裡不寫死連線資訊,只放測試專屬的行為設定。
 app:
+  media:
+    storage:
+      root: ${java.io.tmpdir}/my-mobile-secretary-test-media
   workspace:
     # Existing integration tests predate explicit workspace scopes and run in the legacy tenant.
     legacy-fallback-enabled: true

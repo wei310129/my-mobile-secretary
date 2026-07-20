@@ -27,11 +27,14 @@ class BulkScheduleCancellationServiceTest {
     @Mock
     private ScheduleService scheduleService;
 
+    @Mock
+    private ConversationContextService contextService;
+
     private BulkScheduleCancellationService service;
 
     @BeforeEach
     void setUp() {
-        service = new BulkScheduleCancellationService(scheduleService);
+        service = new BulkScheduleCancellationService(scheduleService, contextService);
     }
 
     @Test
@@ -69,6 +72,30 @@ class BulkScheduleCancellationServiceTest {
         IntentResult result = service.cancelWithin(FROM, TO);
 
         assertThat(result.message()).contains("什麼都沒動");
+        verify(scheduleService, never()).cancelSchedule(any());
+    }
+
+    @Test
+    void privatePreviewExcludesWorkFamilyUnknownAndRecurringWithoutDeleting() {
+        ScheduleItem personal = proposed("健身", "2026-07-21T10:00:00+08:00");
+        personal.categorize(ScheduleItem.Category.PERSONAL, NOW);
+        ScheduleItem work = proposed("公司會議", "2026-07-21T11:00:00+08:00");
+        work.categorize(ScheduleItem.Category.WORK, NOW);
+        ScheduleItem family = proposed("小孩回診", "2026-07-21T12:00:00+08:00");
+        family.categorize(ScheduleItem.Category.FAMILY, NOW);
+        ScheduleItem unknown = proposed("舊資料", "2026-07-21T13:00:00+08:00");
+        ScheduleItem recurring = proposed("固定運動", "2026-07-21T14:00:00+08:00");
+        recurring.categorize(ScheduleItem.Category.PERSONAL, NOW);
+        recurring.repeat(ScheduleItem.Recurrence.WEEKLY, NOW);
+        when(scheduleService.listSchedules(null))
+                .thenReturn(List.of(personal, work, family, unknown, recurring));
+
+        IntentResult result = service.previewPrivateWithin(FROM, TO);
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.SCHEDULE_CANCELLATION_PREVIEWED);
+        assertThat(result.message()).contains("健身", "公司會議", "小孩回診", "舊資料", "固定運動",
+                "目前尚未刪除", "確認刪除剛才清單");
+        verify(contextService).rememberScheduleList(List.of(personal));
         verify(scheduleService, never()).cancelSchedule(any());
     }
 

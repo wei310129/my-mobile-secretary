@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
@@ -21,13 +22,17 @@ final class IntentScriptSafetyPolicy {
     }
 
     static IntentScript apply(String text, IntentScript script) {
+        return apply(text, script, Clock.systemDefaultZone());
+    }
+
+    static IntentScript apply(String text, IntentScript script, Clock clock) {
         if (script == null || script.commands() == null) {
             return script;
         }
-        IntentScript result = CalendarDatePolicy.guard(text, script);
+        IntentScript result = CalendarDatePolicy.guard(text, script, clock);
         if (result.commands().stream().anyMatch(command ->
                 command != null && command.type() == IntentCommand.Type.UNKNOWN
-                        && CalendarDatePolicy.clarification(text).isPresent())) {
+                        && CalendarDatePolicy.clarification(text, clock).isPresent())) {
             return result;
         }
         result = guardTeacherNoticeWithoutEnd(text, result);

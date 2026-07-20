@@ -4,6 +4,9 @@ import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedE
 import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
 import java.time.Instant;
 import java.time.LocalDate;
+import java.util.Arrays;
+import java.util.LinkedHashSet;
+import java.util.Set;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.GeneratedValue;
@@ -33,6 +36,19 @@ public class PriceRecord extends WorkspaceOwnedEntity {
     private int priceTwd;
 
     @Column(nullable = false)
+    private int quantity;
+
+    @Column(nullable = false)
+    private int totalPriceTwd;
+
+    @Column(nullable = false, length = 30)
+    @jakarta.persistence.Enumerated(jakarta.persistence.EnumType.STRING)
+    private ExpenseCategory expenseCategory;
+
+    @Column(nullable = false, length = 1000)
+    private String semanticTags;
+
+    @Column(nullable = false)
     private LocalDate purchasedAt;
 
     @Column(nullable = false)
@@ -43,11 +59,17 @@ public class PriceRecord extends WorkspaceOwnedEntity {
     }
 
     private PriceRecord(Long itemId, String itemName, String storeName,
-                        int priceTwd, LocalDate purchasedAt, Instant now) {
+                        int priceTwd, int quantity, int totalPriceTwd,
+                        ExpenseCategory expenseCategory, Set<String> semanticTags,
+                        LocalDate purchasedAt, Instant now) {
         this.itemId = itemId;
         this.itemName = itemName;
         this.storeName = storeName;
         this.priceTwd = priceTwd;
+        this.quantity = quantity;
+        this.totalPriceTwd = totalPriceTwd;
+        this.expenseCategory = expenseCategory;
+        this.semanticTags = String.join("|", semanticTags);
         this.purchasedAt = purchasedAt;
         this.createdAt = now;
     }
@@ -55,13 +77,32 @@ public class PriceRecord extends WorkspaceOwnedEntity {
     /** 建立價格紀錄;價格必須為正(0 元多半是解析錯誤,不能汙染價格歷史)。 */
     public static PriceRecord record(Long itemId, String itemName, String storeName,
                                      int priceTwd, LocalDate purchasedAt, Instant now) {
+        return record(itemId, itemName, storeName, priceTwd, 1, priceTwd,
+                ExpenseCategory.UNKNOWN, Set.of(), purchasedAt, now);
+    }
+
+    /** Creates one validated consumption line; total is persisted separately from unit price. */
+    public static PriceRecord record(Long itemId, String itemName, String storeName,
+                                     int priceTwd, int quantity, int totalPriceTwd,
+                                     ExpenseCategory category, Set<String> semanticTags,
+                                     LocalDate purchasedAt, Instant now) {
         if (itemName == null || itemName.isBlank()) {
             throw new BusinessException("INVALID_PRICE_RECORD", "itemName must not be blank");
         }
         if (priceTwd <= 0) {
             throw new BusinessException("INVALID_PRICE_RECORD", "priceTwd must be positive");
         }
-        return new PriceRecord(itemId, itemName.strip(), storeName, priceTwd, purchasedAt, now);
+        if (quantity <= 0 || quantity > 10000) {
+            throw new BusinessException("INVALID_PRICE_RECORD", "quantity must be between 1 and 10000");
+        }
+        if (totalPriceTwd <= 0) {
+            throw new BusinessException("INVALID_PRICE_RECORD", "totalPriceTwd must be positive");
+        }
+        return new PriceRecord(itemId, itemName.strip(),
+                storeName == null ? null : storeName.strip(), priceTwd, quantity, totalPriceTwd,
+                category == null ? ExpenseCategory.UNKNOWN : category,
+                semanticTags == null ? Set.of() : semanticTags,
+                purchasedAt, now);
     }
 
     public Long getId() {
@@ -82,6 +123,25 @@ public class PriceRecord extends WorkspaceOwnedEntity {
 
     public int getPriceTwd() {
         return priceTwd;
+    }
+
+    public int getQuantity() {
+        return quantity;
+    }
+
+    public int getTotalPriceTwd() {
+        return totalPriceTwd;
+    }
+
+    public ExpenseCategory getExpenseCategory() {
+        return expenseCategory;
+    }
+
+    public Set<String> getSemanticTags() {
+        if (semanticTags == null || semanticTags.isBlank()) {
+            return Set.of();
+        }
+        return Set.copyOf(new LinkedHashSet<>(Arrays.asList(semanticTags.split("\\|"))));
     }
 
     public LocalDate getPurchasedAt() {

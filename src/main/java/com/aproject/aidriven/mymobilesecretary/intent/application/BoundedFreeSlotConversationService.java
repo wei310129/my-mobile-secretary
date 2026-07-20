@@ -1,6 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
 import com.aproject.aidriven.mymobilesecretary.planner.application.FreeSlotService;
+import com.aproject.aidriven.mymobilesecretary.shared.time.ChineseTimePeriod;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -23,7 +24,7 @@ public class BoundedFreeSlotConversationService {
     private static final String HOUR =
             "(?:\\d{1,2}|[一二三四五六七八九兩]|十(?:[一二三四五六七八九])?|二十(?:[一二三])?)";
     private static final String CLOCK =
-            "(?:(?:凌晨|早上|上午|中午|下午|晚上))?" + HOUR
+            ChineseTimePeriod.NON_CAPTURING_REGEX + "?" + HOUR
                     + "(?:點(?:半|[零一二三四五六七八九十兩\\d]{1,2}分?)?|:[0-5]\\d)";
     private static final Pattern RANGE = Pattern.compile(
             "明天(?<start>" + CLOCK + ")(?:到|至)(?<end>" + CLOCK + ")");
@@ -88,15 +89,12 @@ public class BoundedFreeSlotConversationService {
     }
 
     private static String periodOf(String raw) {
-        for (String period : List.of("凌晨", "早上", "上午", "中午", "下午", "晚上")) {
-            if (raw.startsWith(period)) return period;
-        }
-        return null;
+        return ChineseTimePeriod.leadingPeriod(raw);
     }
 
     private static LocalTime parseTime(String raw, String defaultPeriod) {
         Matcher matcher = Pattern.compile(
-                "(?:(凌晨|早上|上午|中午|下午|晚上))?(" + HOUR
+                ChineseTimePeriod.CAPTURING_REGEX + "?(" + HOUR
                         + ")(?:點(?:(半)|([零一二三四五六七八九十兩\\d]{1,2})分?)?|:([0-5]\\d))")
                 .matcher(raw);
         if (!matcher.matches()) return null;
@@ -105,9 +103,7 @@ public class BoundedFreeSlotConversationService {
                 : matcher.group(4) != null ? number(matcher.group(4))
                 : matcher.group(5) != null ? Integer.parseInt(matcher.group(5)) : 0;
         String period = matcher.group(1) == null ? defaultPeriod : matcher.group(1);
-        if (("下午".equals(period) || "晚上".equals(period)) && hour < 12) hour += 12;
-        else if ("中午".equals(period) && hour < 11) hour += 12;
-        else if ("凌晨".equals(period) && hour == 12) hour = 0;
+        hour = ChineseTimePeriod.toTwentyFourHour(period, hour);
         return hour > 23 || minute > 59 ? null : LocalTime.of(hour, minute);
     }
 

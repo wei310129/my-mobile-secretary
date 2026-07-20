@@ -1,12 +1,16 @@
 package com.aproject.aidriven.mymobilesecretary.api.line;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aproject.aidriven.mymobilesecretary.IntegrationTestBase;
 import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubIntentInterpreter;
+import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubReceiptInterpreter;
+import com.aproject.aidriven.mymobilesecretary.integration.line.LineContentClient;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
+import com.aproject.aidriven.mymobilesecretary.intent.application.ReceiptCommand;
 import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
@@ -15,6 +19,7 @@ import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /**
  * LINE webhook 整合測試:驗簽 → 解析 → 走真實 IntentService(stub 解析器)→ 建任務。
@@ -31,6 +36,10 @@ class LineWebhookApiTest extends IntegrationTestBase {
     private StubIntentInterpreter stub;
     @Autowired
     private TaskRepository taskRepository;
+    @Autowired
+    private StubReceiptInterpreter receiptStub;
+    @MockitoBean
+    private LineContentClient contentClient;
 
     private String sign(byte[] body) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
@@ -133,6 +142,7 @@ class LineWebhookApiTest extends IntegrationTestBase {
      */
     @Test
     void imageEventSurvivesContentFetchFailure() throws Exception {
+        when(contentClient.fetchContent("m-1")).thenThrow(new IllegalStateException("unavailable"));
         byte[] body = """
                 {"events":[{"type":"message","replyToken":"rt-3","source":{"userId":"%s"},\
                 "message":{"id":"m-1","type":"image"}}]}
@@ -143,6 +153,134 @@ class LineWebhookApiTest extends IntegrationTestBase {
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body))
                 .andExpect(status().isOk());
+    }
+
+    @Test
+    void successfulImageEventStoresOriginalBeforeInterpretation() throws Exception {
+        String messageId = "m-store-" + java.util.UUID.randomUUID();
+        byte[] png = new byte[] {
+            (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 1, 2, 3
+        };
+        when(contentClient.fetchContent(messageId))
+                .thenReturn(new LineContentClient.MessageContent(png, "image/png"));
+        receiptStub.nextCommand(new ReceiptCommand(
+                "測試商店", "2026-07-19",
+                java.util.List.of(new ReceiptCommand.Line("測試品項", 10, 1))));
+        byte[] body = """
+                {"events":[{"type":"message","replyToken":"rt-store",\
+                "webhookEventId":"event-%s","source":{"userId":"%s"},\
+                "message":{"id":"%s","type":"image"}}]}
+                """.formatted(messageId, OWNER_USER_ID, messageId)
+                .getBytes(StandardCharsets.UTF_8);
+
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(body))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        String media = mockMvc.perform(
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .get("/api/media"))
+                .andExpect(status().isOk())
+                .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
+        assertThat(media).contains("\"sourceType\":\"LINE\"")
+                .contains("\"mediaType\":\"image/png\"");
+    }
+
+    @Test
+    void utilityHistoryImageAsksLocationThenSupportsAnnualQuery() throws Exception {
+        String messageId = "m-utility-" + java.util.UUID.randomUUID();
+        byte[] png = new byte[] {
+            (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 4, 5, 6
+        };
+        when(contentClient.fetchContent(messageId))
+                .thenReturn(new LineContentClient.MessageContent(png, "image/png"));
+        receiptStub.nextCommand(new ReceiptCommand(null, null, java.util.List.of(),
+                ReceiptCommand.DocumentType.UTILITY_BILL_HISTORY, "電費歷程",
+                java.util.List.of(), java.util.List.of(), java.util.List.of(), null,
+                java.util.List.of(), null, null, null,
+                new ReceiptCommand.UtilityBillInfo("台灣電力公司", java.util.List.of(
+                        new ReceiptCommand.UtilityBillEntry("113/03", 640, 1248),
+                        new ReceiptCommand.UtilityBillEntry("112/07", 728, null)))));
+        byte[] imageBody = """
+                {"events":[{"type":"message","replyToken":"rt-utility",\
+                "webhookEventId":"event-%s","source":{"userId":"%s"},\
+                "message":{"id":"%s","type":"image"}}]}
+                """.formatted(messageId, OWNER_USER_ID, messageId)
+                .getBytes(StandardCharsets.UTF_8);
+
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(imageBody))
+                        .contentType(MediaType.APPLICATION_JSON).content(imageBody))
+                .andExpect(status().isOk());
+        byte[] locationBody = textMessageEvent("這是家裡的電費");
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(locationBody))
+                        .contentType(MediaType.APPLICATION_JSON).content(locationBody))
+                .andExpect(status().isOk());
+        for (String query : java.util.List.of(
+                "我家113年電費",
+                "給我我家歷年7月電費",
+                "我家以前有電費超過1200嗎")) {
+            byte[] queryBody = textMessageEvent(query);
+            mockMvc.perform(post("/api/line/webhook")
+                            .header("X-Line-Signature", sign(queryBody))
+                            .contentType(MediaType.APPLICATION_JSON).content(queryBody))
+                    .andExpect(status().isOk());
+        }
+
+        String logs = mockMvc.perform(
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .get("/api/line/messages").param("limit", "30"))
+                .andExpect(status().isOk()).andReturn().getResponse()
+                .getContentAsString(StandardCharsets.UTF_8);
+        assertThat(logs).contains("這是哪個用電地點", "已把 2 筆電費歷程歸到")
+                .contains("民國 113 年", "NT$ 1,248")
+                .contains("7 月的歷年", "民國 112 年 7 月", "金額未顯示")
+                .contains("超過 NT$ 1,200");
+    }
+
+    @Test
+    void windowsPurchaseImageSupportsGenericAndMicrosoftFollowUpQuestions() throws Exception {
+        String messageId = "m-windows-" + java.util.UUID.randomUUID();
+        byte[] png = new byte[] {
+            (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 7, 8, 9
+        };
+        when(contentClient.fetchContent(messageId))
+                .thenReturn(new LineContentClient.MessageContent(png, "image/png"));
+        receiptStub.nextCommand(new ReceiptCommand(
+                "Microsoft", "2024-10-01", java.util.List.of(
+                        new ReceiptCommand.Line("升級至 Windows 10/11 專業版", 2999, 1))));
+        byte[] imageBody = """
+                {"events":[{"type":"message","replyToken":"rt-windows",\
+                "webhookEventId":"event-%s","source":{"userId":"%s"},\
+                "message":{"id":"%s","type":"image"}}]}
+                """.formatted(messageId, OWNER_USER_ID, messageId)
+                .getBytes(StandardCharsets.UTF_8);
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(imageBody))
+                        .contentType(MediaType.APPLICATION_JSON).content(imageBody))
+                .andExpect(status().isOk());
+
+        byte[] generic = textMessageEvent("我什麼時候買的？");
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(generic))
+                        .contentType(MediaType.APPLICATION_JSON).content(generic))
+                .andExpect(status().isOk());
+        byte[] merchant = textMessageEvent("上次買 Microsoft 相關產品或服務是什麼時候");
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(merchant))
+                        .contentType(MediaType.APPLICATION_JSON).content(merchant))
+                .andExpect(status().isOk());
+
+        String logs = mockMvc.perform(
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .get("/api/line/messages").param("limit", "20"))
+                .andExpect(status().isOk()).andReturn().getResponse()
+                .getContentAsString(StandardCharsets.UTF_8);
+        assertThat(logs).contains("2024-10-01", "Microsoft",
+                "升級至 Windows 10/11 專業版", "NT$ 2,999");
     }
 
     /** 對話紀錄閉環:進出訊息都留底,GET /api/line/messages 查得到。 */

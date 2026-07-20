@@ -487,6 +487,48 @@ class IntentApiTest extends IntegrationTestBase {
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString("全聯")));
     }
 
+    /** 消費區間查詢只加總已保存的數量與單價，並可依店家與受控分類篩選。 */
+    @Test
+    void askExpenseHistoryFiltersMerchantCategoryAndReportsAuditableTotal() throws Exception {
+        priceRecordService.record("消費查詢測試冷氣", "全國電子", 20000, 2,
+                java.time.LocalDate.parse("2026-07-10"));
+        priceRecordService.record("消費查詢測試鮮奶", "全聯", 95, 1,
+                java.time.LocalDate.parse("2026-07-11"));
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.ASK_EXPENSE_HISTORY, null, null,
+                "2026-07-01T00:00:00+08:00", "2026-07-31T23:59:59+08:00",
+                "全國電子", null, null, null, null, null, null, null,
+                com.aproject.aidriven.mymobilesecretary.intent.application.IntentOptions
+                        .empty().withCategory("ELECTRONICS")));
+
+        say("七月在全國電子買家電花了多少",
+                jsonPath("$.action").value("EXPENSE_HISTORY_INFO"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("40000 元")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("全國電子")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("消費查詢測試鮮奶"))));
+    }
+
+    /** 「最近繳費」不要求日期，只列已落帳的付款型紀錄，未付款通知不會混入。 */
+    @Test
+    void askRecentPaymentHistoryWithoutDateRange() throws Exception {
+        priceRecordService.record("最近繳費查詢測試電費", "台電", 1234, 1,
+                java.time.LocalDate.parse("2026-07-12"));
+        priceRecordService.record("最近繳費查詢測試鮮奶", "全聯", 95, 1,
+                java.time.LocalDate.parse("2026-07-13"));
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.ASK_PAYMENT_HISTORY, null, null, null, null,
+                null, null, null, null, null, null, null, null));
+
+        say("最近我有沒有水電瓦斯、學費或停車費等繳費紀錄",
+                jsonPath("$.action").value("PAYMENT_HISTORY_INFO"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
+                        "最近繳費查詢測試電費")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("1234 元")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("最近繳費查詢測試鮮奶"))));
+    }
+
     /** 查待辦:「還有什麼要做」→ 列出未完成任務(含剛建立的)。 */
     @Test
     void listTasksIntentShowsOpenTasks() throws Exception {

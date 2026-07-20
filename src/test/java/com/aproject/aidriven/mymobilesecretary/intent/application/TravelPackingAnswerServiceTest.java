@@ -70,6 +70,15 @@ class TravelPackingAnswerServiceTest {
     }
 
     @Test
+    void nonPackingDoNotCreatePhraseIsNotCapturedAsPackingPreference() {
+        assertThat(service.answer(
+                "明天早上九點開會一小時，先不要建，幫我看前面準備二十分鐘加後面交通四十分鐘會不會撞到",
+                () -> {
+                    throw new AssertionError("non-packing query crossed mutation boundary");
+                })).isEmpty();
+    }
+
+    @Test
     void oneOffOmissionDoesNotChangeLongTermMemory() {
         AtomicBoolean mutationStarted = new AtomicBoolean();
 

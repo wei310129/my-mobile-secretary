@@ -43,6 +43,11 @@ public class ConversationContext extends WorkspaceOwnedEntity {
     @Column(length = 2000)
     private String lastScheduleListIds;
 
+    @Column(length = 2000)
+    private String lastObjectAnnotationListIds;
+
+    private Long pendingObjectAnnotationDeleteId;
+
     @Column(length = 60)
     private String lastAction;
 
@@ -102,6 +107,22 @@ public class ConversationContext extends WorkspaceOwnedEntity {
         this.updatedAt = now;
     }
 
+    public void rememberObjectAnnotationList(String ids, Instant now) {
+        this.lastObjectAnnotationListIds = ids;
+        this.pendingObjectAnnotationDeleteId = null;
+        this.updatedAt = now;
+    }
+
+    public void prepareObjectAnnotationDelete(Long annotationId, Instant now) {
+        this.pendingObjectAnnotationDeleteId = annotationId;
+        this.updatedAt = now;
+    }
+
+    public void clearObjectAnnotationDelete(Instant now) {
+        this.pendingObjectAnnotationDeleteId = null;
+        this.updatedAt = now;
+    }
+
     private static String truncate(String value, int max) {
         if (value == null || value.length() <= max) {
             return value;
@@ -116,6 +137,8 @@ public class ConversationContext extends WorkspaceOwnedEntity {
     public Long getLastPlaceId() { return lastPlaceId; }
     public String getLastTaskListIds() { return lastTaskListIds; }
     public String getLastScheduleListIds() { return lastScheduleListIds; }
+    public String getLastObjectAnnotationListIds() { return lastObjectAnnotationListIds; }
+    public Long getPendingObjectAnnotationDeleteId() { return pendingObjectAnnotationDeleteId; }
     public String getLastAction() { return lastAction; }
     public String getLastUserText() { return lastUserText; }
     public String getLastAssistantText() { return lastAssistantText; }

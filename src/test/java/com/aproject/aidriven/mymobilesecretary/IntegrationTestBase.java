@@ -1,10 +1,15 @@
 package com.aproject.aidriven.mymobilesecretary;
 
+import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubIntentInterpreter;
+import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubReceiptInterpreter;
+import org.junit.jupiter.api.BeforeEach;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.context.annotation.Import;
 import org.springframework.test.context.ActiveProfiles;
+import org.springframework.test.context.jdbc.Sql;
+import org.springframework.test.context.jdbc.SqlConfig;
 import org.springframework.test.web.servlet.MockMvc;
 
 /**
@@ -17,8 +22,23 @@ import org.springframework.test.web.servlet.MockMvc;
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 @ActiveProfiles("test")
+@Sql(scripts = "/reset-integration-test-data.sql",
+        config = @SqlConfig(separator = "^^^"),
+        executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD)
 public abstract class IntegrationTestBase {
 
     @Autowired
     protected MockMvc mockMvc;
+
+    @Autowired
+    private StubIntentInterpreter intentInterpreter;
+
+    @Autowired
+    private StubReceiptInterpreter receiptInterpreter;
+
+    @BeforeEach
+    void clearInterpreterStubs() {
+        intentInterpreter.clear();
+        receiptInterpreter.clear();
+    }
 }

@@ -97,4 +97,62 @@ public record IntentOptions(
                 bufferMinutes, clarificationQuestion, alias, newTitle, description,
                 quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
     }
+
+    public IntentOptions afterTaskCompletion(String predecessorTitle, Integer delayMinutes) {
+        return new IntentOptions(filter, ordinal, durationMinutes, leadMinutes, radiusMeters,
+                triggerType, recurrence, category, itemNames, quantity, predecessorTitle,
+                "AFTER_TASK_COMPLETION", timeOfDay, keepTime, delayMinutes, condition,
+                fromPlaceName, bufferMinutes, clarificationQuestion, alias, newTitle, description,
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+    }
+
+    public IntentOptions withDepartureOrigin(String origin, Integer arrivalBufferMinutes) {
+        return new IntentOptions(filter, ordinal, durationMinutes, leadMinutes, radiusMeters,
+                triggerType, recurrence, category, itemNames, quantity, referenceTitle,
+                referenceKind, timeOfDay, keepTime, shiftMinutes, condition, origin,
+                arrivalBufferMinutes, clarificationQuestion, alias, newTitle, description,
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+    }
+
+    public IntentOptions withHypotheticalBuffers(
+            Integer preparationMinutes, Integer afterTravelMinutes) {
+        return new IntentOptions(filter, ordinal, durationMinutes, preparationMinutes, radiusMeters,
+                triggerType, recurrence, category, itemNames, quantity, referenceTitle,
+                referenceKind, timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName,
+                afterTravelMinutes, clarificationQuestion, alias, newTitle, description,
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+    }
+
+    public IntentOptions withFilter(String value) {
+        return new IntentOptions(value, ordinal, durationMinutes, leadMinutes, radiusMeters,
+                triggerType, recurrence, category, itemNames, quantity, referenceTitle,
+                referenceKind, timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName,
+                bufferMinutes, clarificationQuestion, alias, newTitle, description,
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+    }
+
+    public IntentOptions withCategory(String value) {
+        return new IntentOptions(filter, ordinal, durationMinutes, leadMinutes, radiusMeters,
+                triggerType, recurrence, value, itemNames, quantity, referenceTitle,
+                referenceKind, timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName,
+                bufferMinutes, clarificationQuestion, alias, newTitle, description,
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+    }
+
+    public IntentOptions withTagRelation(
+            String target, String relation, String sourceKind, String targetKind) {
+        return new IntentOptions(targetKind, ordinal, durationMinutes, leadMinutes, radiusMeters,
+                triggerType, recurrence, sourceKind, itemNames, quantity, target, relation,
+                timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName, bufferMinutes,
+                clarificationQuestion, alias, newTitle, description, quietStart, quietEnd,
+                allowHighPriority, recurrenceUntil, recurrenceScope);
+    }
+
+    public IntentOptions withLifeRecord(String recordType, List<String> tags, String details) {
+        return new IntentOptions(filter, ordinal, durationMinutes, leadMinutes, radiusMeters,
+                triggerType, recurrence, recordType, tags, quantity, referenceTitle,
+                referenceKind, timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName,
+                bufferMinutes, clarificationQuestion, alias, newTitle, details, quietStart,
+                quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+    }
 }

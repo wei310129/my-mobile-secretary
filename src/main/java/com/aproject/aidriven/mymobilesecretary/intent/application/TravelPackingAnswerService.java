@@ -43,32 +43,34 @@ public class TravelPackingAnswerService {
             return Optional.of(listPreferences());
         }
         if (isShortStandaloneCommand(normalized)) {
-            Optional<PreferenceRequest> permanent = permanentPreference(normalized);
-            if (permanent.isPresent()) {
-                beforeMutation.run();
-                PreferenceRequest request = permanent.get();
-                return Optional.of(setPreference(
-                        request.item(), request.preference().name(), request.reason()));
+            if (hasPackingPreferenceLanguage(normalized)) {
+                Optional<PreferenceRequest> permanent = permanentPreference(normalized);
+                if (permanent.isPresent()) {
+                    beforeMutation.run();
+                    PreferenceRequest request = permanent.get();
+                    return Optional.of(setPreference(
+                            request.item(), request.preference().name(), request.reason()));
+                }
+                Optional<String> oneOff = oneOffOmission(normalized);
+                if (oneOff.isPresent()) {
+                    return Optional.of(IntentResult.message(IntentResult.Action.PACKING_LIST_INFO,
+                            "🧳 本次行李草案會略過「%s」。\n"
+                                    .formatted(oneOff.get())
+                                    + "- 這次的取捨不會改動長期偏好\n\n"
+                                    + "💾 如果以後都不想再看到它，請說「以後行李清單都不要建議%s」。"
+                                    .formatted(oneOff.get())));
+                }
+                Optional<String> ambiguous = ambiguousOmission(normalized);
+                if (ambiguous.isPresent()) {
+                    return Optional.of(IntentResult.clarificationNeeded(
+                            "要只在這次略過「%s」，還是以後的行李清單都不再建議？"
+                                    .formatted(ambiguous.get())));
+                }
             }
             Optional<String> reset = resetPreferenceItem(normalized);
             if (reset.isPresent()) {
                 beforeMutation.run();
                 return Optional.of(setPreference(reset.get(), "CLEAR", null));
-            }
-            Optional<String> oneOff = oneOffOmission(normalized);
-            if (oneOff.isPresent()) {
-                return Optional.of(IntentResult.message(IntentResult.Action.PACKING_LIST_INFO,
-                        "🧳 本次行李草案會略過「%s」。\n"
-                                .formatted(oneOff.get())
-                                + "- 這次的取捨不會改動長期偏好\n\n"
-                                + "💾 如果以後都不想再看到它，請說「以後行李清單都不要建議%s」。"
-                                .formatted(oneOff.get())));
-            }
-            Optional<String> ambiguous = ambiguousOmission(normalized);
-            if (ambiguous.isPresent()) {
-                return Optional.of(IntentResult.clarificationNeeded(
-                        "要只在這次略過「%s」，還是以後的行李清單都不再建議？"
-                                .formatted(ambiguous.get())));
             }
         }
         if (isPackingListRequest(normalized)) {
@@ -198,6 +200,10 @@ public class TravelPackingAnswerService {
 
     private static boolean isShortStandaloneCommand(String text) {
         return text.length() <= 100 && !containsAny(text, "例如", "使用者", "功能改善", "有可能");
+    }
+
+    private static boolean hasPackingPreferenceLanguage(String text) {
+        return containsAny(text, "行李", "打包", "帶", "建議", "列入", "加入");
     }
 
     private static Optional<PreferenceRequest> permanentPreference(String text) {

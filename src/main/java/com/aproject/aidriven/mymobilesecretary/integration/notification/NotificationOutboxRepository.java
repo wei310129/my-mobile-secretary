@@ -2,6 +2,7 @@ package com.aproject.aidriven.mymobilesecretary.integration.notification;
 
 import java.time.Instant;
 import java.util.List;
+import java.util.UUID;
 import jakarta.persistence.LockModeType;
 
 import org.springframework.data.domain.Pageable;
@@ -15,10 +16,12 @@ interface NotificationOutboxRepository extends JpaRepository<NotificationOutbox,
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select n from NotificationOutbox n
-            where n.status = :status and n.availableAt <= :now
+            where n.targetUserId = :targetUserId
+              and n.status = :status and n.availableAt <= :now
             order by n.availableAt, n.id
             """)
     List<NotificationOutbox> findClaimable(
+            @Param("targetUserId") UUID targetUserId,
             @Param("status") NotificationOutboxStatus status,
             @Param("now") Instant now,
             Pageable pageable);
@@ -26,10 +29,12 @@ interface NotificationOutboxRepository extends JpaRepository<NotificationOutbox,
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select n from NotificationOutbox n
-            where n.status = :status and n.claimedUntil <= :now
+            where n.targetUserId = :targetUserId
+              and n.status = :status and n.claimedUntil <= :now
             order by n.claimedUntil, n.id
             """)
     List<NotificationOutbox> findExpiredClaims(
+            @Param("targetUserId") UUID targetUserId,
             @Param("status") NotificationOutboxStatus status,
             @Param("now") Instant now,
             Pageable pageable);

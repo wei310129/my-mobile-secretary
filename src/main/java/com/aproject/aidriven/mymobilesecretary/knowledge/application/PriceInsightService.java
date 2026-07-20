@@ -23,11 +23,20 @@ public class PriceInsightService {
         this.clock = clock;
     }
 
-    public Optional<LastPurchase> lastPurchase(String itemName) {
-        return priceRecordService.list(itemName).stream().findFirst()
-                .map(record -> new LastPurchase(record,
-                        Math.max(0, ChronoUnit.DAYS.between(
-                                record.getPurchasedAt(), LocalDate.now(clock.withZone(TAIPEI))))));
+    public Optional<LastPurchase> lastPurchase(String keyword) {
+        return priceRecordService.searchByKeyword(keyword).stream().findFirst()
+                .map(this::toLastPurchase);
+    }
+
+    /** Finds the latest purchase whose exact item or merchant is visible in trusted context. */
+    public Optional<LastPurchase> lastPurchaseMentionedIn(String context) {
+        String haystack = normalize(context);
+        if (haystack.isBlank()) return Optional.empty();
+        return priceRecordService.list(null).stream()
+                .filter(record -> mentioned(haystack, record.getItemName())
+                        || mentioned(haystack, record.getStoreName()))
+                .findFirst()
+                .map(this::toLastPurchase);
     }
 
     public Optional<Summary> summary(String itemName) {
@@ -57,6 +66,21 @@ public class PriceInsightService {
                         .thenComparing(StoreFrequency::lastPurchasedAt, Comparator.reverseOrder())
                         .thenComparing(StoreFrequency::storeName))
                 .findFirst();
+    }
+
+    private LastPurchase toLastPurchase(PriceRecord record) {
+        return new LastPurchase(record, Math.max(0, ChronoUnit.DAYS.between(
+                record.getPurchasedAt(), LocalDate.now(clock.withZone(TAIPEI)))));
+    }
+
+    private static boolean mentioned(String context, String value) {
+        String candidate = normalize(value);
+        return candidate.length() >= 3 && context.contains(candidate);
+    }
+
+    private static String normalize(String value) {
+        return value == null ? "" : value.toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[\\s「」『』，,。.!！?？:：；;｜|()（）]", "");
     }
 
     public record LastPurchase(PriceRecord record, long daysAgo) {

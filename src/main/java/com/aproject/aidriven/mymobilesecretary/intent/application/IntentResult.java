@@ -33,6 +33,7 @@ public record IntentResult(
 
     public enum Action {
         TASK_CREATED,
+        TASK_DEFERRED,
         TASK_COMPLETED,
         TASK_CANCELED,
         TASK_RESCHEDULED,
@@ -132,6 +133,21 @@ public record IntentResult(
         SCHEDULES_GROUPED_BY_PLACE,
         LAST_PURCHASE_INFO,
         PRICE_SUMMARY_INFO,
+        EXPENSE_HISTORY_INFO,
+        PAYMENT_HISTORY_INFO,
+        TAG_RELATION_SAVED,
+        TAGGED_LIFE_EVENT_RECORDED,
+        TAGGED_RECORDS_INFO,
+        MEDIA_FILES_LISTED,
+        CONTACT_INFO,
+        TRANSFER_PAYMENT_DRAFTED,
+        TRANSFER_PAYMENT_IMPORTED,
+        SCHOOL_MEAL_INFO,
+        VENUE_VISIT_INFO_SAVED,
+        VENUE_VISIT_INFO,
+        BLOOD_DONATION_RECORDED,
+        BLOOD_DONATION_INFO,
+        PRODUCT_EXPERIENCE_RECORDED,
         FREQUENT_STORE_INFO,
         INVENTORY_EXTREMES_INFO,
         SHOPPING_INVENTORY_CHECKED,
@@ -139,6 +155,7 @@ public record IntentResult(
         ITEM_KNOWLEDGE_SUMMARY,
         SCHEDULE_REMINDER_INFO,
         RESTAURANT_BOOKING_INFO,
+        SCHEDULE_CANCELLATION_PREVIEWED,
         SCHEDULES_BULK_CANCELED
     }
 
@@ -147,12 +164,23 @@ public record IntentResult(
     private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
     private static final DateTimeFormatter LIST_TIME = DateTimeFormatter.ofPattern("MM/dd HH:mm");
 
-    static IntentResult taskCreated(Task task) {
+    public static IntentResult taskCreated(Task task) {
         return new IntentResult(Action.TASK_CREATED,
                 "已建立任務「%s」".formatted(task.getTitle()), task, null);
     }
 
-    static IntentResult taskCreated(Task task, String followUp) {
+    public static IntentResult taskDeferred(
+            String title, String predecessorTitle, int offsetMinutes) {
+        String timing = offsetMinutes == 0
+                ? "完成時"
+                : "完成後 %d 分鐘".formatted(offsetMinutes);
+        return new IntentResult(Action.TASK_DEFERRED,
+                "已記住相依待辦「%s」；只有確認「%s」完成後才會建立，期限設為%s。"
+                        .formatted(title, predecessorTitle, timing),
+                null, null);
+    }
+
+    public static IntentResult taskCreated(Task task, String followUp) {
         String message = "已建立任務「%s」".formatted(task.getTitle());
         if (followUp != null && !followUp.isBlank()) {
             message += "。" + followUp;
@@ -161,7 +189,7 @@ public record IntentResult(
     }
 
     /** 建立後回顯真正存下的關鍵欄位，讓使用者立即看出期限或地點是否漏抓。 */
-    static IntentResult taskCreated(
+    public static IntentResult taskCreated(
             Task task,
             String followUp,
             com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
@@ -187,15 +215,15 @@ public record IntentResult(
         return new IntentResult(action, message, null, null);
     }
 
-    static IntentResult taskMessage(Action action, String message, Task task) {
+    public static IntentResult taskMessage(Action action, String message, Task task) {
         return new IntentResult(action, message, task, null);
     }
 
-    static IntentResult scheduleMessage(Action action, String message, ScheduleDecision decision) {
+    public static IntentResult scheduleMessage(Action action, String message, ScheduleDecision decision) {
         return new IntentResult(action, message, null, decision);
     }
 
-    static IntentResult scheduleDecided(ScheduleDecision decision) {
+    public static IntentResult scheduleDecided(ScheduleDecision decision) {
         boolean feasible = decision.feasibility().feasible();
         String recurrenceDetails = scheduleRecurrenceDetails(decision.item());
         String scheduleDetails = "\n時間：" + stableScheduleInterval(decision.item())
@@ -239,7 +267,7 @@ public record IntentResult(
         return startLabel + "–" + endLabel;
     }
 
-    static IntentResult tasksListed(List<Task> tasks, String advice) {
+    public static IntentResult tasksListed(List<Task> tasks, String advice) {
         if (tasks.isEmpty()) {
             return new IntentResult(Action.TASKS_LISTED, "目前沒有未完成的待辦,都清光了。", null, null);
         }
@@ -268,7 +296,7 @@ public record IntentResult(
         return new IntentResult(Action.TASKS_LISTED, message.toString(), null, null);
     }
 
-    static IntentResult schedulesListed(List<ScheduleItem> items) {
+    public static IntentResult schedulesListed(List<ScheduleItem> items) {
         if (items.isEmpty()) {
             return new IntentResult(Action.SCHEDULES_LISTED, "接下來沒有已確認的行程。", null, null);
         }
@@ -283,26 +311,27 @@ public record IntentResult(
                 "接下來 %d 個行程:\n%s%s".formatted(items.size(), lines, tail), null, null);
     }
 
-    static IntentResult suggestionMade(String message) {
+    public static IntentResult suggestionMade(String message) {
         return new IntentResult(Action.SUGGESTION_MADE, message, null, null);
     }
 
-    static IntentResult taskCanceled(Task task) {
+    public static IntentResult taskCanceled(Task task) {
         return new IntentResult(Action.TASK_CANCELED,
                 "「%s」已取消,不再追蹤提醒".formatted(task.getTitle()), task, null);
     }
 
-    static IntentResult taskRescheduled(Task task) {
+    public static IntentResult taskRescheduled(Task task) {
         return new IntentResult(Action.TASK_RESCHEDULED,
                 "「%s」期限改到 %s".formatted(task.getTitle(),
                         ZonedDateTime.ofInstant(task.getDueAt(), TAIPEI).format(LIST_TIME)),
                 task, null);
     }
 
-    static IntentResult scheduleRecurrenceSet(ScheduleItem item) {
+    public static IntentResult scheduleRecurrenceSet(ScheduleItem item) {
         String label = switch (item.getRecurrence()) {
             case WEEKLY -> "每週固定";
             case WEEKDAYS -> "每個上班日固定";
+            case MONTHLY_NTH_WEEKDAY -> "每月同一週次與星期固定";
             case NONE -> null;
         };
         return new IntentResult(Action.SCHEDULE_RECURRENCE_SET,
@@ -313,7 +342,7 @@ public record IntentResult(
                 null, null);
     }
 
-    static IntentResult scheduleInfo(ScheduleItem item,
+    public static IntentResult scheduleInfo(ScheduleItem item,
                                      com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
         String time = "%s-%s".formatted(
                 ZonedDateTime.ofInstant(item.getStartAt(), TAIPEI).format(LIST_TIME),
@@ -323,6 +352,7 @@ public record IntentResult(
         message.append("\n類型:").append(switch (item.getRecurrence()) {
             case WEEKLY -> "每週固定";
             case WEEKDAYS -> "每個上班日固定";
+            case MONTHLY_NTH_WEEKDAY -> "每月同一週次與星期固定";
             case NONE -> item.getRecurrenceUntil() == null ? "單次" : "固定規則已結束";
         });
         if (item.getRecurrenceUntil() != null) {
@@ -339,6 +369,7 @@ public record IntentResult(
         String label = switch (item.getRecurrence()) {
             case WEEKLY -> "每週固定";
             case WEEKDAYS -> "每個上班日固定";
+            case MONTHLY_NTH_WEEKDAY -> "每月同一週次與星期固定";
             case NONE -> null;
         };
         if (label == null) {
@@ -353,7 +384,7 @@ public record IntentResult(
                         .format(DateTimeFormatter.ofPattern("yyyy/MM/dd")));
     }
 
-    static IntentResult priceHistory(String keyword,
+    public static IntentResult priceHistory(String keyword,
                                      List<com.aproject.aidriven.mymobilesecretary.knowledge.domain.PriceRecord> records) {
         if (records.isEmpty()) {
             return new IntentResult(Action.PRICE_HISTORY,
@@ -372,12 +403,12 @@ public record IntentResult(
                 null, null);
     }
 
-    static IntentResult scheduleCanceled(ScheduleItem item) {
+    public static IntentResult scheduleCanceled(ScheduleItem item) {
         return new IntentResult(Action.SCHEDULE_CANCELED,
                 "行程「%s」已取消".formatted(item.getTitle()), null, null);
     }
 
-    static IntentResult scheduleRescheduled(ScheduleDecision decision) {
+    public static IntentResult scheduleRescheduled(ScheduleDecision decision) {
         ScheduleItem item = decision.item();
         String interval = "%s-%s".formatted(
                 ZonedDateTime.ofInstant(item.getStartAt(), TAIPEI).format(LIST_TIME),
@@ -389,7 +420,7 @@ public record IntentResult(
         return new IntentResult(Action.SCHEDULE_RESCHEDULED, message, null, decision);
     }
 
-    static IntentResult scheduleOccurrenceRescheduled(RecurringScheduleReschedule outcome) {
+    public static IntentResult scheduleOccurrenceRescheduled(RecurringScheduleReschedule outcome) {
         ScheduleDecision decision = outcome.changed();
         ScheduleItem item = decision.item();
         String interval = "%s-%s".formatted(
@@ -409,7 +440,7 @@ public record IntentResult(
         return new IntentResult(Action.SCHEDULE_RESCHEDULED, message, null, decision);
     }
 
-    static IntentResult allTasksCanceled(List<Task> canceled) {
+    public static IntentResult allTasksCanceled(List<Task> canceled) {
         if (canceled.isEmpty()) {
             return new IntentResult(Action.ALL_TASKS_CANCELED, "目前沒有可取消的待辦。", null, null);
         }
@@ -420,7 +451,7 @@ public record IntentResult(
                 "已取消全部 %d 件待辦:\n%s".formatted(canceled.size(), titles), null, null);
     }
 
-    static IntentResult placeCreated(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
+    public static IntentResult placeCreated(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
         String detail = place.getAddress() == null || place.getAddress().isBlank()
                 ? "定位已保存，但還沒有可讀地址或附近地標"
                 : "地址：" + place.getAddress();
@@ -431,14 +462,14 @@ public record IntentResult(
                 null, null);
     }
 
-    static IntentResult taskPlaceBound(Task task,
+    public static IntentResult taskPlaceBound(Task task,
                                        com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
         return new IntentResult(Action.TASK_PLACE_BOUND,
                 "「%s」已綁定「%s」,你到附近時我會提醒你。".formatted(task.getTitle(), place.getName()),
                 task, null);
     }
 
-    static IntentResult taskPlaceInfo(Task task,
+    public static IntentResult taskPlaceInfo(Task task,
                                       List<com.aproject.aidriven.mymobilesecretary.geo.domain.Place> places) {
         if (places.isEmpty()) {
             return new IntentResult(Action.TASK_PLACE_INFO,
@@ -454,16 +485,16 @@ public record IntentResult(
                 "「%s」要去:\n%s".formatted(task.getTitle(), lines), task, null);
     }
 
-    static IntentResult feedbackReceived() {
+    public static IntentResult feedbackReceived() {
         return new IntentResult(Action.FEEDBACK_RECEIVED,
                 "🛠️ 收到，這則內容只會存進功能改善問題紀錄，不會建立待辦或行程。", null, null);
     }
 
-    static IntentResult placeInfo(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
+    public static IntentResult placeInfo(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
         return placeInfo(place, null);
     }
 
-    static IntentResult placeInfo(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place,
+    public static IntentResult placeInfo(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place,
                                   String guidance) {
         String location = place.getAddress() == null || place.getAddress().isBlank()
                 ? "我有保存定位，但還沒有可讀地址或附近地標"
@@ -481,7 +512,7 @@ public record IntentResult(
     }
 
     /** 一句多操作的合併回覆:逐項列出各自結果。 */
-    static IntentResult batchExecuted(List<String> lines) {
+    public static IntentResult batchExecuted(List<String> lines) {
         StringBuilder message = new StringBuilder("一次處理 %d 件:".formatted(lines.size()));
         for (int i = 0; i < lines.size(); i++) {
             message.append("\n%d.%s".formatted(i + 1, lines.get(i)));
@@ -489,12 +520,12 @@ public record IntentResult(
         return new IntentResult(Action.BATCH_EXECUTED, message.toString(), null, null);
     }
 
-    static IntentResult taskCompleted(Task task) {
+    public static IntentResult taskCompleted(Task task) {
         return new IntentResult(Action.TASK_COMPLETED,
                 "「%s」完成,已從追蹤清單劃掉".formatted(task.getTitle()), task, null);
     }
 
-    static IntentResult outcomeRecorded(OutcomeRecorded recorded) {
+    public static IntentResult outcomeRecorded(OutcomeRecorded recorded) {
         String detail = recorded.outcome().isOnTime()
                 ? "準時完成"
                 : "超時 %d 分鐘".formatted(recorded.outcome().getOverrunMinutes());
@@ -506,12 +537,12 @@ public record IntentResult(
         return new IntentResult(Action.CLARIFICATION_NEEDED, reason, null, null);
     }
 
-    static IntentResult fallbackTaskCreated(Task task, String why) {
+    public static IntentResult fallbackTaskCreated(Task task, String why) {
         return new IntentResult(Action.FALLBACK_TASK_CREATED,
                 "%s,已先把原話存成任務「%s」".formatted(why, task.getTitle()), task, null);
     }
 
-    static IntentResult aiUnavailable(String why) {
+    public static IntentResult aiUnavailable(String why) {
         return new IntentResult(Action.AI_UNAVAILABLE,
                 "⚠️ %s。\n- 我沒有建立任何待辦\n- 原訊息已保留在對話與問題紀錄"
                         .formatted(why)
@@ -519,7 +550,7 @@ public record IntentResult(
                 null, null);
     }
 
-    static IntentResult aiUnavailable(String why, String validationReason, IntentCommand command) {
+    public static IntentResult aiUnavailable(String why, String validationReason, IntentCommand command) {
         StringBuilder message = new StringBuilder("⚠️ ").append(why).append("。");
         if (validationReason != null && !validationReason.isBlank()) {
             message.append("\n- Java 驗證原因：").append(validationReason);

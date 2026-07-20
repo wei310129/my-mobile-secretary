@@ -10,6 +10,7 @@ import com.aproject.aidriven.mymobilesecretary.IntegrationTestBase;
 import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubIntentInterpreter;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentOptions;
+import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItemRepository;
 import java.util.List;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -19,6 +20,8 @@ class LifestyleIntentApiTest extends IntegrationTestBase {
 
     @Autowired
     private StubIntentInterpreter stub;
+    @Autowired
+    private ScheduleItemRepository scheduleItemRepository;
 
     @Test
     void recurringCategorizedTaskIsPersisted() throws Exception {
@@ -104,6 +107,80 @@ class LifestyleIntentApiTest extends IntegrationTestBase {
                 jsonPath("$.schedule.schedule.recurrence").value("WEEKLY"),
                 jsonPath("$.schedule.schedule.recurrenceUntil").value("2030-09-30"),
                 jsonPath("$.message").value(containsString("2030/09/30")));
+    }
+
+    @Test
+    void holidaySkipRecurrenceClarifiesDurationThenCreatesSafeDraftAcrossTurns() throws Exception {
+        say("每週三七點上英文課做到年底，國定假日不用上，補課時間老師會另外說，先照能支援的部分處理",
+                jsonPath("$.action").value("CLARIFICATION_NEEDED"),
+                jsonPath("$.message").value(containsString("國定假日採跳過")),
+                jsonPath("$.message").value(containsString("每次持續多久")),
+                jsonPath("$.message").value(containsString("上午或晚上")));
+
+        say("每次一小時，是晚上七點",
+                jsonPath("$.action").value("PLANNING_PREFERENCE_SET"),
+                jsonPath("$.message").value(containsString("尚未啟用")),
+                jsonPath("$.message").value(containsString("確認為國定假日就跳過")),
+                jsonPath("$.message").value(containsString("補課｜不自動建立")));
+    }
+
+    @Test
+    void monthlyOrdinalRecurrenceClarifiesDurationAndNeverFallsBackToWeekly() throws Exception {
+        say("下個月第一個禮拜一早上九點月會，之後每個月都一樣，若不支援這種週期就不要拆成每週",
+                jsonPath("$.action").value("CLARIFICATION_NEEDED"),
+                jsonPath("$.message").value(containsString("每月第 N 個星期幾")),
+                jsonPath("$.message").value(containsString("每次持續多久")),
+                jsonPath("$.message").value(containsString("絕不會拆成每週")));
+
+        say("每次一小時",
+                jsonPath("$.action").value("SCHEDULE_CONFIRMED"),
+                jsonPath("$.schedule.schedule.recurrence").value("MONTHLY_NTH_WEEKDAY"),
+                jsonPath("$.message").value(containsString("每月同一週次與星期固定")));
+    }
+
+    @Test
+    void conditionalVenueWaitsForOneSelectionAndCreatesExactlyOneSchedule() throws Exception {
+        long before = scheduleItemRepository.count();
+        say("明晚八點去健身房，若臨時休館就在家運動，我只要一個行程，場地明天六點再依情況決定",
+                jsonPath("$.action").value("CLARIFICATION_NEEDED"),
+                jsonPath("$.message").value(containsString("條件場地")),
+                jsonPath("$.message").value(containsString("六點是上午或下午")),
+                jsonPath("$.message").value(containsString("活動持續多久")));
+        org.assertj.core.api.Assertions.assertThat(scheduleItemRepository.count()).isEqualTo(before);
+
+        say("下午六點提醒，每次運動一小時",
+                jsonPath("$.action").value("PLANNING_PREFERENCE_SET"),
+                jsonPath("$.message").value(containsString("尚未建立行程")),
+                jsonPath("$.message").value(containsString("我只會建立一筆行程")));
+        org.assertj.core.api.Assertions.assertThat(scheduleItemRepository.count()).isEqualTo(before);
+
+        say("健身房有開，就去健身房",
+                jsonPath("$.schedule.schedule.title").value("運動"));
+        org.assertj.core.api.Assertions.assertThat(scheduleItemRepository.count()).isEqualTo(before + 1);
+    }
+
+    @Test
+    void userCanChooseTwelveOrTwentyFourHourConversationDisplay() throws Exception {
+        say("所有時間顯示改成12小時制",
+                jsonPath("$.action").value("CONTEXT_UPDATED"),
+                jsonPath("$.message").value(containsString("12 小時制")));
+
+        stub.nextCommand(command(IntentCommand.Type.CREATE_SCHEDULE, "時間格式測試晚課",
+                null, "2032-08-10T19:00:00+08:00", "2032-08-10T20:00:00+08:00",
+                null, IntentOptions.empty()));
+        say("建立晚上課程",
+                jsonPath("$.message").value(containsString("下午 7:00")));
+
+        say("所有時間顯示改回24小時制",
+                jsonPath("$.action").value("CONTEXT_UPDATED"),
+                jsonPath("$.message").value(containsString("24 小時制")));
+
+        stub.nextCommand(command(IntentCommand.Type.CREATE_SCHEDULE, "時間格式測試夜課",
+                null, "2032-08-11T21:00:00+08:00", "2032-08-11T22:00:00+08:00",
+                null, IntentOptions.empty()));
+        say("建立夜間課程",
+                jsonPath("$.message").value(containsString("21:00")),
+                jsonPath("$.message").value(not(containsString("下午 9:00"))));
     }
 
     @Test

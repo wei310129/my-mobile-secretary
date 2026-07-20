@@ -61,6 +61,41 @@ public class WorkspaceBackgroundRunner {
         return new RunSummary(workspaceCount, succeeded, failed, workspaceCount - targets.size());
     }
 
+    /** Runs actor-private background work once for every active member with mutation rights. */
+    public ActorRunSummary forEachActor(String jobName, Consumer<WorkspaceContext> operation) {
+        String safeJobName = requireJobName(jobName);
+        Objects.requireNonNull(operation, "operation");
+        List<WorkspaceMember> targets = runAuthentication(() ->
+                memberRepository.findAllForUsersWithStatus(AppUserStatus.ACTIVE)).stream()
+                .filter(member -> member.grants(WorkspaceRole.MEMBER))
+                .collect(java.util.stream.Collectors.toMap(
+                        member -> member.getWorkspaceId() + ":" + member.getUserId(),
+                        member -> member, (first, ignored) -> first,
+                        LinkedHashMap::new))
+                .values().stream().toList();
+        int succeeded = 0;
+        int failed = 0;
+        for (WorkspaceMember target : targets) {
+            WorkspaceContext context = new WorkspaceContext(
+                    target.getUserId(), target.getWorkspaceId(), WorkspaceChannel.BACKGROUND);
+            try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(context)) {
+                RequestCorrelationContext.run(UUID.randomUUID(), () -> {
+                    operation.accept(context);
+                    return null;
+                });
+                succeeded++;
+            } catch (RuntimeException failure) {
+                failed++;
+                log.warn("Actor background job failed [job={}, workspace={}, actor={}, cause={}]",
+                        safeJobName,
+                        SensitiveValueFingerprint.of(target.getWorkspaceId().toString()),
+                        SensitiveValueFingerprint.of(target.getUserId().toString()),
+                        failure.getClass().getSimpleName());
+            }
+        }
+        return new ActorRunSummary(targets.size(), succeeded, failed);
+    }
+
     /** Executes global account/retention work under a NIL tenant that cannot expose business rows. */
     public <T> T runSystem(Supplier<T> operation) {
         Objects.requireNonNull(operation, "operation");
@@ -100,5 +135,8 @@ public class WorkspaceBackgroundRunner {
     }
 
     public record RunSummary(int workspaces, int succeeded, int failed, int skipped) {
+    }
+
+    public record ActorRunSummary(int actors, int succeeded, int failed) {
     }
 }

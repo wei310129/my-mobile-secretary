@@ -72,6 +72,12 @@ public final class CapabilityShadowRouter {
         if (resolved.isEmpty()) {
             return legacy(CapabilityFallbackReason.NO_CANDIDATES);
         }
+        resolved = resolved.stream()
+                .filter(candidate -> candidate.score() >= properties.getMinimumCandidateScore())
+                .toList();
+        if (resolved.isEmpty()) {
+            return legacy(CapabilityFallbackReason.BELOW_RELEVANCE_THRESHOLD);
+        }
         verifyRegistryBacked(resolved);
 
         List<CapabilityCandidate> scoped;

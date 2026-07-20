@@ -4,6 +4,7 @@ import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.FeasibilityService;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityResult;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
+import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleRecurrenceCalculator;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import com.aproject.aidriven.mymobilesecretary.schedule.persistence.ScheduleItemRepository;
 import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
@@ -14,6 +15,7 @@ import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.EnumSet;
 import java.util.List;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -33,15 +35,18 @@ public class ScheduleService {
     private final ScheduleItemRepository scheduleItemRepository;
     private final FeasibilityService feasibilityService;
     private final PlaceService placeService;
+    private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
     public ScheduleService(ScheduleItemRepository scheduleItemRepository,
                            FeasibilityService feasibilityService,
                            PlaceService placeService,
+                           ApplicationEventPublisher eventPublisher,
                            Clock clock) {
         this.scheduleItemRepository = scheduleItemRepository;
         this.feasibilityService = feasibilityService;
         this.placeService = placeService;
+        this.eventPublisher = eventPublisher;
         this.clock = clock;
     }
 
@@ -59,8 +64,11 @@ public class ScheduleService {
         Instant now = Instant.now(clock);
         ScheduleItem item = ScheduleItem.proposePoint(title, at, placeId, now);
         item.assignResponsibility(responsiblePerson, false);
+        item.categorize(ScheduleItem.Category.FAMILY, now);
         item = scheduleItemRepository.save(item);
-        return gate(item, now);
+        ScheduleDecision decision = gate(item, now);
+        publishLifecycle(item, ScheduleLifecycleEvent.Action.CREATED, now);
+        return decision;
     }
 
     /** 提出新行程並驗算;recurring = true 表示每週固定(結束後自動排下一週)。 */
@@ -80,11 +88,21 @@ public class ScheduleService {
     public ScheduleDecision createSchedule(String title, Instant startAt, Instant endAt,
                                            Long placeId, ScheduleItem.Recurrence recurrence,
                                            LocalDate recurrenceUntil) {
+        return createSchedule(title, startAt, endAt, placeId, recurrence,
+                recurrenceUntil, ScheduleItem.Category.UNKNOWN);
+    }
+
+    /** 建立行程並保存明確分類；未明講分類時呼叫端應傳 UNKNOWN。 */
+    public ScheduleDecision createSchedule(String title, Instant startAt, Instant endAt,
+                                           Long placeId, ScheduleItem.Recurrence recurrence,
+                                           LocalDate recurrenceUntil,
+                                           ScheduleItem.Category category) {
         if (placeId != null) {
             placeService.getPlace(placeId); // 地點必須存在
         }
         Instant now = Instant.now(clock);
         ScheduleItem item = ScheduleItem.propose(title, startAt, endAt, placeId, now);
+        item.categorize(category, now);
         if (recurrence != null && recurrence != ScheduleItem.Recurrence.NONE) {
             item.repeat(recurrence, recurrenceUntil, now);
         } else if (recurrenceUntil != null) {
@@ -92,7 +110,9 @@ public class ScheduleService {
                     "INVALID_RECURRENCE_UNTIL", "recurrenceUntil requires a recurring schedule");
         }
         item = scheduleItemRepository.save(item);
-        return gate(item, now);
+        ScheduleDecision decision = gate(item, now);
+        publishLifecycle(item, ScheduleLifecycleEvent.Action.CREATED, now);
+        return decision;
     }
 
     /** 設定/取消每週固定。 */
@@ -130,7 +150,8 @@ public class ScheduleService {
         Instant now = Instant.now(clock);
         List<ScheduleItem> due = scheduleItemRepository
                 .findByRecurrenceInAndEndAtLessThanEqual(
-                        EnumSet.of(ScheduleItem.Recurrence.WEEKLY, ScheduleItem.Recurrence.WEEKDAYS), now).stream()
+                        EnumSet.of(ScheduleItem.Recurrence.WEEKLY, ScheduleItem.Recurrence.WEEKDAYS,
+                                ScheduleItem.Recurrence.MONTHLY_NTH_WEEKDAY), now).stream()
                 .filter(item -> item.getStatus() == ScheduleStatus.CONFIRMED
                         || item.getStatus() == ScheduleStatus.COMPLETED)
                 .toList();
@@ -220,16 +241,11 @@ public class ScheduleService {
     }
 
     private java.time.Duration nextRecurrenceShift(ScheduleItem item) {
-        if (item.getRecurrence() == ScheduleItem.Recurrence.WEEKLY) {
-            return java.time.Duration.ofDays(7);
-        }
         java.time.ZonedDateTime current = java.time.ZonedDateTime.ofInstant(
                 item.getStartAt(), java.time.ZoneId.of("Asia/Taipei"));
-        java.time.ZonedDateTime next = current.plusDays(1);
-        while (next.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
-                || next.getDayOfWeek() == java.time.DayOfWeek.SUNDAY) {
-            next = next.plusDays(1);
-        }
+        java.time.ZonedDateTime next = ScheduleRecurrenceCalculator
+                .nextDate(current.toLocalDate(), item.getRecurrence())
+                .atTime(current.toLocalTime()).atZone(TAIPEI);
         return java.time.Duration.between(current.toInstant(), next.toInstant());
     }
 
@@ -278,22 +294,34 @@ public class ScheduleService {
     /** 放棄不可行的提案。 */
     public ScheduleItem rejectSchedule(Long scheduleId) {
         ScheduleItem item = getSchedule(scheduleId);
-        item.reject(Instant.now(clock));
+        Instant now = Instant.now(clock);
+        item.reject(now);
+        publishLifecycle(item, ScheduleLifecycleEvent.Action.REJECTED, now);
         return item;
     }
 
     /** 取消已確認行程。 */
     public ScheduleItem cancelSchedule(Long scheduleId) {
         ScheduleItem item = getSchedule(scheduleId);
-        item.cancel(Instant.now(clock));
+        Instant now = Instant.now(clock);
+        item.cancel(now);
+        publishLifecycle(item, ScheduleLifecycleEvent.Action.CANCELED, now);
         return item;
     }
 
     /** 完成行程(Phase 3 結果追蹤的入口)。 */
     public ScheduleItem completeSchedule(Long scheduleId) {
         ScheduleItem item = getSchedule(scheduleId);
-        item.complete(Instant.now(clock));
+        Instant now = Instant.now(clock);
+        item.complete(now);
+        publishLifecycle(item, ScheduleLifecycleEvent.Action.COMPLETED, now);
         return item;
+    }
+
+    private void publishLifecycle(ScheduleItem item, ScheduleLifecycleEvent.Action action,
+                                  Instant occurredAt) {
+        eventPublisher.publishEvent(new ScheduleLifecycleEvent(
+                item.getId(), item.getTitle(), action, occurredAt));
     }
 
     @Transactional(readOnly = true)

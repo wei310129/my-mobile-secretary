@@ -7,6 +7,8 @@ import com.aproject.aidriven.mymobilesecretary.knowledge.application.ItemInsight
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.ItemService;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceInsightService;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService;
+import com.aproject.aidriven.mymobilesecretary.knowledge.application.ProductExperienceService;
+import com.aproject.aidriven.mymobilesecretary.knowledge.domain.ExpenseCategory;
 import com.aproject.aidriven.mymobilesecretary.knowledge.domain.Item;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
@@ -28,6 +30,12 @@ public class LifestyleItemIntentService {
     private final PriceInsightService priceInsightService;
     private final PlaceAliasService placeAliasService;
     private final PlaceService placeService;
+    private ProductExperienceService productExperienceService;
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setProductExperienceService(ProductExperienceService service) {
+        this.productExperienceService = service;
+    }
 
     public IntentResult execute(IntentCommand command) {
         IntentOptions options = command.safeOptions();
@@ -37,6 +45,7 @@ public class LifestyleItemIntentService {
             case LIST_SHOPPING_ITEMS -> listShopping();
             case SET_INVENTORY -> setInventory(command, options);
             case ASK_PRICE_COMPARISON -> comparePrices(command);
+            case ASK_PRICE_HISTORY -> priceHistory(command);
             case MARK_SHOPPING_PURCHASED -> markShoppingPurchased(command, options);
             case CLEAR_SHOPPING_LIST -> clearShopping();
             case LIST_SHOPPING_BY_PLACE -> listShoppingAt(command);
@@ -49,6 +58,8 @@ public class LifestyleItemIntentService {
             case RESTOCK_LOW_INVENTORY -> restockLowInventory(options);
             case ASK_LAST_PURCHASE -> lastPurchase(command);
             case ASK_PRICE_SUMMARY -> priceSummary(command);
+            case ASK_EXPENSE_HISTORY -> expenseHistory(command, options);
+            case ASK_PAYMENT_HISTORY -> paymentHistory(options);
             case ASK_FREQUENT_STORE -> frequentStore(command);
             case ASK_INVENTORY_EXTREMES -> inventoryExtremes(options);
             case CHECK_SHOPPING_INVENTORY -> checkShoppingInventory();
@@ -67,9 +78,22 @@ public class LifestyleItemIntentService {
                     placeService.createPlace(command.placeName(), null, null, null, null));
             items.forEach(item -> itemService.bindItemToPlace(item.getName(), place.getId()));
         }
+        String cautions = purchaseCautions(names);
         return IntentResult.message(IntentResult.Action.SHOPPING_ITEMS_ADDED,
-                "已加入購物清單:\n%s\n\n重複品項不會再新增一份。".formatted(
-                        items.stream().map(Item::getName).collect(Collectors.joining("\n"))));
+                "已加入購物清單:\n%s\n\n重複品項不會再新增一份。%s".formatted(
+                        items.stream().map(Item::getName).collect(Collectors.joining("\n")),
+                        cautions));
+    }
+
+    private String purchaseCautions(List<String> names) {
+        if (productExperienceService == null) return "";
+        var cautions = productExperienceService.purchaseCautions(names);
+        if (cautions.isEmpty()) return "";
+        String products = cautions.stream().limit(3)
+                .map(ProductExperienceService.PurchaseCaution::product)
+                .distinct().collect(Collectors.joining("、"));
+        return "\n\n⚠️ 購買前提醒：你曾明確回報「%s」使用後不適。請核對是否為同一產品；這不是醫療診斷，也不會阻止你購買。"
+                .formatted(products);
     }
 
     private IntentResult removeShopping(IntentCommand command, IntentOptions options) {
@@ -138,12 +162,11 @@ public class LifestyleItemIntentService {
             items = itemService.listInventory(null).stream()
                     .filter(item -> item.getInventoryQuantity() == options.quantity()).toList();
         }
-        String message = items.isEmpty()
-                ? (maximum == null ? "目前沒有大於 0 的庫存紀錄。" : "沒有已知的低庫存品項。")
-                : "庫存清單:\n" + items.stream()
-                        .map(item -> "%s｜%d".formatted(
-                                item.getName(), item.getInventoryQuantity()))
-                        .collect(Collectors.joining("\n"));
+        String details = items.stream()
+                .map(item -> "%s｜%d".formatted(item.getName(), item.getInventoryQuantity()))
+                .collect(Collectors.joining("\n"));
+        String message = "📍 共找到 %d 個品項：%s".formatted(
+                items.size(), details.isBlank() ? "" : "\n" + details);
         return IntentResult.message(IntentResult.Action.INVENTORY_LISTED, message);
     }
 
@@ -288,6 +311,11 @@ public class LifestyleItemIntentService {
                 "「%s」歷史最低價比較:\n%s".formatted(command.title(), lines));
     }
 
+    private IntentResult priceHistory(IntentCommand command) {
+        require(command.title(), "title");
+        return IntentResult.priceHistory(command.title(), priceService.list(command.title()));
+    }
+
     private IntentResult lastPurchase(IntentCommand command) {
         require(command.title(), "title");
         return priceInsightService.lastPurchase(command.title()).map(last -> {
@@ -296,8 +324,8 @@ public class LifestyleItemIntentService {
                     ? "，在%s".formatted(record.getStoreName()) : "，店家未記錄";
             String ago = last.daysAgo() == 0 ? "今天" : last.daysAgo() + " 天前";
             return IntentResult.message(IntentResult.Action.LAST_PURCHASE_INFO,
-                    "上次買「%s」是 %s（%s）%s，單價 %d 元。".formatted(
-                            command.title(), record.getPurchasedAt(), ago, store,
+                    "上次符合「%s」的購買是「%s」，日期 %s（%s）%s，單價 %d 元。".formatted(
+                            command.title(), record.getItemName(), record.getPurchasedAt(), ago, store,
                             record.getPriceTwd()));
         }).orElseGet(() -> IntentResult.message(IntentResult.Action.LAST_PURCHASE_INFO,
                 "目前沒有「%s」的購買紀錄。".formatted(command.title())));
@@ -319,6 +347,77 @@ public class LifestyleItemIntentService {
                                     summary.latest().getPriceTwd(), trend));
         }).orElseGet(() -> IntentResult.message(IntentResult.Action.PRICE_SUMMARY_INFO,
                 "目前沒有「%s」的價格紀錄。".formatted(command.title())));
+    }
+
+    private IntentResult expenseHistory(IntentCommand command, IntentOptions options) {
+        java.time.LocalDate from = expenseDate(command.startAt(), "startAt");
+        java.time.LocalDate to = expenseDate(command.endAt(), "endAt");
+        ExpenseCategory category = options.category() == null
+                ? null : parseExpenseCategory(options.category());
+        PriceRecordService.ExpenseSummary summary = priceService.search(
+                new PriceRecordService.ExpenseCriteria(
+                        from, to, command.title(), command.placeName(), category));
+        if (summary.records().isEmpty()) {
+            return IntentResult.message(IntentResult.Action.EXPENSE_HISTORY_INFO,
+                    "%s 到 %s 沒有符合條件的消費紀錄。".formatted(from, to));
+        }
+        String lines = summary.records().stream().limit(10)
+                .map(record -> "%s｜%s｜%s｜%d × %d＝%d 元｜%s".formatted(
+                        record.getPurchasedAt(), record.getItemName(),
+                        hasText(record.getStoreName()) ? record.getStoreName() : "店家未記錄",
+                        record.getPriceTwd(), record.getQuantity(), record.getTotalPriceTwd(),
+                        record.getExpenseCategory().displayName()))
+                .collect(Collectors.joining("\n"));
+        String remainder = summary.records().size() > 10
+                ? "\n……另有 %d 筆未展開".formatted(summary.records().size() - 10) : "";
+        return IntentResult.message(IntentResult.Action.EXPENSE_HISTORY_INFO,
+                "%s 到 %s 共 %d 筆消費，依已記錄數量與單價合計 %d 元：\n%s%s".formatted(
+                        from, to, summary.records().size(), summary.totalPriceTwd(),
+                        lines, remainder));
+    }
+
+    private IntentResult paymentHistory(IntentOptions options) {
+        int limit = options.quantity() == null ? 10 : options.quantity();
+        PriceRecordService.PaymentHistory history = priceService.recentPayments(limit);
+        if (history.records().isEmpty()) {
+            return IntentResult.message(IntentResult.Action.PAYMENT_HISTORY_INFO,
+                    "目前沒有已保存的日常繳費紀錄。尚未付款的繳費通知不會被算成已繳。");
+        }
+        String lines = history.records().stream()
+                .map(payment -> {
+                    var record = payment.record();
+                    return "%s｜%s｜%s｜%d 元｜%s".formatted(
+                            record.getPurchasedAt(), record.getItemName(),
+                            hasText(record.getStoreName()) ? record.getStoreName() : "收款單位未記錄",
+                            record.getTotalPriceTwd(), payment.kind().displayName());
+                })
+                .collect(Collectors.joining("\n"));
+        return IntentResult.message(IntentResult.Action.PAYMENT_HISTORY_INFO,
+                "最近 %d 筆已保存的繳費紀錄，合計 %d 元：\n%s\n"
+                        .formatted(history.records().size(), history.totalPriceTwd(), lines)
+                        + "只列已落帳紀錄；繳費通知草稿與未確認付款不在其中。");
+    }
+
+    private static java.time.LocalDate expenseDate(String value, String field) {
+        require(value, field);
+        try {
+            return java.time.OffsetDateTime.parse(value).atZoneSameInstant(
+                    java.time.ZoneId.of("Asia/Taipei")).toLocalDate();
+        } catch (java.time.format.DateTimeParseException exception) {
+            throw new IllegalArgumentException("invalid " + field, exception);
+        }
+    }
+
+    private static ExpenseCategory parseExpenseCategory(String value) {
+        try {
+            return ExpenseCategory.valueOf(value.strip().toUpperCase(java.util.Locale.ROOT));
+        } catch (IllegalArgumentException exception) {
+            return java.util.Arrays.stream(ExpenseCategory.values())
+                    .filter(category -> category.displayName().equals(value.strip()))
+                    .findFirst()
+                    .orElseThrow(() -> new IllegalArgumentException(
+                            "unsupported expense category: " + value));
+        }
     }
 
     private IntentResult frequentStore(IntentCommand command) {

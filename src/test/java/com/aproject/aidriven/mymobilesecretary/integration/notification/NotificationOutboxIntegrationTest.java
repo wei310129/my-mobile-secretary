@@ -35,7 +35,8 @@ class NotificationOutboxIntegrationTest extends IntegrationTestBase {
                     LegacyAccountIds.USER_ID, deliveryKey,  null, null,
                     "私密提醒", "不應永久留在 outbox"))).isEqualTo(1);
 
-            NotificationOutboxService.ClaimedNotification claim = outboxService.claimDue().stream()
+            NotificationOutboxService.ClaimedNotification claim = outboxService
+                    .claimDue(LegacyAccountIds.USER_ID).stream()
                     .filter(candidate -> deliveryId.equals(candidate.envelope().deliveryId()))
                     .findFirst()
                     .orElseThrow();

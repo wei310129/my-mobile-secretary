@@ -122,6 +122,33 @@ class RecurringScheduleFlowTest extends IntegrationTestBase {
         assertThat(next.getRecurrence()).isEqualTo(ScheduleItem.Recurrence.WEEKDAYS);
     }
 
+    @Test
+    void endedMonthlyOrdinalScheduleRollsOverToSameOrdinalWeekday() {
+        Instant now = now();
+        ZonedDateTime currentStart = ZonedDateTime.ofInstant(now, ZoneId.of("Asia/Taipei"))
+                .withDayOfMonth(1)
+                .with(java.time.temporal.TemporalAdjusters.firstInMonth(java.time.DayOfWeek.MONDAY))
+                .minusMonths(2).withHour(9).withMinute(0).withSecond(0).withNano(0);
+        ScheduleItem current = ScheduleItem.propose("固定測試每月第一個週一",
+                currentStart.toInstant(), currentStart.plusHours(1).toInstant(), null, now);
+        current.confirm(now);
+        current.repeat(ScheduleItem.Recurrence.MONTHLY_NTH_WEEKDAY, now);
+        current.complete(now);
+        scheduleItemRepository.save(current);
+        LocalDate expectedDate = com.aproject.aidriven.mymobilesecretary.schedule.domain
+                .ScheduleRecurrenceCalculator.nextDate(currentStart.toLocalDate(),
+                        ScheduleItem.Recurrence.MONTHLY_NTH_WEEKDAY);
+
+        scheduleService.rolloverDueRecurringSchedules();
+
+        ScheduleItem next = scheduleItemRepository.findAllByOrderByStartAtAsc().stream()
+                .filter(item -> item.getTitle().equals("固定測試每月第一個週一"))
+                .filter(item -> item.getStartAt().atZone(ZoneId.of("Asia/Taipei")).toLocalDate()
+                        .equals(expectedDate))
+                .findFirst().orElseThrow();
+        assertThat(next.getRecurrence()).isEqualTo(ScheduleItem.Recurrence.MONTHLY_NTH_WEEKDAY);
+    }
+
     /** 截止日含當日：下一場剛好落在截止日，仍要建立並把截止日交棒。 */
     @Test
     void weeklyScheduleIncludesOccurrenceOnCutoffDate() {

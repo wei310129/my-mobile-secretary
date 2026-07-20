@@ -13,6 +13,8 @@ import java.time.ZoneId;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.mockito.ArgumentCaptor;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
@@ -76,12 +78,97 @@ class ConditionalRecurrenceConversationServiceTest {
     }
 
     @Test
-    void holidaySkipIsNotSilentlyChangedIntoPreviousBusinessDay() {
+    void holidaySkipIsRecognizedButMissingDurationStillDoesNotMutate() {
+        AtomicInteger mutations = new AtomicInteger();
+
         IntentResult result = service().answer(
-                "每週三晚上七點上英文課一小時做到年底，國定假日不用上",
+                "每週三七點上英文課做到年底，國定假日不用上，補課時間老師會另外說",
+                mutations::incrementAndGet).orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.CLARIFICATION_NEEDED);
+        assertThat(result.message())
+                .contains("國定假日採跳過", "補課不會自動建立", "每次持續多久", "上午或晚上");
+        assertThat(mutations).hasValue(0);
+    }
+
+    @Test
+    void durationFollowUpResumesPendingHolidaySkipAndCreatesOnlyDraft() {
+        ConditionalRecurrenceRule saved = ConditionalRecurrenceRule.draft(
+                "英文課", Instant.parse("2026-07-22T11:00:00Z"),
+                Instant.parse("2026-07-22T12:00:00Z"), LocalDate.of(2026, 12, 31),
+                ConditionalRecurrenceRule.HolidayPolicy.SKIP,
+                ConditionalRecurrenceRule.ClosurePolicy.NONE, null,
+                Instant.parse("2026-07-18T00:00:00Z"));
+        ReflectionTestUtils.setField(saved, "id", 13L);
+        when(recurrenceService.createDraft(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any())).thenReturn(saved);
+        ConversationSnapshot previous = new ConversationSnapshot(
+                null, null, null, java.util.List.of(), java.util.List.of(),
+                "CLARIFICATION_NEEDED",
+                "每週三七點上英文課做到年底，國定假日不用上，補課時間老師會另外說",
+                "我已辨識這是條件式週期，還需要確認：每次持續多久");
+        AtomicInteger mutations = new AtomicInteger();
+
+        IntentResult result = service().answer(
+                "每次一小時，是晚上七點", previous, mutations::incrementAndGet).orElseThrow();
+
+        assertThat(mutations).hasValue(1);
+        assertThat(result.action()).isEqualTo(IntentResult.Action.PLANNING_PREFERENCE_SET);
+        assertThat(result.message())
+                .contains("草稿 #13", "確認為國定假日就跳過", "補課", "不自動建立");
+        verify(recurrenceService).createDraft(
+                org.mockito.ArgumentMatchers.eq("英文課"),
+                org.mockito.ArgumentMatchers.eq(Instant.parse("2026-07-22T11:00:00Z")),
+                org.mockito.ArgumentMatchers.eq(Instant.parse("2026-07-22T12:00:00Z")),
+                org.mockito.ArgumentMatchers.eq(LocalDate.of(2026, 12, 31)),
+                org.mockito.ArgumentMatchers.eq(ConditionalRecurrenceRule.HolidayPolicy.SKIP),
+                org.mockito.ArgumentMatchers.eq(ConditionalRecurrenceRule.ClosurePolicy.NONE),
+                org.mockito.ArgumentMatchers.isNull());
+    }
+
+    @ParameterizedTest
+    @CsvSource({
+        "凌晨七點,2026-07-21T23:00:00Z",
+        "上午七點,2026-07-21T23:00:00Z",
+        "早上七點,2026-07-21T23:00:00Z",
+        "下午七點,2026-07-22T11:00:00Z",
+        "晚上七點,2026-07-22T11:00:00Z",
+        "黃昏七點,2026-07-22T11:00:00Z",
+        "傍晚七點,2026-07-22T11:00:00Z",
+        "中午十一點半,2026-07-22T03:30:00Z",
+        "中午十二點半,2026-07-22T04:30:00Z",
+        "中午一點,2026-07-22T05:00:00Z"
+    })
+    void understandsAllApprovedTimePeriodAliases(String spokenTime, Instant expectedStart) {
+        when(recurrenceService.createDraft(
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.any())).thenAnswer(call -> {
+                    ConditionalRecurrenceRule saved = ConditionalRecurrenceRule.draft(
+                            call.getArgument(0), call.getArgument(1), call.getArgument(2),
+                            call.getArgument(3), call.getArgument(4), call.getArgument(5),
+                            call.getArgument(6), Instant.parse("2026-07-18T00:00:00Z"));
+                    ReflectionTestUtils.setField(saved, "id", 14L);
+                    return saved;
+                });
+
+        IntentResult result = service().answer(
+                "每週三%s上英文課一小時做到年底，國定假日不用上".formatted(spokenTime),
                 () -> { }).orElseThrow();
 
-        assertThat(result.message()).contains("假日要跳過、前移或另行補課", "不能把「不用上」猜成前移");
+        assertThat(result.action()).isEqualTo(IntentResult.Action.PLANNING_PREFERENCE_SET);
+        ArgumentCaptor<Instant> start = ArgumentCaptor.forClass(Instant.class);
+        verify(recurrenceService).createDraft(
+                org.mockito.ArgumentMatchers.eq("英文課"), start.capture(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.eq(ConditionalRecurrenceRule.HolidayPolicy.SKIP),
+                org.mockito.ArgumentMatchers.eq(ConditionalRecurrenceRule.ClosurePolicy.NONE),
+                org.mockito.ArgumentMatchers.isNull());
+        assertThat(start.getValue()).isEqualTo(expectedStart);
     }
 
     @Test

@@ -54,7 +54,7 @@ class CapabilityPromptAssemblerTest {
 
         assertThat(schedule.content()).contains(
                 "\"required\":[\"title\",\"startAt\",\"endAt\"]",
-                "\"enum\":[\"NONE\",\"WEEKLY\",\"WEEKDAYS\"]");
+                "\"enum\":[\"NONE\",\"WEEKLY\",\"WEEKDAYS\",\"MONTHLY_NTH_WEEKDAY\"]");
         assertThat(schedule.content()).doesNotContain("task.create", "price.history");
         assertThat(dateQuery.content()).contains(
                 "\"required\":[\"date\"]",

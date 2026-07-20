@@ -56,4 +56,18 @@ class CalendarDatePolicyTest {
         assertThat(CalendarDatePolicy.clarification("西元2026/2/30排會議").orElseThrow())
                 .contains("日期", "不存在", "確認前不會建立或修改資料");
     }
+
+    @Test
+    void yearlessDateAndWeekdayMismatchIsBlockedBeforeAnyMutation() {
+        String text = "老師說下週戶外教學但日期寫成7/31星期四，我看日曆好像不是星期四，你先幫我確認不要加";
+
+        assertThat(CalendarDatePolicy.clarification(text, CLOCK).orElseThrow())
+                .contains("2026/07/31（五）", "不是星期四", "確認前不會建立或修改資料");
+    }
+
+    @Test
+    void matchingYearlessDateAndWeekdayDoesNotCreateFalseConflict() {
+        assertThat(CalendarDatePolicy.clarification(
+                "戶外教學是7/31星期五", CLOCK)).isEmpty();
+    }
 }

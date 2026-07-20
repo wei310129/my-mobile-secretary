@@ -34,6 +34,9 @@ public class CapabilityRoutingProperties {
     @Max(12)
     private int maxCandidates = 12;
 
+    @Min(1)
+    private long minimumCandidateScore = 500;
+
     @Positive
     private int legacyPromptCharacters = 14_500;
 
@@ -78,6 +81,14 @@ public class CapabilityRoutingProperties {
 
     public void setMaxCandidates(int maxCandidates) {
         this.maxCandidates = maxCandidates;
+    }
+
+    public long getMinimumCandidateScore() {
+        return minimumCandidateScore;
+    }
+
+    public void setMinimumCandidateScore(long minimumCandidateScore) {
+        this.minimumCandidateScore = minimumCandidateScore;
     }
 
     public int getLegacyPromptCharacters() {

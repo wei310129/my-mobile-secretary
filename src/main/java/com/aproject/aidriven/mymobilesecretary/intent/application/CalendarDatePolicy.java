@@ -2,6 +2,7 @@ package com.aproject.aidriven.mymobilesecretary.intent.application;
 
 import java.time.Clock;
 import java.time.DateTimeException;
+import java.time.DayOfWeek;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.Optional;
@@ -17,6 +18,11 @@ public final class CalendarDatePolicy {
                     + "(?<year>\\d{2,4})\\s*(?:年|[./-])\\s*"
                     + "(?<month>\\d{1,2})\\s*(?:月|[./-])\\s*"
                     + "(?<day>\\d{1,2})\\s*日?");
+    private static final Pattern MONTH_DAY_TOKEN = Pattern.compile(
+            "(?<!\\d)(?<month>\\d{1,2})\\s*(?:月|[./-])\\s*"
+                    + "(?<day>\\d{1,2})\\s*日?");
+    private static final Pattern WEEKDAY_TOKEN = Pattern.compile(
+            "(?:星期|禮拜|週)(?<weekday>[一二三四五六日天])");
 
     private CalendarDatePolicy() {
     }
@@ -30,7 +36,7 @@ public final class CalendarDatePolicy {
         if (!isWeekdayQuestion(compact)) {
             return Optional.empty();
         }
-        Analysis analysis = analyze(text);
+        Analysis analysis = analyze(text, clock);
         if (analysis.problem() != null) {
             return Optional.of(IntentResult.clarificationNeeded(analysis.problem()));
         }
@@ -42,7 +48,11 @@ public final class CalendarDatePolicy {
     }
 
     static Optional<String> clarification(String text) {
-        return Optional.ofNullable(analyze(text).problem());
+        return clarification(text, Clock.system(TAIPEI));
+    }
+
+    static Optional<String> clarification(String text, Clock clock) {
+        return Optional.ofNullable(analyze(text, clock).problem());
     }
 
     static String normalizeForInterpretation(String text) {
@@ -60,7 +70,11 @@ public final class CalendarDatePolicy {
     }
 
     static IntentScript guard(String text, IntentScript script) {
-        Optional<String> problem = clarification(text);
+        return guard(text, script, Clock.system(TAIPEI));
+    }
+
+    static IntentScript guard(String text, IntentScript script, Clock clock) {
+        Optional<String> problem = clarification(text, clock);
         if (problem.isEmpty()) return script;
         IntentCommand unknown = new IntentCommand(IntentCommand.Type.UNKNOWN,
                 null, null, null, null, null, null, problem.get(),
@@ -80,16 +94,80 @@ public final class CalendarDatePolicy {
                 "一二三四五六日".charAt(date.getDayOfWeek().getValue() - 1));
     }
 
-    private static Analysis analyze(String text) {
+    private static Analysis analyze(String text, Clock clock) {
         if (text == null || text.isBlank()) return new Analysis(null, null);
         Matcher matcher = DATE_TOKEN.matcher(text);
         LocalDate first = null;
+        int dates = 0;
         while (matcher.find()) {
             ParsedDate parsed = parse(matcher);
             if (parsed.problem() != null) return new Analysis(null, parsed.problem());
             if (first == null) first = parsed.date();
+            dates++;
+        }
+        if (first == null) {
+            Matcher monthDay = MONTH_DAY_TOKEN.matcher(text);
+            if (monthDay.find()) {
+                ParsedDate parsed = parseYearless(monthDay, clock);
+                if (parsed.problem() != null) return new Analysis(null, parsed.problem());
+                first = parsed.date();
+                dates = 1;
+                if (monthDay.find()) dates++;
+            }
+        }
+        Matcher weekdayMatcher = WEEKDAY_TOKEN.matcher(text);
+        DayOfWeek statedWeekday = null;
+        boolean conflictingWeekdays = false;
+        while (weekdayMatcher.find()) {
+            DayOfWeek parsedWeekday = weekday(weekdayMatcher.group("weekday").charAt(0));
+            if (statedWeekday == null) {
+                statedWeekday = parsedWeekday;
+            } else if (statedWeekday != parsedWeekday) {
+                conflictingWeekdays = true;
+            }
+        }
+        if (first != null && dates == 1 && statedWeekday != null && !conflictingWeekdays
+                && first.getDayOfWeek() != statedWeekday) {
+            return new Analysis(null,
+                    "你提供的日期與星期不一致：%s 是星期%s，不是星期%s。請確認日期或星期哪個正確；確認前不會建立或修改資料。"
+                            .formatted(format(first), weekdayLabel(first.getDayOfWeek()),
+                                    weekdayLabel(statedWeekday)));
         }
         return new Analysis(first, null);
+    }
+
+    private static ParsedDate parseYearless(Matcher matcher, Clock clock) {
+        LocalDate today = LocalDate.now(clock.withZone(TAIPEI));
+        int month = Integer.parseInt(matcher.group("month"));
+        int day = Integer.parseInt(matcher.group("day"));
+        try {
+            LocalDate candidate = LocalDate.of(today.getYear(), month, day);
+            if (candidate.isBefore(today.minusDays(31))) {
+                candidate = candidate.plusYears(1);
+            }
+            return new ParsedDate(candidate, null);
+        } catch (DateTimeException exception) {
+            return new ParsedDate(null,
+                    "日期「%s」不存在。請重新確認月份與日期；確認前不會建立或修改資料。"
+                            .formatted(matcher.group().strip()));
+        }
+    }
+
+    private static DayOfWeek weekday(char value) {
+        return switch (value) {
+            case '一' -> DayOfWeek.MONDAY;
+            case '二' -> DayOfWeek.TUESDAY;
+            case '三' -> DayOfWeek.WEDNESDAY;
+            case '四' -> DayOfWeek.THURSDAY;
+            case '五' -> DayOfWeek.FRIDAY;
+            case '六' -> DayOfWeek.SATURDAY;
+            case '日', '天' -> DayOfWeek.SUNDAY;
+            default -> throw new IllegalArgumentException("unsupported weekday " + value);
+        };
+    }
+
+    private static String weekdayLabel(DayOfWeek weekday) {
+        return String.valueOf("一二三四五六日".charAt(weekday.getValue() - 1));
     }
 
     private static ParsedDate parse(Matcher matcher) {

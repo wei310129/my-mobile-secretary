@@ -130,6 +130,27 @@ class ConditionalRecurrenceServiceTest {
     }
 
     @Test
+    void confirmedNationalHolidayCanSkipOccurrenceWithoutCreatingMakeup() {
+        ConditionalRecurrenceRule skipRule = ConditionalRecurrenceRule.draft(
+                "英文課", FRIDAY_START, FRIDAY_END, LocalDate.of(2026, 12, 31),
+                ConditionalRecurrenceRule.HolidayPolicy.SKIP,
+                ConditionalRecurrenceRule.ClosurePolicy.NONE, null, NOW);
+        skipRule.activate(NOW);
+        when(ruleRepository.findById(RULE_ID)).thenReturn(Optional.of(skipRule));
+        fact(OfficialDayStatus.Fact.NATIONAL_HOLIDAY, FRIDAY, "全國", true);
+
+        ConditionalRecurrenceService.ResolutionDecision decision = service.resolve(RULE_ID, FRIDAY);
+
+        assertThat(decision.readyForScheduleProposal()).isFalse();
+        assertThat(decision.resolution().getStatus())
+                .isEqualTo(ConditionalRecurrenceResolution.Status.SKIPPED);
+        assertThat(decision.resolution().getResolvedStartAt()).isNull();
+        assertThat(decision.resolution().getReason())
+                .contains("國定假日", "跳過本次", "補課不自動建立");
+        assertThat(decision.resolution().getOfficialSourceSnapshot()).contains("政府測試來源");
+    }
+
+    @Test
     void confirmedTyphoonClosureSkipsWeekendAndMovesToNextConfirmedBusinessDay() {
         when(ruleRepository.findById(RULE_ID)).thenReturn(Optional.of(rule(true)));
         LocalDate monday = LocalDate.of(2026, 7, 27);

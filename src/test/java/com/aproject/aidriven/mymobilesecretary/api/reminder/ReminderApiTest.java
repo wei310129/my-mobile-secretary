@@ -8,6 +8,8 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.aproject.aidriven.mymobilesecretary.IntegrationTestBase;
+import com.aproject.aidriven.mymobilesecretary.account.domain.LegacyAccountIds;
+import com.aproject.aidriven.mymobilesecretary.integration.notification.NotificationOutboxWorker;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.ReminderDelivery;
 import com.aproject.aidriven.mymobilesecretary.reminder.persistence.ReminderDeliveryRepository;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -30,6 +32,9 @@ class ReminderApiTest extends IntegrationTestBase {
 
     @Autowired
     private ReminderDeliveryRepository deliveryRepository;
+
+    @Autowired
+    private NotificationOutboxWorker notificationOutboxWorker;
 
     /** 建 task + place + ENTER 規則,回報進入事件,回傳觸發的 reminder id。 */
     private long triggerReminder(String title, double baseLat) throws Exception {
@@ -72,6 +77,9 @@ class ReminderApiTest extends IntegrationTestBase {
     @Test
     void triggeredReminderHasSuccessfulLogDelivery() throws Exception {
         long reminderId = triggerReminder("買排骨", 22.60);
+
+        // 測試 profile 關閉 scheduler；API 交易提交後手動跑 durable outbox worker。
+        notificationOutboxWorker.process(LegacyAccountIds.USER_ID);
 
         List<ReminderDelivery> deliveries = deliveryRepository.findByReminderId(reminderId);
         assertThat(deliveries)

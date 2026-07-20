@@ -21,6 +21,7 @@ public class ConditionalRecurrenceResolution extends WorkspaceOwnedEntity {
 
     public enum Status {
         READY,
+        SKIPPED,
         WAITING_OFFICIAL_CONFIRMATION,
         OUTSIDE_RULE_RANGE,
         RULE_NOT_ACTIVE

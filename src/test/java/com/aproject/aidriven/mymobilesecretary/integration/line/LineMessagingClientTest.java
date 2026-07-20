@@ -65,10 +65,17 @@ class LineMessagingClientTest {
     }
 
     private void stubReply(int status) {
+        stubReply(status, null);
+    }
+
+    private void stubReply(int status, String body) {
         server.createContext("/v2/bot/message/reply", exchange -> {
             replyAuthHeaders.add(exchange.getRequestHeaders().getFirst("Authorization"));
             replyBodies.add(new String(exchange.getRequestBody().readAllBytes(), UTF_8));
-            exchange.sendResponseHeaders(status, -1);
+            byte[] response = body == null ? new byte[0] : body.getBytes(UTF_8);
+            if (body != null) exchange.getResponseHeaders().add("Content-Type", "application/json");
+            exchange.sendResponseHeaders(status, response.length == 0 ? -1 : response.length);
+            if (response.length > 0) exchange.getResponseBody().write(response);
             exchange.close();
         });
     }
@@ -121,5 +128,13 @@ class LineMessagingClientTest {
 
         assertThatCode(() -> client(props("long-lived-token")).reply("expired-rt", "hello"))
                 .doesNotThrowAnyException();
+    }
+
+    @Test
+    void replyReturnsSentMessageIdForFutureQuoteResolution() {
+        stubReply(200, "{\"sentMessages\":[{\"id\":\"line-out-1\",\"quoteToken\":\"q\"}]}");
+
+        assertThat(client(props("long-lived-token")).reply("rt-1", "已記下"))
+                .contains("line-out-1");
     }
 }

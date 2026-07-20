@@ -2,6 +2,7 @@ package com.aproject.aidriven.mymobilesecretary.integration.notification;
 
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.ReminderDelivery;
 import com.aproject.aidriven.mymobilesecretary.reminder.persistence.ReminderDeliveryRepository;
+import com.aproject.aidriven.mymobilesecretary.shared.time.TimeDisplayPreferenceService;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
@@ -18,38 +19,42 @@ public class NotificationOutboxService {
     private final ReminderDeliveryRepository deliveryRepository;
     private final NotificationOutboxProperties properties;
     private final Clock clock;
+    private final TimeDisplayPreferenceService timeDisplayPreferenceService;
 
     public NotificationOutboxService(NotificationOutboxRepository repository,
                                      ReminderDeliveryRepository deliveryRepository,
                                      NotificationOutboxProperties properties,
-                                     Clock clock) {
+                                     Clock clock,
+                                     TimeDisplayPreferenceService timeDisplayPreferenceService) {
         this.repository = repository;
         this.deliveryRepository = deliveryRepository;
         this.properties = properties;
         this.clock = clock;
+        this.timeDisplayPreferenceService = timeDisplayPreferenceService;
     }
 
     @Transactional
-    public List<ClaimedNotification> claimDue() {
+    public List<ClaimedNotification> claimDue(UUID targetUserId) {
         Instant now = Instant.now(clock);
         List<ClaimedNotification> claimed = new ArrayList<>();
         for (NotificationOutbox entry : repository.findClaimable(
-                NotificationOutboxStatus.PENDING, now,
+                targetUserId, NotificationOutboxStatus.PENDING, now,
                 PageRequest.of(0, properties.maxBatch()))) {
             UUID token = UUID.randomUUID();
             entry.claim(token, now.plus(properties.lease()));
             claimed.add(new ClaimedNotification(entry.getId(), token, entry.getChannel(),
-                    entry.isRetrySafe(), entry.envelope()));
+                    entry.isRetrySafe(), entry.envelope(
+                            timeDisplayPreferenceService::applyToHumanText)));
         }
         return List.copyOf(claimed);
     }
 
     @Transactional
-    public int recoverExpiredClaims() {
+    public int recoverExpiredClaims(UUID targetUserId) {
         Instant now = Instant.now(clock);
         int recovered = 0;
         for (NotificationOutbox entry : repository.findExpiredClaims(
-                NotificationOutboxStatus.SENDING, now,
+                targetUserId, NotificationOutboxStatus.SENDING, now,
                 PageRequest.of(0, properties.maxBatch()))) {
             if (entry.isRetrySafe() && entry.getAttemptCount() < properties.maxAttempts()) {
                 entry.retry(now.plus(properties.retryDelay()), "LEASE_EXPIRED");

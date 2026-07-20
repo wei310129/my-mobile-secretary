@@ -52,6 +52,11 @@ public class ScheduleItem extends WorkspaceOwnedEntity {
     @Column(nullable = false)
     private boolean endTimeExplicit = true;
 
+    /** 明確的行程領域；歷史或未明講資料保留 UNKNOWN，不能拿來做破壞性分類。 */
+    @Enumerated(EnumType.STRING)
+    @Column(nullable = false, length = 20)
+    private Category category = Category.UNKNOWN;
+
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 20)
     private ScheduleStatus status;
@@ -82,6 +87,7 @@ public class ScheduleItem extends WorkspaceOwnedEntity {
         this.startAt = startAt;
         this.endAt = endAt;
         this.placeId = placeId;
+        this.category = Category.UNKNOWN;
         this.status = ScheduleStatus.PROPOSED;
         this.createdAt = now;
         this.updatedAt = now;
@@ -114,7 +120,22 @@ public class ScheduleItem extends WorkspaceOwnedEntity {
         /** 每週固定(結束後自動排下一週)。 */
         WEEKLY,
         /** 每個週一至週五(結束後自動排下一個平日)。 */
-        WEEKDAYS
+        WEEKDAYS,
+        /** 每月第 N 個星期幾；N 與星期幾由第一場日期決定。 */
+        MONTHLY_NTH_WEEKDAY
+    }
+
+    public enum Category {
+        PERSONAL,
+        WORK,
+        FAMILY,
+        UNKNOWN
+    }
+
+    /** 僅保存明確分類；null 永遠降級成 UNKNOWN，不允許推測。 */
+    public void categorize(Category category, Instant now) {
+        this.category = category == null ? Category.UNKNOWN : category;
+        this.updatedAt = now;
     }
 
     /** 設為每週固定行程。終止狀態(取消/放棄)的行程沒有下一週,不可設定。 */
@@ -257,6 +278,10 @@ public class ScheduleItem extends WorkspaceOwnedEntity {
 
     public boolean isEndTimeExplicit() {
         return endTimeExplicit;
+    }
+
+    public Category getCategory() {
+        return category;
     }
 
     public ScheduleStatus getStatus() {

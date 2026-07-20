@@ -55,20 +55,31 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               未明講誰接、接回時間與地點時，不可自行拆成送／接兩個行程、不可發明交通緩衝，
               也不可直接建立整段行程；輸出 UNKNOWN，reason 主動詢問誰送、誰接、接回時間與地點。
               已明講接送分工時，才依原文建立對應行程，不可把家人的行程誤稱為使用者本人要執行。
-            - 待辦事項(買東西、繳費、聯絡某人)→ CREATE_TASK;有截止時間才填 dueAt。
-              只有單一明確時點的短生活事項(如「今晚十點倒垃圾」)也用 CREATE_TASK，dueAt 填該時點；
-              不可輸出缺 endAt 的 CREATE_SCHEDULE。
+            - 一般待辦→ CREATE_TASK；有截止才填 dueAt。
+              「某日有空再做」→ CREATE_FLEXIBLE_DAY_TASK，title=事項，startAt=該日台北00:00，
+              dueAt空；不可建行程或猜鐘點。
+              單一時點生活事項→ CREATE_TASK，dueAt=該時點；不可輸出缺 endAt 的 CREATE_SCHEDULE。
+              即使前文有待補時間的活動草稿，「明天下午三點提醒我補活動確切時間」仍是獨立
+              CREATE_TASK；dueAt 放提醒時點，title 帶入活動名稱與補時間目的。不可把提醒時點
+              寫成活動 startAt，也不可因此建立缺少 endAt 的活動行程。
             - 回報待辦已完成(「牛奶買到了」「電費繳完了」)→ COMPLETE_TASK,title 放該任務的關鍵字(如「牛奶」)。
             - 「某行程／會議前 N 分鐘提醒我」→ ADD_SCHEDULE_REMINDER,title 放行程關鍵字,
               options.leadMinutes=N；不可退化成一般 CREATE_TASK，也不可把 N 當成行程時長。
             - 取消待辦(「取消買排骨」「醬油不用買了」)→ CANCEL_TASK,title 放關鍵字。
             - 一次取消全部待辦(「全部待辦都取消」「清空待辦」)→ CANCEL_ALL_TASKS。
             - 改待辦的期限(「拿包裹改成今天11點」)→ RESCHEDULE_TASK,title 放關鍵字,dueAt 放新期限。
+            - 明講「把待辦改成行程提醒」→ CONVERT_TASK_TO_SCHEDULE_REMINDER，title 放既有待辦關鍵字，
+              dueAt 必須是使用者明講的單一提醒時點；缺時間不得猜。
+            - 明講「把行程提醒改成待辦」→ CONVERT_TASK_TO_TODO，title 放既有項目關鍵字，dueAt 留空；
+              Java 會移除提醒排程。這兩類都不可稱為草稿或行程。
             - 建立地點(「建立地點:X」「幫我把X存起來」)→ CREATE_PLACE,placeName 放地點名。
             - 說某待辦要在哪裡做(「拿包裹是要到蝦皮店到店中興二店」)→ BIND_TASK_PLACE,
               title 放待辦關鍵字,placeName 放地點名;這不是建新待辦!
             - 問某待辦要去哪裡做(「我要去哪取蝦皮?」「包裹在哪拿」)→ ASK_TASK_PLACE,title 放待辦關鍵字。
             - 取消既有行程(「明天的會議取消」)→ CANCEL_SCHEDULE,title 放行程關鍵字。
+              同時提到人物、主題、排除另一場或「前面／後面那場」時：title 放要取消的主題，
+              options.referenceTitle 放人物等必要附加關鍵字，排除主題填 filter=EXCLUDE:主題；
+              明確時間窗填 startAt/endAt，只有同一批候選的順序非常清楚時才填 ordinal。Java 最終仍須唯一才取消。
             - 說某行程是每週固定/取消固定(「送女兒上課是每週固定的」)→ SET_SCHEDULE_RECURRING,
               title 放關鍵字,recurring 填 true(取消固定填 false);上班日固定另填 options.recurrence=WEEKDAYS;
               有「到某日為止」時另填 options.recurrenceUntil=yyyy-MM-dd。
@@ -129,6 +140,16 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - CREATE_TASK 可同時填 dueAt、placeName 與 options。原句明講「去某地買／拿／做」時 placeName
               必須保留完整店名或地點，不可只存標題與期限。重複提醒填 options.recurrence;
               天氣條件提醒用 CREATE_WEATHER_REMINDER,不要把「如果」忽略。
+            - 使用者明講「前一件待辦完成後才提醒／建立下一件」時，下一件仍用 CREATE_TASK，
+              options.referenceTitle 填前一件待辦、referenceKind=AFTER_TASK_COMPLETION；
+              明講延遲多久才填 shiftMinutes，沒講就是 0。不可把下一件提前建立，也不可把行程結束
+              當成待辦完成。多步指令必須依講述順序輸出，讓前一件先建立後才能安全綁定。
+            - 問最晚出發時間用 ASK_DEPARTURE_TIME：dueAt 是抵達截止，不是出發時間；placeName 是目的地，
+              options.fromPlaceName 是明講的起點。明講額外停車／報到分鐘數才填 bufferMinutes；只說要保留
+              合理停車時間時留空，交由 Java 使用已確認偏好與系統基本轉場緩衝，不可自行猜分鐘數。
+            - 使用者說「先不要建」並詢問一個假設行程含前後緩衝是否撞期時，用 CHECK_FEASIBILITY：
+              title、startAt、endAt 填主行程，options.leadMinutes 填前置準備分鐘，bufferMinutes 填後續交通
+              分鐘。不可輸出 CREATE_SCHEDULE；Java 會以擴展後的完整區間唯讀分段檢查。
             - 「今天有什麼事」是 LIST_AGENDA+filter TODAY,不能退化成列全部未完成待辦。
             - 問今天／明天行程總覽時,必須同時包含固定行程與當日單次行程;不可只回數量統計。
               使用者確認把當日項目併入固定行程時用 ACCEPT_CONTEXT,不可建新行程或要求改期。
@@ -167,9 +188,39 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 問行程最滿的一天用 ASK_BUSY_SCHEDULE_DAY;問最長行程用 ASK_LONGEST_SCHEDULE;
               按地點整理用 GROUP_SCHEDULES_BY_PLACE。這三種可搭配 TODAY/WEEK filter。
               LIST_SCHEDULES 另可搭配 WEEKDAY、RECURRING、ONE_TIME、LONG filter。
-            - 問某品項上次何時／哪裡／多少錢買用 ASK_LAST_PURCHASE;問平均、高低價、價差、
+            - 問某品項或商家／品牌相關產品上次何時／哪裡／多少錢買用 ASK_LAST_PURCHASE；
+              title 放品項、商家或品牌關鍵字（例如 Microsoft），不得要求使用者改用完整商品名；問平均、高低價、價差、
               最近漲跌或紀錄筆數用 ASK_PRICE_SUMMARY;問最常在哪家店買用 ASK_FREQUENT_STORE。
-              價格紀錄沒有購買數量,不可把單價加總成支出；使用者問支出時要 UNKNOWN 說明資料不足。
+            - 指定期間的消費/花費/開銷→ ASK_EXPENSE_HISTORY，startAt/endAt=台北完整邊界；
+              title=品項，placeName=店家，
+              指定分類放 options.category，只能是 FOOD/BEVERAGE/HOUSEHOLD/EDUCATION/CHILDCARE/
+              ENTERTAINMENT/TRANSPORT/HEALTHCARE/CLOTHING/LUXURY/ELECTRONICS/HOUSING/WORK/TAX/OTHER/UNKNOWN。
+              「買、花費在、在某店消費、吃、喝、搭」都可能是消費查詢語彙，不可只把「買」當購物清單。
+              沒有明確期間就用 UNKNOWN 追問；這是唯讀查詢，不可建立待辦或消費資料。
+              支出只能加總系統已保存的數量與單價；缺數量的舊紀錄只按既有安全回填值，不可讓模型估算。
+            - 問最近有沒有水電、瓦斯、學費、停車等繳費紀錄→ ASK_PAYMENT_HISTORY；不追問日期。
+            - 明講標籤關係才用 UPSERT_TAG_RELATION：title=起點、referenceTitle=終點、referenceKind=
+              IS_A/RELATED_TO/PART_OF/ELIGIBLE_FOR/PROVIDED_BY；category/filter=兩端 kind。不得自行推論關係。
+            - 時間明確的已發生事實用 RECORD_TAGGED_LIFE_EVENT：title=摘要、startAt=時間、category=record type、
+              itemNames=明講標籤；時間不明就 UNKNOWN，不猜日期。Java 共同 LifeRecord 排除 FEEDBACK。
+            - 依標籤查紀錄用 ASK_TAGGED_RECORDS：title 放標籤，指定期間才填 startAt/endAt；
+              options.filter 可放 PURCHASE、APPLICATION 等 record type。查詢會沿已保存的 tag edge，唯讀且最多 20 筆。
+            - 查原始照片／文件用 ASK_STORED_MEDIA：title=搜尋詞、filter=IMAGE/DOCUMENT；只列本人 App 授權 URL。
+              聊天要求刪除仍用此型別，Java 只指引 App 檔案管理，不得刪除。
+            - 查名片聯絡人用 ASK_CONTACT，title=姓名／公司／專業關鍵字；空白列最近資料，全程唯讀。
+            - 查學校／幼兒園菜單用 ASK_SCHOOL_MEAL：startAt/endAt 放指定日或週的台北時區邊界；
+              options.filter 只能是 BREAKFAST/LUNCH/SNACK/DINNER；查「牛奶是哪天」時 title=牛奶，
+              查當天整個早餐時 title 留空；指定學校才把名稱放 placeName。此能力永遠唯讀。
+            - 保存場館參觀／展出限制用 RECORD_VENUE_VISIT_INFO：placeName 放使用者明講的場館，title 放展示區或主題，
+              options.description 只放明確規則；預約成團人數放 options.quantity。場館不明時用 UNKNOWN 追問，不從圖片背景猜。
+              查已保存資訊用 ASK_VENUE_VISIT_INFO，placeName 放場館關鍵字；這是唯讀。保存資訊不等於建立行程或完成預約。
+            - 捐血：已發生用 RECORD_BLOOD_DONATION（startAt=日期、placeName=明講地點）；明講最早日才放 dueAt，不推算。
+              補最早日用 SET_BLOOD_DONATION_ELIGIBILITY（dueAt 必填）；查詢用 ASK_BLOOD_DONATION_ELIGIBILITY
+              （指定日=startAt，今天留空）。Java 只比保存日期，不判斷醫療資格。排下次須明講日期時間，否則 UNKNOWN。
+            - 待註記商品圖：用途=RECORD_PRODUCT_USAGE；明講朋友推薦=RECORD_PRODUCT_RECOMMENDATION；
+              本人明講不適且要提醒=RECORD_PRODUCT_CAUTION。其他自由註記用 RECORD_PRODUCT_ANNOTATION，
+              options.itemNames 放使用者明講的任意標籤；只有明講要連到購物清單提醒時 referenceKind=PURCHASE_REMINDER。
+              圖片不能自行證明用途、推薦、不適或提醒關係；編號依短期上下文。
             - 問上次做某個活動的時間(「我上次運動是什麼時候」「多久沒健身了」)用 ASK_LAST_ACTIVITY,
               title 放活動關鍵字；若指定場館、品牌或分店(「World Gym」「公館 World Gym」),一定保留在
               placeName,不可只留下「運動」。問「之前有去過嗎」時 options.filter=EVER；明確說所有分店時
@@ -196,6 +247,10 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - 批次刪行程(「把下週行程都刪掉」「刪掉所有行程」)→ BULK_CANCEL_SCHEDULES,
               startAt/endAt 放使用者指定範圍;沒講明確範圍就留空,由系統回問,絕不可自行補範圍。
               這與 CANCEL_SCHEDULE(單一行程)不同;「刪掉所有待辦」仍是 CANCEL_ALL_TASKS。
+              使用者要求「先列清單確認、只刪私人並保留公司／小孩」時，另填 filter=PREVIEW_PRIVATE_ONLY；
+              第一輪只能預覽。只有上一輪是該預覽且使用者明確確認刪除時才輸出 ACCEPT_CONTEXT。
+            - 建立行程時，只有原文明確可判定領域才填 options.category：私人 PERSONAL、公司／工作 WORK、
+              家庭／小孩 FAMILY；不確定就留空成 UNKNOWN。Java 不會靠標題猜分類。
             - 「幫我訂餐廳」「訂位」「找地方吃飯慶生」→ BOOK_RESTAURANT,不可回 UNKNOWN 說做不到:
               placeName 放指定餐廳(沒指定留空)、title 放料理偏好、startAt 放明確用餐時間(模糊不猜)、
               options.quantity 放人數、options.description 放特殊需求原文(長輩/幼兒/行動不便/毛小孩)。
@@ -245,7 +300,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
         long parsingStarted = System.nanoTime();
         try {
             IntentScript safe = IntentScriptSafetyPolicy.apply(
-                    text, convertStructuredResponse(response));
+                    text, convertStructuredResponse(response),
+                    java.time.Clock.fixed(now, java.time.ZoneId.of("Asia/Taipei")));
             return IntentScriptDateRangePolicy.apply(text, safe, now);
         } finally {
             IntentInterpreterTelemetryContext.record(new IntentInterpreterTelemetryContext.Telemetry(

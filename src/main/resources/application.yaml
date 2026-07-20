@@ -26,6 +26,10 @@ spring:
     hibernate:
       ddl-auto: validate
     open-in-view: false
+  servlet:
+    multipart:
+      max-file-size: 15MB
+      max-request-size: 16MB
 
 management:
   endpoints:
@@ -34,6 +38,14 @@ management:
         include: health,info
 
 app:
+  media:
+    storage:
+      # 私有 bytes 不放資料庫；正式環境可用相同介面替換為 S3-compatible storage。
+      root: ./var/media
+      # 安全保險絲，不代表產品方案容量。
+      max-file-size: 15MB
+      # 0 表示尚未啟用方案配額；服務分級容量需產品拍板後由 quota policy 提供。
+      default-actor-quota: 0B
   workspace:
     # Production must never silently fall back to another tenant.
     legacy-fallback-enabled: false
@@ -91,6 +103,8 @@ app:
       # 先只比較候選路由與舊路由，不改變實際執行；累積 trace 後再按 domain 開 ACTIVE。
       mode: SHADOW
       max-candidates: 8
+      # 單一弱關鍵字不能因為「已是最高分」就接管訊息；需完整片語或至少兩個有效線索。
+      minimum-candidate-score: 500
       legacy-prompt-characters: 14500
       estimated-characters-per-token: 2.0
     trace:

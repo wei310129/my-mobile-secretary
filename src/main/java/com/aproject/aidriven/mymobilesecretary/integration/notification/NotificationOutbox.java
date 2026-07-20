@@ -3,6 +3,7 @@ package com.aproject.aidriven.mymobilesecretary.integration.notification;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -110,12 +111,16 @@ public class NotificationOutbox extends WorkspaceOwnedEntity {
         clearSensitivePayload();
     }
 
-    ReminderNotification envelope() {
+    ReminderNotification envelope(UnaryOperator<String> humanTextFormatter) {
         if (status != NotificationOutboxStatus.SENDING || title == null || message == null) {
             throw new IllegalStateException("Claimed notification payload is unavailable");
         }
+        if (humanTextFormatter == null) {
+            throw new IllegalArgumentException("human text formatter is required");
+        }
         return new ReminderNotification(getWorkspaceId(), targetUserId, deliveryId, destination,
-                reminderId, taskId, title, message);
+                reminderId, taskId, humanTextFormatter.apply(title),
+                humanTextFormatter.apply(message));
     }
 
     boolean claimMatches(UUID token) {

@@ -21,6 +21,7 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.AdditionalAnswers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 /**
  * 建地點的 Google 補全規則測試:自帶座標不查、缺座標查 Google 補空缺、
@@ -35,12 +36,15 @@ class PlaceServiceTest {
     private PlaceRepository placeRepository;
     @Mock
     private GooglePlacesClient googlePlacesClient;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     private PlaceService service;
 
     @BeforeEach
     void setUp() {
-        service = new PlaceService(placeRepository, googlePlacesClient, Clock.fixed(NOW, ZoneOffset.UTC));
+        service = new PlaceService(placeRepository, googlePlacesClient,
+                eventPublisher, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     private void saveReturnsInput() {

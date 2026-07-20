@@ -138,6 +138,40 @@ public record IntentCommand(
         DISCARD_TRAVEL_ITINERARY_DRAFT,
         ASK_LAST_PURCHASE,
         ASK_PRICE_SUMMARY,
+        /** 查指定日期範圍的消費明細與可靠總額，可依品項、店家或分類篩選。 */
+        ASK_EXPENSE_HISTORY,
+        /** 列出最近實際保存的日常繳費紀錄；不包含尚未付款的通知草稿。 */
+        ASK_PAYMENT_HISTORY,
+        /** 使用者明確宣告兩個標籤的 typed relation；不由模型自行推論。 */
+        UPSERT_TAG_RELATION,
+        /** 記錄一筆有明確發生時間與標籤的生活事實。 */
+        RECORD_TAGGED_LIFE_EVENT,
+        /** 沿使用者的 tag graph 唯讀查詢消費與生活事實。 */
+        ASK_TAGGED_RECORDS,
+        /** 唯讀列出本人保存的原始圖片／文件與 App 授權 content URL。 */
+        ASK_STORED_MEDIA,
+        /** 唯讀查詢本人由名片保存的外部專業聯絡人。 */
+        ASK_CONTACT,
+        /** 唯讀查詢本人保存的學校菜單，可依日期範圍、餐別與品項篩選。 */
+        ASK_SCHOOL_MEAL,
+        /** 保存場館參觀／展出限制；placeName=場館、title=主題，details 只放明確內容。 */
+        RECORD_VENUE_VISIT_INFO,
+        /** 唯讀查詢本人保存的場館參觀／展出資訊。 */
+        ASK_VENUE_VISIT_INFO,
+        /** 記錄一次已發生的捐血；startAt=日期，dueAt 只接受使用者明講的下次最早日期。 */
+        RECORD_BLOOD_DONATION,
+        /** 為最近一筆捐血紀錄補上使用者明確提供的下次最早日期；dueAt 必填。 */
+        SET_BLOOD_DONATION_ELIGIBILITY,
+        /** 依已保存門檻查某日是否已到日期；startAt 可空，空時查今天。 */
+        ASK_BLOOD_DONATION_ELIGIBILITY,
+        /** 將最近的商品圖片記為使用用途；必須來自使用者明確補述。 */
+        RECORD_PRODUCT_USAGE,
+        /** 將最近的商品圖片記為他人推薦，不把圖片本身視為推薦證據。 */
+        RECORD_PRODUCT_RECOMMENDATION,
+        /** 記錄本人明確回報的商品不適警示，供日後購物提醒；不作醫療診斷。 */
+        RECORD_PRODUCT_CAUTION,
+        /** 以任意使用者標籤註記最近商品圖片；只有 referenceKind=PURCHASE_REMINDER 才連到購物提醒。 */
+        RECORD_PRODUCT_ANNOTATION,
         ASK_FREQUENT_STORE,
         ASK_INVENTORY_EXTREMES,
         CHECK_SHOPPING_INVENTORY,
@@ -146,6 +180,8 @@ public record IntentCommand(
         ASK_SCHEDULE_REMINDER,
         /** 建任務(待辦,無固定時段;可有期限)。 */
         CREATE_TASK,
+        /** 建立只有目標日期、沒有固定鐘點的彈性當日任務；startAt 只提供日期。 */
+        CREATE_FLEXIBLE_DAY_TASK,
         /** 建行程(有明確開始/結束時段的承諾)。 */
         CREATE_SCHEDULE,
         /** 回報任務做完了(「牛奶買到了」);title 放任務關鍵字,配對由 Java 規則做。 */
@@ -156,6 +192,10 @@ public record IntentCommand(
         CANCEL_ALL_TASKS,
         /** 改待辦期限(「拿包裹改成今天11點」);title 關鍵字 + dueAt 新期限。 */
         RESCHEDULE_TASK,
+        /** 待辦事項轉行程提醒；title 指定既有項目，dueAt 是明確提醒時點。 */
+        CONVERT_TASK_TO_SCHEDULE_REMINDER,
+        /** 行程提醒轉回無執行日期／時間的待辦事項；title 指定既有項目。 */
+        CONVERT_TASK_TO_TODO,
         /** 取消既有行程(「明天的會議取消」);title 放行程關鍵字,由 Java 規則找唯一行程。 */
         CANCEL_SCHEDULE,
         /** 把行程設為/取消每週固定(「送女兒上課是每週固定的」);title 關鍵字 + recurring。 */

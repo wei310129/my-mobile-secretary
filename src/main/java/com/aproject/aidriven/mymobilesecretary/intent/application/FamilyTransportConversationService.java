@@ -1,6 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
+import com.aproject.aidriven.mymobilesecretary.shared.time.ChineseTimePeriod;
 import java.time.Clock;
 import java.time.DayOfWeek;
 import java.time.LocalDate;
@@ -23,7 +24,7 @@ public class FamilyTransportConversationService {
     private static final String PERSON = "老婆|老公|太太|先生|媽媽|爸爸|阿公|阿嬤|外公|外婆|爺爺|奶奶";
     private static final String CHILD = "兒子|女兒|孩子|小孩";
     private static final String HOUR = "(?:\\d{1,2}|[一二三四五六七八九兩]|十(?:[一二三四五六七八九])?|二十(?:[一二三])?)";
-    private static final String CLOCK = "(?:凌晨|早上|上午|中午|下午|晚上)?" + HOUR
+    private static final String CLOCK = ChineseTimePeriod.NON_CAPTURING_REGEX + "?" + HOUR
             + "(?:點(?:半|[零一二三四五六七八九十兩\\d]{1,2}分?)?|:[0-5]\\d)";
     private static final Pattern DROP = Pattern.compile(
             "(?<time>" + CLOCK + ")(?<person>" + PERSON + ")送(?<child>" + CHILD
@@ -94,7 +95,7 @@ public class FamilyTransportConversationService {
 
     private static LocalTime parseTime(String raw, boolean pickup) {
         Matcher matcher = Pattern.compile(
-                "(?:(凌晨|早上|上午|中午|下午|晚上))?(" + HOUR
+                ChineseTimePeriod.CAPTURING_REGEX + "?(" + HOUR
                         + ")(?:點(?:(半)|([零一二三四五六七八九十兩\\d]{1,2})分?)?|:([0-5]\\d))")
                 .matcher(raw);
         if (!matcher.matches()) return null;
@@ -103,10 +104,8 @@ public class FamilyTransportConversationService {
                 : matcher.group(4) != null ? number(matcher.group(4))
                 : matcher.group(5) != null ? Integer.parseInt(matcher.group(5)) : 0;
         String period = matcher.group(1);
-        if (("下午".equals(period) || "晚上".equals(period)) && hour < 12) hour += 12;
-        else if ("中午".equals(period) && hour < 11) hour += 12;
-        else if ("凌晨".equals(period) && hour == 12) hour = 0;
-        else if (period == null && pickup && hour <= 7) hour += 12;
+        hour = ChineseTimePeriod.toTwentyFourHour(period, hour);
+        if (period == null && pickup && hour <= 7) hour += 12;
         return hour > 23 || minute > 59 ? null : LocalTime.of(hour, minute);
     }
 

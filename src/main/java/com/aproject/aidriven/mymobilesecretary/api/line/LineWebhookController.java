@@ -20,6 +20,9 @@ import com.aproject.aidriven.mymobilesecretary.integration.line.LineWebhookPaylo
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ReceiptService;
+import com.aproject.aidriven.mymobilesecretary.media.application.MediaStorageService;
+import com.aproject.aidriven.mymobilesecretary.media.domain.StoredMedia;
+import com.aproject.aidriven.mymobilesecretary.media.domain.StoredMedia.SourceType;
 import com.aproject.aidriven.mymobilesecretary.shared.observability.RequestCorrelationContext;
 import com.aproject.aidriven.mymobilesecretary.shared.observability.SensitiveValueFingerprint;
 import com.fasterxml.jackson.databind.ObjectMapper;
@@ -51,6 +54,7 @@ public class LineWebhookController {
     private final LineProperties properties;
     private final IntentService intentService;
     private final ReceiptService receiptService;
+    private final MediaStorageService mediaStorageService;
     private final LineMessageLogService messageLogService;
     private final ExternalIdentityService identityService;
     private final IdempotencyService idempotencyService;
@@ -63,6 +67,7 @@ public class LineWebhookController {
                                  LineProperties properties,
                                  IntentService intentService,
                                  ReceiptService receiptService,
+                                 MediaStorageService mediaStorageService,
                                  LineMessageLogService messageLogService,
                                  ExternalIdentityService identityService,
                                  IdempotencyService idempotencyService,
@@ -74,6 +79,7 @@ public class LineWebhookController {
         this.properties = properties;
         this.intentService = intentService;
         this.receiptService = receiptService;
+        this.mediaStorageService = mediaStorageService;
         this.messageLogService = messageLogService;
         this.identityService = identityService;
         this.idempotencyService = idempotencyService;
@@ -200,26 +206,39 @@ public class LineWebhookController {
         if (eventKey != null) {
             completeReservationSafely(workspaceId, actorUserId, eventKey, reply);
         }
-        messagingClient.reply(event.replyToken(), reply.message());
-        messageLogService.recordSafely(LineMessageLog.Direction.OUT, "TEXT", reply.message());
+        java.util.Optional<String> sent = messagingClient.reply(event.replyToken(), reply.message());
+        messageLogService.recordSafely(LineMessageLog.Direction.OUT, "TEXT", reply.message(),
+                sent == null ? null : sent.orElse(null), null);
     }
 
     private PreparedReply prepareTextReply(LineWebhookPayload.Event event,
                                            ExecutionBoundary executionBoundary) {
-        messageLogService.recordSafely(LineMessageLog.Direction.IN, "TEXT", event.message().text());
-        IntentResult result = intentService.handle(
-                event.message().text(), "LINE", executionBoundary::beforeMutation);
+        String original = event.message().text();
+        String contextualized = messageLogService.contextualize(
+                original, event.message().quotedMessageId());
+        messageLogService.recordSafely(LineMessageLog.Direction.IN, "TEXT", original,
+                event.message().id(), event.message().quotedMessageId());
+        IntentResult result = intentService.handleWithContext(
+                original, contextualized, "LINE", executionBoundary::beforeMutation);
         return new PreparedReply(result.action().name(), result.message());
     }
 
     private PreparedReply prepareImageReply(LineWebhookPayload.Event event,
                                             ExecutionBoundary executionBoundary) throws Exception {
-        messageLogService.recordSafely(LineMessageLog.Direction.IN, "IMAGE", "[圖片]");
+        messageLogService.recordSafely(LineMessageLog.Direction.IN, "IMAGE", "[圖片]",
+                event.message().id(), event.message().quotedMessageId());
         LineContentClient.MessageContent content = contentClient.fetchContent(event.message().id());
         executionBoundary.beforeMutation();
+        StoredMedia original = mediaStorageService.store(
+                SourceType.LINE, event.message().id(), "LINE 圖片", null,
+                content.mimeType(), content.bytes());
         ReceiptService.ReceiptResult result = receiptService.handleImage(
                 content.bytes(), content.mimeType());
-        return new PreparedReply(result.action(), result.message());
+        messageLogService.enrichImageContextSafely(event.message().id(), result.message());
+        mediaStorageService.label(original.getId(), result.action());
+        return new PreparedReply(result.action(), result.message()
+                + "\n\n🗂️ 原始圖檔已私密保存（檔案編號 #%d），可在 App 的檔案區查看。"
+                        .formatted(original.getId()));
     }
 
     private void handleExistingDelivery(LineWebhookPayload.Event event,
@@ -304,7 +323,8 @@ public class LineWebhookController {
                 String.valueOf(event.timestamp()),
                 message == null ? "" : nullToEmpty(message.id()),
                 message == null ? "" : nullToEmpty(message.type()),
-                message == null ? "" : nullToEmpty(message.text()));
+                message == null ? "" : nullToEmpty(message.text()),
+                message == null ? "" : nullToEmpty(message.quotedMessageId()));
     }
 
     private static String nullToEmpty(String value) {

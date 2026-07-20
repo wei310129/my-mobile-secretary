@@ -39,7 +39,12 @@ public record LineWebhookPayload(List<Event> events) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Message(String id, String type, String text) {
+    public record Message(String id, String type, String text,
+                          String quotedMessageId, String quoteToken) {
+
+        public Message(String id, String type, String text) {
+            this(id, type, text, null, null);
+        }
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)

@@ -121,8 +121,7 @@ public class ConditionalRecurrenceService {
 
         ResolutionContext context = new ResolutionContext();
         LocalDate resolvedDate = baseDate;
-        if (rule.getHolidayPolicy()
-                == ConditionalRecurrenceRule.HolidayPolicy.PREVIOUS_BUSINESS_DAY) {
+        if (rule.getHolidayPolicy() != ConditionalRecurrenceRule.HolidayPolicy.NONE) {
             OfficialDayStatus holiday = query(
                     OfficialDayStatus.Fact.NATIONAL_HOLIDAY,
                     resolvedDate,
@@ -132,6 +131,13 @@ public class ConditionalRecurrenceService {
                 return waiting(holiday, NATIONAL, context);
             }
             if (holiday.verdict() == OfficialDayStatus.Verdict.CONFIRMED_TRUE) {
+                if (rule.getHolidayPolicy() == ConditionalRecurrenceRule.HolidayPolicy.SKIP) {
+                    return Evaluation.unresolved(
+                            ConditionalRecurrenceResolution.Status.SKIPPED,
+                            "%s 已確認為國定假日，依規則跳過本次；補課不自動建立，待使用者另行提供。"
+                                    .formatted(resolvedDate),
+                            sourceSnapshot(context.evidence));
+                }
                 LocalDate previous = previousBusinessDay(resolvedDate, context);
                 if (previous == null) {
                     return context.waiting;

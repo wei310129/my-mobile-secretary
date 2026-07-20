@@ -5,6 +5,7 @@ import com.aproject.aidriven.mymobilesecretary.shared.observability.SensitiveVal
 import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.scheduling.annotation.Scheduled;
@@ -37,15 +38,16 @@ public class NotificationOutboxWorker {
 
     @Scheduled(fixedDelayString = "${app.notification.outbox.poll-interval:5s}")
     public void poll() {
-        workspaceRunner.forEachWorkspace("notification-outbox", ignored -> process());
+        workspaceRunner.forEachActor("notification-outbox",
+                context -> process(context.actorId()));
     }
 
-    public void process() {
-        int recovered = service.recoverExpiredClaims();
+    public void process(UUID targetUserId) {
+        int recovered = service.recoverExpiredClaims(targetUserId);
         if (recovered > 0) {
             log.warn("Recovered notification delivery leases [count={}]", recovered);
         }
-        for (NotificationOutboxService.ClaimedNotification claim : service.claimDue()) {
+        for (NotificationOutboxService.ClaimedNotification claim : service.claimDue(targetUserId)) {
             NotificationSender sender;
             try {
                 sender = senders.get(NotificationChannel.valueOf(claim.channel()));

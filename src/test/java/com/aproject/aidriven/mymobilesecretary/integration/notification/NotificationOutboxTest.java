@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
 import java.util.UUID;
+import java.util.function.UnaryOperator;
 import org.junit.jupiter.api.Test;
 import org.springframework.test.util.ReflectionTestUtils;
 
@@ -17,7 +18,7 @@ class NotificationOutboxTest {
         UUID token = UUID.randomUUID();
         entry.claim(token, NOW.plusSeconds(60));
 
-        ReminderNotification envelope = entry.envelope();
+        ReminderNotification envelope = entry.envelope(UnaryOperator.identity());
         entry.markSent(NOW.plusSeconds(1));
 
         assertThat(envelope.title()).isEqualTo("看醫生");

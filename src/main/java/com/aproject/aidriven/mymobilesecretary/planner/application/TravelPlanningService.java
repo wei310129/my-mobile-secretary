@@ -16,14 +16,18 @@ public class TravelPlanningService {
     private final LocationEventRepository locationRepository;
     private final PlaceRepository placeRepository;
     private final TravelTimeEstimator estimator;
+    private final FeasibilityProperties feasibilityProperties;
     private final Clock clock;
 
     public TravelPlanningService(LocationEventRepository locationRepository,
                                  PlaceRepository placeRepository,
-                                 TravelTimeEstimator estimator, Clock clock) {
+                                 TravelTimeEstimator estimator,
+                                 FeasibilityProperties feasibilityProperties,
+                                 Clock clock) {
         this.locationRepository = locationRepository;
         this.placeRepository = placeRepository;
         this.estimator = estimator;
+        this.feasibilityProperties = feasibilityProperties;
         this.clock = clock;
     }
 
@@ -44,8 +48,43 @@ public class TravelPlanningService {
     }
 
     public Optional<Instant> latestDeparture(Place destination, Instant arriveAt) {
-        return fromCurrentLocation(destination, arriveAt.minus(Duration.ofHours(1)))
-                .map(estimate -> arriveAt.minus(estimate.duration()));
+        return latestDepartureFromCurrentLocation(destination, arriveAt, Duration.ZERO)
+                .map(DeparturePlan::departAt);
+    }
+
+    public Optional<DeparturePlan> latestDepartureFromCurrentLocation(
+            Place destination, Instant arriveAt, Duration extraArrivalBuffer) {
+        return locationRepository.findTopByOrderByOccurredAtDesc()
+                .map(from -> departurePlan(
+                        from.getLatitude(), from.getLongitude(), destination,
+                        arriveAt, extraArrivalBuffer));
+    }
+
+    public DeparturePlan latestDepartureBetweenPlaces(
+            Place origin, Place destination, Instant arriveAt, Duration extraArrivalBuffer) {
+        return departurePlan(origin.getLatitude(), origin.getLongitude(), destination,
+                arriveAt, extraArrivalBuffer);
+    }
+
+    private DeparturePlan departurePlan(
+            double fromLatitude, double fromLongitude, Place destination,
+            Instant arriveAt, Duration extraArrivalBuffer) {
+        Duration extra = extraArrivalBuffer == null ? Duration.ZERO : extraArrivalBuffer;
+        if (extra.isNegative() || extra.compareTo(Duration.ofHours(4)) > 0) {
+            throw new IllegalArgumentException(
+                    "extra arrival buffer must be between 0 and 240 minutes");
+        }
+        Instant arrivalAfterParking = arriveAt.minus(extra);
+        Duration initial = estimator.estimate(
+                fromLatitude, fromLongitude,
+                destination.getLatitude(), destination.getLongitude(),
+                arrivalAfterParking.minus(Duration.ofHours(1)));
+        Instant provisionalDeparture = arrivalAfterParking.minus(initial);
+        Duration refined = estimator.estimate(
+                fromLatitude, fromLongitude,
+                destination.getLatitude(), destination.getLongitude(), provisionalDeparture);
+        return new DeparturePlan(arrivalAfterParking.minus(refined), arriveAt, refined,
+                feasibilityProperties.transferBuffer(), extra);
     }
 
     public ConnectionCheck checkConnection(ScheduleItem first, ScheduleItem second) {
@@ -68,5 +107,11 @@ public class TravelPlanningService {
     }
 
     public record TravelEstimate(Duration duration, Instant departAt, Instant arriveAt) {}
+    public record DeparturePlan(
+            Instant departAt,
+            Instant arriveBy,
+            Duration travelDuration,
+            Duration includedTransferBuffer,
+            Duration extraArrivalBuffer) {}
     public record ConnectionCheck(boolean feasible, Duration gap, Duration travel) {}
 }

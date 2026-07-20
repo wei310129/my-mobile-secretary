@@ -131,6 +131,8 @@ public class TaskService {
         open.forEach(task -> {
             task.cancel(now);
             scheduleService.removeDueReminder(task.getId());
+            eventPublisher.publishEvent(new TaskCanceledEvent(
+                    task.getId(), task.getTitle(), now));
         });
         return open;
     }
@@ -154,16 +156,22 @@ public class TaskService {
             }
             return task;
         }
-        task.confirm(Instant.now(clock));
+        Instant completedAt = Instant.now(clock);
+        task.confirm(completedAt);
         scheduleService.removeDueReminder(taskId);
+        eventPublisher.publishEvent(new TaskCompletedEvent(
+                taskId, task.getTitle(), completedAt));
         return task;
     }
 
     /** 取消任務,之後不再追蹤。 */
     public Task cancelTask(Long taskId) {
         Task task = getTask(taskId);
-        task.cancel(Instant.now(clock));
+        Instant canceledAt = Instant.now(clock);
+        task.cancel(canceledAt);
         scheduleService.removeDueReminder(taskId);
+        eventPublisher.publishEvent(new TaskCanceledEvent(
+                task.getId(), task.getTitle(), canceledAt));
         return task;
     }
 

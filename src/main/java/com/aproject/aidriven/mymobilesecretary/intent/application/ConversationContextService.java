@@ -69,6 +69,27 @@ public class ConversationContextService {
         current().rememberScheduleList(joinIds(items.stream().map(ScheduleItem::getId).toList()), Instant.now(clock));
     }
 
+    public void rememberObjectAnnotationList(List<Long> ids) {
+        current().rememberObjectAnnotationList(joinIds(ids), Instant.now(clock));
+    }
+
+    public Long objectAnnotationIdAt(Integer oneBasedOrdinal) {
+        if (oneBasedOrdinal == null) return null;
+        return at(parseIds(current().getLastObjectAnnotationListIds()), oneBasedOrdinal);
+    }
+
+    public void prepareObjectAnnotationDelete(Long annotationId) {
+        current().prepareObjectAnnotationDelete(annotationId, Instant.now(clock));
+    }
+
+    public Long pendingObjectAnnotationDeleteId() {
+        return current().getPendingObjectAnnotationDeleteId();
+    }
+
+    public void clearObjectAnnotationDelete() {
+        current().clearObjectAnnotationDelete(Instant.now(clock));
+    }
+
     public Long taskIdAt(Integer oneBasedOrdinal) {
         ConversationSnapshot snapshot = snapshot();
         if (oneBasedOrdinal == null) {

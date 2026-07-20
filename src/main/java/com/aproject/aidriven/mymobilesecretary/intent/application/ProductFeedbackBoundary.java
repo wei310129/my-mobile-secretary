@@ -21,6 +21,7 @@ final class ProductFeedbackBoundary {
             "功能改善",
             "功能建議",
             "開發功能",
+            "你的回應要調整",
             "系統應該要",
             "秘書應該要");
 
@@ -57,7 +58,7 @@ final class ProductFeedbackBoundary {
         }
         String compact = text.replaceAll("\\s+", "")
                 .replaceAll("[，。！？!?]+$", "");
-        if (CORRECTION_MESSAGES.contains(compact)) {
+        if (CORRECTION_MESSAGES.contains(compact) || isResponseCorrection(compact)) {
             return Optional.of(IntentResult.message(IntentResult.Action.FEEDBACK_RECEIVED,
                     "🛠️ 收到，是我理解錯了。\n\n❓ 請直接告訴我原本要我做什麼，"
                             + "我會把這次誤判一併留給功能改善追蹤。"));
@@ -67,6 +68,13 @@ final class ProductFeedbackBoundary {
             return Optional.of(IntentResult.feedbackReceived());
         }
         return Optional.empty();
+    }
+
+    private static boolean isResponseCorrection(String compact) {
+        boolean beginsAsCorrection = CORRECTION_MESSAGES.stream().anyMatch(compact::startsWith)
+                || compact.startsWith("你完全都沒聽懂");
+        return beginsAsCorrection && containsAny(compact, List.of(
+                "你再跟我講", "你卻", "你的回應", "我在回應你", "答成", "草稿"));
     }
 
     private static boolean isGeneralizedProductRule(String text, String compact) {

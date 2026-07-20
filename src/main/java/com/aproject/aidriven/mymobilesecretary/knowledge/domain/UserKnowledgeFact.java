@@ -22,7 +22,10 @@ public class UserKnowledgeFact extends WorkspaceOwnedEntity {
     public enum Category {
         RELATIONSHIP,
         PLACE_GUIDANCE,
-        INTERPRETATION_PREFERENCE
+        INTERPRETATION_PREFERENCE,
+        PRODUCT_USAGE,
+        PRODUCT_RECOMMENDATION,
+        PRODUCT_CAUTION
     }
 
     @Id

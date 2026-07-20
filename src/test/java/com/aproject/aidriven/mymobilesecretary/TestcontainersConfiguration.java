@@ -56,6 +56,10 @@ public class TestcontainersConfiguration {
             next.set(new IntentScript(java.util.List.of(commands)));
         }
 
+        public void clear() {
+            next.set(null);
+        }
+
         @Override
         public IntentScript interpret(String text, Instant now) {
             IntentScript script = next.getAndSet(null);
@@ -82,6 +86,10 @@ public class TestcontainersConfiguration {
         /** 測試呼叫:設定下一次 interpret 的回傳。 */
         public void nextCommand(ReceiptCommand command) {
             next.set(command);
+        }
+
+        public void clear() {
+            next.set(null);
         }
 
         @Override

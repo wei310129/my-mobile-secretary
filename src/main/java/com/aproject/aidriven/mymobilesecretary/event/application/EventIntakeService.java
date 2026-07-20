@@ -37,6 +37,8 @@ public class EventIntakeService {
     private static final Pattern DATE = Pattern.compile(
             "(?<year>20\\d{2})\\s*(?:年|[./-])\\s*(?<month>\\d{1,2})\\s*"
                     + "(?:月|[./-])\\s*(?<day>\\d{1,2})\\s*日?");
+    private static final Pattern SHORT_DATE = Pattern.compile(
+            "(?<!\\d)(?<month>\\d{1,2})\\s*[./-]\\s*(?<day>\\d{1,2})(?!\\d)");
     private static final Pattern PLACE = Pattern.compile(
             "(?:活動地點|會議地點|地點)\\s*[：:]\\s*(?<place>[^\\n\\r，。]{2,100})");
     private static final Pattern JCCONF = Pattern.compile("(?i)(JCConf\\s*20\\d{2})");
@@ -64,8 +66,9 @@ public class EventIntakeService {
     }
 
     public Optional<IntentResult> answer(String text, Runnable beforeMutation) {
-        if (looksLikeAnnouncement(text)) {
-            DraftPayload payload = parseAnnouncement(text);
+        String currentText = currentMessage(text);
+        if (looksLikeAnnouncement(currentText)) {
+            DraftPayload payload = parseAnnouncement(currentText);
             beforeMutation.run();
             repository.save(EventIntakeDraft.create(payload.title(), write(payload),
                     Instant.now(clock).plus(RETENTION), Instant.now(clock)));
@@ -75,25 +78,26 @@ public class EventIntakeService {
         }
 
         Optional<EventIntakeDraft> latest = latestPending();
-        if (latest.isEmpty() || !isEventFollowUp(text, read(latest.get()))) {
+        if (latest.isEmpty()
+                || !isEventFollowUp(currentText, read(latest.get()), text)) {
             return Optional.empty();
         }
         EventIntakeDraft draft = latest.get();
         DraftPayload payload = read(draft);
 
-        if (containsAny(compact(text), "自己去查", "自己查", "查JCConf", "查一下活動")) {
+        if (containsAny(compact(currentText), "自己去查", "自己查", "查JCConf", "查一下活動")) {
             return Optional.of(IntentResult.clarificationNeeded(
                     "我會延續活動草稿「%s」，不會叫你重講日期與地點。請貼官方活動網頁；目前專案尚未接上可驗證來源的活動搜尋介面，"
                             .formatted(payload.title())
                             + "因此不會假裝已查到。接上低成本查詢模型後仍要附來源，且查到的時間只會先寫入草稿供你確認。"));
         }
 
-        DraftPayload updated = updateFromFollowUp(text, payload);
+        DraftPayload updated = updateFromFollowUp(currentText, payload);
         if (!updated.equals(payload)) {
             beforeMutation.run();
             draft.replace(updated.title(), write(updated), Instant.now(clock));
         }
-        if (isConfirm(text)) {
+        if (isConfirm(currentText)) {
             return Optional.of(confirm(draft, updated, beforeMutation));
         }
         return Optional.of(IntentResult.clarificationNeeded(nextQuestion(updated)));
@@ -111,6 +115,45 @@ public class EventIntakeService {
         return IntentResult.message(IntentResult.Action.CONTEXT_UPDATED,
                 preview(payload, false) + "\n\n圖片內容已保存為活動草稿，尚未建立行程。"
                         + "若要加入，請說「幫我加入行程」。");
+    }
+
+    /** Registration success is stronger than an advertisement: complete facts enter calendar. */
+    public IntentResult ingestRegisteredEvent(String title, String date, String startTime,
+                                              String endTime, String placeName, String source,
+                                              Runnable beforeMutation) {
+        DraftPayload payload = new DraftPayload(cleanTitle(title), parseDate(date),
+                parseTime(startTime), parseTime(endTime), clean(placeName), null,
+                null, null, null, true, "REGISTRATION", source);
+        if (payload.date() == null || payload.startTime() == null || payload.endTime() == null) {
+            beforeMutation.run();
+            repository.save(EventIntakeDraft.create(payload.title(), write(payload),
+                    Instant.now(clock).plus(RETENTION), Instant.now(clock)));
+            return IntentResult.clarificationNeeded(
+                    preview(payload, false) + "\n\n已確認是報名成功資訊，但行程欄位仍有缺漏；"
+                            + nextQuestion(payload));
+        }
+        Instant start = ZonedDateTime.of(payload.date(), payload.startTime(), TAIPEI).toInstant();
+        Instant end = ZonedDateTime.of(payload.date(), payload.endTime(), TAIPEI).toInstant();
+        Optional<ScheduleItem> duplicate = scheduleService.listSchedules(null).stream()
+                .filter(item -> item.getTitle().equalsIgnoreCase(payload.title())
+                        && item.getStartAt().equals(start))
+                .findFirst();
+        if (duplicate.isPresent()) {
+            return IntentResult.message(IntentResult.Action.CONTEXT_UPDATED,
+                    "活動行程「%s」已存在於 %s %s–%s，不會重複建立。"
+                            .formatted(payload.title(), CalendarDatePolicy.format(payload.date()),
+                                    payload.startTime(), payload.endTime()));
+        }
+        beforeMutation.run();
+        Long placeId = resolveOrCreatePlace(payload.placeName()).map(Place::getId).orElse(null);
+        var decision = scheduleService.createSchedule(
+                payload.title(), start, end, placeId, ScheduleItem.Recurrence.NONE);
+        return IntentResult.message(IntentResult.Action.SCHEDULE_CONFIRMED,
+                "已將報名成功活動「%s」加入行事曆：%s %s–%s%s（%s）。"
+                        .formatted(payload.title(), CalendarDatePolicy.format(payload.date()),
+                                payload.startTime(), payload.endTime(),
+                                payload.placeName() == null ? "" : "，地點 " + payload.placeName(),
+                                decision.item().getStatus()));
     }
 
     private IntentResult confirm(EventIntakeDraft draft, DraftPayload payload,
@@ -164,6 +207,7 @@ public class EventIntakeService {
                 || containsAny(compact, "加入行程", "加到行程", "訂好票", "買好票");
         LocalTime start = payload.startTime();
         LocalTime end = payload.endTime();
+        LocalDate date = explicitFollowUpDate(text).orElse(payload.date());
         if (!compact.contains("售票")) {
             Matcher range = TIME_RANGE.matcher(text);
             if (range.find()) {
@@ -179,17 +223,17 @@ public class EventIntakeService {
         if ("PLACE".equals(missing) && isYes(compact)) placeConfirmed = true;
         if ("ARRIVAL".equals(missing)) {
             arrival = containsAny(compact, "不用提早", "不提早", "準時到")
-                    ? 0 : mentionedMinutes(text).orElse(arrival);
+                    ? Integer.valueOf(0) : mentionedMinutes(text).orElse(arrival);
         }
         if ("REMINDER".equals(missing)) {
             reminder = containsAny(compact, "不用提醒", "不提醒")
-                    ? 0 : mentionedMinutes(text).orElse(reminder);
+                    ? Integer.valueOf(0) : mentionedMinutes(text).orElse(reminder);
         }
         if ("PREPARATION".equals(missing)) {
             if (containsAny(compact, "沒有", "不用準備", "無")) preparation = "無";
             else if (text.length() <= 160) preparation = text.strip();
         }
-        return new DraftPayload(payload.title(), payload.date(), start, end,
+        return new DraftPayload(payload.title(), date, start, end,
                 payload.placeName(), placeConfirmed, arrival, reminder, preparation,
                 addRequested, payload.sourceType(), payload.sourceText());
     }
@@ -264,15 +308,78 @@ public class EventIntakeService {
                         && compact.contains("地點"));
     }
 
-    private static boolean isEventFollowUp(String text, DraftPayload payload) {
+    private static boolean isEventFollowUp(String text, DraftPayload payload,
+                                           String contextualText) {
         String compact = compact(text);
         if (text != null && text.length() >= 180
                 && containsAny(compact, "使用者", "底層", "例如")) {
             return false;
         }
-        return payload.addRequested() || containsAny(compact,
-                "活動", "行程", "訂好票", "買好票", "JCConf", "時間", "地點", "提醒",
-                "提早", "準備", "確認建立", "網頁", "查JCConf", "查活動", "明明很清楚");
+        if (isIndependentTimedReminder(text)) {
+            return false;
+        }
+        int relevance = 0;
+        if (quotesThisDraft(contextualText, payload)) relevance += 4;
+        if (mentionsDraftTitle(compact, payload.title())) relevance += 4;
+        if (containsAny(compact, "這個活動", "該活動", "活動草稿", "活動行程", "加入行程",
+                "訂好票", "買好票", "JCConf", "確認建立活動", "查活動")) {
+            relevance += 3;
+        }
+        if (matchesExpectedAnswer(text, payload)) relevance += 3;
+        if (containsAny(compact, "時間", "地點", "提醒", "提早", "準備", "網頁")) {
+            relevance += 1;
+        }
+        return relevance >= 3;
+    }
+
+    private static boolean matchesExpectedAnswer(String text, DraftPayload payload) {
+        String compact = compact(text);
+        return switch (firstMissing(payload)) {
+            case "DATE" -> hasExplicitDate(text);
+            case "TIME" -> TIME_RANGE.matcher(text == null ? "" : text).find();
+            case "PLACE" -> containsAny(compact, "地點正確", "地點不對", "更精確地址");
+            case "ARRIVAL" -> containsAny(compact, "不用提早", "不提早", "準時到")
+                    || compact.contains("提早") && mentionedMinutes(text).isPresent();
+            case "REMINDER" -> containsAny(compact, "不用提醒", "不提醒")
+                    || compact.contains("提醒") && mentionedMinutes(text).isPresent();
+            case "PREPARATION" -> containsAny(compact, "沒有行前準備", "不用準備")
+                    || compact.contains("行前準備");
+            default -> isConfirm(text);
+        };
+    }
+
+    private static boolean mentionsDraftTitle(String compactText, String title) {
+        String compactTitle = compact(title);
+        if (compactTitle.length() < 3) return false;
+        return compactText.contains(compactTitle);
+    }
+
+    private static boolean quotesThisDraft(String contextualText, DraftPayload payload) {
+        if (contextualText == null || !contextualText.contains("【LINE 明確引用】")) return false;
+        int current = contextualText.lastIndexOf("【使用者目前訊息】");
+        String quoted = current < 0 ? contextualText : contextualText.substring(0, current);
+        return quoted.contains(payload.title()) || quoted.contains("活動草稿「" + payload.title());
+    }
+
+    /**
+     * A pending event draft must not capture a separate reminder such as
+     * "明天下午三點提醒我補活動時間". The reminder is a task with its own due time; it is not
+     * evidence of the event's start/end time. Event-relative reminders remain in this flow.
+     */
+    private static boolean isIndependentTimedReminder(String text) {
+        String compact = compact(text);
+        if (!containsAny(compact, "提醒我", "叫我")) {
+            return false;
+        }
+        if (containsAny(compact, "活動開始前", "開始前", "會議前", "行程前", "提早", "提前")) {
+            return false;
+        }
+        return DATE.matcher(text == null ? "" : text).find()
+                || containsAny(compact, "今天", "明天", "後天", "大後天", "今晚", "明早",
+                        "週一", "週二", "週三", "週四", "週五", "週六", "週日",
+                        "星期一", "星期二", "星期三", "星期四", "星期五", "星期六", "星期日")
+                || compact.matches(".*(?:上午|下午|晚上|晚間|黃昏|傍晚|早上|中午|凌晨)?"
+                        + "[零一二三四五六七八九十兩\\d]{1,3}點.*");
     }
 
     private static boolean isConfirm(String text) {
@@ -329,6 +436,39 @@ public class EventIntakeService {
         } catch (Exception ignored) {
             return null;
         }
+    }
+
+    private Optional<LocalDate> explicitFollowUpDate(String text) {
+        Matcher full = DATE.matcher(text == null ? "" : text);
+        if (full.find()) {
+            return safeDate(Integer.parseInt(full.group("year")),
+                    Integer.parseInt(full.group("month")), Integer.parseInt(full.group("day")));
+        }
+        Matcher shortDate = SHORT_DATE.matcher(text == null ? "" : text);
+        if (!shortDate.find()) return Optional.empty();
+        int year = LocalDate.now(clock.withZone(TAIPEI)).getYear();
+        return safeDate(year, Integer.parseInt(shortDate.group("month")),
+                Integer.parseInt(shortDate.group("day")));
+    }
+
+    private static Optional<LocalDate> safeDate(int year, int month, int day) {
+        try {
+            return Optional.of(LocalDate.of(year, month, day));
+        } catch (java.time.DateTimeException invalidDate) {
+            return Optional.empty();
+        }
+    }
+
+    private static boolean hasExplicitDate(String text) {
+        String value = text == null ? "" : text;
+        return DATE.matcher(value).find() || SHORT_DATE.matcher(value).find();
+    }
+
+    private static String currentMessage(String text) {
+        if (text == null) return "";
+        String marker = "【使用者目前訊息】";
+        int markerIndex = text.lastIndexOf(marker);
+        return markerIndex < 0 ? text : text.substring(markerIndex + marker.length()).strip();
     }
 
     private static LocalTime parseTime(String value) {

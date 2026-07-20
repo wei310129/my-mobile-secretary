@@ -7,15 +7,23 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.aproject.aidriven.mymobilesecretary.IntegrationTestBase;
 import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubReceiptInterpreter;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
+import com.aproject.aidriven.mymobilesecretary.event.domain.EventIntakeDraft;
+import com.aproject.aidriven.mymobilesecretary.event.persistence.EventIntakeDraftRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.domain.Item;
 import com.aproject.aidriven.mymobilesecretary.knowledge.domain.PriceRecord;
 import com.aproject.aidriven.mymobilesecretary.knowledge.persistence.ItemRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.persistence.PriceRecordRepository;
+import com.aproject.aidriven.mymobilesecretary.payment.domain.BankTransferDraft.Status;
+import com.aproject.aidriven.mymobilesecretary.payment.persistence.BankTransferDraftRepository;
 import com.aproject.aidriven.mymobilesecretary.travel.domain.TravelItineraryDraft;
 import com.aproject.aidriven.mymobilesecretary.travel.persistence.TravelItineraryDraftRepository;
 import java.time.Instant;
 import java.util.List;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 
@@ -37,6 +45,12 @@ class ReceiptFlowTest extends IntegrationTestBase {
     private ItemRepository itemRepository;
     @Autowired
     private TravelItineraryDraftRepository itineraryDraftRepository;
+    @Autowired
+    private EventIntakeDraftRepository eventDraftRepository;
+    @Autowired
+    private BankTransferDraftRepository bankTransferDraftRepository;
+    @Autowired
+    private IntentService intentService;
 
     /** 名稱吻合的品項自動連結;查詢 API 以品名模糊比對撈得到。 */
     @Test
@@ -44,7 +58,7 @@ class ReceiptFlowTest extends IntegrationTestBase {
         Item milk = itemRepository.save(Item.create("鮮奶", Set.of(), Instant.now()));
         stub.nextCommand(new ReceiptCommand("全聯", "2026-07-12", List.of(
                 new ReceiptCommand.Line("鮮奶", 95, 1),
-                new ReceiptCommand.Line("收據流程雞蛋", 75, 1))));
+                new ReceiptCommand.Line("收據流程雞蛋", 75, 2))));
 
         ReceiptService.ReceiptResult result = receiptService.handleImage(IMAGE, "image/jpeg");
 
@@ -55,6 +69,12 @@ class ReceiptFlowTest extends IntegrationTestBase {
         assertThat(milkRecords).isNotEmpty();
         // 名稱完全吻合 → 連上品項知識庫
         assertThat(milkRecords.get(0).getItemId()).isEqualTo(milk.getId());
+        PriceRecord eggs = priceRecordRepository
+                .findByItemNameContainingOrderByPurchasedAtDescIdDesc("收據流程雞蛋")
+                .getFirst();
+        assertThat(eggs.getQuantity()).isEqualTo(2);
+        assertThat(eggs.getTotalPriceTwd()).isEqualTo(150);
+        assertThat(eggs.getSemanticTags()).contains("merchant:全聯", "organization:全聯");
 
         mockMvc.perform(get("/api/price-records").param("itemName", "收據流程雞蛋"))
                 .andExpect(status().isOk())
@@ -63,6 +83,31 @@ class ReceiptFlowTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$[0].storeName").value("全聯"))
                 // 知識庫沒有這個品項 → 不連結,但價格照存
                 .andExpect(jsonPath("$[0].itemId").doesNotExist());
+    }
+
+    @Test
+    void maskedTransferWaitsForFullRecipientThenCreatesConsumptionOnce() {
+        stub.nextCommand(new ReceiptCommand("o迎新淨化科技有限公", "2026-07-18",
+                List.of(new ReceiptCommand.Line("訂金", 3000, 1)),
+                ReceiptCommand.DocumentType.BANK_TRANSFER, "訂金轉帳成功",
+                List.of(), List.of(), List.of(), null));
+
+        ReceiptService.ReceiptResult image = receiptService.handleImage(IMAGE, "image/jpeg");
+        IntentResult completed = intentService.handle(
+                "完整收款公司是迎新淨化科技有限公司", "TEST");
+
+        assertThat(image.action()).isEqualTo("BANK_TRANSFER_RECIPIENT_NEEDED");
+        assertThat(completed.action()).isEqualTo(IntentResult.Action.TRANSFER_PAYMENT_IMPORTED);
+        assertThat(completed.message()).contains("迎新淨化科技有限公司", "3,000");
+        assertThat(bankTransferDraftRepository.findAll())
+                .singleElement().extracting(draft -> draft.getStatus()).isEqualTo(Status.COMPLETED);
+        assertThat(priceRecordRepository
+                .findByItemNameContainingOrderByPurchasedAtDescIdDesc("訂金"))
+                .singleElement()
+                .satisfies(record -> {
+                    assertThat(record.getStoreName()).isEqualTo("迎新淨化科技有限公司");
+                    assertThat(record.getTotalPriceTwd()).isEqualTo(3000);
+                });
     }
 
     /** stub 沒塞回覆 = 模擬 LLM 失敗 → 回覆引導訊息,不入庫、不拋例外。 */
@@ -103,5 +148,32 @@ class ReceiptFlowTest extends IntegrationTestBase {
         assertThat(itineraryDraftRepository.findAll())
                 .anyMatch(draft -> draft.getTitle().equals("整合測試郵輪行程")
                         && draft.getStatus() == TravelItineraryDraft.Status.CONFIRMED);
+    }
+
+    @Test
+    void medicalAppointmentImageCreatesPendingDraftWithSchedulingFieldsOnly() {
+        stub.nextCommand(new ReceiptCommand(null, null, List.of(),
+                ReceiptCommand.DocumentType.MEDICAL_APPOINTMENT, "台大醫院牙科 王醫師",
+                List.of(new ReceiptCommand.ItineraryEntry(
+                        "2026-07-28", "09:30", null, "牙科看診 王醫師",
+                        "台大醫院", "病人身分證 A123456789；診斷：蛀牙")),
+                List.of(), List.of()));
+
+        try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(
+                new WorkspaceContext(
+                        UUID.fromString("00000000-0000-0000-0000-000000000001"),
+                        UUID.fromString("00000000-0000-0000-0000-000000000101"),
+                        WorkspaceChannel.TEST))) {
+            ReceiptService.ReceiptResult result = receiptService.handleImage(IMAGE, "image/jpeg");
+
+            assertThat(result.action()).isEqualTo("MEDICAL_APPOINTMENT_DRAFTED");
+            assertThat(result.message()).contains("醫療掛號／看診單", "台大醫院牙科 王醫師",
+                    "2026/07/28（二）", "時間｜待補");
+            EventIntakeDraft draft = eventDraftRepository.findAll().getFirst();
+            assertThat(draft.getStatus()).isEqualTo(EventIntakeDraft.Status.PENDING);
+            assertThat(draft.getPayload())
+                    .contains("台大醫院牙科 王醫師", "2026-07-28", "台大醫院")
+                    .doesNotContain("A123456789", "蛀牙");
+        }
     }
 }

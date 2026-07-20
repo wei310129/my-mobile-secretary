@@ -15,8 +15,6 @@ import com.aproject.aidriven.mymobilesecretary.knowledge.application.PlanningPre
 import com.aproject.aidriven.mymobilesecretary.knowledge.domain.LifestyleWindow;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityResult;
-import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
-import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskPriority;
 import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
@@ -137,6 +135,37 @@ class FeasibilityServiceTest {
     }
 
     @Test
+    void hypotheticalWindowReportsPreparationMainAndTravelConflictsSeparately() {
+        Instant meetingStart = NOW.plus(Duration.ofHours(7));
+        Instant meetingEnd = meetingStart.plus(Duration.ofHours(1));
+        ScheduleItem preparationConflict = schedule(
+                10, "送小孩", meetingStart.minus(Duration.ofMinutes(30)),
+                meetingStart.minus(Duration.ofMinutes(10)), null);
+        ScheduleItem meetingConflict = schedule(
+                11, "每日站會", meetingStart.plus(Duration.ofMinutes(15)),
+                meetingStart.plus(Duration.ofMinutes(30)), null);
+        ScheduleItem travelConflict = schedule(
+                12, "接家人", meetingEnd.plus(Duration.ofMinutes(20)),
+                meetingEnd.plus(Duration.ofMinutes(50)), null);
+        confirmedItems(preparationConflict, meetingConflict, travelConflict);
+
+        FeasibilityService.HypotheticalWindowAnalysis result =
+                service.analyzeHypotheticalWindow(
+                        "會議", meetingStart, meetingEnd,
+                        Duration.ofMinutes(20), Duration.ofMinutes(40));
+
+        assertThat(result.windowStart()).isEqualTo(meetingStart.minus(Duration.ofMinutes(20)));
+        assertThat(result.windowEnd()).isEqualTo(meetingEnd.plus(Duration.ofMinutes(40)));
+        assertThat(result.feasible()).isFalse();
+        assertThat(result.conflicts())
+                .extracting(FeasibilityService.HypotheticalConflict::segment)
+                .containsExactly(
+                        FeasibilityService.HypotheticalSegment.PREPARATION,
+                        FeasibilityService.HypotheticalSegment.MAIN,
+                        FeasibilityService.HypotheticalSegment.AFTER_TRAVEL);
+    }
+
+    @Test
     void oneTimeMeetingInsideRecurringWorkBlockAsksAboutNestingInsteadOfReschedule() {
         ScheduleItem meeting = schedule(2, "專案週會",
                 NOW.plus(Duration.ofHours(3)), NOW.plus(Duration.ofHours(4)), null);
@@ -155,21 +184,15 @@ class FeasibilityServiceTest {
     }
 
     @Test
-    void scheduleCrossingTaskReminderRequiresDecision() {
-        Task bath = Task.create("帶小孩去洗澡", null, TaskPriority.NORMAL,
-                NOW.plus(Duration.ofMinutes(7)), NOW);
-        when(taskRepository.findByStatusIn(org.mockito.ArgumentMatchers.any()))
-                .thenReturn(List.of(bath));
+    void scheduleCrossingCalendarReminderDoesNotCreateConflict() {
         confirmedItems();
 
         FeasibilityResult result = service.check(schedule(1, "運動",
                 NOW, NOW.plus(Duration.ofHours(1)), null));
 
-        assertThat(result.feasible()).isFalse();
-        assertThat(result.issues()).extracting(FeasibilityIssue::type)
-                .containsExactly(FeasibilityIssue.Type.TASK_DUE_DURING_SCHEDULE);
-        assertThat(result.issues().getFirst().message())
-                .contains("運動", "帶小孩去洗澡", "提醒／期限");
+        assertThat(result.feasible()).isTrue();
+        assertThat(result.issues()).isEmpty();
+        org.mockito.Mockito.verifyNoInteractions(taskRepository);
     }
 
     /** 使用者的原始案例:人在高雄,2 小時後台北的預約 → 擋下。 */

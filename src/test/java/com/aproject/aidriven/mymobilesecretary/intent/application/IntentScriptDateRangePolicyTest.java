@@ -2,7 +2,6 @@ package com.aproject.aidriven.mymobilesecretary.intent.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
-import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import java.time.Instant;
 import java.util.List;
 import org.junit.jupiter.api.Test;
@@ -31,24 +30,8 @@ class IntentScriptDateRangePolicyTest {
         assertThat(command.endAt()).isEqualTo("2026-07-20T00:00+08:00");
     }
 
-    @Test
-    void scheduleLoadFilterExcludesItemsOutsideTheSuppliedRange() {
-        ScheduleItem tomorrow = schedule("明天", "2026-07-19T02:00:00Z");
-        ScheduleItem nextDay = schedule("後天", "2026-07-20T02:00:00Z");
-
-        assertThat(LifestyleIntentService.filterSchedulesByRange(
-                List.of(tomorrow, nextDay),
-                "2026-07-19T00:00:00+08:00", "2026-07-20T00:00:00+08:00"))
-                .containsExactly(tomorrow);
-    }
-
     private static IntentScript script(IntentCommand.Type type) {
         return new IntentScript(List.of(new IntentCommand(type, null, null, null,
                 null, null, null, null, null, null, null, null, null)));
-    }
-
-    private static ScheduleItem schedule(String title, String start) {
-        Instant startAt = Instant.parse(start);
-        return ScheduleItem.propose(title, startAt, startAt.plusSeconds(3600), null, NOW);
     }
 }

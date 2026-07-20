@@ -11,6 +11,7 @@ import java.util.List;
 import java.util.Optional;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -29,11 +30,14 @@ public class PlaceService {
 
     private final PlaceRepository placeRepository;
     private final GooglePlacesClient googlePlacesClient;
+    private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
-    public PlaceService(PlaceRepository placeRepository, GooglePlacesClient googlePlacesClient, Clock clock) {
+    public PlaceService(PlaceRepository placeRepository, GooglePlacesClient googlePlacesClient,
+                        ApplicationEventPublisher eventPublisher, Clock clock) {
         this.placeRepository = placeRepository;
         this.googlePlacesClient = googlePlacesClient;
+        this.eventPublisher = eventPublisher;
         this.clock = clock;
     }
 
@@ -54,7 +58,10 @@ public class PlaceService {
             }
         }
         Place place = Place.create(name, address, latitude, longitude, type, Instant.now(clock));
-        return placeRepository.save(place);
+        Place saved = placeRepository.save(place);
+        eventPublisher.publishEvent(new PlaceCreatedEvent(
+                saved.getId(), saved.getName(), saved.getType(), saved.getCreatedAt()));
+        return saved;
     }
 
     /** Google 查詢;每一種失敗都要給使用者可行動的訊息。 */

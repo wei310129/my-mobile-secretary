@@ -2,6 +2,7 @@ package com.aproject.aidriven.mymobilesecretary.intent.application;
 
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.LifestyleWindowService;
 import com.aproject.aidriven.mymobilesecretary.knowledge.domain.LifestyleWindow;
+import com.aproject.aidriven.mymobilesecretary.shared.time.ChineseTimePeriod;
 import java.time.LocalTime;
 import java.util.ArrayList;
 import java.util.List;
@@ -14,7 +15,7 @@ import org.springframework.stereotype.Service;
 @Service
 public class LifestyleWindowConversationService {
 
-    private static final String TIME = "(?:凌晨|早上|上午|中午|下午|晚上)?"
+    private static final String TIME = ChineseTimePeriod.NON_CAPTURING_REGEX + "?"
             + "(?:\\d{1,2}(?::\\d{2}|點(?:半|\\d{1,2}分)?)?|[零一二三四五六七八九十兩]{1,3}點"
             + "(?:半|[零一二三四五六七八九十兩]{1,2}分)?)";
     private static final Pattern WINDOW = Pattern.compile(
@@ -114,10 +115,8 @@ public class LifestyleWindowConversationService {
             }
         }
         if (hour < 0 || hour > 23 || minute < 0 || minute > 59) return null;
-        if (containsAny(period, "下午", "晚上") && hour < 12) hour += 12;
-        else if (period.contains("中午") && hour < 11) hour += 12;
-        else if (period.contains("凌晨") && hour == 12) hour = 0;
-        else if (period.isBlank()) hour = inferHour(hour, kind, start);
+        if (period.isBlank()) hour = inferHour(hour, kind, start);
+        else hour = ChineseTimePeriod.toTwentyFourHour(period, hour);
         return hour > 23 ? null : LocalTime.of(hour, minute);
     }
 

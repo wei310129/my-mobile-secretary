@@ -9,6 +9,7 @@ import java.time.Instant;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Set;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,11 +22,14 @@ public class ItemService {
 
     private final ItemRepository itemRepository;
     private final PlaceService placeService;
+    private final ApplicationEventPublisher eventPublisher;
     private final Clock clock;
 
-    public ItemService(ItemRepository itemRepository, PlaceService placeService, Clock clock) {
+    public ItemService(ItemRepository itemRepository, PlaceService placeService,
+                       ApplicationEventPublisher eventPublisher, Clock clock) {
         this.itemRepository = itemRepository;
         this.placeService = placeService;
+        this.eventPublisher = eventPublisher;
         this.clock = clock;
     }
 
@@ -43,7 +47,10 @@ public class ItemService {
         for (Long placeId : new LinkedHashSet<>(placeIds)) {
             placeService.getPlace(placeId);
         }
-        return itemRepository.save(Item.create(name, placeIds, Instant.now(clock)));
+        Instant now = Instant.now(clock);
+        Item saved = itemRepository.save(Item.create(name, placeIds, now));
+        publish(saved, ItemLifecycleEvent.Action.CREATED, null, now);
+        return saved;
     }
 
     @Transactional(readOnly = true)
@@ -70,6 +77,7 @@ public class ItemService {
                     Item item = itemRepository.findByNameIgnoreCase(name)
                             .orElseGet(() -> itemRepository.save(Item.create(name, Set.of(), now)));
                     item.markShoppingNeeded(now);
+                    publish(item, ItemLifecycleEvent.Action.SHOPPING_ADDED, null, now);
                     return item;
                 })
                 .toList();
@@ -80,6 +88,8 @@ public class ItemService {
         return itemRepository.findByNameIgnoreCase(name.strip())
                 .map(item -> {
                     item.removeFromShoppingList(Instant.now(clock));
+                    publish(item, ItemLifecycleEvent.Action.SHOPPING_REMOVED,
+                            null, item.getUpdatedAt());
                     return item;
                 });
     }
@@ -109,6 +119,8 @@ public class ItemService {
                     if (purchasedQuantity != null && purchasedQuantity > 0) {
                         item.adjustInventoryQuantity(purchasedQuantity, now);
                     }
+                    publish(item, ItemLifecycleEvent.Action.PURCHASED,
+                            purchasedQuantity, now);
                 })
                 .toList();
     }
@@ -123,6 +135,8 @@ public class ItemService {
         }
         Item item = existing.orElseGet(() -> itemRepository.save(Item.create(name.strip(), Set.of(), now)));
         item.adjustInventoryQuantity(delta, now);
+        publish(item, ItemLifecycleEvent.Action.INVENTORY_ADJUSTED,
+                item.getInventoryQuantity(), now);
         return item;
     }
 
@@ -148,7 +162,11 @@ public class ItemService {
     public List<Item> restockLowInventory(int maximumQuantity) {
         Instant now = Instant.now(clock);
         List<Item> items = listInventory(Math.max(maximumQuantity, 0));
-        items.forEach(item -> item.markShoppingNeeded(now));
+        items.forEach(item -> {
+            item.markShoppingNeeded(now);
+            publish(item, ItemLifecycleEvent.Action.RESTOCK_REQUESTED,
+                    item.getInventoryQuantity(), now);
+        });
         return items;
     }
 
@@ -164,7 +182,10 @@ public class ItemService {
     public List<Item> clearShoppingList() {
         Instant now = Instant.now(clock);
         List<Item> items = itemRepository.findByShoppingNeededTrueOrderByNameAsc();
-        items.forEach(item -> item.removeFromShoppingList(now));
+        items.forEach(item -> {
+            item.removeFromShoppingList(now);
+            publish(item, ItemLifecycleEvent.Action.SHOPPING_CLEARED, null, now);
+        });
         return items;
     }
 
@@ -184,6 +205,7 @@ public class ItemService {
         if (quantity > 0) {
             item.removeFromShoppingList(now);
         }
+        publish(item, ItemLifecycleEvent.Action.INVENTORY_SET, quantity, now);
         return item;
     }
 
@@ -194,6 +216,13 @@ public class ItemService {
         Item item = itemRepository.findByNameIgnoreCase(name.strip())
                 .orElseGet(() -> itemRepository.save(Item.create(name.strip(), Set.of(), now)));
         item.addPlace(placeId, now);
+        publish(item, ItemLifecycleEvent.Action.PLACE_BOUND, null, now);
         return item;
+    }
+
+    private void publish(Item item, ItemLifecycleEvent.Action action,
+                         Integer quantity, Instant occurredAt) {
+        eventPublisher.publishEvent(new ItemLifecycleEvent(
+                item.getId(), item.getName(), action, quantity, occurredAt));
     }
 }

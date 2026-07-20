@@ -15,6 +15,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 @ExtendWith(MockitoExtension.class)
 class NotificationOutboxWorkerTest {
 
+    private static final UUID TARGET =
+            UUID.fromString("50000000-0000-0000-0000-000000000001");
+
     @Mock private NotificationOutboxService service;
     @Mock private WorkspaceBackgroundRunner workspaceRunner;
     @Mock private NotificationSender sender;
@@ -24,10 +27,10 @@ class NotificationOutboxWorkerTest {
         when(sender.channel()).thenReturn(NotificationChannel.LOG);
         when(sender.supportsStableDeliveryId()).thenReturn(true);
         NotificationOutboxService.ClaimedNotification claim = claim(true);
-        when(service.claimDue()).thenReturn(List.of(claim));
+        when(service.claimDue(TARGET)).thenReturn(List.of(claim));
         when(service.markSent(claim.id(), claim.claimToken())).thenReturn(true);
 
-        worker().process();
+        worker().process(TARGET);
 
         verify(sender).send(claim.envelope());
         verify(service).markSent(claim.id(), claim.claimToken());
@@ -38,9 +41,9 @@ class NotificationOutboxWorkerTest {
         when(sender.channel()).thenReturn(NotificationChannel.LOG);
         when(sender.supportsStableDeliveryId()).thenReturn(false);
         NotificationOutboxService.ClaimedNotification claim = claim(true);
-        when(service.claimDue()).thenReturn(List.of(claim));
+        when(service.claimDue(TARGET)).thenReturn(List.of(claim));
 
-        worker().process();
+        worker().process(TARGET);
 
         verify(sender, never()).send(claim.envelope());
         verify(service).markFailed(claim.id(), claim.claimToken(),
@@ -55,7 +58,7 @@ class NotificationOutboxWorkerTest {
         UUID token = UUID.randomUUID();
         ReminderNotification envelope = new ReminderNotification(
                 UUID.fromString("50000000-0000-0000-0000-000000000101"),
-                UUID.fromString("50000000-0000-0000-0000-000000000001"),
+                TARGET,
                 UUID.randomUUID(), "server-log", 9L, 7L, "提醒", "該出門了");
         return new NotificationOutboxService.ClaimedNotification(
                 11L, token, "LOG", retrySafe, envelope);

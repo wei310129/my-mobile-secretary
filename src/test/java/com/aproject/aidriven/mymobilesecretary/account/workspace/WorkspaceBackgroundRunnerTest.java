@@ -82,6 +82,28 @@ class WorkspaceBackgroundRunnerTest {
     }
 
     @Test
+    void actorPrivateJobsRunForEveryWritableMemberInSameWorkspace() {
+        UUID workspace = UUID.randomUUID();
+        UUID owner = UUID.randomUUID();
+        UUID member = UUID.randomUUID();
+        UUID viewer = UUID.randomUUID();
+        Instant now = Instant.parse("2026-07-16T12:00:00Z");
+        when(memberRepository.findAllForUsersWithStatus(AppUserStatus.ACTIVE)).thenReturn(List.of(
+                WorkspaceMember.create(workspace, owner, WorkspaceRole.OWNER, owner, now),
+                WorkspaceMember.create(workspace, member, WorkspaceRole.MEMBER, owner, now),
+                WorkspaceMember.create(workspace, viewer, WorkspaceRole.VIEWER, owner, now)));
+        List<UUID> actors = new ArrayList<>();
+
+        WorkspaceBackgroundRunner.ActorRunSummary result =
+                new WorkspaceBackgroundRunner(memberRepository)
+                        .forEachActor("actor-job", context -> actors.add(context.actorId()));
+
+        assertThat(actors).containsExactly(owner, member);
+        assertThat(result).isEqualTo(new WorkspaceBackgroundRunner.ActorRunSummary(2, 2, 0));
+        assertThat(WorkspaceContextHolder.current()).isEmpty();
+    }
+
+    @Test
     void globalMaintenanceUsesDedicatedSystemScope() {
         String result = new WorkspaceBackgroundRunner(memberRepository).runSystem(() -> {
             WorkspaceContext context = WorkspaceContextHolder.requireContext();

@@ -2,6 +2,7 @@ package com.aproject.aidriven.mymobilesecretary.intent.application;
 
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
+import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleRecurrenceCalculator;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import java.time.Duration;
 import java.time.Instant;
@@ -234,12 +235,7 @@ public class DailyScheduleOverviewService {
                 || (item.getRecurrenceUntil() != null && date.isAfter(item.getRecurrenceUntil()))) {
             return false;
         }
-        return switch (item.getRecurrence()) {
-            case NONE -> false;
-            case WEEKLY -> date.getDayOfWeek() == anchor.getDayOfWeek();
-            case WEEKDAYS -> date.getDayOfWeek() != java.time.DayOfWeek.SATURDAY
-                    && date.getDayOfWeek() != java.time.DayOfWeek.SUNDAY;
-        };
+        return ScheduleRecurrenceCalculator.occursOn(anchor, date, item.getRecurrence());
     }
 
     private static Occurrence project(ScheduleItem item, LocalDate date) {

@@ -18,6 +18,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.context.ApplicationEventPublisher;
 
 @ExtendWith(MockitoExtension.class)
 class ItemLifestyleServiceTest {
@@ -28,12 +29,15 @@ class ItemLifestyleServiceTest {
     private ItemRepository repository;
     @Mock
     private PlaceService placeService;
+    @Mock
+    private ApplicationEventPublisher eventPublisher;
 
     private ItemService service;
 
     @BeforeEach
     void setUp() {
-        service = new ItemService(repository, placeService, Clock.fixed(NOW, ZoneOffset.UTC));
+        service = new ItemService(repository, placeService,
+                eventPublisher, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
     @Test

@@ -11,19 +11,23 @@ import org.springframework.core.io.ClassPathResource;
 class ConversationCapabilityCatalogTest {
 
     @Test
-    void catalogContainsThreeHundredNumberedAndRecognizedScenarios() throws Exception {
+    void catalogContainsThreeHundredSixtyFourNumberedAndRecognizedScenarios() throws Exception {
         var lines = new ClassPathResource("conversation-capabilities.txt")
                 .getContentAsString(StandardCharsets.UTF_8)
                 .lines()
                 .filter(line -> !line.isBlank())
                 .toList();
 
-        assertThat(lines).hasSize(300);
+        assertThat(lines).hasSize(378);
         Set<String> commandTypes = Arrays.stream(IntentCommand.Type.values())
                 .map(Enum::name)
                 .collect(java.util.stream.Collectors.toSet());
         Set<String> nonTextMarkers = Set.of(
-                "RECEIPT_IMAGE", "TRAVEL_ITINERARY_IMAGE", "FOLLOW_UP");
+                "RECEIPT_IMAGE", "TRAVEL_ITINERARY_IMAGE", "MEDICAL_APPOINTMENT_IMAGE",
+                "WORK_SCHOOL_SUSPENSION_IMAGE", "EVENT_REGISTRATION_IMAGE", "BUSINESS_CARD_IMAGE",
+                "TAX_PAYMENT_IMAGE", "BANK_TRANSFER_IMAGE", "SCHOOL_MENU_IMAGE",
+                "BLOOD_DONATION_RECORD_IMAGE", "PAINT_PRODUCT_IMAGE", "PAYMENT_NOTICE_IMAGE",
+                "FOLLOW_UP");
 
         for (int i = 0; i < lines.size(); i++) {
             String[] columns = lines.get(i).split("\\|", 4);

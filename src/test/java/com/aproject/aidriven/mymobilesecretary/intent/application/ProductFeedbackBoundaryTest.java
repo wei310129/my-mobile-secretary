@@ -44,4 +44,22 @@ class ProductFeedbackBoundaryTest {
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
     }
+
+    @Test
+    void genericTagArchitectureCorrectionIsFeedbackInsteadOfAnOldDraftAnswer() {
+        IntentResult result = ProductFeedbackBoundary.answer(
+                "你的回應要調整，我希望用標籤式解耦去做連結，不要寫死在油漆資料欄位裡。")
+                .orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+    }
+
+    @Test
+    void complaintQuotingAnUnrelatedEventDraftIsCapturedBeforeDraftRouting() {
+        IntentResult result = ProductFeedbackBoundary.answer(
+                "你完全都沒聽懂我在幹嘛，我在回應青葉水泥漆訊息，你再跟我講開發者工作坊草稿？")
+                .orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+    }
 }

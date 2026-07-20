@@ -25,4 +25,17 @@ class LineWebhookPayloadTest {
 
         assertThat(event.idempotencyKey()).isEqualTo("message:message-456");
     }
+
+    @Test
+    void quotedMessageIdIsRetainedFromWebhookPayload() throws Exception {
+        String json = """
+                {"events":[{"type":"message","message":{"id":"m2","type":"text",
+                "text":"7/9","quotedMessageId":"m1","quoteToken":"token"}}]}
+                """;
+
+        LineWebhookPayload payload = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readValue(json, LineWebhookPayload.class);
+
+        assertThat(payload.events().getFirst().message().quotedMessageId()).isEqualTo("m1");
+    }
 }

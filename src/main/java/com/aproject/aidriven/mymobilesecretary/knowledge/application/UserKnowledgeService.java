@@ -1,14 +1,13 @@
 package com.aproject.aidriven.mymobilesecretary.knowledge.application;
 
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
+import com.aproject.aidriven.mymobilesecretary.knowledge.domain.KnowledgeTextNormalizer;
 import com.aproject.aidriven.mymobilesecretary.knowledge.domain.UserKnowledgeFact;
 import com.aproject.aidriven.mymobilesecretary.knowledge.domain.UserKnowledgeFact.Category;
 import com.aproject.aidriven.mymobilesecretary.knowledge.persistence.UserKnowledgeFactRepository;
-import java.text.Normalizer;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
-import java.util.Locale;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -30,11 +29,11 @@ public class UserKnowledgeService {
         String safeSubject = bounded(subject, 160, "knowledge subject");
         String safeDetail = bounded(detail, 1200, "knowledge detail");
         String normalized = normalize(safeSubject);
-        var actorId = WorkspaceContextHolder.requireContext().actorId();
+        var context = WorkspaceContextHolder.requireContext();
         Instant now = Instant.now(clock);
         UserKnowledgeFact fact = repository
-                .findByCreatedByUserIdAndCategoryAndNormalizedSubject(
-                        actorId, category, normalized)
+                .findByWorkspaceIdAndCreatedByUserIdAndCategoryAndNormalizedSubject(
+                        context.workspaceId(), context.actorId(), category, normalized)
                 .orElseGet(() -> UserKnowledgeFact.create(
                         category, safeSubject, normalized, safeDetail, now));
         if (fact.getId() != null) {
@@ -48,14 +47,16 @@ public class UserKnowledgeService {
         if (subject == null || subject.isBlank()) {
             return Optional.empty();
         }
-        var actorId = WorkspaceContextHolder.requireContext().actorId();
+        var context = WorkspaceContextHolder.requireContext();
         String needle = normalize(subject);
         Optional<UserKnowledgeFact> exact = repository
-                .findByCreatedByUserIdAndCategoryAndNormalizedSubject(actorId, category, needle);
+                .findByWorkspaceIdAndCreatedByUserIdAndCategoryAndNormalizedSubject(
+                        context.workspaceId(), context.actorId(), category, needle);
         if (exact.isPresent()) {
             return exact;
         }
-        return repository.findByCreatedByUserIdAndCategoryOrderByUpdatedAtDesc(actorId, category)
+        return repository.findByWorkspaceIdAndCreatedByUserIdAndCategoryOrderByUpdatedAtDesc(
+                        context.workspaceId(), context.actorId(), category)
                 .stream()
                 .filter(fact -> fact.getNormalizedSubject().contains(needle)
                         || needle.contains(fact.getNormalizedSubject()))
@@ -64,15 +65,13 @@ public class UserKnowledgeService {
 
     @Transactional(readOnly = true)
     public List<UserKnowledgeFact> list(Category category) {
-        return repository.findByCreatedByUserIdAndCategoryOrderByUpdatedAtDesc(
-                WorkspaceContextHolder.requireContext().actorId(), category);
+        var context = WorkspaceContextHolder.requireContext();
+        return repository.findByWorkspaceIdAndCreatedByUserIdAndCategoryOrderByUpdatedAtDesc(
+                context.workspaceId(), context.actorId(), category);
     }
 
     static String normalize(String value) {
-        return Normalizer.normalize(value, Normalizer.Form.NFKC)
-                .toLowerCase(Locale.ROOT)
-                .replaceAll("[\\p{Z}\\p{P}\\p{S}]+", "")
-                .strip();
+        return KnowledgeTextNormalizer.normalize(value);
     }
 
     private static String bounded(String value, int max, String field) {

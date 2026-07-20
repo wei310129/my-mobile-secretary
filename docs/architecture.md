@@ -110,7 +110,8 @@ Java 21 重點：`spring.threads.virtual.enabled=true` 啟用虛擬執行緒；�
 
 PostgreSQL 16（主資料庫）：
 - PostGIS：空間查詢，如「我家 800 公尺內的舊衣回收箱」（回收點可匯入政府開放資料）。
-- pgvector（規劃中，尚未啟用）：對話與事件的語意向量，供 AI 記憶檢索。
+- pgvector（Project Phase 6 才評估，尚未啟用）：僅供已抽取的自由文字文件做語意檢索，
+  不取代交易型資料庫或結構化個人知識查詢。
 - 核心資料表概念：店家（座標／營業時間／販售品項）、物品（冷藏需求／重量估計／可購通路）、習慣規則（菜市場只去週末 8–12、排骨 10 點後風險高、回家爬五樓需 10 分鐘緩衝）、價格歷史、任務與狀態、事件紀錄。
 
 Redis 7 的三個角色：
@@ -126,7 +127,8 @@ Redis 7 的三個角色：
 2. **知識庫（PostgreSQL，非 LLM）**：結構化事實——哪裡買得到、營業時間、冷藏需求、重量、習慣規則、價格歷史。
 3. **規劃引擎（確定性 Java 程式）**：時間窗檢查、交通時間、負重上限、冷藏鏈、行程衝突、順路判斷。本質是「帶時間窗的排程問題」：先以貪婪法＋規則過濾做堪用版，再研究 interval scheduling、帶時間窗路徑規劃優化。
 4. **表達層（LLM）**：把計算結果轉成自然貼心的推播文字。
-5. **記憶層**：結構化 profile 為主，pgvector 語意檢索為輔（撈模糊記憶餵給 LLM 當上下文；pgvector 部分尚未啟用）。
+5. **記憶層**：結構化 profile 為主；Project Phase 6 才在有實際文件語料與檢索成效證據後，
+   以 pgvector 語意檢索作為受限輔助（只提供 untrusted evidence 給 LLM；目前尚未啟用）。
 
 LLM 成本控制原則：位置事件一天可能數十次，規則引擎先過濾（快且免費），只在需要「理解語言」或「生成語言」時呼叫模型，搭配快取，目標每月數百元台幣量級。
 
@@ -174,6 +176,8 @@ CREATED → SCHEDULED → REMINDED → 等待回報 ─→ CONFIRMED
 | Phase 2 | 4–6 週 | Spring AI 意圖理解、店家／物品知識庫、天氣＋交通整合、規劃引擎 v1 | 虛擬執行緒與多執行緒（平行呼叫外部 API）、時間窗排程演算法 |
 | Phase 3 | 4–6 週 | LINE bot、收據多模態解析、價格歷史與比價、任務狀態機閉環、Live Activities | 多模態 LLM 應用、狀態機設計 |
 | Phase 4 | 持續 | 事件流換 Kafka、拆 1–2 個模組練 Spring Cloud、K8s 部署、習慣自動學習 | Kafka、Spring Cloud、K8s |
+| Phase 5 | 核心穩定後 | 家庭行程共享／共編與重新檢視；workspace 隔離前置架構已先落地 | 多使用者協作與資料權限 |
+| Phase 6 | 有實際文件語料後 | 文件知識檢索：文字抽取／OCR、chunk 與版本治理、embedding、pgvector，最後以 SQL + vector + Java rules 混合檢索 | 文件處理、檢索評估與安全 RAG |
 
 > **進度現況（2026-07-17）**：本表是原始路線圖。因無 Mac，iOS／APNs／EventKit／Live Activities 全線未動，改以「API 模擬手機事件 + LINE Bot 互動」推進後端：Phase 1（後端版）與 Phase 2 已完成，Phase 3 進行中。逐項對照見 development-plan.md §20。
 
@@ -414,3 +418,15 @@ V51 新增 actor-isolated `conditional_venue_draft`，保存活動時間、原�
 場地文字不等於可導航地點。若選項能對上既有 `Place` 才綁 `placeId`；泛稱「健身房」在缺少座標與
 Places gateway 時仍保存為草稿的 `selectedPlaceName`，但行程不綁假座標，回覆也明說尚未綁定精確
 導航地點。此設計保證單一行程、保留使用者原意，且不以 LLM 或外部服務缺省值捏造位置。
+
+## 33. 個人知識檢索 Foundation（2026-07-20）
+
+目前沒有足夠長文件語料支持 pgvector／embedding：stored media 的 PDF 與 Office 文件仍是 opaque
+原檔，短知識可由 `UserKnowledgeFact`、`ObjectAnnotation` 與 semantic tag graph 找回。因此先建立
+`KnowledgeQuery`、`KnowledgeEvidence`、`PersonalKnowledgeRetriever` 與 actor-private JPA 實作，
+並重用唯讀 `ASK_TAGGED_RECORDS` 的知識分支；不新增 Intent 或 VectorStore bean。
+
+Task、Schedule、Reminder、Place、Item 庫存與 PriceRecord 仍走各自 SQL／Application Service；
+Retriever 不含 mutation service，檢索內容永遠是 untrusted evidence。完整文件 RAG 明確排入 **Phase 6**：
+僅在有穩定抽取的文件語料、關鍵字檢索實測不足，以及模型／授權／保存治理均已拍板後，才導入文件
+model、pipeline、embedding 與 pgvector；啟動條件與安全規則詳見 `docs/knowledge-retrieval.md`。

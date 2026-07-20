@@ -28,6 +28,9 @@ public class ObjectAnnotation extends WorkspaceOwnedEntity {
     @Column(nullable = false, length = 240)
     private String subject;
 
+    @Column(nullable = false, length = 240)
+    private String normalizedSubject;
+
     @Column(nullable = false, length = 1200)
     private String detail;
 
@@ -51,6 +54,7 @@ public class ObjectAnnotation extends WorkspaceOwnedEntity {
         annotation.targetType = targetType;
         annotation.targetId = targetId;
         annotation.subject = clean(subject, 240, "annotation subject is required");
+        annotation.normalizedSubject = KnowledgeTextNormalizer.normalize(annotation.subject);
         annotation.detail = clean(detail, 1200, "annotation detail is required");
         annotation.createdAt = java.util.Objects.requireNonNull(now);
         annotation.updatedAt = now;
@@ -67,6 +71,7 @@ public class ObjectAnnotation extends WorkspaceOwnedEntity {
     public TargetType getTargetType() { return targetType; }
     public Long getTargetId() { return targetId; }
     public String getSubject() { return subject; }
+    public String getNormalizedSubject() { return normalizedSubject; }
     public String getDetail() { return detail; }
     public Instant getCreatedAt() { return createdAt; }
     public Instant getUpdatedAt() { return updatedAt; }
@@ -83,6 +88,7 @@ public class ObjectAnnotation extends WorkspaceOwnedEntity {
     public void update(String newSubject, String newDetail, Instant now) {
         if (isArchived()) throw new IllegalStateException("archived knowledge cannot be edited");
         subject = clean(newSubject, 240, "annotation subject is required");
+        normalizedSubject = KnowledgeTextNormalizer.normalize(subject);
         detail = clean(newDetail, 1200, "annotation detail is required");
         updatedAt = java.util.Objects.requireNonNull(now);
     }

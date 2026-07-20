@@ -383,9 +383,9 @@ class WorkspaceRlsIntegrationTest extends IntegrationTestBase {
                                         long targetId, String detail) {
         jdbcTemplate.update("""
                 INSERT INTO object_annotation (
-                    target_type, target_id, subject, detail, created_at,
+                    target_type, target_id, subject, normalized_subject, detail, created_at,
                     workspace_id, created_by_user_id)
-                VALUES ('PRODUCT_OBSERVATION', ?, 'private product', ?,
+                VALUES ('PRODUCT_OBSERVATION', ?, 'private product', 'privateproduct', ?,
                         CURRENT_TIMESTAMP, ?, ?)
                 """, targetId, detail, workspaceId, actorId);
     }

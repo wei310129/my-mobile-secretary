@@ -1,6 +1,10 @@
 package com.aproject.aidriven.mymobilesecretary.knowledge.tag.application;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PriceRecordService;
+import com.aproject.aidriven.mymobilesecretary.knowledge.application.retrieval.KnowledgeQuery;
+import com.aproject.aidriven.mymobilesecretary.knowledge.application.retrieval.KnowledgeSourceType;
+import com.aproject.aidriven.mymobilesecretary.knowledge.application.retrieval.PersonalKnowledgeRetriever;
 import com.aproject.aidriven.mymobilesecretary.knowledge.domain.ObjectAnnotation;
 import com.aproject.aidriven.mymobilesecretary.knowledge.persistence.ObjectAnnotationRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.tag.domain.SemanticTagBinding;
@@ -11,6 +15,7 @@ import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -24,15 +29,18 @@ public class TaggedRecordQueryService {
     private final PriceRecordService priceRecordService;
     private final TaggedLifeRecordRepository lifeRecordRepository;
     private final ObjectAnnotationRepository annotationRepository;
+    private final PersonalKnowledgeRetriever knowledgeRetriever;
 
     public TaggedRecordQueryService(SemanticTagGraphService graphService,
                                     PriceRecordService priceRecordService,
                                     TaggedLifeRecordRepository lifeRecordRepository,
-                                    ObjectAnnotationRepository annotationRepository) {
+                                    ObjectAnnotationRepository annotationRepository,
+                                    PersonalKnowledgeRetriever knowledgeRetriever) {
         this.graphService = graphService;
         this.priceRecordService = priceRecordService;
         this.lifeRecordRepository = lifeRecordRepository;
         this.annotationRepository = annotationRepository;
+        this.knowledgeRetriever = knowledgeRetriever;
     }
 
     public List<TaggedRecordView> query(String keyword, Instant from, Instant to, String filter) {
@@ -49,6 +57,15 @@ public class TaggedRecordQueryService {
                 .values().stream().toList();
         List<TaggedRecordView> result = new ArrayList<>();
         if (normalizedFilter == null || normalizedFilter.equals("KNOWLEDGE")) {
+            var context = WorkspaceContextHolder.requireContext();
+            knowledgeRetriever.retrieve(new KnowledgeQuery(
+                            context.workspaceId(), context.actorId(), keyword,
+                            java.util.Set.of(), java.util.Set.of(), 20, false,
+                            from, to, Map.of()))
+                    .forEach(evidence -> result.add(new TaggedRecordView(
+                            "KNOWLEDGE", evidence.title(), evidence.createdAt(), evidence.content(),
+                            evidence.sourceType() == KnowledgeSourceType.OBJECT_ANNOTATION
+                                    ? Long.valueOf(evidence.sourceId()) : null)));
             List<Long> ids = bindings.stream()
                     .filter(binding -> binding.getTargetType()
                             == SemanticTagBinding.TargetType.OBJECT_ANNOTATION)
@@ -93,8 +110,22 @@ public class TaggedRecordQueryService {
                             record.getRecordType().name(), record.getTitle(),
                             record.getOccurredAt(), record.getDetails(), null)));
         }
-        return result.stream().sorted(Comparator.comparing(
-                TaggedRecordView::occurredAt).reversed()).limit(20).toList();
+        return result.stream()
+                .collect(java.util.stream.Collectors.toMap(
+                        TaggedRecordQueryService::deduplicationKey,
+                        view -> view, (first, ignored) -> first,
+                        java.util.LinkedHashMap::new))
+                .values().stream()
+                .sorted(Comparator.comparing(TaggedRecordView::occurredAt).reversed())
+                .limit(20)
+                .toList();
+    }
+
+    private static String deduplicationKey(TaggedRecordView view) {
+        return view.objectAnnotationId() == null
+                ? "%s|%s|%s|%s".formatted(
+                        view.type(), view.title(), view.occurredAt(), view.details())
+                : "OBJECT_ANNOTATION|" + view.objectAnnotationId();
     }
 
     private static boolean within(Instant occurredAt, Instant from, Instant to) {

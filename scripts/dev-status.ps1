@@ -1,16 +1,20 @@
 <#
 .SYNOPSIS
-  Read-only health report for the main application and AI Dispatcher.
+  Health report for the full development environment, including a LINE platform webhook test.
 
 .PARAMETER NoNgrokRequired
   Does not fail when ngrok is stopped.
 
 .PARAMETER RequireDispatcher
   Fails when the Dispatcher DB or application is unhealthy. It is non-blocking by default.
+
+.PARAMETER SkipLineWebhookTest
+  Skips LINE's official end-to-end webhook test and reports local layers only.
 #>
 param(
     [switch]$NoNgrokRequired,
-    [switch]$RequireDispatcher
+    [switch]$RequireDispatcher,
+    [switch]$SkipLineWebhookTest
 )
 
 . "$PSScriptRoot\_devops-common.ps1"
@@ -90,6 +94,22 @@ if ($ngrokPortPid) {
 } else {
     Write-Host "ngrok:          not running" -ForegroundColor DarkGray
     if (-not $NoNgrokRequired) { $allHealthy = $false }
+}
+
+if (-not $SkipLineWebhookTest -and -not $NoNgrokRequired) {
+    Write-Host "LINE webhook:   running official end-to-end test..." -ForegroundColor Yellow
+    $lineTest = Test-LineWebhookEndToEnd
+    if ($lineTest.Success) {
+        Write-Host "LINE webhook:   connected (LINE -> ngrok -> Spring Boot)" -ForegroundColor Green
+    } else {
+        Write-Host "LINE webhook:   disconnected" -ForegroundColor Red
+        if ($lineTest.Reason) { Write-Host "  reason:       $($lineTest.Reason)" -ForegroundColor Yellow }
+        if ($lineTest.Detail) { Write-Host "  detail:       $($lineTest.Detail)" -ForegroundColor Yellow }
+        if ($lineTest.Error) { Write-Host "  error:        $($lineTest.Error)" -ForegroundColor Yellow }
+        $allHealthy = $false
+    }
+} elseif ($SkipLineWebhookTest) {
+    Write-Host "LINE webhook:   official test skipped (-SkipLineWebhookTest)" -ForegroundColor DarkGray
 }
 
 if ($state.startedAt) {

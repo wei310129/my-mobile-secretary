@@ -1,0 +1,162 @@
+# Shared project command approvals.
+#
+# This file mirrors the reusable command prefixes approved during the original
+# development session. Codex loads it only for trusted projects and applies it
+# to new sessions after Codex is restarted. More restrictive user, team, or
+# managed rules still take precedence.
+
+prefix_rule(
+    pattern = ["docker", "compose"],
+    decision = "allow",
+    justification = "Project Docker Compose workflow approved for all project sessions",
+)
+
+prefix_rule(
+    pattern = ["git", "commit", "-m"],
+    decision = "allow",
+    justification = "Intentional non-interactive project commits approved for all project sessions",
+)
+
+prefix_rule(
+    pattern = ["git", "diff", "--check"],
+    decision = "allow",
+    justification = "Read-only diff validation approved for all project sessions",
+)
+
+prefix_rule(
+    pattern = ["git", "diff", "--cached", ["--check", "--name-status"]],
+    decision = "allow",
+    justification = "Read-only staged diff validation approved for all project sessions",
+)
+
+prefix_rule(
+    pattern = ["git", "add", "src/main", "src/test"],
+    decision = "allow",
+    justification = "Previously approved staging scope",
+)
+
+prefix_rule(
+    pattern = ["git", "add", "--", "internal/ai-dispatcher"],
+    decision = "allow",
+    justification = "Previously approved dispatcher staging scope",
+)
+
+prefix_rule(
+    pattern = ["git", "add", "--", "internal/ai-dispatcher/src/main/resources/db", "internal/ai-dispatcher/src/test/java/com/aproject/internal/aidispatcher/persistence"],
+    decision = "allow",
+    justification = "Previously approved dispatcher persistence staging scope",
+)
+
+prefix_rule(
+    pattern = ["git", "add", "--", "scripts/_devops-common.ps1", "scripts/dev-restart.ps1", "scripts/dev-stop.ps1"],
+    decision = "allow",
+    justification = "Previously approved development script staging scope",
+)
+
+prefix_rule(
+    pattern = [".\\mvnw.cmd", "-DskipTests", "test-compile"],
+    decision = "allow",
+    justification = "Project Maven test compilation approved for all project sessions",
+)
+
+prefix_rule(
+    pattern = [".\\mvnw.cmd", "-Dtest=LifestyleIntentApiTest", "test"],
+    decision = "allow",
+    justification = "Previously approved focused Maven test",
+)
+
+prefix_rule(
+    pattern = [".\\mvnw.cmd", "-Dtest=ConversationCapabilityCatalogTest", "test"],
+    decision = "allow",
+    justification = "Previously approved focused Maven test",
+)
+
+prefix_rule(
+    pattern = [".\\mvnw.cmd", "-Dtest=DevelopmentFeedApiTest,DevelopmentFeedCursorCodecTest", "test"],
+    decision = "allow",
+    justification = "Previously approved focused Maven test",
+)
+
+prefix_rule(
+    pattern = [".\\mvnw.cmd", "-Dtest=ConversationCapabilityCatalogTest,TaskInsightServiceTest", "test"],
+    decision = "allow",
+    justification = "Previously approved focused Maven test",
+)
+
+prefix_rule(
+    pattern = [".\\mvnw.cmd", "-Dtest=ConversationCapabilityCatalogTest,PriceInsightServiceTest", "test"],
+    decision = "allow",
+    justification = "Previously approved focused Maven test",
+)
+
+prefix_rule(
+    pattern = [".\\mvnw.cmd", "-Dtest=ConversationCapabilityCatalogTest,TaskLifestyleServiceTest", "test"],
+    decision = "allow",
+    justification = "Previously approved focused Maven test",
+)
+
+prefix_rule(
+    pattern = [".\\mvnw.cmd", "-Dtest=ConversationCapabilityCatalogTest,ScheduleInsightServiceTest", "test"],
+    decision = "allow",
+    justification = "Previously approved focused Maven test",
+)
+
+prefix_rule(
+    pattern = [".\\mvnw.cmd", "-Dtest=ConversationCapabilityCatalogTest,ItemTest,ItemLifestyleServiceTest", "test"],
+    decision = "allow",
+    justification = "Previously approved focused Maven test",
+)
+
+prefix_rule(
+    pattern = [".\\mvnw.cmd", "-Dtest=DevelopmentFeedApiTest,DevelopmentFeedCursorCodecTest,WorkspaceRlsIntegrationTest", "test"],
+    decision = "allow",
+    justification = "Previously approved focused Maven test",
+)
+
+prefix_rule(
+    pattern = [".\\mvnw.cmd", "-Dtest=ConversationCapabilityCatalogTest,GeofenceRuleTest,GeofenceRuleLifestyleServiceTest", "test"],
+    decision = "allow",
+    justification = "Previously approved focused Maven test",
+)
+
+prefix_rule(
+    pattern = [".\\mvnw.cmd", "-Dtest=ConversationCapabilityCatalogTest,ScheduleInsightServiceTest,FeasibilityServiceTest,ItemInsightServiceTest", "test"],
+    decision = "allow",
+    justification = "Previously approved focused Maven test",
+)
+
+prefix_rule(
+    pattern = [".\\mvnw.cmd", "-Dtest=ConversationCapabilityCatalogTest,ReminderPreferenceServiceTest,ReminderTriggerServiceTest,ReminderEscalationServiceTest", "test"],
+    decision = "allow",
+    justification = "Previously approved focused Maven test",
+)
+
+prefix_rule(
+    pattern = [".\\mvnw.cmd", "-f", "internal\\ai-dispatcher\\pom.xml", "test"],
+    decision = "allow",
+    justification = "Dispatcher Maven test suite approved for all project sessions",
+)
+
+prefix_rule(
+    pattern = [".\\mvnw.cmd", "-f", "internal\\ai-dispatcher\\pom.xml", "-Dtest=CodexLaunchServiceIntegrationTest,CodexLifecycleServiceIntegrationTest", "test"],
+    decision = "allow",
+    justification = "Previously approved dispatcher integration test",
+)
+
+prefix_rule(
+    pattern = [".\\mvnw.cmd", "-f", "internal\\ai-dispatcher\\pom.xml", "-Dtest=DispatcherCoordinatorIntegrationTest,CodexLaunchServiceIntegrationTest", "test"],
+    decision = "allow",
+    justification = "Previously approved dispatcher integration test",
+)
+
+prefix_rule(
+    pattern = ["C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "-Command", ".\\mvnw.cmd test"],
+    decision = "allow",
+    justification = "Previously approved full Maven test invocation",
+)
+
+prefix_rule(
+    pattern = ["C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe", "-Command", ".\\mvnw.cmd -f internal\\ai-dispatcher\\pom.xml -Dtest=DispatcherCoordinatorIntegrationTest,CodexLaunchServiceIntegrationTest test"],
+    decision = "allow",
+    justification = "Previously approved dispatcher integration test invocation",
+)

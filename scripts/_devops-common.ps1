@@ -174,9 +174,99 @@ function Get-ContainerHealth {
     return $status
 }
 
+function Wait-TcpPort {
+    param(
+        [string]$HostName = "127.0.0.1",
+        [Parameter(Mandatory)][int]$Port,
+        [int]$TimeoutSec = 60
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        $client = [System.Net.Sockets.TcpClient]::new()
+        try {
+            $connect = $client.ConnectAsync($HostName, $Port)
+            if ($connect.Wait(2000) -and $client.Connected) { return $true }
+        } catch {
+            # The container can be healthy before Docker Desktop publishes its Windows host port.
+        } finally {
+            $client.Dispose()
+        }
+        Start-Sleep -Seconds 2
+    }
+    return $false
+}
+
 function Test-DockerDaemon {
     docker info --format "{{.ServerVersion}}" 2>$null | Out-Null
     return $LASTEXITCODE -eq 0
+}
+
+function Resolve-DockerDesktopExe {
+    $candidates = @(
+        (Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"),
+        (Join-Path $env:LOCALAPPDATA "Docker\Docker Desktop.exe")
+    )
+    foreach ($candidate in $candidates) {
+        if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Leaf)) { return $candidate }
+    }
+    return $null
+}
+
+function Wait-DockerDaemon {
+    param([int]$TimeoutSec = 120)
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    $nextProgress = (Get-Date).AddSeconds(15)
+    while ((Get-Date) -lt $deadline) {
+        if (Test-DockerDaemon) { return $true }
+        if ((Get-Date) -ge $nextProgress) {
+            $remaining = [Math]::Max(0, [int]($deadline - (Get-Date)).TotalSeconds)
+            $desktopCount = @(Get-Process -Name "Docker Desktop" -ErrorAction SilentlyContinue).Count
+            $backendCount = @(Get-Process -Name "com.docker.backend" -ErrorAction SilentlyContinue).Count
+            Write-Host "  Waiting for Docker daemon ($remaining sec left; desktop=$desktopCount, backend=$backendCount)..." `
+                -ForegroundColor DarkGray
+            $nextProgress = (Get-Date).AddSeconds(15)
+        }
+        Start-Sleep -Seconds 3
+    }
+    return $false
+}
+
+# A reboot leaves Docker Desktop stopped. Occasionally Docker Desktop itself reports lingering
+# frontend/backend processes and never creates docker_engine. Recovery is deliberately limited to
+# Docker Desktop's own known process names, and only runs while the daemon is unreachable.
+function Ensure-DockerDaemon {
+    # WSL may need more than two minutes after a cold boot or VHDX maintenance. The recovery
+    # attempt already proved that known Docker backends are alive, so allow a bounded extra minute
+    # instead of declaring failure seconds before docker_engine becomes available.
+    param([int]$InitialTimeoutSec = 120, [int]$RecoveryTimeoutSec = 180)
+    if (Test-DockerDaemon) { return $true }
+
+    $desktopExe = Resolve-DockerDesktopExe
+    if (-not $desktopExe) {
+        Write-Host "Docker Desktop executable was not found." -ForegroundColor Red
+        return $false
+    }
+
+    Write-Host "  Docker daemon is stopped; starting Docker Desktop..." -ForegroundColor Yellow
+    Start-Process -FilePath $desktopExe -WindowStyle Hidden | Out-Null
+    if (Wait-DockerDaemon -TimeoutSec $InitialTimeoutSec) { return $true }
+
+    Write-Host "  Docker daemon is still unavailable; repairing lingering Docker Desktop processes..." `
+        -ForegroundColor Yellow
+    $dockerCli = Join-Path (Split-Path -Parent $desktopExe) "DockerCli.exe"
+    if (Test-Path -LiteralPath $dockerCli -PathType Leaf) {
+        $shutdown = Start-Process -FilePath $dockerCli -ArgumentList "-Shutdown" -WindowStyle Hidden -PassThru
+        if (-not $shutdown.WaitForExit(15000)) {
+            Stop-Process -Id $shutdown.Id -Force -ErrorAction SilentlyContinue
+        }
+    }
+
+    Get-Process -ErrorAction SilentlyContinue |
+        Where-Object { $_.ProcessName -in @("Docker Desktop", "com.docker.backend") } |
+        ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
+    Start-Sleep -Seconds 3
+    Start-Process -FilePath $desktopExe -WindowStyle Hidden | Out-Null
+    return Wait-DockerDaemon -TimeoutSec $RecoveryTimeoutSec
 }
 
 # Reads only the single local Dispatcher lane snapshot. This is used to avoid killing a supervised
@@ -333,4 +423,121 @@ function Get-NgrokPublicUrl {
         Start-Sleep -Seconds 1
     }
     return $null
+}
+
+function Get-LocalSecretValue {
+    param([Parameter(Mandatory)][string]$Name)
+    $secretsFile = Join-Path $RepoRoot "secrets.yaml"
+    if (-not (Test-Path -LiteralPath $secretsFile -PathType Leaf)) { return $null }
+    $raw = Get-Content -LiteralPath $secretsFile -Raw -Encoding UTF8
+    $pattern = '(?m)^\s*' + [regex]::Escape($Name) + '\s*:\s*([^#\r\n]+)'
+    $match = [regex]::Match($raw, $pattern)
+    if (-not $match.Success) { return $null }
+    $value = $match.Groups[1].Value.Trim().Trim('"').Trim("'")
+    if ([string]::IsNullOrWhiteSpace($value) -or $value -eq "not-configured") { return $null }
+    return $value
+}
+
+function Get-LineAccessToken {
+    $configuredToken = Get-LocalSecretValue -Name "channel-access-token"
+    if ($configuredToken) { return $configuredToken }
+
+    $channelId = Get-LocalSecretValue -Name "channel-id"
+    $channelSecret = Get-LocalSecretValue -Name "channel-secret"
+    if (-not $channelId -or -not $channelSecret) {
+        throw "LINE channel-id/channel-secret are missing from secrets.yaml."
+    }
+    $response = Invoke-RestMethod -Method Post `
+        -Uri "https://api.line.me/oauth2/v3/token" `
+        -ContentType "application/x-www-form-urlencoded" `
+        -Body @{ grant_type = "client_credentials"; client_id = $channelId; client_secret = $channelSecret } `
+        -TimeoutSec 15 -ErrorAction Stop
+    if ([string]::IsNullOrWhiteSpace($response.access_token)) {
+        throw "LINE token endpoint returned no access token."
+    }
+    return $response.access_token
+}
+
+function Get-LineWebhookConfiguration {
+    try {
+        $token = Get-LineAccessToken
+        $headers = @{ Authorization = "Bearer $token" }
+        $response = Invoke-RestMethod -Method Get `
+            -Uri "https://api.line.me/v2/bot/channel/webhook/endpoint" `
+            -Headers $headers -TimeoutSec 15 -ErrorAction Stop
+        return [pscustomobject]@{
+            Success  = $true
+            Endpoint = [string]$response.endpoint
+            Active   = [bool]$response.active
+            Error    = $null
+        }
+    } catch {
+        return [pscustomobject]@{
+            Success  = $false
+            Endpoint = $null
+            Active   = $false
+            Error    = $_.Exception.Message
+        }
+    }
+}
+
+function Wait-NgrokWebhookSuccess {
+    param(
+        [Parameter(Mandatory)][datetimeoffset]$Since,
+        [int]$TimeoutSec = 6
+    )
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    while ((Get-Date) -lt $deadline) {
+        try {
+            $response = Invoke-RestMethod `
+                -Uri "http://127.0.0.1:$NgrokApiPort/api/requests/http?limit=20" `
+                -TimeoutSec 2 -ErrorAction Stop
+            foreach ($entry in $response.requests) {
+                $startedAt = [datetimeoffset]::MinValue
+                if (-not [datetimeoffset]::TryParse([string]$entry.start, [ref]$startedAt)) { continue }
+                if ($startedAt -lt $Since.AddSeconds(-2)) { continue }
+                if ([string]$entry.request.method -ne "POST") { continue }
+                if ([string]$entry.request.uri -ne "/api/line/webhook") { continue }
+                if ([int]$entry.response.status -eq 200) { return $true }
+            }
+        } catch { }
+        Start-Sleep -Seconds 1
+    }
+    return $false
+}
+
+# This is the final, outside-in readiness check: LINE's platform calls its configured public
+# webhook. Only when it fails should callers inspect ngrok, Spring Boot, Redis and PostgreSQL.
+function Test-LineWebhookEndToEnd {
+    $startedAt = [datetimeoffset]::Now
+    try {
+        $token = Get-LineAccessToken
+        $headers = @{ Authorization = "Bearer $token" }
+        $response = Invoke-RestMethod -Method Post `
+            -Uri "https://api.line.me/v2/bot/channel/webhook/test" `
+            -Headers $headers -ContentType "application/json" -Body "{}" `
+            -TimeoutSec 15 -ErrorAction Stop
+        return [pscustomobject]@{
+            Success = [bool]$response.success
+            Reason  = [string]$response.reason
+            Detail  = [string]$response.detail
+            Error   = $null
+        }
+    } catch {
+        $requestError = $_.Exception.Message
+        if (Wait-NgrokWebhookSuccess -Since $startedAt -TimeoutSec 6) {
+            return [pscustomobject]@{
+                Success = $true
+                Reason  = "CONFIRMED_BY_NGROK"
+                Detail  = "LINE reached /api/line/webhook and Spring Boot returned 200."
+                Error   = $null
+            }
+        }
+        return [pscustomobject]@{
+            Success = $false
+            Reason  = "REQUEST_FAILED"
+            Detail  = $null
+            Error   = $requestError
+        }
+    }
 }

@@ -19,7 +19,8 @@ class ProductFeedbackBoundaryTest {
         IntentResult result = ProductFeedbackBoundary.answer(text).orElseThrow();
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
-        assertThat(result.message()).contains("依你指出的方向調整").contains("不會建立或修改行程")
+        assertThat(result.message()).contains("依你指出的方向調整").contains("不會建立待辦或行程")
+                .contains("不會修改既有待辦或行程")
                 .doesNotContain("問題紀錄", "後端");
     }
 

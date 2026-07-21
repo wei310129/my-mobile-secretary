@@ -235,7 +235,8 @@ class IntentApiTest extends IntegrationTestBase {
         say("你是不是重複建立任務了",
                 jsonPath("$.action").value("FEEDBACK_RECEIVED"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString("依你指出的方向調整")),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不會建立或修改行程")));
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不會建立待辦或行程")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不會修改既有待辦或行程")));
     }
 
     /** 自由文字提到「地點」是產品建議，不得接回先前任務的缺地點追問。 */

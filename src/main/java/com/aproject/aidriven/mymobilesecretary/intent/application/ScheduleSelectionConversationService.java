@@ -156,16 +156,28 @@ public class ScheduleSelectionConversationService {
     }
 
     private static boolean isMergeRequest(String text) {
-        return text.contains("前兩個") && text.contains("行程")
+        boolean refersToTwo = containsAny(text, "前兩個", "前兩筆", "這兩個", "這兩筆")
+                || orderedPair(text, "第一", "第二")
+                || orderedPair(text, "第1", "第2")
+                || orderedPair(text, "1", "2");
+        return refersToTwo && text.contains("行程")
                 && (text.contains("合併") || text.contains("合成"));
     }
 
     private static Integer keepOrdinal(String text, String lastAssistant) {
         if (lastAssistant == null || !lastAssistant.contains("保留第一個")
                 || !lastAssistant.contains("保留第二個")) return null;
-        if (text.contains("保留第一") || text.matches("^(?:1|1[.、．]).*保留第一.*")) return 1;
-        if (text.contains("保留第二") || text.matches("^(?:2|2[.、．]).*保留第二.*")) return 2;
+        if (containsAny(text, "保留第一", "留第一", "第一個留", "第一筆留", "選第一", "選1",
+                "留1", "就第一")) return 1;
+        if (containsAny(text, "保留第二", "留第二", "第二個留", "第二筆留", "選第二", "選2",
+                "留2", "就第二")) return 2;
         return null;
+    }
+
+    private static boolean orderedPair(String text, String first, String second) {
+        int firstIndex = text.indexOf(first);
+        int secondIndex = text.indexOf(second);
+        return firstIndex >= 0 && secondIndex > firstIndex;
     }
 
     private static Integer deleteOrdinal(String text) {

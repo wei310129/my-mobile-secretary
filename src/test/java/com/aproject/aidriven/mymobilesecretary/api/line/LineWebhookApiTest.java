@@ -8,12 +8,24 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.aproject.aidriven.mymobilesecretary.IntegrationTestBase;
 import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubIntentInterpreter;
 import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubReceiptInterpreter;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineContentClient;
+import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLog;
+import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLogRepository;
+import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationContextService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ReceiptCommand;
 import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
+import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
+import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
+import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import java.nio.charset.StandardCharsets;
+import java.time.Instant;
 import java.util.Base64;
+import java.util.List;
+import java.util.UUID;
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
 import org.junit.jupiter.api.Test;
@@ -31,11 +43,19 @@ class LineWebhookApiTest extends IntegrationTestBase {
     private static final String TEST_SECRET = "test-channel-secret";
     /** 與 application-test.yaml 的 owner-user-id 一致;擁有者守門 fail-closed,事件必須帶此來源才會被處理。 */
     private static final String OWNER_USER_ID = "test-owner-user";
+    private static final UUID ACTOR_ID = UUID.fromString("00000000-0000-0000-0000-000000000001");
+    private static final UUID WORKSPACE_ID = UUID.fromString("00000000-0000-0000-0000-000000000101");
 
     @Autowired
     private StubIntentInterpreter stub;
     @Autowired
     private TaskRepository taskRepository;
+    @Autowired
+    private ScheduleService scheduleService;
+    @Autowired
+    private ConversationContextService conversationContext;
+    @Autowired
+    private LineMessageLogRepository lineMessageLogs;
     @Autowired
     private StubReceiptInterpreter receiptStub;
     @MockitoBean
@@ -306,6 +326,53 @@ class LineWebhookApiTest extends IntegrationTestBase {
         org.assertj.core.api.Assertions.assertThat(logs)
                 .contains("對話紀錄測試-幫我記一下")   // IN:使用者原話
                 .contains("對話紀錄測試任務");          // OUT:bot 回覆(已建立任務「…」)
+    }
+
+    @Test
+    void mergesTwoReferencedSchedulesThroughNaturalLineConversation() throws Exception {
+        ScheduleItem first;
+        ScheduleItem second;
+        WorkspaceContext line = new WorkspaceContext(ACTOR_ID, WORKSPACE_ID, WorkspaceChannel.LINE);
+        try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(line)) {
+            Instant start = Instant.parse("2099-07-25T02:00:00Z");
+            first = scheduleService.createSchedule(
+                    "送女兒到夏恩英語上課", start, start.plusSeconds(7200), null, false).item();
+            second = scheduleService.createSchedule(
+                    "女兒上夏恩英語", start, start.plusSeconds(7200), null, false).item();
+            conversationContext.rememberScheduleList(List.of(first, second));
+        }
+
+        sendText("前兩個行程合併成一個");
+        sendText("1.對，保留第一個");
+
+        try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(line)) {
+            assertThat(scheduleService.getSchedule(first.getId()).getStatus())
+                    .isEqualTo(ScheduleStatus.CONFIRMED);
+            assertThat(scheduleService.getSchedule(second.getId()).getStatus())
+                    .isEqualTo(ScheduleStatus.REJECTED);
+            assertThat(lineMessageLogs.findAll().stream()
+                    .filter(log -> log.getDirection() == LineMessageLog.Direction.OUT)
+                    .map(LineMessageLog::getReferencePayload)
+                    .filter(java.util.Objects::nonNull))
+                    .anyMatch(payload -> payload.contains("SCHEDULE:" + first.getId())
+                            && payload.contains("SCHEDULE:" + second.getId()));
+        }
+
+        String logs = mockMvc.perform(
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .get("/api/line/messages").param("limit", "10"))
+                .andExpect(status().isOk()).andReturn().getResponse()
+                .getContentAsString(StandardCharsets.UTF_8);
+        assertThat(logs).contains("保留第一個", "已合併為一筆", "女兒上夏恩英語")
+                .doesNotContain("接送安排", "系統目前缺少", "知識紀錄");
+    }
+
+    private void sendText(String text) throws Exception {
+        byte[] body = textMessageEvent(text);
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(body))
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
     }
 
     /** 空事件陣列(LINE 平台的 webhook 驗證請求)→ 200。 */

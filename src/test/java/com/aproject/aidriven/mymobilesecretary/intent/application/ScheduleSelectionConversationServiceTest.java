@@ -3,6 +3,7 @@ package com.aproject.aidriven.mymobilesecretary.intent.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
@@ -62,6 +63,34 @@ class ScheduleSelectionConversationServiceTest {
         assertThat(mutations).hasValue(1);
         verify(schedules).discardSchedule(16L);
         verify(context).rememberSchedule(first);
+    }
+
+    @Test
+    void fourCommonConversationStylesCompleteTheSameFlow() {
+        when(context.snapshot()).thenReturn(snapshot(
+                "可以。請回覆「保留第一個」或「保留第二個」。"));
+        List<List<String>> conversations = List.of(
+                List.of("前兩個行程合併成一個", "保留第一個"),
+                List.of("前兩筆行程幫我合併", "第一筆留著"),
+                List.of("把第1跟第2個行程合成一筆", "留1就好"),
+                List.of("這兩個行程重複了，合成一個", "就第二個吧"));
+        AtomicInteger mutations = new AtomicInteger();
+
+        for (List<String> conversation : conversations) {
+            IntentResult question = service.answer(
+                    conversation.get(0), conversation.get(0), mutations::incrementAndGet)
+                    .orElseThrow();
+            assertThat(question.message()).contains("保留第一個", "保留第二個");
+
+            IntentResult completed = service.answer(
+                    conversation.get(1), conversation.get(1), mutations::incrementAndGet)
+                    .orElseThrow();
+            assertThat(completed.message()).contains("已合併為一筆");
+        }
+
+        assertThat(mutations).hasValue(4);
+        verify(schedules, times(3)).discardSchedule(16L);
+        verify(schedules).discardSchedule(14L);
     }
 
     @Test

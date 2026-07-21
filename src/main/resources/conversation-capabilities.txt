@@ -377,3 +377,6 @@
 377|把拿包裹的行程提醒改回沒有時間的待辦事項|CONVERT_TASK_TO_TODO|title放既有項目關鍵字；Java清除dueAt並移除提醒排程；不得轉回草稿
 378|列出目前有庫存的品項|LIST_INVENTORY|Java只列inventoryQuantity大於0的已知庫存；零筆固定回覆「📍 共找到 0 個品項：」，不得列出數量0
 379|我家地址改成新北市新店區民權路5號五樓|UPDATE_PLACE|placeName=我家;options.description=新北市新店區民權路5號五樓;外部候選街路門牌不一致時拒絕寫入
+380|把週五牙醫行程改名成定期洗牙，地點改成陳醫師診所|UPDATE_SCHEDULE|title=週五牙醫;options.newTitle=定期洗牙;placeName=陳醫師診所;只更新明講欄位並重新驗算地點可行性
+381|照上次看牙醫的名稱和地點，幫我建下個月15日下午三點的新行程|COPY_SCHEDULE|options.referenceTitle=上次看牙醫;startAt=下個月15日15:00;未指定endAt沿用原時長，標題與地點沿用來源，不修改原行程
+382|把女兒上夏恩英語合併到送女兒到夏恩英語上課，保留後者|MERGE_SCHEDULES|title=送女兒到夏恩英語上課;options.referenceTitle=女兒上夏恩英語;Java補主要行程缺少的可重用欄位後終止重複項目

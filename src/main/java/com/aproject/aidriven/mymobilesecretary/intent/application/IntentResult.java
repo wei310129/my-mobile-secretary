@@ -28,7 +28,7 @@ public record IntentResult(
 ) {
 
     public IntentResult {
-        message = IntentReplyFormatter.format(action, message);
+        message = IntentReplyFormatter.format(action, UserReplySafetyPolicy.sanitize(message));
     }
 
     public enum Action {
@@ -488,7 +488,7 @@ public record IntentResult(
 
     public static IntentResult feedbackReceived() {
         return new IntentResult(Action.FEEDBACK_RECEIVED,
-                "🛠️ 收到，這則內容只會存進功能改善問題紀錄，不會建立待辦或行程。", null, null);
+                "收到，我會依你指出的方向調整。這則訊息不會建立或修改行程。", null, null);
     }
 
     public static IntentResult placeInfo(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
@@ -545,24 +545,21 @@ public record IntentResult(
 
     public static IntentResult aiUnavailable(String why) {
         return new IntentResult(Action.AI_UNAVAILABLE,
-                "⚠️ %s。\n- 我沒有建立任何待辦\n- 原訊息已保留在對話與問題紀錄"
-                        .formatted(why)
-                        + "\n\n🔄 請稍後再試一次。",
+                "這次沒有完成，也沒有建立或修改資料。請再傳一次，我會接著處理。",
                 null, null);
     }
 
     public static IntentResult aiUnavailable(String why, String validationReason, IntentCommand command) {
-        StringBuilder message = new StringBuilder("⚠️ ").append(why).append("。");
-        if (validationReason != null && !validationReason.isBlank()) {
-            message.append("\n- Java 驗證原因：").append(validationReason);
+        String guidance = "請補充你想處理的項目、日期或時間，我會接著處理。";
+        if (command != null && command.type() == IntentCommand.Type.CREATE_SCHEDULE) {
+            if (command.startAt() == null || command.startAt().isBlank()) {
+                guidance = "請告訴我行程的開始時間，我會接著建立。";
+            } else if (command.endAt() == null || command.endAt().isBlank()) {
+                guidance = "請告訴我行程的結束時間或預計多久，我會接著建立。";
+            }
         }
-        if (command != null) {
-            message.append("\n- AI 回覆資料：")
-                    .append(IntentValidationDiagnostic.summarize(command));
-        }
-        message.append("\n- 我沒有建立任何待辦或行程")
-                .append("\n- 原訊息與上述診斷已保留在對話與問題紀錄")
-                .append("\n\n🔄 請修正資訊後再試一次，或直接問我「為什麼失敗」。");
-        return new IntentResult(Action.AI_UNAVAILABLE, message.toString(), null, null);
+        return new IntentResult(Action.AI_UNAVAILABLE,
+                "這次沒有完成，也沒有建立或修改資料。" + guidance,
+                null, null);
     }
 }

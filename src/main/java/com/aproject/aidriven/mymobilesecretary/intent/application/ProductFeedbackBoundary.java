@@ -69,7 +69,7 @@ final class ProductFeedbackBoundary {
         if (CORRECTION_MESSAGES.contains(compact) || isResponseCorrection(compact)) {
             return Optional.of(IntentResult.message(IntentResult.Action.FEEDBACK_RECEIVED,
                     "🛠️ 收到，是我理解錯了。原本的主題與訊息仍會保留；"
-                            + "請直接指出要更正的欄位，我會從原操作續接，並把誤判留給功能改善追蹤。"));
+                            + "請直接指出要更正的內容，我會從原操作續接。"));
         }
         if (containsAny(compact, EXPLICIT_PRODUCT_MARKERS)
                 || isGeneralizedProductRule(text, compact)) {

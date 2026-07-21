@@ -234,8 +234,8 @@ class IntentApiTest extends IntegrationTestBase {
                 null, null, null, null, null));
         say("你是不是重複建立任務了",
                 jsonPath("$.action").value("FEEDBACK_RECEIVED"),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("功能改善問題紀錄")),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不會建立待辦或行程")));
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("依你指出的方向調整")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不會建立或修改行程")));
     }
 
     /** 自由文字提到「地點」是產品建議，不得接回先前任務的缺地點追問。 */
@@ -251,7 +251,7 @@ class IntentApiTest extends IntegrationTestBase {
                 "旅行功能要包含出發地點與交通工具", null, null, null, null, null));
         say("這是功能改善：旅行要詢問出發地點與交通工具",
                 jsonPath("$.action").value("FEEDBACK_RECEIVED"),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("功能改善問題紀錄")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("依你指出的方向調整")),
                 jsonPath("$.message").value(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("要在哪裡做"))));
     }
@@ -600,7 +600,7 @@ class IntentApiTest extends IntegrationTestBase {
         say("這句話一定要被留下來",
                 jsonPath("$.action").value("AI_UNAVAILABLE"),
                 jsonPath("$.task").value(org.hamcrest.Matchers.nullValue()),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("我沒有建立任何待辦")));
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("沒有建立或修改資料")));
         org.assertj.core.api.Assertions.assertThat(taskService.listTasks()).hasSize(before);
     }
 
@@ -636,17 +636,16 @@ class IntentApiTest extends IntegrationTestBase {
         say("診斷測試今晚十點倒垃圾",
                 jsonPath("$.action").value("AI_UNAVAILABLE"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
-                        "建立行程必須提供 startAt")),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
-                        "type=CREATE_SCHEDULE")),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("startAt=(空)")));
+                        "請告訴我行程的開始時間")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("startAt"))));
 
         say("為什麼失敗？",
                 jsonPath("$.action").value("FAILURE_EXPLAINED"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
-                        "建立行程必須提供 startAt")),
+                        "缺行程的開始時間")),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
-                        "沒有執行這筆操作")));
+                        "資料沒有異動")));
     }
 
     /** 單一明確時點的生活事項被誤判成缺 endAt 行程時，安全降為 timed task。 */

@@ -196,6 +196,12 @@ public record IntentCommand(
         CREATE_FLEXIBLE_DAY_TASK,
         /** 建行程(有明確開始/結束時段的承諾)。 */
         CREATE_SCHEDULE,
+        /** 修改既有行程的標題、地點或分類；只改使用者明確提供的欄位。 */
+        UPDATE_SCHEDULE,
+        /** 以既有行程為範本建立新行程；沿用未重填的標題、地點與時長。 */
+        COPY_SCHEDULE,
+        /** 合併兩筆行程；title 是保留項目，options.referenceTitle 是要終止的重複項目。 */
+        MERGE_SCHEDULES,
         /** 回報任務做完了(「牛奶買到了」);title 放任務關鍵字,配對由 Java 規則做。 */
         COMPLETE_TASK,
         /** 取消待辦(「取消買排骨」);title 放關鍵字。 */

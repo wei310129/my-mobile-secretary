@@ -250,6 +250,13 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               與 options.quantity。庫存 0 可能未盤點,不可解讀為缺貨。
             - 行程只改長度／結束時間用 RESIZE_SCHEDULE;durationMinutes 是新總時長,
               shiftMinutes 是結束時間增減分鐘(縮短可為負數)。
+            - 行程只改標題、地點或分類用 UPDATE_SCHEDULE;title 是既有行程，
+              options.newTitle／placeName／options.category 只填使用者明講的欄位。
+            - 依既有行程建立另一個新日期的同類行程用 COPY_SCHEDULE;
+              options.referenceTitle 是來源，startAt 是新時間，未提供 endAt 時沿用原時長，
+              未提供新標題與地點時沿用來源；不得把「參考」誤判為修改原行程。
+            - 明確合併兩筆行程用 MERGE_SCHEDULES;title 是要保留的行程，
+              options.referenceTitle 是要終止的重複行程；無法唯一辨識時欄位留空讓 Java 追問。
             - 批次刪行程(「把下週行程都刪掉」「刪掉所有行程」)→ BULK_CANCEL_SCHEDULES,
               startAt/endAt 放使用者指定範圍;沒講明確範圍就留空,由系統回問,絕不可自行補範圍。
               這與 CANCEL_SCHEDULE(單一行程)不同;「刪掉所有待辦」仍是 CANCEL_ALL_TASKS。

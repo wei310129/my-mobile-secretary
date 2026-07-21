@@ -138,6 +138,15 @@ public class ScheduleItem extends WorkspaceOwnedEntity {
         this.updatedAt = now;
     }
 
+    /** Update the user-visible title without changing time or confirmation state. */
+    public void rename(String newTitle, Instant now) {
+        if (newTitle == null || newTitle.isBlank()) {
+            throw new IllegalArgumentException("schedule title is required");
+        }
+        this.title = newTitle.strip();
+        this.updatedAt = now;
+    }
+
     /** 設為每週固定行程。終止狀態(取消/放棄)的行程沒有下一週,不可設定。 */
     public void repeatWeekly(Instant now) {
         repeat(Recurrence.WEEKLY, now);

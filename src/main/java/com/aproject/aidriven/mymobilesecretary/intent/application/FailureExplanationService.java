@@ -5,9 +5,6 @@ import java.util.Optional;
 /** 回答「剛才為什麼失敗」，避免再把這類追問丟給 LLM 猜。 */
 final class FailureExplanationService {
 
-    private static final String REASON_MARKER = "Java 驗證原因：";
-    private static final String COMMAND_MARKER = "AI 回覆資料：";
-
     private FailureExplanationService() {
     }
 
@@ -23,23 +20,19 @@ final class FailureExplanationService {
         }
 
         String previous = snapshot.lastAssistantText();
-        String reason = extract(previous, REASON_MARKER).orElse(null);
-        String command = extract(previous, COMMAND_MARKER).orElse(null);
-        if (reason == null && command == null) {
-            return Optional.of(IntentResult.message(IntentResult.Action.FAILURE_EXPLAINED,
-                    "上一筆是舊版留下的失敗紀錄；當時尚未保存 Java 驗證原因與 AI 結構化欄位，所以無法事後還原。"));
+        String message;
+        if (previous != null && previous.contains("開始時間")) {
+            message = "剛才沒有完成，因為還缺行程的開始時間；資料沒有異動。"
+                    + "告訴我何時開始，我就能接著處理。";
+        } else if (previous != null && previous.contains("結束時間")) {
+            message = "剛才沒有完成，因為還缺行程的結束時間或預計時長；資料沒有異動。"
+                    + "補上其中一項，我就能接著處理。";
+        } else {
+            message = "剛才沒有完成，資料也沒有異動。請把要處理的項目、日期與時間一起告訴我，"
+                    + "我會接著處理。";
         }
-
-        StringBuilder message = new StringBuilder("剛才的 AI 回覆沒有通過 Java 驗證。");
-        if (reason != null) {
-            message.append("\n- 原因：").append(reason);
-        }
-        if (command != null) {
-            message.append("\n- AI 回覆：").append(command);
-        }
-        message.append("\n- 結果：Java 沒有執行這筆操作，也沒有異動資料");
         return Optional.of(IntentResult.message(IntentResult.Action.FAILURE_EXPLAINED,
-                message.toString()));
+                message));
     }
 
     static boolean isFailureQuestion(String text) {
@@ -51,19 +44,4 @@ final class FailureExplanationService {
                 || normalized.contains("哪裡沒通過") || normalized.contains("哪裡驗證失敗");
     }
 
-    private static Optional<String> extract(String text, String marker) {
-        if (text == null) {
-            return Optional.empty();
-        }
-        for (String line : text.split("\\R")) {
-            int markerIndex = line.indexOf(marker);
-            if (markerIndex >= 0) {
-                String value = line.substring(markerIndex + marker.length()).strip();
-                if (!value.isBlank()) {
-                    return Optional.of(value);
-                }
-            }
-        }
-        return Optional.empty();
-    }
 }

@@ -47,6 +47,7 @@ public class SchoolTransportConversationService {
     private final ScheduleService scheduleService;
     private final ObjectMapper objectMapper;
     private final Clock clock;
+    private ConversationContextService conversationContext;
 
     public SchoolTransportConversationService(SchoolTransportDraftRepository repository,
                                               ScheduleService scheduleService,
@@ -56,6 +57,11 @@ public class SchoolTransportConversationService {
         this.scheduleService = scheduleService;
         this.objectMapper = objectMapper;
         this.clock = clock;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setConversationContext(ConversationContextService conversationContext) {
+        this.conversationContext = conversationContext;
     }
 
     public Optional<IntentResult> answer(String text, Runnable beforeMutation) {
@@ -71,6 +77,7 @@ public class SchoolTransportConversationService {
         Payload payload;
         if (draft == null) {
             payload = initialPayload(original);
+            if (payload == null) payload = existingSchedulePayload(original);
             if (payload == null) return Optional.empty();
             beforeMutation.run();
             draft = repository.save(SchoolTransportDraft.create(
@@ -119,7 +126,32 @@ public class SchoolTransportConversationService {
         String pickupLocation = pickupLocation(text);
         LocalTime pickupEnd = endingTime(text, end);
         return new Payload(child, course, weekday(weekday.group(1)), start, end, until,
-                dropPerson, dropOrigin, dropStart, pickupPerson, pickupLocation, pickupEnd);
+                dropPerson, dropOrigin, dropStart, pickupPerson, pickupLocation, pickupEnd,
+                null, null);
+    }
+
+    private Payload existingSchedulePayload(String text) {
+        if (conversationContext == null || !looksLikeTransportContinuation(text)) return null;
+        Long scheduleId = conversationContext.snapshot().lastScheduleId();
+        if (scheduleId == null) return null;
+        ScheduleItem source = scheduleService.getSchedule(scheduleId);
+        if (source.getStatus() == com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus.CANCELED
+                || source.getStatus() == com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus.REJECTED
+                || source.getStatus() == com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus.COMPLETED) {
+            return null;
+        }
+        String child = firstContained(source.getTitle(),
+                "大女兒", "小女兒", "女兒", "大兒子", "小兒子", "兒子", "孩子", "小孩");
+        String course = courseFromSchedule(source.getTitle(), child);
+        if (course == null) return null;
+        var start = source.getStartAt().atZone(TAIPEI);
+        var end = source.getEndAt().atZone(TAIPEI);
+        String compact = text.replaceAll("\\s+", "");
+        return new Payload(child, course, start.getDayOfWeek(), start.toLocalTime(),
+                end.toLocalTime(), source.getRecurrenceUntil(),
+                mentionsSelfDropOff(compact) ? "我" : null, null, timeNear(text, "出發"),
+                mentionsSelfPickup(compact) ? "我" : null, pickupLocation(text),
+                endingTime(text, end.toLocalTime()), source.getId(), source.getTitle());
     }
 
     private Payload update(Payload current, String text) {
@@ -143,24 +175,29 @@ public class SchoolTransportConversationService {
         if (foundEnd != null) pickupEnd = foundEnd;
         return new Payload(current.child(), current.course(), current.weekday(),
                 current.start(), current.end(), current.until(), dropPerson, dropOrigin,
-                dropStart, pickupPerson, pickupLocation, pickupEnd);
+                dropStart, pickupPerson, pickupLocation, pickupEnd,
+                current.sourceScheduleId(), current.sourceScheduleTitle());
     }
 
     private IntentResult createSchedules(Payload payload) {
         LocalDate firstDate = nextOrSame(payload.weekday());
         Instant courseStart = at(firstDate, payload.start());
         Instant courseEnd = at(firstDate, payload.end());
-        ScheduleDecision course = scheduleService.createFamilySchedule(
-                payload.child() + "上" + payload.course(), courseStart, courseEnd, null,
-                payload.child(), ScheduleItem.Recurrence.WEEKLY, payload.until());
+        ScheduleDecision course = payload.sourceScheduleId() == null
+                ? scheduleService.createFamilySchedule(
+                        payload.child() + "上" + payload.course(), courseStart, courseEnd, null,
+                        payload.child(), ScheduleItem.Recurrence.WEEKLY, payload.until())
+                : new ScheduleDecision(scheduleService.getSchedule(payload.sourceScheduleId()), null);
         ScheduleDecision drop = scheduleService.createSchedule(
                 "送" + payload.child() + "到" + payload.course(), at(firstDate, payload.dropStart()),
                 courseStart, null, ScheduleItem.Recurrence.WEEKLY, payload.until(),
                 ScheduleItem.Category.FAMILY);
-        ScheduleDecision pickup = scheduleService.createSchedule(
-                "從" + payload.pickupLocation() + "接" + payload.child(), courseEnd,
-                at(firstDate, payload.pickupEnd()), null, ScheduleItem.Recurrence.WEEKLY,
-                payload.until(), ScheduleItem.Category.FAMILY);
+        ScheduleDecision pickup = relatedPickup(payload, courseEnd).map(
+                        item -> new ScheduleDecision(item, null))
+                .orElseGet(() -> scheduleService.createSchedule(
+                        "從" + payload.pickupLocation() + "接" + payload.child(), courseEnd,
+                        at(firstDate, payload.pickupEnd()), null, ScheduleItem.Recurrence.WEEKLY,
+                        payload.until(), ScheduleItem.Category.FAMILY));
 
         String message = "已建立固定上課與接送流程：\n"
                 + "1. %s %s–%s｜負責人：%s｜%s\n\n"
@@ -176,11 +213,25 @@ public class SchoolTransportConversationService {
 
     private boolean existingFlow(Payload payload) {
         LocalDate date = nextOrSame(payload.weekday());
-        return hasSchedule(payload.child() + "上" + payload.course(), date, payload.start(), payload.end(), payload.until())
+        boolean courseExists = payload.sourceScheduleId() != null
+                || hasSchedule(payload.child() + "上" + payload.course(), date,
+                        payload.start(), payload.end(), payload.until());
+        return courseExists
                 && hasSchedule("送" + payload.child() + "到" + payload.course(), date,
                         payload.dropStart(), payload.start(), payload.until())
-                && hasSchedule("從" + payload.pickupLocation() + "接" + payload.child(), date,
-                        payload.end(), payload.pickupEnd(), payload.until());
+                && relatedPickup(payload, at(date, payload.end())).isPresent();
+    }
+
+    private Optional<ScheduleItem> relatedPickup(Payload payload, Instant pickupStart) {
+        String child = normalize(payload.child());
+        return scheduleService.listSchedules(null).stream()
+                .filter(item -> item.getStatus()
+                        != com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus.CANCELED)
+                .filter(item -> item.getStatus()
+                        != com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus.REJECTED)
+                .filter(item -> item.getStartAt().equals(pickupStart))
+                .filter(item -> normalize(item.getTitle()).contains("接" + child))
+                .findFirst();
     }
 
     private boolean hasSchedule(String title, LocalDate date, LocalTime start, LocalTime end,
@@ -196,7 +247,11 @@ public class SchoolTransportConversationService {
     }
 
     private static String pendingMessage(Payload payload, List<String> missing) {
-        StringBuilder message = new StringBuilder("我已記住這筆固定接送：\n")
+        String prefix = payload.sourceScheduleTitle() == null
+                ? "我已記住這筆固定接送：\n"
+                : "我指的是行程「%s」。以下是目前已知的接送設定：\n"
+                        .formatted(payload.sourceScheduleTitle());
+        StringBuilder message = new StringBuilder(prefix)
                 .append("- 課程：").append(payload.child()).append("上").append(payload.course())
                 .append("｜每週").append(chineseWeekday(payload.weekday()))
                 .append(" ").append(payload.start()).append("–").append(payload.end())
@@ -246,7 +301,16 @@ public class SchoolTransportConversationService {
     private static boolean looksLikeFollowUp(String text) {
         String compact = text.replaceAll("\\s+", "");
         return containsAny(compact, "出發", "我送", "由我送", "我接", "我去接", "由我接",
-                "有我去接", "結束", "忙到", "接回", "在夏恩", "夏恩英語接");
+                "有我去接", "結束", "忙到", "接回", "在夏恩", "夏恩英語接",
+                "接送", "我會送", "也會去接", "送跟接", "送和接", "送、接",
+                "誰送", "誰接", "哪一個行程", "哪個行程", "指哪一個");
+    }
+
+    private static boolean looksLikeTransportContinuation(String text) {
+        String compact = text.replaceAll("\\s+", "");
+        return containsAny(compact, "接送", "我送", "由我送", "我接", "由我接", "誰送", "誰接",
+                "我會送", "也會去接", "送跟接", "送和接", "送、接", "接回", "接的地點",
+                "接人的地方", "哪一個行程", "哪個行程", "指哪一個");
     }
 
     private static boolean looksLikeMeta(String text) {
@@ -255,6 +319,8 @@ public class SchoolTransportConversationService {
 
     private static boolean mentionsSelfDropOff(String text) {
         return containsAny(text, "我送", "由我送", "我負責送")
+                || containsAny(text, "我負責來回接送", "我來回接送", "送跟接都是我", "送和接都是我",
+                        "送、接都是我")
                 || Pattern.compile("我[^，,。；;]{0,30}送(?:她|他|女兒|兒子|孩子|小孩)")
                         .matcher(text).find()
                 || (text.contains("我會負責") && text.contains("出發") && text.contains("到"));
@@ -262,6 +328,8 @@ public class SchoolTransportConversationService {
 
     private static boolean mentionsSelfPickup(String text) {
         return containsAny(text, "我接", "我去接", "由我接", "有我去接", "我負責接", "也負責接")
+                || containsAny(text, "我負責來回接送", "我來回接送", "送跟接都是我", "送和接都是我",
+                        "送、接都是我", "也會去接")
                 || Pattern.compile("我(?:去|到|在)[^，,。；;]{1,30}接").matcher(text).find()
                 || (text.contains("也要負責去接"));
     }
@@ -275,8 +343,14 @@ public class SchoolTransportConversationService {
     private static String pickupLocation(String text) {
         String compact = text.replaceAll("\\s+", "");
         String value = match(compact, Pattern.compile("(?:就)?在([^，,。；;]{2,40}?)(?:去)?接(?:回)?(?:孩子|小孩|女兒|兒子)?(?:$|[，,。；;])"), 1);
+        if (value == null) value = match(compact,
+                Pattern.compile("接(?:回)?的?地點(?:也)?是(?:在)?([^，,。；;]{2,40})(?:$|[，,。；;])"), 1);
+        if (value == null) value = match(compact,
+                Pattern.compile("接(?:人|她|他)?的?(?:地點|地方)(?:也)?是?(?:在)?([^，,。；;]{2,40})(?:$|[，,。；;])"), 1);
         if (value == null) value = match(compact, Pattern.compile("從([^，,。；;]{2,40})接回"), 1);
         if (value == null) value = match(compact, Pattern.compile("(?:我)?(?:去|到)([^，,。；;]{2,40}?)(?:去)?接(?:回)?"), 1);
+        if (value == null) value = match(compact,
+                Pattern.compile("(夏恩英語(?:[（(][^）)]{1,30}[）)])?)接"), 1);
         return clean(value);
     }
 
@@ -361,6 +435,15 @@ public class SchoolTransportConversationService {
         return value == null ? null : value.strip().replaceAll("[（(]?\u65b0\u5e97\u4e03\u5f35\u5206\u6821[）)]?$", "（新店七張分校）");
     }
 
+    private static String courseFromSchedule(String title, String child) {
+        String compact = title == null ? "" : title.replaceAll("\\s+", "");
+        String value = match(compact, Pattern.compile("到(.+?)(?:上課)?$"), 1);
+        if (value == null && child != null) {
+            value = match(compact, Pattern.compile(Pattern.quote(child) + "上(.+)$"), 1);
+        }
+        return clean(value);
+    }
+
     private static String firstContained(String text, String... values) {
         for (String value : values) if (text.contains(value)) return value;
         return "孩子";
@@ -380,5 +463,6 @@ public class SchoolTransportConversationService {
     record Payload(String child, String course, DayOfWeek weekday,
                    LocalTime start, LocalTime end, LocalDate until,
                    String dropPerson, String dropOrigin, LocalTime dropStart,
-                   String pickupPerson, String pickupLocation, LocalTime pickupEnd) { }
+                   String pickupPerson, String pickupLocation, LocalTime pickupEnd,
+                   Long sourceScheduleId, String sourceScheduleTitle) { }
 }

@@ -394,6 +394,13 @@ public class IntentService {
 
     private IntentResult doHandle(String text, String interpretationText, IntentFlowTrace flowTrace,
                                   MutationBoundary mutationBoundary) {
+        // Domain continuations run before generic feedback classification. A correction can still
+        // contain the missing answer or a reference question that should complete the user's work.
+        if (schoolTransportConversationService != null) {
+            Optional<IntentResult> schoolTransport = schoolTransportConversationService.answer(
+                    text, mutationBoundary::beforeMutation);
+            if (schoolTransport.isPresent()) return schoolTransport.get();
+        }
         // 產品更正必須先於所有 pending draft，否則「你沒聽懂這個草稿」會被草稿狀態機消耗。
         Optional<IntentResult> productFeedback = ProductFeedbackBoundary.answer(text);
         if (productFeedback.isPresent()) {
@@ -488,13 +495,6 @@ public class IntentService {
             Optional<IntentResult> binding = schedulePlaceBindingAnswerService.answer(text);
             if (binding.isPresent()) {
                 return binding.get();
-            }
-        }
-        if (schoolTransportConversationService != null) {
-            Optional<IntentResult> schoolTransport = schoolTransportConversationService.answer(
-                    text, mutationBoundary::beforeMutation);
-            if (schoolTransport.isPresent()) {
-                return schoolTransport.get();
             }
         }
         if (familyTransportConversationService != null) {

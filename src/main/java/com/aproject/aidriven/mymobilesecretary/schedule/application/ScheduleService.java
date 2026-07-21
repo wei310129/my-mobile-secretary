@@ -287,6 +287,56 @@ public class ScheduleService {
         return gate(item, now);
     }
 
+    /** Patch non-time schedule fields; null values mean keep the current value. */
+    public ScheduleItem updateDetails(
+            Long scheduleId, String newTitle, ScheduleItem.Category category) {
+        ScheduleItem item = getSchedule(scheduleId);
+        Instant now = Instant.now(clock);
+        if (newTitle != null && !newTitle.isBlank()) item.rename(newTitle, now);
+        if (category != null && category != ScheduleItem.Category.UNKNOWN) {
+            item.categorize(category, now);
+        }
+        return item;
+    }
+
+    /**
+     * Merge two active schedules by keeping the primary, filling only missing reusable details,
+     * and terminating the duplicate through the normal lifecycle path.
+     */
+    public ScheduleMerge mergeSchedules(Long primaryId, Long duplicateId) {
+        if (java.util.Objects.equals(primaryId, duplicateId)) {
+            throw new IllegalArgumentException("merge schedules must be different");
+        }
+        ScheduleItem primary = getSchedule(primaryId);
+        ScheduleItem duplicate = getSchedule(duplicateId);
+        Instant now = Instant.now(clock);
+        if (primary.getCategory() == ScheduleItem.Category.UNKNOWN
+                && duplicate.getCategory() != ScheduleItem.Category.UNKNOWN) {
+            primary.categorize(duplicate.getCategory(), now);
+        }
+        if ((primary.getResponsiblePerson() == null || primary.getResponsiblePerson().isBlank())
+                && duplicate.getResponsiblePerson() != null
+                && !duplicate.getResponsiblePerson().isBlank()) {
+            primary.assignResponsibility(
+                    duplicate.getResponsiblePerson(), duplicate.isCountsForActorBusy());
+        }
+        if (primary.getRecurrence() == ScheduleItem.Recurrence.NONE
+                && duplicate.getRecurrence() != ScheduleItem.Recurrence.NONE) {
+            primary.repeat(duplicate.getRecurrence(), duplicate.getRecurrenceUntil(), now);
+        }
+        ScheduleDecision placeDecision = null;
+        if (primary.getPlaceId() == null && duplicate.getPlaceId() != null) {
+            placeDecision = changePlace(primary.getId(), duplicate.getPlaceId());
+            primary = placeDecision.item();
+        }
+        ScheduleItem discarded = discardSchedule(duplicateId);
+        return new ScheduleMerge(primary, discarded, placeDecision);
+    }
+
+    public record ScheduleMerge(
+            ScheduleItem kept, ScheduleItem discarded, ScheduleDecision placeDecision) {
+    }
+
     /** 「要可行才放行」的共同關卡。 */
     private ScheduleDecision gate(ScheduleItem item, Instant now) {
         FeasibilityResult result = feasibilityService.check(item);

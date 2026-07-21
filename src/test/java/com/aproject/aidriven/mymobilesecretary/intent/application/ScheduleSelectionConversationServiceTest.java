@@ -94,6 +94,42 @@ class ScheduleSelectionConversationServiceTest {
     }
 
     @Test
+    void implicitMergeRequestRecommendsTheMoreCompleteScheduleAndAcceptsTheRecommendation() {
+        when(context.snapshot()).thenReturn(snapshot(null));
+        AtomicInteger mutations = new AtomicInteger();
+
+        IntentResult question = service.answer(
+                "合併前兩個", "合併前兩個", mutations::incrementAndGet).orElseThrow();
+        assertThat(question.message())
+                .contains("建議保留第一筆", "照建議合併")
+                .doesNotContain("系統沒有", "無法操作");
+
+        when(context.snapshot()).thenReturn(snapshot(question.message()));
+        IntentResult completed = service.answer(
+                "好，照你建議合併", "好，照你建議合併", mutations::incrementAndGet)
+                .orElseThrow();
+
+        assertThat(completed.message()).contains("已合併為一筆", "送女兒到夏恩英語上課");
+        verify(schedules).discardSchedule(16L);
+    }
+
+    @Test
+    void exactDuplicateIsMergedWithoutAnUnnecessaryQuestion() {
+        ScheduleItem duplicate = item(16L, "送女兒到夏恩英語上課", ScheduleStatus.PROPOSED,
+                "2026-07-25T02:00:00Z", "2026-07-25T04:00:00Z");
+        when(schedules.getSchedule(16L)).thenReturn(duplicate);
+        when(context.snapshot()).thenReturn(snapshot(null));
+
+        IntentResult completed = service.answer(
+                "這兩個行程完全重複，直接合併", "這兩個行程完全重複，直接合併",
+                () -> { }).orElseThrow();
+
+        assertThat(completed.message()).contains("已合併為一筆")
+                .doesNotContain("請回覆", "保留第一個");
+        verify(schedules).discardSchedule(16L);
+    }
+
+    @Test
     void scheduleOrdinalDeletionWinsOverKnowledgeOrdinalDeletion() {
         when(context.snapshot()).thenReturn(snapshot(null));
         AtomicInteger mutations = new AtomicInteger();

@@ -36,8 +36,8 @@ public class ScheduleSelectionConversationService {
             String text, String interpretationText, Runnable beforeMutation) {
         String normalized = normalize(text);
         ConversationSnapshot snapshot = context.snapshot();
-        if (isMergeRequest(normalized)) {
-            return Optional.of(askWhichScheduleToKeep(snapshot));
+        if (isMergeRequest(normalized, snapshot)) {
+            return Optional.of(mergeOrRecommend(snapshot, beforeMutation));
         }
         Integer keep = keepOrdinal(normalized, snapshot.lastAssistantText());
         if (keep != null) {
@@ -54,7 +54,7 @@ public class ScheduleSelectionConversationService {
         return Optional.empty();
     }
 
-    private IntentResult askWhichScheduleToKeep(ConversationSnapshot snapshot) {
+    private IntentResult mergeOrRecommend(ConversationSnapshot snapshot, Runnable beforeMutation) {
         List<Long> ids = snapshot.lastScheduleListIds();
         if (ids.size() < 2) {
             return IntentResult.clarificationNeeded(
@@ -62,11 +62,19 @@ public class ScheduleSelectionConversationService {
         }
         ScheduleItem first = schedules.getSchedule(ids.get(0));
         ScheduleItem second = schedules.getSchedule(ids.get(1));
+        if (sameDetails(first, second)) {
+            return keepOneAndDiscardOther(snapshot, 1, beforeMutation);
+        }
+        int firstScore = completeness(first);
+        int secondScore = completeness(second);
+        String recommendation = firstScore == secondScore ? ""
+                : "\n\n建議保留第%s筆，因為它的資料較完整。你也可以回覆「照建議合併」。"
+                        .formatted(firstScore > secondScore ? "一" : "二");
         return IntentResult.clarificationNeeded((
                 "可以，前兩筆是：\n"
                         + "1. %s\n\n2. %s\n\n"
-                        + "合併會保留其中一筆並終止另一筆。請回覆「保留第一個」或「保留第二個」。")
-                .formatted(line(first), line(second)));
+                        + "合併會保留其中一筆並終止另一筆。請回覆「保留第一個」或「保留第二個」。%s")
+                .formatted(line(first), line(second), recommendation));
     }
 
     private IntentResult keepOneAndDiscardOther(
@@ -155,18 +163,22 @@ public class ScheduleSelectionConversationService {
         return Optional.empty();
     }
 
-    private static boolean isMergeRequest(String text) {
+    private static boolean isMergeRequest(String text, ConversationSnapshot snapshot) {
         boolean refersToTwo = containsAny(text, "前兩個", "前兩筆", "這兩個", "這兩筆")
                 || orderedPair(text, "第一", "第二")
                 || orderedPair(text, "第1", "第2")
                 || orderedPair(text, "1", "2");
-        return refersToTwo && text.contains("行程")
+        return refersToTwo && (text.contains("行程") || snapshot.lastScheduleListIds().size() >= 2)
                 && (text.contains("合併") || text.contains("合成"));
     }
 
     private static Integer keepOrdinal(String text, String lastAssistant) {
         if (lastAssistant == null || !lastAssistant.contains("保留第一個")
                 || !lastAssistant.contains("保留第二個")) return null;
+        if (containsAny(text, "照建議", "按建議", "照你建議")) {
+            if (lastAssistant.contains("建議保留第一筆")) return 1;
+            if (lastAssistant.contains("建議保留第二筆")) return 2;
+        }
         if (containsAny(text, "保留第一", "留第一", "第一個留", "第一筆留", "選第一", "選1",
                 "留1", "就第一")) return 1;
         if (containsAny(text, "保留第二", "留第二", "第二個留", "第二筆留", "選第二", "選2",
@@ -178,6 +190,26 @@ public class ScheduleSelectionConversationService {
         int firstIndex = text.indexOf(first);
         int secondIndex = text.indexOf(second);
         return firstIndex >= 0 && secondIndex > firstIndex;
+    }
+
+    private static int completeness(ScheduleItem item) {
+        int score = item.getStatus() == ScheduleStatus.CONFIRMED ? 4 : 0;
+        if (item.getPlaceId() != null) score += 2;
+        if (item.getResponsiblePerson() != null && !item.getResponsiblePerson().isBlank()) score++;
+        if (item.getCategory() != null && item.getCategory() != ScheduleItem.Category.UNKNOWN) score++;
+        if (item.getRecurrence() != null && item.getRecurrence() != ScheduleItem.Recurrence.NONE) score++;
+        if (item.isEndTimeExplicit()) score++;
+        return score;
+    }
+
+    private static boolean sameDetails(ScheduleItem first, ScheduleItem second) {
+        return normalize(first.getTitle()).equals(normalize(second.getTitle()))
+                && first.getStartAt().equals(second.getStartAt())
+                && first.getEndAt().equals(second.getEndAt())
+                && java.util.Objects.equals(first.getPlaceId(), second.getPlaceId())
+                && java.util.Objects.equals(first.getResponsiblePerson(), second.getResponsiblePerson())
+                && first.getRecurrence() == second.getRecurrence()
+                && java.util.Objects.equals(first.getRecurrenceUntil(), second.getRecurrenceUntil());
     }
 
     private static Integer deleteOrdinal(String text) {

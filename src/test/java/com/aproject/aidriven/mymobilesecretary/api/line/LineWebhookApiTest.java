@@ -17,6 +17,8 @@ import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLogRe
 import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationContextService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ReceiptCommand;
+import com.aproject.aidriven.mymobilesecretary.intent.domain.SchoolTransportDraft;
+import com.aproject.aidriven.mymobilesecretary.intent.persistence.SchoolTransportDraftRepository;
 import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
@@ -56,6 +58,8 @@ class LineWebhookApiTest extends IntegrationTestBase {
     private ConversationContextService conversationContext;
     @Autowired
     private LineMessageLogRepository lineMessageLogs;
+    @Autowired
+    private SchoolTransportDraftRepository schoolTransportDrafts;
     @Autowired
     private StubReceiptInterpreter receiptStub;
     @MockitoBean
@@ -365,6 +369,57 @@ class LineWebhookApiTest extends IntegrationTestBase {
                 .getContentAsString(StandardCharsets.UTF_8);
         assertThat(logs).contains("保留第一個", "已合併為一筆", "女兒上夏恩英語")
                 .doesNotContain("接送安排", "系統目前缺少", "知識紀錄");
+    }
+
+    @Test
+    void existingScheduleTransportFollowUpAccumulatesKnownFieldsWithoutInternalDetails()
+            throws Exception {
+        WorkspaceContext line = new WorkspaceContext(ACTOR_ID, WORKSPACE_ID, WorkspaceChannel.LINE);
+        try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(line)) {
+            Instant start = Instant.parse("2099-07-25T02:00:00Z");
+            ScheduleItem source = scheduleService.createSchedule(
+                    "送女兒到夏恩英語上課", start, start.plusSeconds(7200), null,
+                    ScheduleItem.Recurrence.WEEKLY, java.time.LocalDate.of(2099, 9, 26),
+                    ScheduleItem.Category.FAMILY).item();
+            conversationContext.rememberSchedule(source);
+        }
+
+        sendText("怎麼合併之後就沒有問？是要怎麼接送了呢？");
+        sendText("你是指哪一個行程？");
+        sendText("送女兒到夏恩英語上課是我送，也是我接，接回的時間就是下課時間12點，"
+                + "要接的地點也是在夏恩英語");
+
+        String latestReply;
+        try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(line)) {
+            SchoolTransportDraft draft = schoolTransportDrafts
+                    .findFirstByWorkspaceIdAndCreatedByUserIdAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
+                            WORKSPACE_ID, ACTOR_ID, SchoolTransportDraft.Status.PENDING,
+                            Instant.EPOCH)
+                    .orElseThrow();
+            assertThat(draft.getPayload())
+                    .contains("\"dropPerson\":\"我\"", "\"pickupPerson\":\"我\"",
+                            "\"pickupLocation\":\"夏恩英語\"");
+            latestReply = lineMessageLogs
+                    .findAllByWorkspaceIdAndCreatedByUserIdOrderByCreatedAtDescIdDesc(
+                            WORKSPACE_ID, ACTOR_ID,
+                            org.springframework.data.domain.PageRequest.of(0, 1))
+                    .getFirst().getContent();
+        }
+        assertThat(latestReply)
+                .contains("送去：我", "接回：我", "送去從哪裡出發", "送去預計幾點出發",
+                        "接回行程預計幾點結束")
+                .doesNotContain("誰負責送去", "誰負責接回", "從哪裡接");
+
+        String logs = mockMvc.perform(
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .get("/api/line/messages").param("limit", "10"))
+                .andExpect(status().isOk()).andReturn().getResponse()
+                .getContentAsString(StandardCharsets.UTF_8);
+        assertThat(logs)
+                .contains("我指的是行程", "送女兒到夏恩英語上課", "送去：我", "接回：我")
+                .contains("送去從哪裡出發", "送去預計幾點出發", "接回行程預計幾點結束")
+                .doesNotContain("lastScheduleId", "Java 驗證", "AI 回覆資料", "使用者詢問",
+                        "問題紀錄", "AI 暫時無法");
     }
 
     private void sendText(String text) throws Exception {

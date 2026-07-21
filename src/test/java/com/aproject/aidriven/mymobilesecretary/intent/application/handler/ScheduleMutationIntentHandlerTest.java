@@ -30,6 +30,9 @@ class ScheduleMutationIntentHandlerTest {
     void registersEveryScheduleMutationType() {
         assertThat(handler.supportedTypes()).containsExactlyInAnyOrderElementsOf(Set.of(
                 IntentCommand.Type.CREATE_SCHEDULE,
+                IntentCommand.Type.UPDATE_SCHEDULE,
+                IntentCommand.Type.COPY_SCHEDULE,
+                IntentCommand.Type.MERGE_SCHEDULES,
                 IntentCommand.Type.CREATE_RELATIVE_SCHEDULE,
                 IntentCommand.Type.CANCEL_SCHEDULE,
                 IntentCommand.Type.RESCHEDULE_SCHEDULE,

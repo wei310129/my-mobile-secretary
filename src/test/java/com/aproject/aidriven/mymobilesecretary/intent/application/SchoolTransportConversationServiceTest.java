@@ -28,6 +28,8 @@ import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.ValueSource;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 
@@ -47,6 +49,9 @@ class SchoolTransportConversationServiceTest {
     @Mock
     private ScheduleService scheduleService;
 
+    @Mock
+    private ConversationContextService conversationContext;
+
     private AtomicReference<SchoolTransportDraft> pending;
     private CopyOnWriteArrayList<ScheduleItem> schedules;
     private SchoolTransportConversationService service;
@@ -55,7 +60,8 @@ class SchoolTransportConversationServiceTest {
     void setUp() {
         pending = new AtomicReference<>();
         schedules = new CopyOnWriteArrayList<>();
-        when(scheduleService.listSchedules(isNull())).thenAnswer(call -> java.util.List.copyOf(schedules));
+        org.mockito.Mockito.lenient().when(scheduleService.listSchedules(isNull()))
+                .thenAnswer(call -> java.util.List.copyOf(schedules));
         when(repository.findFirstByWorkspaceIdAndCreatedByUserIdAndStatusAndExpiresAtAfterOrderByCreatedAtDesc(
                 any(), any(), eq(SchoolTransportDraft.Status.PENDING), any()))
                 .thenAnswer(call -> Optional.ofNullable(pending.get())
@@ -65,16 +71,17 @@ class SchoolTransportConversationServiceTest {
             pending.set(draft);
             return draft;
         });
-        when(scheduleService.createFamilySchedule(
+        org.mockito.Mockito.lenient().when(scheduleService.createFamilySchedule(
                 anyString(), any(), any(), isNull(), anyString(),
                 eq(ScheduleItem.Recurrence.WEEKLY), any()))
                 .thenAnswer(call -> decision(call.getArgument(0), call.getArgument(1), call.getArgument(2)));
-        when(scheduleService.createSchedule(
+        org.mockito.Mockito.lenient().when(scheduleService.createSchedule(
                 anyString(), any(), any(), isNull(), eq(ScheduleItem.Recurrence.WEEKLY), any(),
                 eq(ScheduleItem.Category.FAMILY)))
                 .thenAnswer(call -> decision(call.getArgument(0), call.getArgument(1), call.getArgument(2)));
         service = new SchoolTransportConversationService(
                 repository, scheduleService, new ObjectMapper().findAndRegisterModules(), CLOCK);
+        service.setConversationContext(conversationContext);
     }
 
     @Test
@@ -156,6 +163,69 @@ class SchoolTransportConversationServiceTest {
         verify(scheduleService, times(2)).createSchedule(
                 anyString(), any(), any(), isNull(), eq(ScheduleItem.Recurrence.WEEKLY),
                 eq(java.time.LocalDate.of(2026, 9, 30)), eq(ScheduleItem.Category.FAMILY));
+    }
+
+    @Test
+    void newTranscriptContinuesFromExistingScheduleAndNeverRepeatsKnownAnswers() {
+        stubExistingSchedule();
+        AtomicInteger mutations = new AtomicInteger();
+
+        IntentResult target = answer("怎麼合併之後就沒有問？是要怎麼接送了呢？", mutations)
+                .orElseThrow();
+        assertThat(target.message())
+                .contains("我指的是行程「送女兒到夏恩英語上課」", "誰負責送去", "誰負責接回")
+                .doesNotContain("lastScheduleId", "使用者詢問", "系統沒有");
+
+        IntentResult clarified = answer("你是指哪一個行程？", mutations).orElseThrow();
+        assertThat(clarified.message()).contains("送女兒到夏恩英語上課");
+
+        IntentResult filled = answer(
+                "送女兒到夏恩英語上課是我送，也是我接，接回的時間就是英文課的下課時間12點，"
+                        + "要接的地點也是在夏恩英語",
+                mutations).orElseThrow();
+        assertThat(filled.message())
+                .contains("送去：我", "接回：我", "12:00從夏恩英語接")
+                .contains("送去從哪裡出發", "送去預計幾點出發", "接回行程預計幾點結束")
+                .doesNotContain("誰負責送去", "誰負責接回", "從哪裡接", "AI 暫時無法");
+
+        IntentResult repeated = answer(
+                "送女兒到夏恩英語上課是我送也是我接，12點在夏恩英語接", mutations)
+                .orElseThrow();
+        assertThat(repeated.message())
+                .doesNotContain("誰負責送去", "誰負責接回", "從哪裡接", "AI 暫時無法");
+        assertThat(mutations).hasValue(4);
+    }
+
+    @ParameterizedTest
+    @ValueSource(strings = {
+        "這個英文課我負責來回接送，12點在夏恩英語接",
+        "我會送她去，也會去接她，下課十二點夏恩英語接",
+        "送跟接都是我，接人的地方是夏恩英語，時間12點",
+        "這個行程我送也我接，十二點到夏恩英語接"
+    })
+    void commonTransportPhrasingsFillPeopleAndPickupPlace(String text) {
+        stubExistingSchedule();
+
+        IntentResult result = answer(text, new AtomicInteger()).orElseThrow();
+
+        assertThat(result.message())
+                .contains("送去：我", "接回：我", "夏恩英語接")
+                .doesNotContain("誰負責送去", "誰負責接回", "從哪裡接");
+    }
+
+    private void stubExistingSchedule() {
+        ScheduleItem source = org.mockito.Mockito.mock(ScheduleItem.class);
+        when(source.getId()).thenReturn(14L);
+        when(source.getTitle()).thenReturn("送女兒到夏恩英語上課");
+        when(source.getStatus()).thenReturn(
+                com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus.CONFIRMED);
+        when(source.getStartAt()).thenReturn(Instant.parse("2026-07-25T02:00:00Z"));
+        when(source.getEndAt()).thenReturn(Instant.parse("2026-07-25T04:00:00Z"));
+        when(source.getRecurrenceUntil()).thenReturn(java.time.LocalDate.of(2026, 9, 26));
+        when(conversationContext.snapshot()).thenReturn(new ConversationSnapshot(
+                null, 14L, null, java.util.List.of(), java.util.List.of(14L),
+                null, null, null));
+        when(scheduleService.getSchedule(14L)).thenReturn(source);
     }
 
     private Optional<IntentResult> answer(String text, AtomicInteger mutations) {

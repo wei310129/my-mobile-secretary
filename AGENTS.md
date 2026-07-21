@@ -20,6 +20,8 @@
 - 搜尋與讀取預設排除 `target/`、`scripts/.logs/`、其他日誌、快取、產生碼與無關文件；不得先做全專案掃描。
 - 輸出量未知的指令必須使用工具原生限制、精準篩選或摘要器；不得把未受限的完整輸出直接送入對話。
 - 為節省對話 token，整個開發 session（包含中途工具輸出、進度更新與最終回報）都不得把程式碼 diff 顯示到對話。除非使用者當輪明確要求查看 diff，禁止執行任何 `git diff` 系列指令（包含 `git diff --check`），避免工具介面即使沒有內容仍顯示 diff 區塊；也禁止其他會把 diff 內容直接送入 session 的指令。需要檢查變更時，改用 Spotless、編譯、測試、`git status --short` 或不含 diff 的精準摘要器；固定只提供修改摘要、精準涉及範圍、測試結果與風險。
+- 規劃可由 Terra 在同一 session 持續執行到完成的開發文件時，文件必須明列「Context 壓縮提醒點」：每個提醒點要寫明觸發條件、已完成／已驗證的範圍、壓縮後必須保留的續作摘要（目前輪次、已拍板決策、不變量、修改檔案、驗證結果、未完成工作、下一步與風險）。適合的觸發點包括一個有明確出口的舵輪／階段已完成並記錄 gate 結果、複雜調查已收斂且即將轉入獨立實作或驗收階段；不得在未提交關鍵決策、migration／破壞性操作中途、測試失敗尚未定位，或仍需依賴大量未摘要上下文時列為提醒點。
+- 到達文件列出的提醒點時，Terra 必須主動且簡短提醒使用者「現在是適合壓縮 context 的時機」，附上該文件指定的續作摘要；提醒只建議壓縮，不得自行壓縮、遺失已拍板決策或把壓縮當成跳過驗證的理由。若同一階段仍有直接相依的未完成工作，延後提醒至該階段出口。
 - 一般功能開發不得順手調整啟停或工具腳本；只把已觀察到的具體需求登記至 `docs/tooling-backlog.md`，留待工具專用 session。
 
 常用指令：
@@ -39,4 +41,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\mvn-safe.ps1 test
   LINE 官方端到端測試為準；只有腳本回傳非零時，才從 LINE／ngrok／Spring Boot／Redis／
   PostgreSQL 逐層診斷，不得先重新手動探索或分別啟動各服務。
 
-`docs/architecture.md` 說明產品與長期架構原則；`docs/development-plan.md` 記錄階段、驗收標準、進度與已拍板決策。實作若與兩者衝突，先確認現況與決策，不得直接覆寫產品語意。
+`docs/architecture.md` 說明產品與長期架構原則；`docs/decisions/current.md` 是目前已拍板決策入口；`docs/development-plan.md` 保留階段、驗收、進度與歷史追溯。實作若互相衝突，先確認現況與決策，不得直接覆寫產品語意。
+
+## 任務路由
+
+- 開始任務時先讀 `docs/agent-context/index.md`，依任務類型只載入指定章節或 skill。
+- 對話、Intent、LINE/chat 回覆、引用上下文或使用者可見行為使用 `.agents/skills/develop-and-evaluate-conversation-capability/`。
+- `internal/ai-dispatcher/` 工作另遵循該目錄的 `AGENTS.md`；不要把其獨立 build、DB 與生命週期套用到主應用程式。

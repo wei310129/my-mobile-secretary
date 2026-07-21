@@ -7,13 +7,18 @@
 
 .PARAMETER RemoveVolumes
   Requires -Docker. Permanently removes both local database volumes.
+
+.PARAMETER VerboseOutput
+  Prints normal per-component stop progress in addition to the final summary.
 #>
 param(
     [switch]$Docker,
-    [switch]$RemoveVolumes
+    [switch]$RemoveVolumes,
+    [switch]$VerboseOutput
 )
 
 . "$PSScriptRoot\_devops-common.ps1"
+$script:DevVerboseOutput = [bool]$VerboseOutput
 Set-Location $RepoRoot
 
 if ($RemoveVolumes -and -not $Docker) {
@@ -21,7 +26,7 @@ if ($RemoveVolumes -and -not $Docker) {
     exit 1
 }
 
-Write-Host "=== Stopping development environment ===" -ForegroundColor Cyan
+Write-DevProgress -Message "=== Stopping development environment ===" -ForegroundColor Cyan
 $state = Read-DevState
 
 $dispatcherPid = Resolve-ManagedProcessId -TrackedProcessId $state.dispatcherPid `
@@ -48,7 +53,7 @@ if ($dispatcherPid) {
     if ($dispatcherPortOwner) {
         Write-Host "  Dispatcher port $DispatcherPort belongs to unmanaged PID $dispatcherPortOwner; it was not killed." -ForegroundColor Yellow
     } else {
-        Write-Host "  AI Dispatcher is not running." -ForegroundColor DarkGray
+        Write-DevProgress -Message "  AI Dispatcher is not running." -ForegroundColor DarkGray
     }
 }
 
@@ -61,7 +66,7 @@ if ($appPid) {
     if ($appPortOwner) {
         Write-Host "  Main port $AppPort belongs to unmanaged PID $appPortOwner; it was not killed." -ForegroundColor Yellow
     } else {
-        Write-Host "  Spring Boot is not running." -ForegroundColor DarkGray
+        Write-DevProgress -Message "  Spring Boot is not running." -ForegroundColor DarkGray
     }
 }
 
@@ -70,7 +75,7 @@ $ngrokPid = Resolve-ManagedProcessId -TrackedProcessId $state.ngrokPid `
 if ($ngrokPid) {
     Stop-ProcessTree -ProcessId $ngrokPid -Label "ngrok"
 } else {
-    Write-Host "  ngrok is not running." -ForegroundColor DarkGray
+    Write-DevProgress -Message "  ngrok is not running." -ForegroundColor DarkGray
 }
 
 Write-DevState -Updates @{
@@ -85,24 +90,24 @@ if ($Docker) {
     Assert-CommandAvailable -Name "docker"
     $dockerStopFailed = $false
     if ($RemoveVolumes) {
-        Write-Host "  Stopping main Compose project and removing its volumes..." -ForegroundColor Red
-        docker compose down -v
-        if ($LASTEXITCODE -ne 0) { $dockerStopFailed = $true }
+        Write-DevProgress -Message "  Stopping main Compose project and removing its volumes..." -ForegroundColor Red
+        $mainComposeOutput = docker compose down -v 2>&1
+        if ($LASTEXITCODE -ne 0) { $dockerStopFailed = $true; $mainComposeOutput | ForEach-Object { Write-Host $_ } }
 
         if (Test-Path $DispatcherComposeFile) {
-            Write-Host "  Stopping Dispatcher Compose project and removing its isolated volume..." -ForegroundColor Red
-            docker compose -f $DispatcherComposeFile down -v
-            if ($LASTEXITCODE -ne 0) { $dockerStopFailed = $true }
+            Write-DevProgress -Message "  Stopping Dispatcher Compose project and removing its isolated volume..." -ForegroundColor Red
+            $dispatcherComposeOutput = docker compose -f $DispatcherComposeFile down -v 2>&1
+            if ($LASTEXITCODE -ne 0) { $dockerStopFailed = $true; $dispatcherComposeOutput | ForEach-Object { Write-Host $_ } }
         }
     } else {
-        Write-Host "  Stopping main Compose project (volumes retained)..." -ForegroundColor Yellow
-        docker compose stop
-        if ($LASTEXITCODE -ne 0) { $dockerStopFailed = $true }
+        Write-DevProgress -Message "  Stopping main Compose project (volumes retained)..." -ForegroundColor Yellow
+        $mainComposeOutput = docker compose stop 2>&1
+        if ($LASTEXITCODE -ne 0) { $dockerStopFailed = $true; $mainComposeOutput | ForEach-Object { Write-Host $_ } }
 
         if (Test-Path $DispatcherComposeFile) {
-            Write-Host "  Stopping Dispatcher Compose project (isolated volume retained)..." -ForegroundColor Yellow
-            docker compose -f $DispatcherComposeFile stop
-            if ($LASTEXITCODE -ne 0) { $dockerStopFailed = $true }
+            Write-DevProgress -Message "  Stopping Dispatcher Compose project (isolated volume retained)..." -ForegroundColor Yellow
+            $dispatcherComposeOutput = docker compose -f $DispatcherComposeFile stop 2>&1
+            if ($LASTEXITCODE -ne 0) { $dockerStopFailed = $true; $dispatcherComposeOutput | ForEach-Object { Write-Host $_ } }
         }
     }
     if ($dockerStopFailed) {
@@ -110,7 +115,8 @@ if ($Docker) {
         exit 1
     }
 } else {
-    Write-Host "  Both database environments remain running. Use -Docker to stop them." -ForegroundColor DarkGray
+    Write-DevProgress -Message "  Both database environments remain running. Use -Docker to stop them." -ForegroundColor DarkGray
 }
 
-Write-Host "=== Stopped ===" -ForegroundColor Cyan
+$databaseSummary = if ($Docker -and $RemoveVolumes) { "databases=removed" } elseif ($Docker) { "databases=stopped-volumes-retained" } else { "databases=running" }
+Write-Host "Development environment stopped: applications=stopped; ngrok=stopped; $databaseSummary." -ForegroundColor Green

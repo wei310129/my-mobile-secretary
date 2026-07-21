@@ -7,6 +7,10 @@ app:
   workspace:
     # Existing integration tests predate explicit workspace scopes and run in the legacy tenant.
     legacy-fallback-enabled: true
+  conversation:
+    scope:
+      current-key-version: 1
+      current-hmac-key-base64: dGVzdC1jb252ZXJzYXRpb24tc2NvcGUtaG1hYy1rZXk=
   security:
     # Existing MockMvc tests focus on domain behavior; dedicated security tests enable auth.
     enabled: false
@@ -48,3 +52,7 @@ spring:
       hibernate:
         # 測試失敗時方便看實際 SQL
         format_sql: true
+  flyway:
+    placeholders:
+      conversation_scope_current_key_version: 1
+      conversation_scope_hmac_key_base64: dGVzdC1jb252ZXJzYXRpb24tc2NvcGUtaG1hYy1rZXk=

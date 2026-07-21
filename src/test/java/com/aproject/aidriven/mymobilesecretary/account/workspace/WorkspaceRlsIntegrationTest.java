@@ -51,6 +51,8 @@ class WorkspaceRlsIntegrationTest extends IntegrationTestBase {
 
         long firstItem = insertItem(firstWorkspace, firstActor, "First item");
         long secondItem = insertItem(secondWorkspace, secondActor, "Second item");
+        insertConversationContext(firstWorkspace, firstActor, 101L, "a".repeat(64));
+        insertConversationContext(firstWorkspace, householdPeer, 202L, "b".repeat(64));
         insertLineMessage(firstWorkspace, firstActor, "first private message");
         insertLineMessage(firstWorkspace, householdPeer, "peer private message");
         insertStoredMedia(firstWorkspace, firstActor, "first private media");
@@ -107,6 +109,14 @@ class WorkspaceRlsIntegrationTest extends IntegrationTestBase {
                 () -> jdbcTemplate.queryForList(
                         "SELECT content FROM line_message_log ORDER BY id", String.class)))
                 .containsExactly("peer private message");
+        assertThat(inRuntimeTransaction(first,
+                () -> jdbcTemplate.queryForList(
+                        "SELECT last_task_id FROM conversation_context ORDER BY id", Long.class)))
+                .containsExactly(101L);
+        assertThat(inRuntimeTransaction(peer,
+                () -> jdbcTemplate.queryForList(
+                        "SELECT last_task_id FROM conversation_context ORDER BY id", Long.class)))
+                .containsExactly(202L);
         assertThat(inRuntimeTransaction(first,
                 () -> jdbcTemplate.queryForList(
                         "SELECT display_name FROM stored_media ORDER BY id", String.class)))
@@ -312,6 +322,16 @@ class WorkspaceRlsIntegrationTest extends IntegrationTestBase {
                 VALUES ('IN', 'TEXT', ?, CURRENT_TIMESTAMP, FALSE,
                         CURRENT_TIMESTAMP + INTERVAL '1 day', ?, ?)
                 """, content, workspaceId, actorId);
+    }
+
+    private void insertConversationContext(UUID workspaceId, UUID actorId, long taskId,
+                                           String scopeDigest) {
+        jdbcTemplate.update("""
+                INSERT INTO conversation_context (
+                    last_task_id, updated_at, channel, conversation_scope_digest, scope_key_version,
+                    workspace_id, created_by_user_id)
+                VALUES (?, CURRENT_TIMESTAMP, 'TEST', ?, 1, ?, ?)
+                """, taskId, scopeDigest, workspaceId, actorId);
     }
 
     private void insertStoredMedia(UUID workspaceId, UUID actorId, String displayName) {

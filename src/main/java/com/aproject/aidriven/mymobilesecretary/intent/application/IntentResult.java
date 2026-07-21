@@ -1,5 +1,9 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusReplyDecorator;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.FocusResponseEnvelope;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.FocusTransitionNotice;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.FocusTransitionNoticeRenderer;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleFollowUpService.OutcomeRecorded;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService.RecurringScheduleReschedule;
@@ -24,11 +28,28 @@ public record IntentResult(
         Action action,
         String message,
         Task task,
-        ScheduleDecision decision
+        ScheduleDecision decision,
+        FocusTransitionNotice focusNotice
 ) {
 
     public IntentResult {
         message = IntentReplyFormatter.format(action, UserReplySafetyPolicy.sanitize(message));
+    }
+
+    public IntentResult(Action action, String message, Task task, ScheduleDecision decision) {
+        this(action, message, task, decision, null);
+    }
+
+    public IntentResult withFocusNotice(FocusTransitionNotice notice) {
+        return new IntentResult(action, message, task, decision, notice);
+    }
+
+    public FocusResponseEnvelope responseEnvelope() {
+        if (focusNotice == null) {
+            return FocusResponseEnvelope.withoutNotice(message);
+        }
+        return FocusResponseEnvelope.withNotice(message, focusNotice,
+                new ConversationFocusReplyDecorator(new FocusTransitionNoticeRenderer()));
     }
 
     public enum Action {
@@ -488,7 +509,7 @@ public record IntentResult(
 
     public static IntentResult feedbackReceived() {
         return new IntentResult(Action.FEEDBACK_RECEIVED,
-                "收到，我會依你指出的方向調整。這則訊息不會建立或修改行程。", null, null);
+                "收到，我會依你指出的方向調整。這則訊息不會建立待辦或行程，也不會修改既有待辦或行程。", null, null);
     }
 
     public static IntentResult placeInfo(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {

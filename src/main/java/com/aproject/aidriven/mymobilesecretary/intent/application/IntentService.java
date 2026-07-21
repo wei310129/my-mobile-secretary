@@ -97,6 +97,9 @@ public class IntentService {
             productDraftCompletionService;
     private com.aproject.aidriven.mymobilesecretary.venue.application.VenueVisitInformationService
             venueVisitInformationService;
+    private com.aproject.aidriven.mymobilesecretary.conversation.application
+                    .ConversationFocusIntentExecutor
+            conversationFocusIntentExecutor;
 
     public IntentService(ObjectProvider<IntentInterpreter> interpreterProvider,
                          TaskService taskService,
@@ -138,6 +141,14 @@ public class IntentService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setDecisionTraceService(IntentDecisionTraceService decisionTraceService) {
         this.decisionTraceService = decisionTraceService;
+    }
+
+    /** Optional during the additive rollout so existing direct-construction tests remain compatible. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setConversationFocusIntentExecutor(
+            com.aproject.aidriven.mymobilesecretary.conversation.application
+                    .ConversationFocusIntentExecutor executor) {
+        this.conversationFocusIntentExecutor = executor;
     }
 
     /** Optional injection preserves the existing constructor and keeps shadow routing removable. */
@@ -975,7 +986,13 @@ public class IntentService {
             return IntentResult.clarificationNeeded(
                     userFacingUnknownReason(command.reason()));
         }
-        return intentHandlerRegistry.dispatch(text, command);
+        if (conversationFocusIntentExecutor == null) {
+            return intentHandlerRegistry.dispatch(text, command);
+        }
+        return conversationFocusIntentExecutor.execute(text, command,
+                com.aproject.aidriven.mymobilesecretary.conversation.application
+                        .ConversationInboundIdempotency.fromRequestId(
+                                RequestCorrelationContext.currentId()));
     }
 
     static String userFacingUnknownReason(String reason) {

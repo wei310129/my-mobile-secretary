@@ -45,3 +45,4 @@ scripts/.logs/
 ### 本機 AI 助理設定與執行日誌 ###
 /.claude/settings.local.json
 /.codex/*.log
+/docs/exec-plans/active/local/conversation-improvement-batches-2026-07-20.md

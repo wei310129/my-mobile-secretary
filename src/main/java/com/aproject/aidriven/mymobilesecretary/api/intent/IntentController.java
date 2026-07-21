@@ -37,9 +37,10 @@ public class IntentController {
     @PostMapping
     public IntentResponse handle(@Valid @RequestBody IntentRequest request) {
         IntentResult result = intentService.handle(request.text(), "REST");
+        String publicMessage = result.responseEnvelope().message();
         return new IntentResponse(
                 result.action().name(),
-                result.message(),
+                publicMessage,
                 result.task() == null ? null : TaskResponse.from(result.task()),
                 result.decision() == null ? null : ScheduleDecisionResponse.from(result.decision()));
     }

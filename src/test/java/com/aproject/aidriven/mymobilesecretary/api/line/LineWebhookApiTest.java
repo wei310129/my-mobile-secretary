@@ -123,10 +123,10 @@ class LineWebhookApiTest extends IntegrationTestBase {
     /** LINE 重送同一 webhookEventId 時不得再次執行已完成的 mutation。 */
     @Test
     void duplicateWebhookEventCreatesTaskOnlyOnce() throws Exception {
-        String title = "LINE 冪等測試-" + java.util.UUID.randomUUID();
+        String title = "LINE 冪等測試-" + Long.toUnsignedString(System.nanoTime(), 36);
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_TASK, title, null, null, null, null, "NORMAL", null,
-                null, null, null, null, null));
+                null, null, null, null, null, null, "幫我記下冪等測試"));
         byte[] body = textMessageEvent("幫我記下冪等測試", "same-event-" + java.util.UUID.randomUUID());
         String signature = sign(body);
 
@@ -336,7 +336,7 @@ class LineWebhookApiTest extends IntegrationTestBase {
     void mergesTwoReferencedSchedulesThroughNaturalLineConversation() throws Exception {
         ScheduleItem first;
         ScheduleItem second;
-        WorkspaceContext line = new WorkspaceContext(ACTOR_ID, WORKSPACE_ID, WorkspaceChannel.LINE);
+        WorkspaceContext line = lineContext();
         try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(line)) {
             Instant start = Instant.parse("2099-07-25T02:00:00Z");
             first = scheduleService.createSchedule(
@@ -374,7 +374,7 @@ class LineWebhookApiTest extends IntegrationTestBase {
     @Test
     void existingScheduleTransportFollowUpAccumulatesKnownFieldsWithoutInternalDetails()
             throws Exception {
-        WorkspaceContext line = new WorkspaceContext(ACTOR_ID, WORKSPACE_ID, WorkspaceChannel.LINE);
+        WorkspaceContext line = lineContext();
         try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(line)) {
             Instant start = Instant.parse("2099-07-25T02:00:00Z");
             ScheduleItem source = scheduleService.createSchedule(
@@ -428,6 +428,11 @@ class LineWebhookApiTest extends IntegrationTestBase {
                         .header("X-Line-Signature", sign(body))
                         .contentType(MediaType.APPLICATION_JSON).content(body))
                 .andExpect(status().isOk());
+    }
+
+    private static WorkspaceContext lineContext() {
+        return new WorkspaceContext(ACTOR_ID, WORKSPACE_ID, WorkspaceChannel.LINE,
+                "line", "user:" + OWNER_USER_ID);
     }
 
     /** 空事件陣列(LINE 平台的 webhook 驗證請求)→ 200。 */

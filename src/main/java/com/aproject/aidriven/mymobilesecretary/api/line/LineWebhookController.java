@@ -136,8 +136,15 @@ public class LineWebhookController {
         }
 
         var identity = resolution.identity();
-        WorkspaceContext context = new WorkspaceContext(
-                identity.actorUserId(), identity.workspaceId(), WorkspaceChannel.LINE);
+        String conversationToken = event.source() == null
+                ? null : event.source().trustedConversationScopeToken();
+        if (conversationToken == null) {
+            recordDeniedIdentity(event.sourceUserId(),
+                    Resolution.failed(ExternalIdentityService.ResolutionStatus.NOT_LINKED));
+            return;
+        }
+        WorkspaceContext context = new WorkspaceContext(identity.actorUserId(), identity.workspaceId(),
+                WorkspaceChannel.LINE, "line", conversationToken);
         try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(context)) {
             String eventKey = event.idempotencyKey();
             UUID eventRequestId = eventKey == null
@@ -224,7 +231,7 @@ public class LineWebhookController {
                 event.message().id(), event.message().quotedMessageId());
         IntentResult result = intentService.handleWithContext(
                 original, contextualized, "LINE", executionBoundary::beforeMutation);
-        return new PreparedReply(result.action().name(), result.message(),
+        return new PreparedReply(result.action().name(), result.responseEnvelope().message(),
                 conversationReferenceService.capture(result));
     }
 

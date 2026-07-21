@@ -2,7 +2,9 @@ package com.aproject.aidriven.mymobilesecretary.intent.domain;
 
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceOwnedEntity;
+import com.aproject.aidriven.mymobilesecretary.conversation.domain.ConversationScopeKey;
 import java.time.Instant;
+import java.util.UUID;
 import jakarta.persistence.Column;
 import jakarta.persistence.Entity;
 import jakarta.persistence.EnumType;
@@ -22,7 +24,7 @@ import jakarta.persistence.UniqueConstraint;
 @Entity
 @Table(uniqueConstraints = @UniqueConstraint(
         name = "uq_conversation_context_scope",
-        columnNames = {"workspace_id", "created_by_user_id", "channel"}))
+        columnNames = {"workspace_id", "created_by_user_id", "channel", "conversation_scope_digest"}))
 public class ConversationContext extends WorkspaceOwnedEntity {
 
     @Id
@@ -32,6 +34,15 @@ public class ConversationContext extends WorkspaceOwnedEntity {
     @Enumerated(EnumType.STRING)
     @Column(nullable = false, length = 40, updatable = false)
     private WorkspaceChannel channel;
+
+    @Column(name = "conversation_scope_digest", nullable = false, length = 64)
+    private String conversationScopeDigest;
+
+    @Column(name = "scope_key_version", nullable = false)
+    private Integer scopeKeyVersion;
+
+    @Column(name = "conversation_focus_id")
+    private UUID conversationFocusId;
 
     private Long lastTaskId;
     private Long lastScheduleId;
@@ -63,16 +74,35 @@ public class ConversationContext extends WorkspaceOwnedEntity {
     protected ConversationContext() {
     }
 
-    private ConversationContext(WorkspaceChannel channel, Instant now) {
+    private ConversationContext(WorkspaceChannel channel, ConversationScopeKey scopeKey,
+                                UUID conversationFocusId, Instant now) {
         this.channel = channel;
+        this.conversationScopeDigest = scopeKey.digest();
+        this.scopeKeyVersion = scopeKey.keyVersion();
+        this.conversationFocusId = conversationFocusId;
         this.updatedAt = now;
     }
 
-    public static ConversationContext create(WorkspaceChannel channel, Instant now) {
+    public static ConversationContext create(WorkspaceChannel channel, ConversationScopeKey scopeKey,
+                                             Instant now) {
+        return create(channel, scopeKey, null, now);
+    }
+
+    public static ConversationContext create(WorkspaceChannel channel, ConversationScopeKey scopeKey,
+                                             UUID conversationFocusId, Instant now) {
         if (channel == null) {
             throw new IllegalArgumentException("channel is required");
         }
-        return new ConversationContext(channel, now);
+        if (scopeKey == null) {
+            throw new IllegalArgumentException("conversation scope key is required");
+        }
+        return new ConversationContext(channel, scopeKey, conversationFocusId, now);
+    }
+
+    public void migrateScope(ConversationScopeKey scopeKey, Instant now) {
+        this.conversationScopeDigest = scopeKey.digest();
+        this.scopeKeyVersion = scopeKey.keyVersion();
+        this.updatedAt = now;
     }
 
     public void rememberExchange(String action, String userText, String assistantText, Instant now) {
@@ -133,6 +163,9 @@ public class ConversationContext extends WorkspaceOwnedEntity {
     public Long getLastTaskId() { return lastTaskId; }
     public Integer getId() { return id; }
     public WorkspaceChannel getChannel() { return channel; }
+    public String getConversationScopeDigest() { return conversationScopeDigest; }
+    public Integer getScopeKeyVersion() { return scopeKeyVersion; }
+    public UUID getConversationFocusId() { return conversationFocusId; }
     public Long getLastScheduleId() { return lastScheduleId; }
     public Long getLastPlaceId() { return lastPlaceId; }
     public String getLastTaskListIds() { return lastTaskListIds; }

@@ -1,137 +1,26 @@
-# CLAUDE.md
+# Claude Code repository adapter
 
-This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+本檔只提供 Claude Code 的平台入口，不複製完整 repository 規則。
 
-## 溝通與語言
+## 啟動順序
 
-- 一律以**繁體中文**回覆;講解由淺入深、白話。
-- 使用者是三年經驗的 Java 後端工程師。不要提供 Spring Boot 3.5 / Java 21 之前的舊版寫法。
+1. 先讀根目錄 `AGENTS.md`；其不變量、搜尋限制、輸出控制、Maven 安全入口與繁體中文回報規則同樣適用。
+2. 再讀 `docs/agent-context/index.md`，依任務只載入指定文件章節或 repo-scoped skill。
+3. 進入 `internal/ai-dispatcher/` 時，套用該目錄的 `AGENTS.md`。
+4. 長期或多階段工作遵循 `docs/agent-context/execution-plan-policy.md`。
 
-## 專案是什麼
+## Claude Code 平台注意事項
 
-「分身秘書 App」——情境感知的個人排程與提醒系統(不是待辦清單,而是能主動在對的時間、對的地點提醒使用者)。核心價值排序:**提醒的可靠度 > 提醒的聰明度**。
+- 使用者背景約三年 Java 後端經驗；以 Java 21、Spring Boot 3.5.x、Spring AI 1.1.x 現行寫法說明。
+- 若 Claude Code 不會自動解析 `.agents/skills/` metadata，仍應在符合任務時手動讀取對應 `SKILL.md`。
+- 以 repository 文件為 source of truth；不要把本檔擴寫成第二份架構、模組清單、測試政策或產品決策副本。
+- 共通規則只修改其權威來源，再由本檔連結；不維護 `AGENTS.md`／`CLAUDE.md` 兩份人工同步內容。
 
-**現況(2026-07-20 盤點)**:後端已具規模,不是骨架。Phase 0-2 已完成(提醒核心閉環、規劃引擎、外部整合),Phase 3(AI 對話)進行中且已深入——LINE Bot 是目前主要互動介面,意圖解析支援 128 種可執行意圖(`IntentCommand.Type`,仍在快速擴充,數字以程式碼為準),執行層已重構為「領域 handler + immutable registry」。生活紀錄面向近期大幅擴張(繳費/轉帳、私有媒體、名片聯絡人、捐血、水電帳單、學校菜單、場館資訊、semantic tag graph 等)。iOS 端(SwiftUI)因尚無 Mac 環境仍未動工,手機事件以 API 模擬,通知走 server log、Windows Toast 與 LINE。
+## 常用入口
 
-**動手前必讀**,設計決策的最終依據:
-- `docs/architecture.md` — 產品定位、技術選型、系統架構、AI 五層設計。
-- `docs/development-plan.md` — 實作導向計畫:各 Phase 交付物與**進度狀態**、決策紀錄、程式碼/測試/註解規範。與本檔衝突時,以開發計畫為準。
-- `docs/test-strategy.md` — 變更相關性導向的精準測試策略(日常改動不全跑測試)。
-- `docs/security-deployment.md` — RLS 角色分離、SQL injection 與 prompt injection 防護政策。
-- `docs/intent-execution-refactoring.md` — intent 執行層架構決策(IntentService 職責邊界、領域 handler registry);動 `intent` 模組前先讀。
-- `docs/schedule-scenario-catalog.md` 與 `docs/schedule-development-progress.md` — 行程對話情境目錄與進度(開發計畫引用的「情境 #N」出自這裡)。
-- `internal/ai-dispatcher/`(README/ARCHITECTURE/DESIGN)— 動到該目錄時必讀。
-- `AGENTS.md` — Codex agent 的 repo 守則,與本檔規範一致;修改共通守則時兩檔要同步。
-
-## 常用指令
-
-本專案是 Maven wrapper 專案,Windows 用 `mvnw.cmd`(Git Bash 下用 `./mvnw`)。
-
-```powershell
-# 日常開發環境(主應用 + ai-dispatcher + 兩套 Docker Compose 一起管理)
-.\scripts\dev-start.ps1                       # 開機後標準入口:啟動全部並以 LINE 官方 webhook test 做端到端驗證
-                                              # (-SkipDispatcher 只跑主應用、-NoNgrok 不開公開 webhook)
-.\scripts\dev-status.ps1                      # 檢查狀態(預設含 LINE 端到端測試,-SkipLineWebhookTest 只看本機)
-.\scripts\dev-restart.ps1                     # 重啟 Java 應用
-.\scripts\dev-stop.ps1                        # 停 Java 應用(-Docker 連 Compose 一起停)
-
-# Maven(主應用)— 根專案 lifecycle 一律優先透過 mvn-safe.ps1:跨程序 Maven 鎖、預設不 clean,
-# 避免多條開發線(含 Codex)共用 target 互相污染
-.\scripts\mvn-safe.ps1 test                              # 跑全部測試(重節點才跑,平時見 test-strategy.md)
-.\scripts\mvn-safe.ps1 '-Dtest=ClassName' test           # 跑單一測試類別('-Dtest=ClassName#methodName' 指定方法)
-.\scripts\mvn-safe.ps1 -Clean test                       # 只在確認 target 污染或正式完整驗收時才加 -Clean
-.\scripts\mvn-safe.ps1 '-DskipTests' test-compile        # 只編譯主程式與測試來源(-D 參數要加引號)
-./mvnw.cmd spring-boot:run                    # 手動啟動後端(日常請改用 dev-start.ps1)
-./mvnw.cmd clean package                      # 打包(產出可執行 jar)
-
-# ai-dispatcher(獨立 Maven 專案,不在根 build 內,不經 mvn-safe)
-./mvnw.cmd -f internal/ai-dispatcher/pom.xml test
-./mvnw.cmd -f internal/ai-dispatcher/pom.xml spring-boot:run
-```
-
-- 遇 `Cannot close compiler resources` 先確認沒有並行 Maven,再於沙箱外以相同參數重試;**不得把 clean 當第一步**(`-Clean` 會連 target 內的評估報告一起刪)。
-- Dispatcher lane 處於 `STARTING`/`RUNNING`/`RECOVERING` 時,`dev-restart.ps1` 與 `dev-stop.ps1` 會拒絕終止程序樹,避免殺掉執行中的 Codex。
-- 一般功能開發不順手改啟停/工具腳本;需求先登記到 `docs/tooling-backlog.md`,留待工具專用 session。
-
-日常測試遵循 `docs/test-strategy.md`:依變更的依賴圖挑最小測試集,只有大節點(提交大功能、跨 3+ 模組、動共用機制、準備 PR)才跑完整 `mvn test`。
-
-## 架構核心原則
-
-**薄手機、厚後端。** 所有判斷、規劃、記憶都在後端;手機端只做感測、顯示、通知。這確保未來 Android 版只需重寫薄殼,LLM 與外部 API 整合天生屬伺服器端。
-
-**後端採模組化單體(modular monolith)**——單一 Spring Boot 專案,靠 package 邊界維持分工,模組間只透過介面與事件溝通。基礎套件:`com.aproject.aidriven.mymobilesecretary`。現有模組:
-
-| 模組 | 職責 |
-|---|---|
-| `api` | REST 入口(15 個 controller:task/place/location/reminder/schedule/item/weather/intent/line/media/internal) |
-| `account` | 帳號、workspace 多租戶隔離(PostgreSQL RLS)、security audit、idempotency |
-| `contact` | 名片保存的外部專業聯絡人 |
-| `draft` | 短期草稿的統一保留政策(actor-private 生命週期、到期提醒與繼承規則) |
-| `event` | 活動文案/圖片的事件收件:持久草稿與逐欄澄清流程 |
-| `family` | 家人通知理解、隱私家人身分檔案(不外洩至 LLM) |
-| `geo` | 位置事件、geofence 命中、距離/半徑判斷(全系統唯一出處) |
-| `health` | 捐血紀錄與下次可捐日期門檻 |
-| `intent` | LLM 意圖理解(128 種可執行意圖)、領域 handler registry、typed capability registry(shadow 驗證)、對話上下文、intent issue 回饋閉環 |
-| `integration` | 外部轉接層:LINE(webhook/訊息紀錄)、通知(log/Windows Toast/outbox)、Google Places、TDX 交通、氣象署(天氣/農民曆)、人事行政局停班停課、development feed |
-| `knowledge` | 物品、庫存、價格歷史、消費分類、商品經驗/註記、semantic tag graph 與通用生活紀錄(`knowledge.tag`) |
-| `media` | 私有原始媒體儲存(本機 object storage、型別偵測、App 授權 content URL) |
-| `payment` | 繳費通知與轉帳草稿 |
-| `planner` | 確定性規劃:可行性把關、空檔/順路建議、交通時間估算、天氣規則 |
-| `planning` | 規劃項目類型分類與狀態轉換政策(task/schedule 之外的型態判斷) |
-| `reminder` | 任務狀態機、提醒排程、debounce、升級催促、延後任務與彈性當日任務 |
-| `safety` | 停班停課查證(官方來源核實後才通知) |
-| `schedule` | 行程(source of truth)、週期行程(含條件式週期/條件場地)、pending 池與空閒詢問、行程結果追蹤 |
-| `schoolmeal` | 學校菜單保存與查詢 |
-| `travel` | 旅行規劃引導、行李清單與長期偏好、行程表圖片草稿 |
-| `utility` | 水電瓦斯帳單歷程與用量比較 |
-| `venue` | 場館參觀/展出資訊與未來到訪提示 |
-| `shared` | error/time(含 12/24 小時顯示偏好、中文時段)/validation/security/observability |
-
-**多租戶與資料歸屬**:workspace/RLS 基礎已上線(V18/V25/V30;Flyway migration 目前已到 V56)——新資料表**一律掛 `workspace_id`** 並遵循既有 RLS pattern(參照 `WorkspaceOwnedEntity` 與 `docs/security-deployment.md`)。家庭「共享/共編」**功能**仍排遠期(開發計畫 Phase 5),但舊的「Phase 5 前不預加 user_id」規則已作廢。位置事件永遠不共享。
-
-依賴方向必須守住:
-- `api` → application service → `domain`;`api` 不直接呼叫 repository。
-- `domain` 不依賴 Spring Web,也不直接呼叫 repository(只依賴 repository 介面)。
-- `integration` 不得把外部 API response 直接洩漏進 `domain`。
-
-**AI 分層鐵律:LLM 不做排程計算。** 排程/地理/時間窗/可靠度判斷一律由確定性 Java 規則引擎(`planner`)處理;LLM 只負責「意圖理解」(自然語言 → 結構化 command)與「表達」(計算結果 → 貼心推播文字),且 response 一律驗證 schema,LLM 失敗不能讓提醒核心不可用。LLM 走 Spring AI 1.1.5 + Anthropic(意圖解析與收據多模態);prompt injection 防護政策見 `docs/security-deployment.md`。意圖系統正逐步從 free-form command 遷移到 typed capability registry(目前 shadow 驗證模式)。
-
-**意圖執行層(2026-07 重構後)**:`IntentService` 只負責解析、policy 防護(script/date/safety、`VagueTimeGuard`)、LLM fallback、批次隔離與 conversation context;驗證後的可執行 command 一律交給 `IntentHandlerRegistry`(啟動時建立不可變 Type→Handler 映射,重複或缺註冊直接使啟動失敗)分派到 `intent/application/handler/` 下的領域 handler。Handler 不呼叫 LLM、不注入 repository、不把 Registry 當 service locator;destructive 操作仍由既有 application service 的 Java 規則執行。**新增 Intent Type 時必須同步**:對應領域 handler、`conversation-capabilities.txt` 能力目錄、regression test,三者缺一不可(詳見 `docs/intent-execution-refactoring.md`)。
-
-**事件驅動的動態行事曆:** 任一事件(GPS 進出、定時、行事曆變動、天氣、使用者回報)都觸發規劃引擎重新評估。事件匯流排現況:仍為 Spring Events(+ Redis 快取/延遲佇列 + notification outbox);Redis Streams 與 Kafka 是 Phase 4 的未來項目,尚未導入。
-
-## internal/ai-dispatcher(開發自動化,非產品 runtime)
-
-`internal/ai-dispatcher` 是同 repo 內**完全隔離的獨立 Spring Boot 應用**(自己的 pom、PostgreSQL、Flyway、Compose),負責控制 Codex 開發 agent 何時啟動與 run 生命週期。鐵律:不得 import 主應用 classes、主應用不得呼叫或等待它、跨應用只透過版本化 HTTP contract(development feed)、刪除該目錄不影響主應用編譯執行。
-
-**Codex 並行開發注意**:session 進行中 HEAD 與工作區可能隨時被 Codex 的 commit 移動——任何 git 操作(commit、rebase、診斷 diff)前先重查 `git status` 與 `git log`,不要沿用開場快照。
-
-## 程式碼慣例(見開發計畫第 4 節)
-
-- Controller 只處理 HTTP;Service 做 use case orchestration;domain method 負責自身狀態轉換與規則;repository 只做資料存取。
-- 時間計算一律注入 `Clock`,不直接用 `now()`,以便測試。
-- 位置距離/半徑判斷集中在 `geo` 模組,不各處重寫。
-- HTTP DTO、Entity、Domain Model 職責分清,不把 DTO 當核心 domain。
-- 方法名要說明意圖,避免 `process`、`handleData` 這類模糊名稱。
-- 新增使用者可感知的 domain event 時,必須同步接入通用 LifeRecord/tag graph recorder(`UniversalDomainEventRecorder`);開發回饋不記為生活事件。
-- Spotless 強制 import 檢查:提交前跑 `.\scripts\spotless-apply.ps1` 或 `./mvnw.cmd spotless:apply`。
-
-**註解比一般後端更重視**(排程/地理/提醒閉環有大量隱性規則)。必寫註解:public controller 方法、application service public 方法、domain 改變狀態的方法、`planner`/`geo`/`reminder` 核心規則方法、外部 API client、以及複雜方法內部的關鍵決策點(debounce、半徑判定、狀態轉換、提醒升級)。註解描述「原因與約束」,不逐行翻譯 Java 語法。
-
-## 測試要求(見開發計畫第 5 節與 docs/test-strategy.md)
-
-**每個 API 與每個關鍵方法都要有測試。** 每個 API 至少涵蓋:成功、request validation 失敗、重要業務錯誤(任務/地點不存在、非法狀態轉換)。關鍵方法測試優先確保:位置命中/未命中、同地點重複進入不連續提醒、狀態不能非法跳轉、到點提醒被撈出、未確認提醒會升級、外部 API 失敗不拖垮核心提醒。
-
-分層:JUnit 5 + AssertJ + Mockito(純邏輯)、`@WebMvcTest`/MockMvc(controller)、`@DataJpaTest` + Testcontainers(PostgreSQL/PostGIS mapping 與 SQL)、Testcontainers(端到端)、MockWebServer/WireMock(外部 client,不打真實 API,要測 timeout/非 2xx/空 response/格式錯誤)。
-
-日常開發**不**每次全跑:依 `docs/test-strategy.md` 的變更相關性策略挑測試,並誠實回報「跑過什麼、沒跑什麼」,不得把精準測試通過寫成全套通過。
-
-## 何時必須先問使用者(見開發計畫第 17 節)
-
-不要自行決定以下事項,先通知使用者:版本跨 minor/major 升級(例 Spring Boot 3.5→4.x)、新增有成本的外部服務(Google Places、LLM API、Apple Developer)、使用真實個資/位置、產品行為(提醒頻率、升級次數、狀態名稱)、導入大型技術(Kafka、Spring Cloud、K8s)、改變 MVP 範圍、刪資料或 destructive migration、測試策略在真實服務與 mock 之間切換。
-
-可自行決定:小型 class/package 命名、內部方法拆分、測試檔名、不改變行為的重構、不跨版本線的 patch 更新。
-
-## 版本策略
-
-Java 固定 `21`。維持 Spring Boot **3.5.x**(現為 3.5.16),**不**升到 Spring Boot 4.x(周邊教材/整合慣性較穩,Spring AI 1.1.x 明確支援 3.4/3.5)。Spring AI 固定 `1.1.5`。patch 版可小幅升。
+- 任務路由：`docs/agent-context/index.md`
+- 目前決策：`docs/decisions/current.md`
+- 執行計畫：`docs/exec-plans/active/`
+- 測試策略：`docs/test-strategy.md`
+- 架構：`docs/architecture.md`（依標題按需讀取）
+- 歷史開發計畫：`docs/development-plan.md`（保留既有連結與追溯）

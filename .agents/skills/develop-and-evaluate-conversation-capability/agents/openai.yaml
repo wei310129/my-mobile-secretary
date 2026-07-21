@@ -1,0 +1,4 @@
+interface:
+  display_name: "Conversation Capability Development"
+  short_description: "Develop and validate conversation behavior safely"
+  default_prompt: "Use $develop-and-evaluate-conversation-capability to implement and rigorously validate this conversation behavior change."

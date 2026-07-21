@@ -12,6 +12,19 @@ $DispatcherRoot = Join-Path $RepoRoot "internal\ai-dispatcher"
 $DispatcherPom = Join-Path $DispatcherRoot "pom.xml"
 $DispatcherComposeFile = Join-Path $DispatcherRoot "compose.yaml"
 
+function Write-DevProgress {
+    param(
+        [Parameter(Mandatory)][string]$Message,
+        [string]$ForegroundColor
+    )
+    if (-not $script:DevVerboseOutput) { return }
+    if ($ForegroundColor) {
+        Write-Host $Message -ForegroundColor $ForegroundColor
+    } else {
+        Write-Host $Message
+    }
+}
+
 function Assert-CommandAvailable {
     param([Parameter(Mandatory)][string]$Name)
     if (-not (Get-Command $Name -ErrorAction SilentlyContinue)) {
@@ -122,7 +135,7 @@ function Stop-ProcessTree {
         return
     }
     & taskkill /F /T /PID $ProcessId 2>&1 | Out-Null
-    Write-Host "  $Label`: 已停止(PID $ProcessId)。" -ForegroundColor Green
+    Write-DevProgress -Message "  $Label`: 已停止(PID $ProcessId)。" -ForegroundColor Green
 }
 
 # 找 ngrok.exe:優先 $env:NGROK_EXE,其次 PATH,最後回退到使用者曾手動下載的路徑。
@@ -139,10 +152,14 @@ function Resolve-NgrokExe {
 function Wait-HttpOk {
     param(
         [Parameter(Mandatory)][string]$Url,
-        [int]$TimeoutSec = 90
+        [int]$TimeoutSec = 90,
+        [int]$ProcessId = 0
     )
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
+        if ($ProcessId -gt 0 -and -not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)) {
+            return $false
+        }
         try {
             $resp = Invoke-WebRequest -Uri $Url -UseBasicParsing -TimeoutSec 3 -ErrorAction Stop
             if ($resp.StatusCode -eq 200) { return $true }

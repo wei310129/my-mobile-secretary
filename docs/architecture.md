@@ -440,7 +440,68 @@ model、pipeline、embedding 與 pgvector；啟動條件與安全規則詳見 `d
 是另一種由草稿完成後形成的長期資料，不具完成狀態，也不轉成待辦、行程提醒或行程。共同語意由
 `planning` domain policy 驗證，不要求既有 JPA aggregate 彼此繼承。
 
-對話層必須先回答使用者當輪的直接問題，再說限制與下一步。短句應優先承接明確 LINE 引用，其次是
-服務上一輪提出且尚未回答的問題，再其次才是同 actor 的有限近期上下文；多候選時以含類別、時間與
-可區分資訊的編號清單讓使用者選擇。功能改善回饋、唯讀詢問與解析失敗不得被舊草稿搶答，也不得
-降級成建立待辦或行程。LLM 可協助理解指代與表達，但選擇範圍、狀態轉換與 mutation 仍由 Java 驗證。
+對話層必須先回答使用者當輪的直接問題，再說限制與下一步。短句的唯一承接順序為：同 actor 可驗證的
+明確 LINE 引用；明確焦點控制／新工作／feedback／meta／單次唯讀問題；尚待回答的 focus transition；
+active focus 內尚未回答的問題；active work／subject focus；最後才是同 scope 的有限近期上下文。
+多候選時以含類別、時間與可區分資訊的編號清單讓使用者選擇。功能改善回饋、唯讀詢問與解析失敗不得
+被舊草稿搶答，也不得降級成建立待辦或行程。LLM 可協助理解指代與表達，但選擇範圍、焦點與業務
+狀態轉換及 mutation 仍由 Java 驗證。
+
+## 35. 全服務對話焦點與上下文對齊（2026-07-21，規劃）
+
+`ConversationContext` 現有的上一筆 Task／Schedule／Place、候選清單與最近交換，只是短期指代資料；
+它不等於「使用者目前正在和服務共同處理哪一件事」。後者採 actor-private、durable 的兩層語意：
+work context 是根工作，例如大阪旅行或繳電費；activity focus 是根工作內目前子題，例如小孩護照或
+回程航班。兩層共同由一個 `ConversationFocus` aggregate 保存 root 與 nullable activity，不建立兩個
+current pointer。第一版作用域為
+`workspace + actor + channel conversation scope`，同一作用域最多一個 active work/focus；不同服務
+不得再各自保存互不相容的 current topic／edit mode 指標。
+
+conversation scope digest 由 trusted adapter 正規化 token 後，以含 workspace、actor、adapter namespace
+與 channel 的 HMAC-SHA-256 產生並保存 key version；secret 不進版控。rotation 同時接受 current/previous
+key，命中舊版時在鎖內遷移同 scope rows，不能因換 key 無聲分裂上下文。每 scope 另有不含 active target
+的 monotonic focus head revision，用於 optimistic ordering 與 pending fencing；active target 仍只有一個來源。
+
+work/focus 表示可延續的對話工作，不代表對應業務物件已完成。狀態固定為 `ACTIVE`、`SUSPENDED`、
+`CLOSED`：首次進入為 `ENTER`，回到暫離事項為 `RESUME`，由 A 改處理 B 為原子的 `SWITCH`，只離開
+目前事項為 `EXIT`。`SWITCH`／`EXIT` 只暫停對話焦點，不得暗中完成、封存、取消或刪除 Project、Task、
+Schedule、Draft 等業務資料；業務 lifecycle 仍由各 domain service 另行驗證。active focus 不得因時間
+經過而無聲消失，也不得只因模型猜測或最近一筆物件而切換。`CLOSED` 是對話終態，不能 resume；
+日後重談同一業務 target 時建立新的 enter，不恢復已關閉 focus 的 pending／referent。
+
+每次真正的 `ENTER`、`CHANGE_SUBFOCUS`、`SWITCH`、`RESUME`、`EXIT`、`CLOSE` 或 `INVALIDATE`，都必須產生 typed
+`FocusTransitionNotice`，由 Java 在統一 response envelope 與各 channel adapter 強制渲染。進入時明說
+目前處理的可理解名稱；切換時同時明說暫離哪件事及改處理哪件事；離開時明說目前已沒有 active focus。
+通知不得依賴 LLM 自行記得補寫，也不得顯示 UUID、平台 message ID 或敏感原文。相同 inbound 重播只能
+有一筆 transition 與一個 terminal reply。同一輪既要切換又要異動既有目標時，transition 與 domain
+mutation 必須原子提交；mutation 失敗就不切換，並明說仍停在哪個焦點。需要先建立新目標的長工作則先
+建立 `PENDING_DIALOG/ASYNC_WORK` work 與 durable job，成功持久化後才算進入；後續 terminal failure
+不會讓焦點偷偷跳回舊工作。
+
+並非每個單輪查詢都要建立新 focus。Java `ConversationFocusPolicy` 將輸入分為同焦點延續、支援目前
+焦點、無 pending state 的單次旁問、明確新工作與焦點控制。支援問題不切換；不相關但一次完成的唯讀
+旁問可直接回答，但在容易誤解時明說原焦點仍保留；會建立 pending state 或後續 mutation 的明確新工作
+才切換。若目前有 destructive／付款／外部 side effect 確認、候選不唯一，或 Project 的嚴格 scope 會被
+跨越，必須先澄清且零 transition、零業務 mutation。LLM 只能輸出關聯訊號與候選描述，focus 決策、
+target authorization、狀態轉移及告知內容皆由 Java 決定。
+
+Project 編輯模式是 `ConversationFocus` 中綁定 Project 的 root work，不是第二套 active context。開啟、切換或
+關閉專案模式分別委派全域 focus 的 enter／switch／exit；Project scope 由已驗證的 typed binding 取得。
+每個持久 domain anchor 使用有真實外鍵的 typed binding／adapter，不建立無 FK 的任意
+`resource_type/resource_id` 欄位。短期指代、pending question、候選清單與 quote 解析都必須按 focus
+隔離；暫離後恢復時只能取回該 focus 自己的指代資料。明確 quote 可提高 target 優先序，但不能繞過
+actor、workspace、focus transition、Project scope 或 destructive confirmation。
+
+Raw LINE room/thread token 與 REST thread token 不進 focus／scope／referent table。V39 既有受控 LINE
+message log 仍依 90 天政策保存 `external_message_id`／`quoted_message_id` 供同 actor 引用回查；這是引用
+稽核資料，不得複製到 Focus、transition、notice 或公開回覆。
+
+只有 focus-aware conversation entry 可在同交易做 Project create＋ENTER 或針對本 scope 做 archive＋單一
+INVALIDATE；不得再補 EXIT。若被關閉／失效的是 suspended A 而 B active，只關 A，B 不變。Direct
+CRUD API 與 background worker 不切換聊天 focus；若它們使 target 失效，下一個對話 turn 由 resolver
+fail closed、關閉該 scope 的 focus 並主動告知；同 Project 在其他 scope 也各自等下一 turn lazy invalidate。
+Async terminal notification 只標示原工作結果，不搶目前焦點。
+
+focus、active binding、transition 與 referent context 均需 workspace／actor application filter、RLS、
+optimistic version、注入 `Clock`、idempotency 與同 actor 跨 channel 隔離測試。焦點控制只屬對話狀態，
+不寫 LifeRecord／tag graph；真正可感知的業務 mutation 仍依原 domain event recorder 規則處理。

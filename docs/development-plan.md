@@ -1,8 +1,10 @@
 # 分身秘書 App 開發計畫
 
-本文件是實作導向的開發計畫，承接 `docs/architecture.md` 的產品與架構方向。目標是讓每個階段都有明確交付物、驗收標準、測試要求與需要使用者決策的停靠點。
+本文件保留階段、驗收、進度與決策歷史，承接 `docs/architecture.md` 的產品與架構方向。最新有效決策與目前工作入口改見 `docs/decisions/current.md`；若摘要與本文件歷史文字衝突，先確認，不以舊段落靜默覆寫目前產品語意。
 
-## 1. 已確認決策
+## 1. 已確認決策（歷史基線）
+
+以下表格保留原始決策追溯；目前適用版本以 `docs/decisions/current.md` 為入口。
 
 | 項目 | 決策 |
 |---|---|
@@ -1036,3 +1038,20 @@ Phase 0-2 已完成、Phase 3 進行中（見 §20）。目前的開發節奏：
   relevance score／source version 無資料時保持 null。
 - 文件模型、抽取／OCR／chunk／embedding pipeline、prompt injection 與 pgvector 啟動條件記錄於
   `docs/knowledge-retrieval.md`；本批次未新增第三方依賴或文件資料表。
+
+## 21. 旅遊專案全流程（2026-07-21，規劃完成／尚未實作）
+
+下一個複雜自然語言主題先聚焦「安排一次出國旅行」。完整、可交 Terra High 逐舵輪執行的領域設計、
+旅前／旅中／旅後標準清單、Project 編輯模式、同 Project 行程衝突語意、嚴苛擬真案例、holdout 與
+release gate，見 `docs/exec-plans/active/travel-project-terra-high-development-test-plan.md`。
+
+新增的全服務硬需求是：服務必須持久記得每個 conversation scope 目前共同處理的事情，且在首次進入、
+變更子題、切換、恢復、離開、結束或 target 失效時主動明說，不能讓使用者猜系統是否仍承接上一件事。這不是旅遊專用 mode；
+Terra 必須先完成全域 `ConversationFocus`、typed transition notice、focus-scoped referent／pending context
+及全 Intent policy catalog，再讓 Project 編輯模式以 typed binding 掛接，不得另建第二個 active pointer。
+既有 `ConversationContext` 只屬短期指代基線，不能直接冒充這項能力。架構語意見 `architecture.md` 第 35 節。
+
+本階段已鎖定方向：複雜旅行成立時直接建立正式 `ACTIVE` Project，Project 本身沒有 draft；Project
+可綁 child draft、行程、待辦、專屬知識及由待辦衍生的提醒。使用者確認前仍不得建立正式行程／待辦／
+提醒；確認事實也不等於授權寫入，仍需明確 materialization consent。此節只是規劃入口，不代表 runtime
+已支援上述能力；實作與通過狀態必須依專用計劃書逐輪回填。

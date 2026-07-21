@@ -1,8 +1,8 @@
 package com.aproject.aidriven.mymobilesecretary.account.workspace;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationScopeProperties;
 import java.util.UUID;
 import jakarta.annotation.PostConstruct;
-
 import org.hibernate.cfg.MultiTenancySettings;
 import org.hibernate.context.spi.CurrentTenantIdentifierResolver;
 import org.springframework.beans.factory.config.BeanPostProcessor;
@@ -13,7 +13,7 @@ import org.springframework.context.annotation.Configuration;
 import org.springframework.orm.jpa.JpaTransactionManager;
 
 @Configuration(proxyBeanMethods = false)
-@EnableConfigurationProperties(WorkspaceTenantProperties.class)
+@EnableConfigurationProperties({WorkspaceTenantProperties.class, ConversationScopeProperties.class})
 public class WorkspaceTenantConfiguration {
 
     private final WorkspaceTenantProperties properties;

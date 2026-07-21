@@ -10,6 +10,7 @@ import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService.ScheduleDecision;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
+import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -92,9 +93,13 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
 
     private IntentResult cancelSchedule(IntentCommand command) {
         ScheduleMatch match = matchCancelableSchedule(command, "取消");
-        return match.failure() != null ? match.failure()
-                : IntentResult.scheduleCanceled(
-                        scheduleService.cancelSchedule(match.item().getId()));
+        if (match.failure() != null) return match.failure();
+        ScheduleStatus prior = match.item().getStatus();
+        ScheduleItem updated = scheduleService.discardSchedule(match.item().getId());
+        return prior == ScheduleStatus.PROPOSED
+                ? IntentResult.message(IntentResult.Action.SCHEDULE_CANCELED,
+                        "已放棄待確認行程「%s」。".formatted(updated.getTitle()))
+                : IntentResult.scheduleCanceled(updated);
     }
 
     private IntentResult rescheduleSchedule(IntentCommand command) {

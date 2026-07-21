@@ -86,15 +86,56 @@ public class DailyScheduleOverviewService {
         }
 
         fixed.stream()
-                .map(Occurrence::source)
-                .filter(item -> item.getStatus() == ScheduleStatus.PROPOSED)
+                .filter(parent -> parent.source().getStatus() == ScheduleStatus.PROPOSED)
+                .filter(parent -> contained.stream().anyMatch(relation -> relation.parent().equals(parent)))
                 .findFirst()
-                .ifPresent(item -> {
+                .ifPresent(parent -> {
+                    ScheduleItem item = parent.source();
+                    String children = contained.stream()
+                            .filter(relation -> relation.parent().equals(parent))
+                            .map(relation -> "「%s」".formatted(relation.child().source().getTitle()))
+                            .distinct()
+                            .collect(java.util.stream.Collectors.joining("、"));
                     contextService.rememberSchedule(item);
-                    message.append("\n\n❓ 請確認是否把上述當日項目併入固定行程「%s」；我不會自行確認。"
-                            .formatted(item.getTitle()));
+                    message.append("\n\n❓ 請確認是否把當日單次行程%s併入固定行程「%s」；我不會自行確認。"
+                            .formatted(children, item.getTitle()));
                 });
         return IntentResult.message(IntentResult.Action.SCHEDULES_LISTED, message.toString());
+    }
+
+    /** 直接解釋上一則總覽的「當日項目」，不把介面用語問題交給 LLM。 */
+    public IntentResult explainContainedItems() {
+        List<ScheduleItem> visible = scheduleService.listSchedules(null).stream()
+                .filter(item -> VISIBLE_STATUSES.contains(item.getStatus()))
+                .toList();
+        ScheduleItem parent = visible.stream()
+                .filter(item -> item.getRecurrence() != ScheduleItem.Recurrence.NONE)
+                .filter(item -> item.getStatus() == ScheduleStatus.PROPOSED)
+                .filter(item -> java.util.Objects.equals(contextService.scheduleIdAt(null), item.getId()))
+                .findFirst()
+                .orElse(null);
+        if (parent == null) {
+            return IntentResult.clarificationNeeded("目前沒有一筆等待確認併入的固定行程。");
+        }
+        LocalDate date = LocalDate.ofInstant(parent.getStartAt(), TAIPEI);
+        Occurrence projectedParent = project(parent, date);
+        List<ScheduleItem> children = visible.stream()
+                .filter(item -> item.getRecurrence() == ScheduleItem.Recurrence.NONE)
+                .filter(item -> contains(projectedParent,
+                        new Occurrence(item, item.getStartAt(), item.getEndAt())))
+                .toList();
+        if (children.isEmpty()) {
+            return IntentResult.message(IntentResult.Action.SCHEDULE_INFO,
+                    "固定行程是「%s」，但目前沒有位於它時段內的當日單次行程。".formatted(parent.getTitle()));
+        }
+        String details = children.stream()
+                .map(item -> "- %s %s｜%s".formatted(range(new Occurrence(
+                        item, item.getStartAt(), item.getEndAt())), item.getTitle(),
+                        statusLabel(item.getStatus())))
+                .collect(java.util.stream.Collectors.joining("\n"));
+        return IntentResult.message(IntentResult.Action.SCHEDULE_INFO,
+                "我說的「當日項目」是以下單次行程：\n%s\n\n固定行程本身是「%s」。"
+                        .formatted(details, parent.getTitle()));
     }
 
     /**

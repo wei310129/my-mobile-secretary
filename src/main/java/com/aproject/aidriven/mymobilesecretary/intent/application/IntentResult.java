@@ -516,7 +516,7 @@ public record IntentResult(
     public static IntentResult batchExecuted(List<String> lines) {
         StringBuilder message = new StringBuilder("一次處理 %d 件:".formatted(lines.size()));
         for (int i = 0; i < lines.size(); i++) {
-            message.append("\n%d.%s".formatted(i + 1, lines.get(i)));
+            message.append("\n\n%d.%s".formatted(i + 1, lines.get(i)));
         }
         return new IntentResult(Action.BATCH_EXECUTED, message.toString(), null, null);
     }

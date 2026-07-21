@@ -10,6 +10,15 @@ import java.time.LocalTime;
 import org.junit.jupiter.api.Test;
 
 class DraftRetentionConversationServiceTest {
+
+    @Test
+    void deletingAQuotedDraftIsNotMisreadAsRetentionConfiguration() {
+        var retention = mock(DraftRetentionService.class);
+        var service = new DraftRetentionConversationService(retention);
+
+        assertThat(service.answer("刪除這個草稿", () -> { })).isEmpty();
+        verifyNoInteractions(retention);
+    }
     @Test
     void parsesChineseHalfHour() {
         assertThat(DraftRetentionConversationService.parseTime("晚上十一點半"))

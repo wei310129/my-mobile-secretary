@@ -71,6 +71,25 @@ public class ScheduleService {
         return decision;
     }
 
+    /** 建立孩子／其他家人的時段行程；可在家庭日曆查看，但不占用建立者忙碌時間。 */
+    public ScheduleDecision createFamilySchedule(
+            String title, Instant startAt, Instant endAt, Long placeId,
+            String responsiblePerson, ScheduleItem.Recurrence recurrence,
+            LocalDate recurrenceUntil) {
+        if (placeId != null) placeService.getPlace(placeId);
+        Instant now = Instant.now(clock);
+        ScheduleItem item = ScheduleItem.propose(title, startAt, endAt, placeId, now);
+        item.assignResponsibility(responsiblePerson, false);
+        item.categorize(ScheduleItem.Category.FAMILY, now);
+        if (recurrence != null && recurrence != ScheduleItem.Recurrence.NONE) {
+            item.repeat(recurrence, recurrenceUntil, now);
+        }
+        item = scheduleItemRepository.save(item);
+        ScheduleDecision decision = gate(item, now);
+        publishLifecycle(item, ScheduleLifecycleEvent.Action.CREATED, now);
+        return decision;
+    }
+
     /** 提出新行程並驗算;recurring = true 表示每週固定(結束後自動排下一週)。 */
     public ScheduleDecision createSchedule(String title, Instant startAt, Instant endAt,
                                            Long placeId, boolean recurring) {
@@ -309,6 +328,13 @@ public class ScheduleService {
         return item;
     }
 
+    /** User-facing removal: abandon an unconfirmed proposal, cancel an active commitment. */
+    public ScheduleItem discardSchedule(Long scheduleId) {
+        ScheduleItem item = getSchedule(scheduleId);
+        return item.getStatus() == ScheduleStatus.PROPOSED
+                ? rejectSchedule(scheduleId) : cancelSchedule(scheduleId);
+    }
+
     /** 完成行程(Phase 3 結果追蹤的入口)。 */
     public ScheduleItem completeSchedule(Long scheduleId) {
         ScheduleItem item = getSchedule(scheduleId);
@@ -337,7 +363,8 @@ public class ScheduleService {
      */
     @Transactional(readOnly = true)
     public List<ScheduleItem> findCancelableSchedulesMatching(String keyword) {
-        return findSchedulesMatching(keyword, EnumSet.of(ScheduleStatus.CONFIRMED, ScheduleStatus.PENDING));
+        return findSchedulesMatching(keyword,
+                EnumSet.of(ScheduleStatus.PROPOSED, ScheduleStatus.CONFIRMED, ScheduleStatus.PENDING));
     }
 
     /**

@@ -29,6 +29,18 @@ class DailyScheduleQueryTest {
                 .contains(LocalDate.of(2026, 7, 10));
         assertThat(IntentService.dailyScheduleDate("這週五有什麼行程？", CLOCK))
                 .contains(LocalDate.of(2026, 7, 17));
+        assertThat(IntentService.dailyScheduleDate("週六行程", CLOCK))
+                .contains(LocalDate.of(2026, 7, 18));
+    }
+
+    @Test
+    void overviewTermQuestionAndInternalReasoningAreHandledForUsers() {
+        assertThat(IntentService.asksWhatContainedItemMeans("當日項目是指？")).isTrue();
+        assertThat(IntentService.asksWhatContainedItemMeans("當日項目是哪個？")).isTrue();
+        assertThat(IntentService.userFacingUnknownReason(
+                "使用者是在詢問上一則回覆，無法對應到任何能力類型"))
+                .contains("追問上一則回覆", "名稱或清單編號")
+                .doesNotContain("能力類型");
     }
 
     @Test

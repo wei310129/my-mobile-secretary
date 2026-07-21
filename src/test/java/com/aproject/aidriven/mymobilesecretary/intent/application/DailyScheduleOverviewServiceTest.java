@@ -54,7 +54,7 @@ class DailyScheduleOverviewServiceTest {
                 .contains("📅 2026/07/17", "📌 07:00–19:15", "上班日通勤與上班（起床到下班）｜待確認")
                 .contains("💼 10:00–11:00", "專案週會｜已確認")
                 .contains("💻 11:00–12:00", "簡報排練｜已確認")
-                .contains("位於", "不需要改期", "請確認是否把上述當日項目併入固定行程");
+                .contains("位於", "不需要改期", "請確認是否把當日單次行程", "併入固定行程");
         assertThat(result.message()).doesNotContain("固定行程:", "當日行程:");
         assertThat(result.message().indexOf("📌 07:00–19:15"))
                 .isLessThan(result.message().indexOf("📝 已位於固定行程內的當日項目"));

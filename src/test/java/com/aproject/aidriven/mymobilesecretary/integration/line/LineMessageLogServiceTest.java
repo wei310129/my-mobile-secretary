@@ -118,6 +118,23 @@ class LineMessageLogServiceTest {
     }
 
     @Test
+    void resolvedQuoteCarriesStableTypedReferences() {
+        LineMessageLog quoted = LineMessageLog.of(
+                LineMessageLog.Direction.OUT, "TEXT",
+                "1. 行程「送女兒」\n2. 行程「女兒上課」", NOW);
+        quoted.attachReferences("SCHEDULE:14:1;SCHEDULE:16:2");
+        when(repository.findFirstByWorkspaceIdAndCreatedByUserIdAndExternalMessageId(
+                WORKSPACE_ID, ACTOR_ID, "quoted-schedules")).thenReturn(Optional.of(quoted));
+
+        String context = inScope(() -> service.contextualize(
+                "刪除這個行程", "quoted-schedules"));
+
+        assertThat(context).contains(
+                "【LINE 引用參考】SCHEDULE:14:1;SCHEDULE:16:2",
+                "【使用者目前訊息】刪除這個行程");
+    }
+
+    @Test
     void lengthyChildCourseMessageIncludesRecentHistoryForSpeechRecognitionDisambiguation() {
         LineMessageLog previous = LineMessageLog.of(
                 LineMessageLog.Direction.IN, "TEXT", "女兒每週六要上夏恩英語課", NOW);

@@ -56,6 +56,9 @@ public class LineMessageLog extends WorkspaceOwnedEntity {
     @Column(length = 100)
     private String quotedMessageId;
 
+    @Column(length = 4000)
+    private String referencePayload;
+
     /** JPA 專用。 */
     protected LineMessageLog() {
     }
@@ -133,6 +136,14 @@ public class LineMessageLog extends WorkspaceOwnedEntity {
     public String getExternalMessageId() { return externalMessageId; }
 
     public String getQuotedMessageId() { return quotedMessageId; }
+
+    public String getReferencePayload() { return referencePayload; }
+
+    public void attachReferences(String payload) {
+        if (payload == null || payload.isBlank()) return;
+        String value = payload.strip();
+        referencePayload = value.length() <= 4000 ? value : value.substring(0, 4000);
+    }
 
     public void enrichImageContext(String summary) {
         if (direction != Direction.IN || !"IMAGE".equals(messageType)) {

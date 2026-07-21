@@ -64,4 +64,13 @@ class IntentReplyFormatterTest {
                         + "📅 待安排事項:\n- 整理文件\n- 回覆信件\n\n"
                         + "❓ 要排進行程嗎?");
     }
+
+    @Test
+    void batchReplySeparatesEveryNumberedSectionWithABlankLine() {
+        IntentResult result = IntentResult.batchExecuted(java.util.List.of(
+                "第一件\n- 細節", "第二件\n- 細節", "第三件"));
+
+        assertThat(result.message()).isEqualTo(
+                "📋 一次處理 3 件:\n\n1.第一件\n- 細節\n\n2.第二件\n- 細節\n\n3.第三件");
+    }
 }

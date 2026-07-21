@@ -38,6 +38,7 @@ public class KnowledgeRecordDeletionService {
     public Optional<IntentResult> answer(String text, Runnable beforeMutation) {
         if (text == null || text.isBlank()) return Optional.empty();
         String normalized = text.strip();
+        if (normalized.contains("行程")) return Optional.empty();
         if (isCancel(normalized) && context.pendingObjectAnnotationDeleteId() != null) {
             context.clearObjectAnnotationDelete();
             return Optional.of(IntentResult.message(IntentResult.Action.TAGGED_RECORDS_INFO,

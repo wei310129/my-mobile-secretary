@@ -37,7 +37,10 @@ final class ProductFeedbackBoundary {
             "你搞錯了",
             "你誤會了",
             "你答非所問",
-            "這不是我要的");
+            "這不是我要的",
+            "完全不知所云",
+            "你的格式不對",
+            "格式不對");
 
     private static final List<String> GENERALIZED_SUBJECTS = List.of(
             "使用者", "每個人", "未來", "一般也", "各種情況");
@@ -77,9 +80,13 @@ final class ProductFeedbackBoundary {
 
     private static boolean isResponseCorrection(String compact) {
         boolean beginsAsCorrection = CORRECTION_MESSAGES.stream().anyMatch(compact::startsWith)
-                || compact.startsWith("你完全都沒聽懂");
+                || compact.startsWith("你完全都沒聽懂")
+                || compact.startsWith("首先你的格式不對")
+                || compact.startsWith("你把你的邏輯")
+                || compact.startsWith("為什麼你明明");
         return beginsAsCorrection && containsAny(compact, List.of(
-                "你再跟我講", "你卻", "你的回應", "我在回應你", "答成", "草稿"));
+                "你再跟我講", "你卻", "你的回應", "我在回應你", "答成", "草稿",
+                "回給使用者", "直接回", "還在問", "再問", "已經確認", "空行", "項次"));
     }
 
     private static boolean isGeneralizedProductRule(String text, String compact) {

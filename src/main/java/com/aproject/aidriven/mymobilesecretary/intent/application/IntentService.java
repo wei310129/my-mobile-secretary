@@ -65,6 +65,7 @@ public class IntentService {
     private ConditionalRecurrenceConversationService conditionalRecurrenceConversationService;
     private MonthlyOrdinalRecurrenceConversationService monthlyOrdinalRecurrenceConversationService;
     private FamilyTransportConversationService familyTransportConversationService;
+    private SchoolTransportConversationService schoolTransportConversationService;
     private ScheduleCorrectionConversationService scheduleCorrectionConversationService;
     private BoundedFreeSlotConversationService boundedFreeSlotConversationService;
     private UncertainScheduleConditionConversationService uncertainScheduleConditionConversationService;
@@ -86,6 +87,7 @@ public class IntentService {
             taggedRecordConversationService;
     private PurchaseConversationService purchaseConversationService;
     private PlanningItemTypeAnswerService planningItemTypeAnswerService;
+    private ScheduleSelectionConversationService scheduleSelectionConversationService;
     private com.aproject.aidriven.mymobilesecretary.knowledge.application.KnowledgeRecordDeletionService
             knowledgeRecordDeletionService;
     private com.aproject.aidriven.mymobilesecretary.knowledge.application.KnowledgeRecordEditingService
@@ -214,6 +216,11 @@ public class IntentService {
     }
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSchoolTransportConversationService(SchoolTransportConversationService service) {
+        this.schoolTransportConversationService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setScheduleCorrectionConversationService(ScheduleCorrectionConversationService service) {
         this.scheduleCorrectionConversationService = service;
     }
@@ -273,6 +280,11 @@ public class IntentService {
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setPlanningItemTypeAnswerService(PlanningItemTypeAnswerService service) {
         this.planningItemTypeAnswerService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setScheduleSelectionConversationService(ScheduleSelectionConversationService service) {
+        this.scheduleSelectionConversationService = service;
     }
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
@@ -387,6 +399,11 @@ public class IntentService {
         if (productFeedback.isPresent()) {
             return productFeedback.get();
         }
+        if (scheduleSelectionConversationService != null) {
+            Optional<IntentResult> selected = scheduleSelectionConversationService.answer(
+                    text, interpretationText, mutationBoundary::beforeMutation);
+            if (selected.isPresent()) return selected.get();
+        }
         if (planningItemTypeAnswerService != null) {
             Optional<IntentResult> planningType = planningItemTypeAnswerService.answer(
                     text, interpretationText);
@@ -473,6 +490,13 @@ public class IntentService {
                 return binding.get();
             }
         }
+        if (schoolTransportConversationService != null) {
+            Optional<IntentResult> schoolTransport = schoolTransportConversationService.answer(
+                    text, mutationBoundary::beforeMutation);
+            if (schoolTransport.isPresent()) {
+                return schoolTransport.get();
+            }
+        }
         if (familyTransportConversationService != null) {
             Optional<IntentResult> familyTransport = familyTransportConversationService.answer(
                     text, mutationBoundary::beforeMutation);
@@ -556,6 +580,17 @@ public class IntentService {
         if (failureExplanation.isPresent()) {
             return failureExplanation.get();
         }
+        // 當前行程問題的明確拒絕／確認不得被過期的其他類型草稿搶答。
+        if (isScheduleMergeRejection(text)) {
+            return dailyScheduleOverviewService.rejectMerge(text);
+        }
+        if (isScheduleMergeConfirmation(text)) {
+            mutationBoundary.beforeMutation();
+            return dailyScheduleOverviewService.confirmMerge();
+        }
+        if (asksWhatContainedItemMeans(text)) {
+            return dailyScheduleOverviewService.explainContainedItems();
+        }
         Optional<IntentResult> itineraryDraft = travelItineraryDraftAnswerService.answer(
                 text, mutationBoundary::beforeMutation);
         if (itineraryDraft.isPresent()) {
@@ -599,14 +634,6 @@ public class IntentService {
         Optional<LocalDate> overviewDate = dailyScheduleDate(text, clock);
         if (overviewDate.isPresent()) {
             return dailyScheduleOverviewService.overview(overviewDate.get());
-        }
-        // 拒絕必須先於確認判斷:「不要併入固定行程」也包含「併入固定行程」字樣
-        if (isScheduleMergeRejection(text)) {
-            return dailyScheduleOverviewService.rejectMerge(text);
-        }
-        if (isScheduleMergeConfirmation(text)) {
-            mutationBoundary.beforeMutation();
-            return dailyScheduleOverviewService.confirmMerge();
         }
         // 「你自己看著辦」=授權低風險安排並回報(使用者裁決 #48)
         if (isDecisionDelegation(text)) {
@@ -765,7 +792,20 @@ public class IntentService {
         if (currentWeekday.find()) {
             return Optional.of(weekdayInWeek(today, currentWeekday.group(1)));
         }
+        java.util.regex.Matcher bareWeekday = java.util.regex.Pattern
+                .compile("(?:週|周|星期|禮拜)([一二三四五六日天])")
+                .matcher(normalized);
+        if (bareWeekday.find()) {
+            LocalDate candidate = weekdayInWeek(today, bareWeekday.group(1));
+            return Optional.of(candidate.isBefore(today) ? candidate.plusWeeks(1) : candidate);
+        }
         return Optional.empty();
+    }
+
+    static boolean asksWhatContainedItemMeans(String text) {
+        String normalized = text == null ? "" : text.replaceAll("\\s+", "");
+        return normalized.contains("當日項目")
+                && containsAny(normalized, "是指", "是什麼", "是哪個", "哪一個", "哪個");
     }
 
     private static LocalDate weekdayInWeek(LocalDate reference, String chineseWeekday) {
@@ -933,10 +973,19 @@ public class IntentService {
         }
         if (command.type() == IntentCommand.Type.UNKNOWN) {
             return IntentResult.clarificationNeeded(
-                    command.reason() == null || command.reason().isBlank()
-                            ? "我沒聽懂,可以換個說法嗎?" : command.reason());
+                    userFacingUnknownReason(command.reason()));
         }
         return intentHandlerRegistry.dispatch(text, command);
+    }
+
+    static String userFacingUnknownReason(String reason) {
+        if (reason == null || reason.isBlank()) return "我沒聽懂，可以換個說法嗎？";
+        String compact = reason.replaceAll("\\s+", "");
+        if (containsAny(compact, "使用者是在", "使用者已", "系統應", "無法對應到任何能力",
+                "不是要建立", "目前無法直接判定", "才能執行")) {
+            return "我知道你是在追問上一則回覆，但我還沒有唯一對到你指的項目；請直接告訴我名稱或清單編號。";
+        }
+        return reason;
     }
 
     /** Builds a bounded trace; any assembly or persistence failure is isolated from the reply. */

@@ -77,4 +77,32 @@ class ProductFeedbackBoundaryTest {
         assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
         assertThat(result.message()).contains("功能改善問題紀錄");
     }
+
+    @Test
+    void realFormattingCorrectionDoesNotFallIntoScheduleConfirmation() {
+        IntentResult result = ProductFeedbackBoundary.answer(
+                "首先你的格式不對，1. 2. 3. 的內容如果有空行，那除了1.之外的項次之前也要空行")
+                .orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+        assertThat(result.message()).contains("理解錯了", "從原操作續接");
+    }
+
+    @Test
+    void complaintAboutLeakingReasoningIsCapturedAsResponseCorrection() {
+        IntentResult result = ProductFeedbackBoundary.answer(
+                "你把你的邏輯回給使用者要幹嘛？直接回答是哪一個，而且已經確認就不要再問")
+                .orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+    }
+
+    @Test
+    void realComplaintNeverLeaksAnotherInternalIntentExplanation() {
+        IntentResult result = ProductFeedbackBoundary.answer("完全不知所云").orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+        assertThat(result.message()).contains("理解錯了", "原本的主題")
+                .doesNotContain("使用者說", "無法判斷意圖");
+    }
 }

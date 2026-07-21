@@ -35,6 +35,22 @@ class IntentApiTest extends IntegrationTestBase {
         }
     }
 
+    @Test
+    void schoolTransportFlowBypassesAiAndCreatesAllThreeSchedules() throws Exception {
+        String request = "到9月底以前，每週六我9:30從我家出發送女兒去上夏恩英語，10-12點上課，"
+                + "12點我在夏恩英語接，12:30結束";
+        say(request,
+                jsonPath("$.action").value("BATCH_EXECUTED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.containsString("女兒上夏恩英語"),
+                        org.hamcrest.Matchers.containsString("送女兒到夏恩英語"),
+                        org.hamcrest.Matchers.containsString("從夏恩英語接女兒"),
+                        org.hamcrest.Matchers.containsString("2026-09-30"))));
+        say(request,
+                jsonPath("$.action").value("CONTEXT_UPDATED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("沒有重複建立")));
+    }
+
     /** 一句話建任務:標題來自 LLM 解析,不是原文照存。 */
     @Test
     void createTaskIntentCreatesTask() throws Exception {

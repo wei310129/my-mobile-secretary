@@ -45,11 +45,19 @@ public class LineMessageLogService {
     /** Records LINE ids needed to resolve quoted messages; failures remain non-fatal. */
     public void recordSafely(LineMessageLog.Direction direction, String messageType, String content,
                              String externalMessageId, String quotedMessageId) {
+        recordSafely(direction, messageType, content, externalMessageId, quotedMessageId, null);
+    }
+
+    public void recordSafely(LineMessageLog.Direction direction, String messageType, String content,
+                             String externalMessageId, String quotedMessageId,
+                             String referencePayload) {
         try {
             Instant now = Instant.now(clock);
-            repository.save(LineMessageLog.of(direction, messageType, content,
+            LineMessageLog entry = LineMessageLog.of(direction, messageType, content,
                     externalMessageId, quotedMessageId,
-                    now, now.plus(properties.retention())));
+                    now, now.plus(properties.retention()));
+            entry.attachReferences(referencePayload);
+            repository.save(entry);
         } catch (Exception e) {
             log.warn("LINE message logging failed [direction={}]", direction, e);
         }
@@ -96,6 +104,10 @@ public class LineMessageLogService {
             // recent transcript: it is redundant, may introduce another topic, and increases
             // every structured-output request without helping the reference resolution.
             context.append("【LINE 明確引用】").append(truncateContext(quoted)).append('\n');
+            if (quotedEntry.getReferencePayload() != null) {
+                context.append("【LINE 引用參考】")
+                        .append(quotedEntry.getReferencePayload()).append('\n');
+            }
         } else {
             List<LineMessageLog> recent = listRecent(6);
             String recentText = recent.stream()

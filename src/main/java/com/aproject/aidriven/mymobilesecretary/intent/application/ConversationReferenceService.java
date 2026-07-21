@@ -43,7 +43,8 @@ public class ConversationReferenceService {
             addIfRendered(candidates, Kind.SCHEDULE, id, item.getTitle(), result.message());
         }
         if (snapshot.lastScheduleId() != null
-                && snapshot.lastScheduleListIds().stream().noneMatch(snapshot.lastScheduleId()::equals)) {
+                && snapshot.lastScheduleListIds().stream()
+                        .noneMatch(snapshot.lastScheduleId()::equals)) {
             var item = schedules.getSchedule(snapshot.lastScheduleId());
             addIfRendered(candidates, Kind.SCHEDULE, item.getId(), item.getTitle(), result.message());
         }
@@ -56,7 +57,9 @@ public class ConversationReferenceService {
             var item = tasks.getTask(snapshot.lastTaskId());
             addIfRendered(candidates, Kind.TASK, item.getId(), item.getTitle(), result.message());
         }
+        ReferenceScope scope = ReferenceScope.forAction(result.action());
         List<Candidate> rendered = candidates.stream()
+                .filter(candidate -> scope.accepts(candidate, candidates))
                 .sorted(Comparator.comparingInt(Candidate::displayIndex).thenComparing(Candidate::id))
                 .distinct().toList();
         if (rendered.isEmpty()) return null;
@@ -74,8 +77,28 @@ public class ConversationReferenceService {
             List<Candidate> candidates, Kind kind, Long id, String title, String message) {
         if (title == null || title.isBlank()) return;
         int index = message.indexOf(title);
-        if (index >= 0) candidates.add(new Candidate(kind, id, index));
+        if (index >= 0) candidates.add(new Candidate(kind, id, index, title));
     }
 
-    private record Candidate(Kind kind, Long id, int displayIndex) { }
+    private record Candidate(Kind kind, Long id, int displayIndex, String title) { }
+
+    private record ReferenceScope(Kind preferredKind) {
+
+        private static ReferenceScope forAction(IntentResult.Action action) {
+            String name = action == null ? "" : action.name();
+            boolean scheduleAction = name.contains("SCHEDULE");
+            boolean taskAction = name.contains("TASK");
+            if (scheduleAction != taskAction) {
+                return new ReferenceScope(scheduleAction ? Kind.SCHEDULE : Kind.TASK);
+            }
+            return new ReferenceScope(null);
+        }
+
+        private boolean accepts(Candidate candidate, List<Candidate> candidates) {
+            if (preferredKind == null || candidate.kind() == preferredKind) return true;
+            return candidates.stream().noneMatch(other -> other.kind() == preferredKind
+                    && other.displayIndex() == candidate.displayIndex()
+                    && other.title().equals(candidate.title()));
+        }
+    }
 }

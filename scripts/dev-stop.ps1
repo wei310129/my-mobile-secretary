@@ -26,7 +26,11 @@ if ($RemoveVolumes -and -not $Docker) {
     exit 1
 }
 
+$lifecycleLease = Enter-DevLifecycleCoordination -Action stop
+$lifecycleOutcome = 'FAILED'
+try {
 Write-DevProgress -Message "=== Stopping development environment ===" -ForegroundColor Cyan
+Invoke-CoordinatorDispatcherDrainPreflight
 $state = Read-DevState
 
 $dispatcherPid = Resolve-ManagedProcessId -TrackedProcessId $state.dispatcherPid `
@@ -47,7 +51,8 @@ if ($laneSnapshot -and $laneSnapshot.ActiveRunId) {
 
 # Stop Dispatcher first so it cannot poll while the main application is shutting down.
 if ($dispatcherPid) {
-    Stop-ProcessTree -ProcessId $dispatcherPid -Label "AI Dispatcher"
+    $stopResult = Stop-ProcessTree -ProcessId $dispatcherPid -Label "AI Dispatcher" -Port $DispatcherPort
+    if (-not $stopResult.Success) { throw "Dispatcher stop verification failed; ownership was retained." }
 } else {
     $dispatcherPortOwner = Get-PortOwnerPid -Port $DispatcherPort
     if ($dispatcherPortOwner) {
@@ -60,7 +65,8 @@ if ($dispatcherPid) {
 $appPid = Resolve-ManagedProcessId -TrackedProcessId $state.springBootPid `
     -Port $AppPort -Kind "SpringBoot"
 if ($appPid) {
-    Stop-ProcessTree -ProcessId $appPid -Label "Spring Boot"
+    $stopResult = Stop-ProcessTree -ProcessId $appPid -Label "Spring Boot" -Port $AppPort
+    if (-not $stopResult.Success) { throw "Spring Boot stop verification failed; ownership was retained." }
 } else {
     $appPortOwner = Get-PortOwnerPid -Port $AppPort
     if ($appPortOwner) {
@@ -73,7 +79,8 @@ if ($appPid) {
 $ngrokPid = Resolve-ManagedProcessId -TrackedProcessId $state.ngrokPid `
     -Port $NgrokApiPort -Kind "Ngrok"
 if ($ngrokPid) {
-    Stop-ProcessTree -ProcessId $ngrokPid -Label "ngrok"
+    $stopResult = Stop-ProcessTree -ProcessId $ngrokPid -Label "ngrok" -Port $NgrokApiPort
+    if (-not $stopResult.Success) { throw "ngrok stop verification failed; ownership was retained." }
 } else {
     Write-DevProgress -Message "  ngrok is not running." -ForegroundColor DarkGray
 }
@@ -120,3 +127,7 @@ if ($Docker) {
 
 $databaseSummary = if ($Docker -and $RemoveVolumes) { "databases=removed" } elseif ($Docker) { "databases=stopped-volumes-retained" } else { "databases=running" }
 Write-Host "Development environment stopped: applications=stopped; ngrok=stopped; $databaseSummary." -ForegroundColor Green
+$lifecycleOutcome = 'READY'
+} finally {
+    Exit-DevLifecycleCoordination -Operation $lifecycleLease -Action stop -Outcome $lifecycleOutcome
+}

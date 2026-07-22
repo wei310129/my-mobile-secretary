@@ -18,6 +18,9 @@ services:
       - "5432:5432"
     volumes:
       - postgres-data:/var/lib/postgresql/data
+    labels:
+      com.mms.coordination.class: shared-persistent
+      com.mms.coordination.identity: main-postgres-v1
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U mms -d mymobilesecretary"]
       interval: 5s
@@ -32,6 +35,9 @@ services:
       - "6379:6379"
     volumes:
       - redis-data:/data
+    labels:
+      com.mms.coordination.class: shared-persistent
+      com.mms.coordination.identity: main-redis-v1
     healthcheck:
       test: ["CMD", "redis-cli", "ping"]
       interval: 5s

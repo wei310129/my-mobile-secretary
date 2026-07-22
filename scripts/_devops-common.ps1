@@ -11,6 +11,7 @@ $NgrokApiPort = 4040
 $DispatcherRoot = Join-Path $RepoRoot "internal\ai-dispatcher"
 $DispatcherPom = Join-Path $DispatcherRoot "pom.xml"
 $DispatcherComposeFile = Join-Path $DispatcherRoot "compose.yaml"
+. "$PSScriptRoot\coordination-common.ps1"
 
 function Write-DevProgress {
     param(
@@ -38,6 +39,13 @@ function Ensure-LogsDir {
     }
 }
 
+function New-DevServiceGeneration {
+    $generation = [guid]::NewGuid().ToString("n")
+    $path = Join-Path (Join-Path $LogsDir "generations") $generation
+    New-Item -ItemType Directory -Path $path -Force | Out-Null
+    return [pscustomobject]@{ Generation = $generation; LogDirectory = $path }
+}
+
 # Some launchers provide both Path and PATH in the native environment block. Windows PowerShell
 # treats environment keys as case-insensitive, so Start-Process rejects that inherited block.
 # Rebuild only this script process's PATH entry; system and user environment settings are untouched.
@@ -48,24 +56,72 @@ function Normalize-ProcessPathEnvironment {
     [System.Environment]::SetEnvironmentVariable("Path", $processPath, "Process")
 }
 
+function Test-CoordinationMavenEnabled {
+    return $env:MMS_COORDINATION_MAVEN_ENABLED -ne 'false'
+}
+
+function Enter-DevLifecycleCoordination {
+    param([Parameter(Mandatory)][ValidateSet('start', 'stop', 'restart')][string]$Action)
+    if ($env:MMS_COORDINATION_LIFECYCLE_ENABLED -ne 'true' -or $env:MMS_COORDINATION_LIFECYCLE_HELD -eq 'true') {
+        return $null
+    }
+    $resources = @(
+        (New-CoordinationResource -Type 'machine/docker-daemon' -Key 'local-default' -Mode Exclusive),
+        (New-CoordinationResource -Type 'machine/port' -Key $AppPort -Mode Exclusive),
+        (New-CoordinationResource -Type 'machine/port' -Key $DispatcherPort -Mode Exclusive),
+        (New-CoordinationResource -Type 'machine/ngrok-runtime' -Key 'local-default' -Mode Exclusive),
+        (New-CoordinationResource -Type 'environment' -Key 'local-dev' -Mode Exclusive)
+    )
+    $operation = Enter-CoordinationOperation -Resources $resources -TimeoutSeconds 30 -StateRoot (Get-CoordinationDefaultRoot)
+    if ($operation.Outcome -ne 'READY') { throw "Development lifecycle transition is $($operation.Outcome); $Action was not attempted." }
+    $operation | Add-Member -NotePropertyName PreviousLifecycleHeld -NotePropertyValue $env:MMS_COORDINATION_LIFECYCLE_HELD -Force
+    $env:MMS_COORDINATION_LIFECYCLE_HELD = 'true'
+    return $operation
+}
+
+function Exit-DevLifecycleCoordination {
+    param(
+        [AllowNull()]$Operation,
+        [Parameter(Mandatory)][ValidateSet('start', 'stop', 'restart')][string]$Action,
+        [Parameter(Mandatory)][ValidateSet('READY', 'FAILED')][string]$Outcome
+    )
+    if ($null -eq $Operation) { return }
+    try {
+        Write-CoordinationReceipt -StateRoot $Operation.StateRoot -Receipt ([ordered]@{
+            operationId = $Operation.OperationId; outcome = $Outcome; action = $Action; disposition = 'kept-persistent'
+            cleanup = 'none; lifecycle transition only retains shared and persistent resources'
+        })
+    } finally {
+        if ([string]::IsNullOrWhiteSpace($Operation.PreviousLifecycleHeld)) { Remove-Item Env:MMS_COORDINATION_LIFECYCLE_HELD -ErrorAction SilentlyContinue }
+        else { $env:MMS_COORDINATION_LIFECYCLE_HELD = $Operation.PreviousLifecycleHeld }
+        Exit-CoordinationOperation $Operation
+    }
+}
+
 function Read-DevState {
     if (Test-Path $StateFile) {
         try { return Get-Content $StateFile -Raw | ConvertFrom-Json }
-        catch { return [pscustomobject]@{} }
+        catch { throw "Development state is invalid; ownership is BLOCKED until read-only reconcile can classify it." }
     }
     return [pscustomobject]@{}
 }
 
 function Write-DevState {
     param([Parameter(Mandatory)][hashtable]$Updates)
-    $state = Read-DevState
-    $merged = @{}
-    # 先保留舊欄位,PSCustomObject 沒有 Keys,用 Properties 走
-    if ($state.PSObject.Properties) {
-        foreach ($p in $state.PSObject.Properties) { $merged[$p.Name] = $p.Value }
+    $guard = New-CoordinationMutex "service-state/$StateFile"
+    $held = $false
+    try {
+        $held = Wait-CoordinationMutex -Mutex $guard -Deadline ([datetime]::UtcNow.AddSeconds(10))
+        if (-not $held) { throw "Development state is BUSY; it was not overwritten." }
+        $state = Read-DevState
+        $merged = @{}
+        if ($state.PSObject.Properties) { foreach ($p in $state.PSObject.Properties) { $merged[$p.Name] = $p.Value } }
+        foreach ($k in $Updates.Keys) { $merged[$k] = $Updates[$k] }
+        Write-CoordinationJsonAtomic -Path $StateFile -Document $merged
+    } finally {
+        if ($held) { $guard.ReleaseMutex() }
+        $guard.Dispose()
     }
-    foreach ($k in $Updates.Keys) { $merged[$k] = $Updates[$k] }
-    $merged | ConvertTo-Json -Depth 5 | Set-Content -Path $StateFile -Encoding utf8
 }
 
 # 找監聽某 port 的行程 PID(狀態檔遺失或行程是上一輪殘留時的保底手段)。
@@ -74,6 +130,39 @@ function Get-PortOwnerPid {
     $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
             Select-Object -First 1 -ExpandProperty OwningProcess
     return $conn
+}
+
+function Get-UnmanagedDevelopmentWriters {
+    param(
+        [Parameter(Mandatory)]$State,
+        [object[]]$Processes
+    )
+    if ($null -eq $Processes) {
+        $Processes = @(Get-CimInstance Win32_Process -ErrorAction SilentlyContinue |
+            Select-Object ProcessId, ParentProcessId, CommandLine)
+    }
+    $managed = [Collections.Generic.HashSet[int]]::new()
+    foreach ($tracked in @($State.springBootPid, $State.dispatcherPid, $State.ngrokPid)) {
+        if ($tracked) { [void]$managed.Add([int]$tracked) }
+    }
+    $changed = $true
+    while ($changed) {
+        $changed = $false
+        foreach ($process in @($Processes)) {
+            if ($process.ProcessId -and $process.ParentProcessId -and $managed.Contains([int]$process.ParentProcessId)) {
+                if ($managed.Add([int]$process.ProcessId)) { $changed = $true }
+            }
+        }
+    }
+    $writers = [Collections.Generic.List[string]]::new()
+    foreach ($process in @($Processes)) {
+        $commandLine = [string]$process.CommandLine
+        if (-not $process.ProcessId -or [string]::IsNullOrWhiteSpace($commandLine) -or $managed.Contains([int]$process.ProcessId)) { continue }
+        if ($commandLine -match '(?i)mvnw\.cmd|spring-boot:run|coordinated-maven-run\.ps1|docker(?:\.exe)?\s+compose') {
+            $writers.Add("process:PID=$($process.ProcessId)")
+        }
+    }
+    return @($writers | Select-Object -Unique)
 }
 
 function Test-ManagedProcess {
@@ -88,9 +177,9 @@ function Test-ManagedProcess {
         $commandLine = (Get-CimInstance Win32_Process -Filter "ProcessId = $ProcessId" `
                 -ErrorAction Stop).CommandLine
         if ($Kind -eq "Dispatcher") {
-            return $commandLine -match "internal[\\/]ai-dispatcher[\\/]pom\.xml|AiDispatcherApplication|ai-dispatcher"
+            return $commandLine -match "internal[\\/]ai-dispatcher[\\/]pom\.xml|AiDispatcherApplication|ai-dispatcher|coordinated-maven-run\.ps1.*dispatcher"
         }
-        return $commandLine -match "mvnw\.cmd|spring-boot:run|MyMobileSecretaryApplication|my-mobile-secretary"
+        return $commandLine -match "mvnw\.cmd|spring-boot:run|MyMobileSecretaryApplication|my-mobile-secretary|coordinated-maven-run\.ps1.*root"
     } catch {
         return $false
     }
@@ -127,15 +216,27 @@ function Assert-PortAvailableOrManaged {
 function Stop-ProcessTree {
     param(
         [Parameter(Mandatory)][int]$ProcessId,
-        [Parameter(Mandatory)][string]$Label
+        [Parameter(Mandatory)][string]$Label,
+        [int]$Port = 0,
+        [int]$TimeoutSec = 15
     )
     $proc = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
     if ($null -eq $proc) {
         Write-Host "  $Label`: 行程 $ProcessId 已經不在,跳過。" -ForegroundColor DarkGray
-        return
+        return [pscustomobject]@{ Success = $true; TaskkillExitCode = 0; ProcessExited = $true; PortReleased = $true }
     }
     & taskkill /F /T /PID $ProcessId 2>&1 | Out-Null
-    Write-DevProgress -Message "  $Label`: 已停止(PID $ProcessId)。" -ForegroundColor Green
+    $taskkillExitCode = $LASTEXITCODE
+    $deadline = (Get-Date).AddSeconds($TimeoutSec)
+    do {
+        $processExited = -not (Get-Process -Id $ProcessId -ErrorAction SilentlyContinue)
+        $portReleased = $Port -le 0 -or -not (Get-PortOwnerPid -Port $Port)
+        if ($processExited -and $portReleased) { break }
+        Start-Sleep -Milliseconds 200
+    } while ((Get-Date) -lt $deadline)
+    $success = $taskkillExitCode -eq 0 -and $processExited -and $portReleased
+    if ($success) { Write-DevProgress -Message "  $Label`: 已停止(PID $ProcessId)。" -ForegroundColor Green }
+    return [pscustomobject]@{ Success = $success; TaskkillExitCode = $taskkillExitCode; ProcessExited = $processExited; PortReleased = $portReleased }
 }
 
 # 找 ngrok.exe:優先 $env:NGROK_EXE,其次 PATH,最後回退到使用者曾手動下載的路徑。
@@ -318,6 +419,18 @@ function Get-DispatcherLaneState {
     $snapshot = Get-DispatcherLaneSnapshot
     if ($snapshot) { return $snapshot.State }
     return $null
+}
+
+function Invoke-CoordinatorDispatcherDrainPreflight {
+    if ($env:MMS_COORDINATION_LIFECYCLE_ENABLED -ne "true") { return }
+    . "$PSScriptRoot\coordination-lifecycle.ps1"
+    $result = Invoke-DispatcherDrainAdapter -Action Drain -EnableLiveAdapter `
+        -BaseUrl $env:AI_DISPATCHER_COORDINATION_BASE_URL `
+        -AdminToken $env:AI_DISPATCHER_SESSION_BINDING_ADMIN_TOKEN `
+        -Actor $env:USERNAME
+    if ($result.Outcome -ne "READY" -or $result.DispatcherState -ne "DRAINED") {
+        throw "Coordinator Dispatcher drain preflight did not prove DRAINED: $($result.Reason)"
+    }
 }
 
 function Get-DispatcherSessionSnapshot {

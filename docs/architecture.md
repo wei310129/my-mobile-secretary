@@ -505,3 +505,46 @@ Async terminal notification 只標示原工作結果，不搶目前焦點。
 focus、active binding、transition 與 referent context 均需 workspace／actor application filter、RLS、
 optimistic version、注入 `Clock`、idempotency 與同 actor 跨 channel 隔離測試。焦點控制只屬對話狀態，
 不寫 LifeRecord／tag graph；真正可感知的業務 mutation 仍依原 domain event recorder 規則處理。
+
+## 36. 開發 Session 協調平面與共享資源生命週期（2026-07-22，規劃）
+
+本節記錄開發基礎設施的規劃基線，不表示協調工具已經落地。詳細 resource matrix、競態證據、階段 gate
+與故障注入 oracle 見
+[開發 Session 自協調 Pipeline 計畫](exec-plans/completed/development-session-coordination-pipeline.md)。
+
+開發協調平面屬 repository tooling，不是產品 runtime。產品 artifact、application dependency graph 與
+runtime correctness 不得依賴 coordinator 或 AI Dispatcher；開發者使用的 Maven／啟停 wrapper 可以依賴
+coordinator 來安全操作工作區。Coordinator 不得使用主產品 PostgreSQL／Redis 作為 bootstrap lock。
+internal/ai-dispatcher 繼續獨立擁有自己的 session、lane、run、heartbeat 與 fencing，只保證其自身
+最多一個 active run。Repository coordinator 目前只能使用既有唯讀 operator 狀態做 fail-closed 檢查；
+安全的 durable pause／drain contract 仍是 Phase 0/3 待設計、驗證的能力。不得以直接清 Dispatcher DB
+row、釋放 claimed event，或把不確定 outcome 當成 stale lock 取代該 contract。
+
+已確認的協調不變量是：共享 mutable resource 必須有可驗證 owner；multi-resource operation 必須避免
+死鎖；舊 owner 不得停止、清理或 settle 新 owner 的資源；逾時本身不能授權 destructive takeover；
+handoff 不得保存秘密。Phase 0 已 freeze `v1/{scope}/{resource-type}/{normalized-key}` key、既有 matrix 的
+rank/type/key total order，以及以 Windows `Global\\mms-coord-v1-{SHA-256(key)}` gate/slot mutex 實作的
+shared、exclusive 與 bounded counting lease。machine metadata 位於使用者的 `%LOCALAPPDATA%`，repo-common
+metadata 以 Git common-dir hash 區分同 clone worktree；Global mutex 是 correctness authority，JSON registry
+只供觀測並以 atomic replace 寫入。`LOCALAPPDATA`、Global mutex 或跨 Windows logon visibility 不可驗證時
+必須 BLOCKED，不能悄悄退化為 repo-local 假保護。資源涵蓋 worktree source／Git index、兩個 Maven target、
+environment consumer／transition、machine-wide Docker daemon與固定 ports、兩組 Compose、LINE/ngrok、
+database migration／destructive data 及 Docker capacity。
+
+建議的 Phase 0 pipeline 是 reserve、preflight、reconcile、execute、verify、commit receipt 與 release；
+outcome taxonomy 及 receipt schema 也在該 gate freeze。無論最後採用哪個 backend，start／stop／restart
+的 transition 不得交錯，合法 consumer 不得被另一 session 無聲重啟，成功、失敗與取消都要留下可判讀
+handoff。下一個 session 不得先 blanket clean 再猜測上輪狀態。
+
+第一版採「共享互動環境＋隔離測試 lane」作為建議基線：主 Compose、主 runtime、ngrok／LINE 與
+Dispatcher runtime 是單機 singleton，健康時可供多 session 使用，但生命週期 mutation 只經 coordinator；
+integration test 使用 Testcontainers、隨機 port 與受控 Docker capacity。獨立 writable agent 優先使用
+獨立 worktree；同一 worktree 的 Maven target 為單一 writer，Spotless apply 另需 source-write claim。
+Flyway migration 編號需 reservation，避免不同 worktree 同時選到同一版本。
+
+清理遵循 ownership 與資料分類：本 operation 建立、owner token 可驗證且已標 disposable 的測試
+ephemeral resource（包含專用測試 volume）可自動清理；共享健康服務與主／Dispatcher dev volume
+預設保留；Flyway history、Git/source、secrets 與 Dispatcher active/unknown run 都屬 persistent 或
+uncertain，不能自動刪除。禁止以 Docker
+system／volume prune、Redis FLUSHALL、Flyway clean、模糊名稱比對或例行 Maven clean 當作恢復策略。
+需要 destructive cleanup 時必須另取專用 lease、確認沒有 consumer、精確列出目標並取得使用者批准。

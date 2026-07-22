@@ -41,7 +41,15 @@ if ($ArmDispatcher) {
     Disable-DispatcherAutomationEnvironment
 }
 Ensure-LogsDir
+$script:StartServiceGeneration = $null
+function Resolve-StartLogPath {
+    param([Parameter(Mandatory)][string]$Name)
+    if ($null -eq $script:StartServiceGeneration) { $script:StartServiceGeneration = New-DevServiceGeneration }
+    return Join-Path $script:StartServiceGeneration.LogDirectory $Name
+}
 Set-Location $RepoRoot
+$lifecycleLease = Enter-DevLifecycleCoordination -Action start
+$lifecycleOutcome = 'FAILED'
 
 try {
     Assert-CommandAvailable -Name "docker"
@@ -54,9 +62,11 @@ try {
     if (-not $NoNgrok) { Assert-PortAvailableOrManaged -Port $NgrokApiPort -Kind "Ngrok" }
 } catch {
     Write-Host $_.Exception.Message -ForegroundColor Red
+    Exit-DevLifecycleCoordination -Operation $lifecycleLease -Action start -Outcome $lifecycleOutcome
     exit 1
 }
 
+try {
 Write-DevProgress -Message "=== Starting development environment (profile=$Profile) ===" -ForegroundColor Cyan
 $automationMode = if ($ArmDispatcher) { "ARMED" } else { "DISARMED" }
 $automationColor = if ($ArmDispatcher) { "Yellow" } else { "DarkGray" }
@@ -162,8 +172,8 @@ if (-not $NoNgrok) {
         $proc = Start-Process -FilePath $ngrokExe `
             -ArgumentList $ngrokArguments `
             -WorkingDirectory $RepoRoot -WindowStyle Hidden -PassThru `
-            -RedirectStandardOutput (Join-Path $LogsDir "ngrok.out.log") `
-            -RedirectStandardError (Join-Path $LogsDir "ngrok.err.log")
+            -RedirectStandardOutput (Resolve-StartLogPath "ngrok.out.log") `
+            -RedirectStandardError (Resolve-StartLogPath "ngrok.err.log")
         $ngrokPid = $proc.Id
         $ngrokUrl = Get-NgrokPublicUrl -TimeoutSec 20
         if (-not $ngrokUrl) {
@@ -197,12 +207,18 @@ if ($existingAppPid) {
     $appPid = $existingAppPid
     Write-DevProgress -Message "  Main application is already healthy (PID $appPid)." -ForegroundColor DarkGray
 } else {
-    $proc = Start-Process -FilePath "$RepoRoot\mvnw.cmd" `
-        -ArgumentList "spring-boot:run", "-Dmaven.test.skip=true", `
-            "-Dspring-boot.run.profiles=$Profile" `
+    $launchFile = if (Test-CoordinationMavenEnabled) { Join-Path $PSScriptRoot 'coordinated-maven-run.ps1' } else { "$RepoRoot\mvnw.cmd" }
+    $launchArguments = if (Test-CoordinationMavenEnabled) {
+        @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $launchFile, '-Application', 'root', '-Profile', $Profile)
+    } else {
+        @('spring-boot:run', '-Dmaven.test.skip=true', "-Dspring-boot.run.profiles=$Profile")
+    }
+    $launchExecutable = if (Test-CoordinationMavenEnabled) { Join-Path $PSHOME 'powershell.exe' } else { $launchFile }
+    $proc = Start-Process -FilePath $launchExecutable `
+        -ArgumentList $launchArguments `
         -WorkingDirectory $RepoRoot -WindowStyle Hidden -PassThru `
-        -RedirectStandardOutput (Join-Path $LogsDir "spring-boot.out.log") `
-        -RedirectStandardError (Join-Path $LogsDir "spring-boot.err.log")
+        -RedirectStandardOutput (Resolve-StartLogPath "spring-boot.out.log") `
+        -RedirectStandardError (Resolve-StartLogPath "spring-boot.err.log")
     $appPid = $proc.Id
     if (-not (Wait-HttpOk -Url "http://localhost:$AppPort/actuator/health" -TimeoutSec 240 -ProcessId $appPid)) {
         Write-Host "Main health check failed. Check scripts\.logs\spring-boot.err.log." -ForegroundColor Red
@@ -272,11 +288,18 @@ if ($SkipDispatcher) {
                 Write-Host "  Dispatcher exists but is unhealthy. It was not interrupted; use dev-restart.ps1." -ForegroundColor Yellow
             }
         } else {
-            $proc = Start-Process -FilePath "$RepoRoot\mvnw.cmd" `
-                -ArgumentList "-f", "internal\ai-dispatcher\pom.xml", "spring-boot:run" `
+            $launchFile = if (Test-CoordinationMavenEnabled) { Join-Path $PSScriptRoot 'coordinated-maven-run.ps1' } else { "$RepoRoot\mvnw.cmd" }
+            $launchArguments = if (Test-CoordinationMavenEnabled) {
+                @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $launchFile, '-Application', 'dispatcher')
+            } else {
+                @('-f', 'internal\ai-dispatcher\pom.xml', 'spring-boot:run')
+            }
+            $launchExecutable = if (Test-CoordinationMavenEnabled) { Join-Path $PSHOME 'powershell.exe' } else { $launchFile }
+            $proc = Start-Process -FilePath $launchExecutable `
+                -ArgumentList $launchArguments `
                 -WorkingDirectory $RepoRoot -WindowStyle Hidden -PassThru `
-                -RedirectStandardOutput (Join-Path $LogsDir "ai-dispatcher.out.log") `
-                -RedirectStandardError (Join-Path $LogsDir "ai-dispatcher.err.log")
+                -RedirectStandardOutput (Resolve-StartLogPath "ai-dispatcher.out.log") `
+                -RedirectStandardError (Resolve-StartLogPath "ai-dispatcher.err.log")
             $dispatcherPid = $proc.Id
             if (Wait-HttpOk -Url "http://localhost:$DispatcherPort/actuator/health" -TimeoutSec 120 -ProcessId $dispatcherPid) {
                 Write-DevProgress -Message "  AI Dispatcher is ready (PID $dispatcherPid)." -ForegroundColor Green
@@ -291,7 +314,7 @@ if ($SkipDispatcher) {
     }
 }
 
-Write-DevState -Updates @{
+$stateUpdates = @{
     springBootPid = $appPid
     dispatcherPid = $dispatcherPid
     ngrokPid      = $ngrokPid
@@ -300,6 +323,8 @@ Write-DevState -Updates @{
     dispatcherArmed = [bool]$ArmDispatcher
     startedAt     = (Get-Date).ToString("o")
 }
+if ($script:StartServiceGeneration) { $stateUpdates["serviceGeneration"] = $script:StartServiceGeneration.Generation; $stateUpdates["serviceLogDirectory"] = $script:StartServiceGeneration.LogDirectory }
+Write-DevState -Updates $stateUpdates
 
 # Final verification is intentionally outside-in. If it passes, every required layer from LINE's
 # platform through ngrok and Spring Boot is connected. Layered diagnostics are only needed on failure.
@@ -332,3 +357,7 @@ if ($ArmDispatcher -and -not $dispatcherPid) { exit 2 }
 $dispatcherSummary = if ($SkipDispatcher) { "dispatcher=skipped" } elseif ($dispatcherPid) { "dispatcher=$automationMode" } else { "dispatcher=unavailable" }
 $lineSummary = if ($NoNgrok) { "LINE=skipped" } else { "LINE=connected" }
 Write-Host "Development environment ready: main=http://localhost:$AppPort; $dispatcherSummary; $lineSummary; logs=scripts\.logs\." -ForegroundColor Green
+$lifecycleOutcome = 'READY'
+} finally {
+    Exit-DevLifecycleCoordination -Operation $lifecycleLease -Action start -Outcome $lifecycleOutcome
+}

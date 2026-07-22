@@ -278,13 +278,17 @@ public class CodexLifecycleService {
                 ? completion.completedAt().plus(properties.retryDelay()) : null;
         int updated = jdbcTemplate.update("""
                 UPDATE dispatcher_lane
-                SET state = ?, active_run_id = NULL,
+                SET state = CASE WHEN coordinator_drain_requested THEN 'PAUSED' ELSE ? END,
+                    active_run_id = NULL,
                     observed_first_pending_at = ?, observed_last_pending_at = ?,
                     eligible_at = NULL, retry_not_before = ?,
                     consecutive_failure_count = CASE WHEN ? = 'FAILED'
                         THEN consecutive_failure_count + 1 ELSE 0 END,
-                    last_error_code = CASE WHEN ? = 'FAILED' THEN ? ELSE NULL END,
-                    paused_reason = NULL, version = version + 1, updated_at = ?
+                    last_error_code = CASE WHEN coordinator_drain_requested THEN 'COORDINATOR_DRAIN'
+                        WHEN ? = 'FAILED' THEN ? ELSE NULL END,
+                    paused_reason = CASE WHEN coordinator_drain_requested
+                        THEN 'Coordinator requested a safe drain' ELSE NULL END,
+                    version = version + 1, updated_at = ?
                 WHERE lane_key = 'CODEX_DEVELOPMENT'
                 """, nextState, timestamp(pending.firstRecordedAt()),
                 timestamp(pending.lastRecordedAt()), timestamp(retryNotBefore),

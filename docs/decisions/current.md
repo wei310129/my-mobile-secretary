@@ -24,11 +24,15 @@ This is the concise current-decision entry point. `docs/development-plan.md` rem
 | External cost/privacy | Ask before adding paid services or using real personal/location data |
 | Destructive behavior | Ask before data deletion, destructive migrations, or silent changes to approved product semantics |
 | Dispatcher | `internal/ai-dispatcher` is an isolated development application and must not become a main-runtime dependency |
-| Current phase | Phase 0–2 complete; Phase 3/conversation work remains active; advanced infrastructure phases have not started |
+| Development coordination | Coordinator-aware repository-owned Maven, Spotless and dev lifecycle scripts use lease/receipt/doctor tooling; unmanaged IDE/direct commands remain detect-and-block, not technically intercepted |
+| Coordination Phase 0 freeze | v1 uses Windows Global gate/slot mutexes as the lease authority, LOCALAPPDATA atomic registries as metadata, fixed resource ordering, owner/generation fencing, and fail-closed handling for unverifiable machine/logon visibility; existing wrappers retain their contracts until phased adapter rollout |
+| Coordination rollout | State writes, service-generation logs, protected Dispatcher drain, source-writer/Flyway claims, handoff receipts and ledger are rolled out; shared/persistent and unverifiable Testcontainers resources remain retain-only/fail-closed |
+| Product roadmap phase | Product Phase 0–2 complete; Phase 3/conversation work remains active; advanced infrastructure phases have not started |
 | Travel project | Planning is approved, but runtime support must follow the dedicated execution plan and its consent/focus invariants |
 
 ## Current work
 
 - Global Conversation Focus foundations and the travel-project prerequisites are active under `docs/exec-plans/active/travel-project-terra-high-development-test-plan.md`.
 - Real-conversation repair batches remain ignored and local-only under `docs/exec-plans/active/local/`; see the active index for the privacy boundary.
+- Development-session coordination is recorded under `docs/exec-plans/completed/development-session-coordination-pipeline.md`; shared/persistent cleanup remains disabled by default and unmanaged tools remain blocked when detected.
 - `internal/ai-dispatcher` evolves independently of product phase progress.

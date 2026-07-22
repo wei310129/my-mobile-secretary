@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Health report for the full development environment, including a LINE platform webhook test.
+  Local health report for the development environment; LINE platform probing is explicit opt-in.
 
 .PARAMETER NoNgrokRequired
   Does not fail when ngrok is stopped.
@@ -9,7 +9,10 @@
   Fails when the Dispatcher DB or application is unhealthy. It is non-blocking by default.
 
 .PARAMETER SkipLineWebhookTest
-  Skips LINE's official end-to-end webhook test and reports local layers only.
+  Compatibility switch. LINE webhook probing is already skipped unless -ExternalLineProbe is supplied.
+
+.PARAMETER ExternalLineProbe
+  Explicitly runs LINE's official end-to-end webhook test after local status collection.
 
 .PARAMETER VerboseOutput
   Prints the per-layer status details even when every required layer is healthy.
@@ -18,6 +21,7 @@ param(
     [switch]$NoNgrokRequired,
     [switch]$RequireDispatcher,
     [switch]$SkipLineWebhookTest,
+    [switch]$ExternalLineProbe,
     [switch]$VerboseOutput
 )
 
@@ -34,6 +38,12 @@ function Show-StatusDetails {
         if ($detail.Color) { Write-Host $detail.Message -ForegroundColor $detail.Color }
         else { Write-Host $detail.Message }
     }
+}
+function Get-DevStateValue {
+    param([Parameter(Mandatory)]$State, [Parameter(Mandatory)][string]$Name)
+    $property = $State.PSObject.Properties[$Name]
+    if ($property) { return $property.Value }
+    return $null
 }
 
 $allHealthy = $true
@@ -78,8 +88,9 @@ $dispatcherLaneColor = if (Test-DispatcherLaneActive -State $dispatcherLaneState
     "DarkGray"
 }
 Add-StatusDetail -Message "Dispatcher lane: $dispatcherLaneDisplay" -ForegroundColor $dispatcherLaneColor
-$dispatcherMode = if ([bool]$state.dispatcherArmed) { "ARMED" } else { "DISARMED" }
-$dispatcherModeColor = if ([bool]$state.dispatcherArmed) { "Yellow" } else { "DarkGray" }
+$dispatcherArmed = [bool](Get-DevStateValue -State $state -Name 'dispatcherArmed')
+$dispatcherMode = if ($dispatcherArmed) { "ARMED" } else { "DISARMED" }
+$dispatcherModeColor = if ($dispatcherArmed) { "Yellow" } else { "DarkGray" }
 Add-StatusDetail -Message "Dispatcher mode: $dispatcherMode (last managed start)" -ForegroundColor $dispatcherModeColor
 
 $dispatcherPortPid = Get-PortOwnerPid -Port $DispatcherPort
@@ -111,7 +122,7 @@ if ($ngrokPortPid) {
     if (-not $NoNgrokRequired) { $allHealthy = $false }
 }
 
-if (-not $SkipLineWebhookTest -and -not $NoNgrokRequired) {
+if ($ExternalLineProbe -and -not $SkipLineWebhookTest -and -not $NoNgrokRequired) {
     Add-StatusDetail -Message "LINE webhook:   official end-to-end test executed" -ForegroundColor DarkGray
     $lineTest = Test-LineWebhookEndToEnd
     if ($lineTest.Success) {
@@ -123,12 +134,19 @@ if (-not $SkipLineWebhookTest -and -not $NoNgrokRequired) {
         if ($lineTest.Error) { Add-StatusDetail -Message "  error:        $($lineTest.Error)" -ForegroundColor Yellow }
         $allHealthy = $false
     }
-} elseif ($SkipLineWebhookTest) {
-    Add-StatusDetail -Message "LINE webhook:   official test skipped (-SkipLineWebhookTest)" -ForegroundColor DarkGray
+} else {
+    Add-StatusDetail -Message "LINE webhook:   external probe skipped (use -ExternalLineProbe to enable)" -ForegroundColor DarkGray
 }
 
-if ($state.startedAt) {
-    Add-StatusDetail -Message "Last dev-start.ps1 time: $($state.startedAt)" -ForegroundColor DarkGray
+${startedAt} = Get-DevStateValue -State $state -Name 'startedAt'
+if ($startedAt) {
+    Add-StatusDetail -Message "Last dev-start.ps1 time: $startedAt" -ForegroundColor DarkGray
+}
+$serviceGeneration = Get-DevStateValue -State $state -Name 'serviceGeneration'
+if ($serviceGeneration) {
+    Add-StatusDetail -Message "Service generation: $serviceGeneration" -ForegroundColor DarkGray
+    $serviceLogDirectory = Get-DevStateValue -State $state -Name 'serviceLogDirectory'
+    if ($serviceLogDirectory) { Add-StatusDetail -Message "  logs:          $serviceLogDirectory" -ForegroundColor DarkGray }
 }
 if (-not $RequireDispatcher) {
     Add-StatusDetail -Message "Dispatcher is failure-isolated. Use -RequireDispatcher for strict checking." -ForegroundColor DarkGray
@@ -140,6 +158,6 @@ if (-not $allHealthy) {
     exit 1
 }
 $dispatcherSummary = if ($dispatcherHealthy) { "dispatcher=healthy" } else { "dispatcher=optional-unavailable" }
-$lineSummary = if ($SkipLineWebhookTest -or $NoNgrokRequired) { "LINE=skipped" } else { "LINE=connected" }
+$lineSummary = if ($ExternalLineProbe -and -not $SkipLineWebhookTest -and -not $NoNgrokRequired) { "LINE=connected" } else { "LINE=skipped" }
 Write-Host "Development environment healthy: main=UP; Postgres=healthy; Redis=healthy; $dispatcherSummary; $lineSummary." -ForegroundColor Green
 exit 0

@@ -12,6 +12,9 @@ services:
       - "5433:5432"
     volumes:
       - ai-dispatcher-postgres-data:/var/lib/postgresql/data
+    labels:
+      com.mms.coordination.class: shared-persistent
+      com.mms.coordination.identity: dispatcher-postgres-v1
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ai_dispatcher -d ai_dispatcher"]
       interval: 5s

@@ -15,13 +15,18 @@ Do not move an active plan while code, migrations, or tests still reference its 
 
 State the outcome, scope, approved product decisions, invariants, affected files or modules, phase gates, validation commands, untested paths, destructive or migration boundaries, and remaining risks. Link to architecture and decisions instead of copying their full contents.
 
-## Context compression reminder points
+If a plan can run across multiple sessions or agents, it must also include a resource concurrency
+matrix, ownership and lease scope, fixed multi-resource acquisition order, stale-owner recovery,
+owner-scoped cleanup boundaries, a machine-readable handoff contract, and concurrency/crash
+validation. A timeout or heartbeat expiry alone must not authorize destructive takeover.
 
-For a plan intended to continue across a long Terra session, list explicit reminder points only at a stable phase exit: a steering wheel or stage is complete with recorded gate results, or an investigation has converged before an independent implementation/acceptance stage.
+## Context compression decisions
 
-Do not place a reminder during an uncommitted key decision, migration or destructive operation, unidentified test failure, or work that still depends on large unsummarized context.
+The active agent decides when context compression is appropriate for every project task. It must balance development quality, development efficiency, and token efficiency rather than mechanically following a fixed token threshold, turn count, phase, or document heading. Relevant signals include whether decisions, invariants, and gate evidence are durably recorded; whether the next unit of work can continue independently; whether completed context is obscuring current work; whether keeping it still adds material value; and whether the remaining context can safely carry the expected next unit of work.
 
-At each reminder point, provide a continuation summary containing:
+A long-running plan may list context-compression candidate points and draft continuation summaries. Candidate points produced by GPT-5.6, Sol, or another high-capability planning model are important inputs, but they are advisory rather than exclusive or mandatory. Based on actual development needs, the active agent may compress earlier or later, skip a candidate, or add a new one. Any plan or prompt that says compression is required at a prelisted point is interpreted as a recommendation unless the user explicitly fixes the timing in the current request.
+
+The agent must not recommend compression during an uncommitted key decision, migration or destructive operation, unidentified test failure, or work that still depends on large unsummarized context. Before every actual recommendation, it must prepare a self-contained continuation summary containing:
 
 - Current phase or steering wheel.
 - Approved decisions and invariants.
@@ -30,7 +35,7 @@ At each reminder point, provide a continuation summary containing:
 - Remaining work and next action.
 - Risks, blockers, and any required user decision.
 
-When the point is reached, briefly tell the user: `現在是適合壓縮 context 的時機`, followed by that continuation summary. Recommend compression only; never perform it implicitly or use it to skip validation.
+When the execution environment requires the user to trigger compression, briefly tell the user: `現在是適合壓縮 context 的時機`, followed by that continuation summary. Recommend compression only; never discard approved decisions, use compression to skip validation, or describe directly dependent unfinished work as a stable exit.
 
 ## Lifecycle
 

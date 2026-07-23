@@ -22,6 +22,7 @@ class DatabaseAccessSafetyArchitectureTest {
     private static final Set<String> REVIEWED_NATIVE_QUERIES = Set.of(
             "com/aproject/aidriven/mymobilesecretary/geo/persistence/GeofenceRuleRepository.java",
             "com/aproject/aidriven/mymobilesecretary/geo/persistence/PlaceRepository.java",
+            "com/aproject/aidriven/mymobilesecretary/project/persistence/ProjectRepository.java",
             "com/aproject/aidriven/mymobilesecretary/travel/persistence/TravelItineraryDraftRepository.java");
 
     @Test

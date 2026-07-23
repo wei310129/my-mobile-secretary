@@ -46,6 +46,6 @@ public class TaggedLifeRecord extends WorkspaceOwnedEntity {
 
     public enum RecordType {
         USER_UTTERANCE, APPLICATION, PURCHASE, PROMOTION, ACTIVITY, SCHEDULE,
-        TASK, REMINDER, PLACE, KNOWLEDGE, HEALTH, WORK, OTHER
+        TASK, REMINDER, PLACE, KNOWLEDGE, PROJECT, HEALTH, WORK, OTHER
     }
 }

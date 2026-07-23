@@ -1,6 +1,6 @@
 # 旅遊專案全流程開發與擬真測試計劃（Terra High 執行版）
 
-> 狀態：F5 已完成，依使用者要求暫停於舵輪 1 前
+> 狀態：舵輪 1 已完成，舵輪 2 尚未開始；3B 前須取得使用者明確確認
 > 更新日期：2026-07-23
 > 單一主題：安排一次出國旅行
 > 全服務前置：Conversation Focus／上下文主動對齊
@@ -857,6 +857,13 @@ powershell -ExecutionPolicy Bypass -File .\scripts\mvn-safe.ps1 '-Dtest=Conversa
 powershell -ExecutionPolicy Bypass -File .\scripts\mvn-safe.ps1 '-Dtest=ProjectScopeFromFocusServiceTest,ProjectScopePolicyTest,ProjectFocusContributorTest' test
 ```
 
+**3B 前使用者確認 hard gate（2026-07-23 拍板）**：舵輪 1、2、3A 即使全部通過，也不得自動開始
+3B。執行中的 agent 必須先停止，回報行事曆／Schedule 重構的合併狀態、ScheduleItem source-of-truth
+與 application contract 是否改變、migration／RLS／F5 permanent regression／完整回歸證據，以及尚存
+風險；只有取得使用者當輪明確確認後才能修改 `schedule_item`、Schedule ownership 或 project-scoped
+Schedule CRUD。行事曆重構可與舵輪 1、2、3A 在獨立 branch／worktree 併行，但禁止延後到 3B 實作
+完成後才一次大合併。
+
 #### 舵輪 3B：Schedule ownership
 
 **目標**：只為 `schedule_item` 增加 nullable project_id、composite FK、project-scoped query/create/update/delete 與同輪 RLS；planner 行為留到舵輪 4。
@@ -1481,7 +1488,7 @@ Terra 每完成一輪，只更新狀態與實際證據，不把預期數字寫�
 | F4B | COMPLETED | `ConversationFocusPendingIsolationTest,ConversationFocusCandidateTest,ConversationFocusQuotedContextTest,ConversationReferenceServiceTest`：11/11；`WorkspaceMigrationTest`：3/3 | N/A（F5 前不執行 sealed holdout） | pending/referent/list scope isolation、revision expiry、candidate acceptance、quoted suspended focus 的 RESUME 與 fail-closed hard gate 均通過 | — |
 | F4C | COMPLETED | `ConversationFocusAsyncResultTest,ConversationFocusOutboxTest,ConversationFocusRestartIntegrationTest`：4/4；`WorkspaceMigrationTest,NotificationOutboxWorkerTest`：5/5 | N/A（F5 前不執行 sealed holdout） | durable job、terminal outbox、restart、retry/lease、actor/RLS 與 background 不搶 focus hard gate 均通過 | — |
 | F5 | COMPLETED | Round 1 修正後 focused 40/40、鄰接 57/57、latency 6/6；scope-first locking 修正後 concurrent mutation 3/3、focus 鄰接 39/39 | fresh evaluator R artifact-v2/oracle-v1：20 scenarios／60 turns／20 personas，direct 55/55、direct 或適當安全澄清 60/60、hard/privacy/state/mutation/reply facts 60/60、scenario 20/20，正式 PASS；input `4e40c46247f44668f3377d8cb1682a15a4858e7e140d6a1132104cddd8b7920a`、runner `dc12dcfb578e9a97ae520d3288281842621dcbedcb254d4d93392ea40115d87`、manifest `8e1f860d44f924ca7282701e723e9aa80a54026c1fb3b53b77b97e5c190aabf2`、capture `d1178c7b9c79d3c9b9c81a1c0e56e41374a0e0c2ba0af853ea50875cad4732dd`、oracle `e4dc6a2affca9ba3df6797b1260f369ccf86c73d7456120a211a2b31dd261047`；cleanup filename/content/target/git markers 全為 0 | `mvn-safe.ps1 test`：1,170 tests、0 failure、0 error、10 skipped；R median 220 ms、mixed structured P95 1,614 ms（低於 4 秒門檻），但 3 個 first-use/lazy-path outlier 令 max 27,164 ms，保留 cold-profile 監控 | —；依使用者要求暫停，不自動開始舵輪 1 |
-| 1 | NOT_STARTED | — | — | — | — |
+| 1 | COMPLETED | `ProjectTest,ProjectServiceTest,ProjectRlsIntegrationTest,UniversalDomainEventRecorderTest,UniversalLifeRecordServiceTest,WorkspaceMigrationTest`：25/25；native query security＋Project 核心重驗 16/16 | N/A（Project domain／schema 輪） | `mvn-safe.ps1 test`：1,184 tests、0 failure、0 error、10 skipped | — |
 | 2 | NOT_STARTED | — | — | — | — |
 | 3A | NOT_STARTED | — | — | — | — |
 | 3B | NOT_STARTED | — | — | — | — |
@@ -1509,7 +1516,17 @@ Terra 每完成一輪，只更新狀態與實際證據，不把預期數字寫�
 鄰接 39/39、標準全量 1,170 tests 且 0 failure／0 error／10 skipped。R fixture、capture、oracle
 與 evaluator source／target 痕跡已清除，四類 marker 均為 0。限制是 controlled structured-output stub
 holdout 不等同真實世界覆蓋率，且未獨立重跑平台級 quoted-message artifact／LINE adapter；另保留
-first-use/lazy-path max 27,164 ms 的 cold-profile 監控。依使用者要求暫停，不自動開始舵輪 1。
+first-use/lazy-path max 27,164 ms 的 cold-profile 監控。當時依使用者要求暫停；2026-07-23 取得
+明確同意後才開始舵輪 1。
+
+**舵輪 1 完成後**：F5 baseline commit 為 `77922ce`；Project 開發位於
+`codex/project-wheels-1-3a`。V64 建立 actor-private Project aggregate，狀態固定
+`ACTIVE/COMPLETED/ARCHIVED` 且沒有 Draft；DB creation HMAC 仲裁使 sequential／concurrent duplicate
+都只建立一筆 Project 與一筆建立 LifeRecord，同 key 不同 payload fail closed。Project 預留
+`(id, workspace_id, created_by_user_id)` composite ownership 錨點，但尚無 child binding、conversation
+mode 或 Schedule 依賴。證據為 focused 25/25、native query security＋核心 16/16、完整回歸 1,184 tests
+且 0 failure／0 error／10 skipped。行事曆重構可在 F5 baseline 的獨立工作線進行；3B 前確認 gate
+已落盤，未取得使用者明確同意不得開始 Schedule ownership。
 
 ## 17. 最終完成定義
 

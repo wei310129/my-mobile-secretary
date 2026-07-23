@@ -7,6 +7,8 @@ import com.aproject.aidriven.mymobilesecretary.knowledge.application.ItemLifecyc
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.ObjectAnnotationArchivedEvent;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.ObjectAnnotationUpdatedEvent;
 import com.aproject.aidriven.mymobilesecretary.knowledge.tag.domain.TaggedLifeRecord;
+import com.aproject.aidriven.mymobilesecretary.project.application.ProjectLifecycleEvent;
+import com.aproject.aidriven.mymobilesecretary.project.domain.ProjectType;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskCreatedEvent;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleLifecycleEvent;
 import java.time.Clock;
@@ -27,6 +29,42 @@ class UniversalDomainEventRecorderTest {
 
         verify(service).recordDomainEvent(TaggedLifeRecord.RecordType.TASK,
                 "申請節能補助", now, List.of("待辦", "建立"));
+    }
+
+    @Test
+    void everyProjectLifecycleMutationBecomesTaggedLifeEvent() {
+        UniversalLifeRecordService service = mock(UniversalLifeRecordService.class);
+        Instant now = Instant.parse("2030-08-10T04:00:00Z");
+        UniversalDomainEventRecorder recorder = new UniversalDomainEventRecorder(
+                service, Clock.fixed(now, ZoneOffset.UTC));
+        java.util.UUID projectId = java.util.UUID.randomUUID();
+
+        recorder.onProjectLifecycle(new ProjectLifecycleEvent(
+                projectId, ProjectType.TRAVEL, "大阪旅行",
+                ProjectLifecycleEvent.Action.CREATED, now));
+        recorder.onProjectLifecycle(new ProjectLifecycleEvent(
+                projectId, ProjectType.TRAVEL, "大阪與京都",
+                ProjectLifecycleEvent.Action.RENAMED, now));
+        recorder.onProjectLifecycle(new ProjectLifecycleEvent(
+                projectId, ProjectType.TRAVEL, "大阪與京都",
+                ProjectLifecycleEvent.Action.COMPLETED, now));
+        recorder.onProjectLifecycle(new ProjectLifecycleEvent(
+                projectId, ProjectType.TRAVEL, "大阪與京都",
+                ProjectLifecycleEvent.Action.REOPENED, now));
+        recorder.onProjectLifecycle(new ProjectLifecycleEvent(
+                projectId, ProjectType.TRAVEL, "大阪與京都",
+                ProjectLifecycleEvent.Action.ARCHIVED, now));
+
+        verify(service).recordDomainEvent(TaggedLifeRecord.RecordType.PROJECT,
+                "大阪旅行", now, List.of("專案", "建立"));
+        verify(service).recordDomainEvent(TaggedLifeRecord.RecordType.PROJECT,
+                "大阪與京都", now, List.of("專案", "改名"));
+        verify(service).recordDomainEvent(TaggedLifeRecord.RecordType.PROJECT,
+                "大阪與京都", now, List.of("專案", "完成"));
+        verify(service).recordDomainEvent(TaggedLifeRecord.RecordType.PROJECT,
+                "大阪與京都", now, List.of("專案", "重新開啟"));
+        verify(service).recordDomainEvent(TaggedLifeRecord.RecordType.PROJECT,
+                "大阪與京都", now, List.of("專案", "封存"));
     }
 
     @Test

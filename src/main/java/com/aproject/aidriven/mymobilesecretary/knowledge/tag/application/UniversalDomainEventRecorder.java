@@ -7,6 +7,7 @@ import com.aproject.aidriven.mymobilesecretary.knowledge.application.ItemLifecyc
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.ObjectAnnotationArchivedEvent;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.ObjectAnnotationUpdatedEvent;
 import com.aproject.aidriven.mymobilesecretary.knowledge.tag.domain.TaggedLifeRecord;
+import com.aproject.aidriven.mymobilesecretary.project.application.ProjectLifecycleEvent;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.ReminderTriggeredEvent;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskCanceledEvent;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskCompletedEvent;
@@ -48,6 +49,12 @@ public class UniversalDomainEventRecorder {
     public void onTaskCanceled(TaskCanceledEvent event) {
         lifeRecordService.recordDomainEvent(TaggedLifeRecord.RecordType.TASK,
                 event.title(), event.canceledAt(), List.of("待辦", "取消"));
+    }
+
+    @EventListener
+    public void onProjectLifecycle(ProjectLifecycleEvent event) {
+        lifeRecordService.recordDomainEvent(TaggedLifeRecord.RecordType.PROJECT,
+                event.name(), event.occurredAt(), List.of("專案", projectAction(event.action())));
     }
 
     @EventListener
@@ -141,6 +148,16 @@ public class UniversalDomainEventRecorder {
             case RESTOCK_REQUESTED -> "補貨";
             case SHOPPING_CLEARED -> "清空購物清單";
             case PLACE_BOUND -> "綁定地點";
+        };
+    }
+
+    private static String projectAction(ProjectLifecycleEvent.Action action) {
+        return switch (action) {
+            case CREATED -> "建立";
+            case RENAMED -> "改名";
+            case COMPLETED -> "完成";
+            case REOPENED -> "重新開啟";
+            case ARCHIVED -> "封存";
         };
     }
 }

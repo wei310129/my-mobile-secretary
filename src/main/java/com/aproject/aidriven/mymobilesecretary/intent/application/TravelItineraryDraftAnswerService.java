@@ -1,5 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusBinding;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusDirective;
 import com.aproject.aidriven.mymobilesecretary.travel.application.TravelItineraryDraftService;
 import com.aproject.aidriven.mymobilesecretary.travel.application.TravelItineraryDraftService.DraftView;
 import com.aproject.aidriven.mymobilesecretary.travel.application.TravelItineraryDraftService.Entry;
@@ -52,7 +54,9 @@ public class TravelItineraryDraftAnswerService {
                                 + "- 行程段落｜" + draft.payload().entries().size() + " 段\n"
                                 + "- 附加活動｜" + draft.payload().activities().size() + " 項\n"
                                 + "- 注意事項｜" + draft.payload().notices().size() + " 項\n\n"
-                                + "🧭 草稿已成為確認資料，後續可依段落建立行程、待辦與地點提醒。"))
+                                + "🧭 草稿已成為確認資料，後續可依段落建立行程、待辦與地點提醒。")
+                        .withFocusDirective(binding(draft),
+                                ConversationFocusDirective.INVALIDATE_TARGET))
                 .orElseGet(() -> IntentResult.clarificationNeeded(
                         "目前沒有尚未過期、等待確認的旅行行程表草稿。"));
     }
@@ -61,14 +65,21 @@ public class TravelItineraryDraftAnswerService {
         return draftService.discardLatest()
                 .map(draft -> IntentResult.message(
                         IntentResult.Action.TRAVEL_ITINERARY_DISCARDED,
-                        "🗑️ 已放棄旅行行程表草稿「%s」。".formatted(draft.title())))
+                        "🗑️ 已放棄旅行行程表草稿「%s」。".formatted(draft.title()))
+                        .withFocusDirective(binding(draft),
+                                ConversationFocusDirective.INVALIDATE_TARGET))
                 .orElseGet(() -> IntentResult.clarificationNeeded(
                         "目前沒有等待處理的旅行行程表草稿。"));
     }
 
     public IntentResult previewResult(DraftView draft) {
         return IntentResult.message(IntentResult.Action.TRAVEL_ITINERARY_DRAFTED,
-                previewMessage(draft));
+                previewMessage(draft)).withFocusBinding(binding(draft));
+    }
+
+    private static ConversationFocusBinding binding(DraftView draft) {
+        return new ConversationFocusBinding(
+                "DRAFT", "travel-itinerary-draft:" + draft.id(), draft.title());
     }
 
     public String previewMessage(DraftView draft) {
@@ -133,4 +144,5 @@ public class TravelItineraryDraftAnswerService {
         }
         return false;
     }
+
 }

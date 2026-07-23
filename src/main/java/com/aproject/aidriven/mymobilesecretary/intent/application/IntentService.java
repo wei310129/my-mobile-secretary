@@ -1,6 +1,8 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusControlPhrasePolicy;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusDirective;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.intent.application.handler.IntentHandlerRegistry;
 import com.aproject.aidriven.mymobilesecretary.intent.capability.routing.CapabilityShadowRouter;
@@ -100,6 +102,9 @@ public class IntentService {
     private com.aproject.aidriven.mymobilesecretary.conversation.application
                     .ConversationFocusIntentExecutor
             conversationFocusIntentExecutor;
+    private com.aproject.aidriven.mymobilesecretary.conversation.application
+                    .ConversationIntentReplayService
+            conversationIntentReplayService;
 
     public IntentService(ObjectProvider<IntentInterpreter> interpreterProvider,
                          TaskService taskService,
@@ -149,6 +154,14 @@ public class IntentService {
             com.aproject.aidriven.mymobilesecretary.conversation.application
                     .ConversationFocusIntentExecutor executor) {
         this.conversationFocusIntentExecutor = executor;
+    }
+
+    /** Optional setter keeps legacy direct-construction tests independent from persistence. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setConversationIntentReplayService(
+            com.aproject.aidriven.mymobilesecretary.conversation.application
+                    .ConversationIntentReplayService service) {
+        this.conversationIntentReplayService = service;
     }
 
     /** Optional injection preserves the existing constructor and keeps shadow routing removable. */
@@ -361,14 +374,30 @@ public class IntentService {
         UUID requestId = RequestCorrelationContext.currentId();
         long startedNanos = System.nanoTime();
         IntentFlowTrace flowTrace = new IntentFlowTrace();
-        MutationBoundary mutationBoundary = new MutationBoundary(beforeMutation);
         IntentResult result = null;
         try (RequestCorrelationContext.Scope ignored = RequestCorrelationContext.open(requestId);
              IntentInterpreterTelemetryContext.Scope telemetryScope =
                      IntentInterpreterTelemetryContext.open()) {
             CapabilityShadowObservation shadowObservation =
                     CapabilityShadowObservation.observe(capabilityShadowRouter, effectiveText);
+            com.aproject.aidriven.mymobilesecretary.conversation.application
+                            .ConversationIntentReplayService.Attempt
+                    replayAttempt = conversationIntentReplayService == null
+                            ? com.aproject.aidriven.mymobilesecretary.conversation.application
+                                    .ConversationIntentReplayService.Attempt.disabled()
+                            : conversationIntentReplayService.begin(
+                                    requestId, userText, effectiveText);
+            MutationBoundary mutationBoundary = new MutationBoundary(() -> {
+                replayAttempt.beforeMutation();
+                beforeMutation.run();
+            });
             try {
+                Optional<IntentResult> replay = replayAttempt.replay();
+                if (replay.isPresent()) {
+                    result = replay.get();
+                    flowTrace.complete(result);
+                    return result;
+                }
                 // 場合祝賀在記錄之前套用:意圖問題與上下文都要記使用者實際看到的回覆
                 result = OccasionGreeting.decorate(userText,
                         doHandle(userText, effectiveText, flowTrace, mutationBoundary));
@@ -379,11 +408,13 @@ public class IntentService {
                     result = timeDisplayPreferenceService.apply(result);
                 }
                 flowTrace.complete(result);
+                replayAttempt.complete(result);
                 recordLifeUtteranceSafely(userText, result);
                 recordIssueIfUnresolved(userText, result);
                 conversationContextService.rememberExchange(userText, result);
                 return result;
             } catch (RuntimeException exception) {
+                replayAttempt.failBeforeExecution();
                 flowTrace.unexpectedFailure();
                 throw exception;
             } finally {
@@ -394,7 +425,11 @@ public class IntentService {
     }
 
     private void recordLifeUtteranceSafely(String text, IntentResult result) {
-        if (universalLifeRecordService == null) return;
+        if (universalLifeRecordService == null
+                || result == null
+                || result.focusDirective() == ConversationFocusDirective.FOCUS_CONTROL_ONLY) {
+            return;
+        }
         try {
             universalLifeRecordService.recordUtterance(text, result);
         } catch (RuntimeException exception) {
@@ -405,6 +440,12 @@ public class IntentService {
 
     private IntentResult doHandle(String text, String interpretationText, IntentFlowTrace flowTrace,
                                   MutationBoundary mutationBoundary) {
+        Optional<IntentCommand.Type> focusControl =
+                ConversationFocusControlPhrasePolicy.classify(text);
+        if (focusControl.isPresent()) {
+            return executeExplicitFocusControl(
+                    text, focusControl.orElseThrow(), flowTrace, mutationBoundary);
+        }
         // Domain continuations run before generic feedback classification. A correction can still
         // contain the missing answer or a reference question that should complete the user's work.
         if (schoolTransportConversationService != null) {
@@ -602,11 +643,6 @@ public class IntentService {
         if (asksWhatContainedItemMeans(text)) {
             return dailyScheduleOverviewService.explainContainedItems();
         }
-        Optional<IntentResult> itineraryDraft = travelItineraryDraftAnswerService.answer(
-                text, mutationBoundary::beforeMutation);
-        if (itineraryDraft.isPresent()) {
-            return itineraryDraft.get();
-        }
         Optional<IntentResult> activityCount = activityCountAnswerService.answer(text);
         if (activityCount.isPresent()) {
             return activityCount.get();
@@ -614,15 +650,6 @@ public class IntentService {
         Optional<IntentResult> lastActivity = lastActivityAnswerService.answer(text);
         if (lastActivity.isPresent()) {
             return lastActivity.get();
-        }
-        Optional<IntentResult> packing = travelPackingAnswerService.answer(
-                text, mutationBoundary::beforeMutation);
-        if (packing.isPresent()) {
-            return packing.get();
-        }
-        Optional<IntentResult> travelPlanning = travelPlanningIntakeService.answer(text);
-        if (travelPlanning.isPresent()) {
-            return travelPlanning.get();
         }
         if (activityMutationDisambiguationService != null) {
             Optional<IntentResult> ambiguity = activityMutationDisambiguationService.answer(text);
@@ -673,7 +700,7 @@ public class IntentService {
         IntentInterpreter interpreter = interpreterProvider.getIfAvailable();
         if (interpreter == null) {
             flowTrace.validationFailed("INTERPRETER_NOT_CONFIGURED");
-            return safeFallback(text, "意圖解析未啟用", mutationBoundary);
+            return interpreterFailureFallback(text, "意圖解析未啟用", mutationBoundary);
         }
         try {
             script = interpreter.interpret(interpretationText, Instant.now(clock),
@@ -684,11 +711,11 @@ public class IntentService {
             log.warn("Intent interpretation failed ({}); applying safe fallback",
                     e.getClass().getSimpleName());
             flowTrace.validationFailed("INTERPRETER_FAILURE");
-            return safeFallback(text, "AI 暫時無法使用", mutationBoundary);
+            return interpreterFailureFallback(text, "AI 暫時無法使用", mutationBoundary);
         }
         if (script == null || script.commands() == null || script.commands().isEmpty()) {
             flowTrace.validationFailed("EMPTY_INTERPRETATION");
-            return safeFallback(text, "解析結果是空的", mutationBoundary);
+            return interpreterFailureFallback(text, "解析結果是空的", mutationBoundary);
         }
         if (deferPickupClarification) {
             script = applySchoolPickupSafeguard(script, schoolPickupQuestion.orElseThrow());
@@ -752,6 +779,19 @@ public class IntentService {
             return safeFallback(text, "多項操作都解析失敗", mutationBoundary);
         }
         return IntentResult.batchExecuted(lines);
+    }
+
+    private IntentResult executeExplicitFocusControl(
+            String text, IntentCommand.Type type, IntentFlowTrace flowTrace,
+            MutationBoundary mutationBoundary) {
+        IntentCommand command = new IntentCommand(
+                type, null, null, null, null, null, null, null,
+                null, null, null, null, false, IntentOptions.empty(), text);
+        flowTrace.select(command);
+        mutationBoundary.before(command);
+        IntentResult result = execute(text, command);
+        flowTrace.validationPassed();
+        return result;
     }
 
     static Optional<LocalDate> dailyScheduleDate(String text, Clock clock) {
@@ -998,11 +1038,26 @@ public class IntentService {
     static String userFacingUnknownReason(String reason) {
         if (reason == null || reason.isBlank()) return "我沒聽懂，可以換個說法嗎？";
         String compact = reason.replaceAll("\\s+", "");
+        if (looksLikeInternalDiagnostic(reason, compact)) {
+            return "我還需要補充資訊才能處理；請告訴我名稱、日期時間、地點或你要做的動作。";
+        }
         if (containsAny(compact, "使用者是在", "使用者已", "系統應", "無法對應到任何能力",
                 "不是要建立", "目前無法直接判定", "才能執行")) {
             return "我知道你是在追問上一則回覆，但我還沒有唯一對到你指的項目；請直接告訴我名稱或清單編號。";
         }
         return reason;
+    }
+
+    private static boolean looksLikeInternalDiagnostic(String reason, String compact) {
+        String lower = reason.toLowerCase(java.util.Locale.ROOT);
+        return lower.matches(".*(?:[a-z_][a-z0-9_]*\\.){2,}[a-z_$][a-z0-9_$]*.*")
+                || lower.matches(".*\\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\b.*")
+                || lower.matches(".*\\b[0-9a-f]{40,}\\b.*")
+                || containsAny(lower, "exception", "stacktrace", "stack trace", "sql ",
+                        "select ", "insert ", "update ", "delete ", " column ",
+                        "constraint", "jdbc", "hibernate", "bearer ", "authorization",
+                        "api_key", "api-token", "api_token", "access_token")
+                || containsAny(compact, "資料庫欄位", "內部類別", "套件名稱", "存取權杖");
     }
 
     /** Builds a bounded trace; any assembly or persistence failure is isolated from the reply. */
@@ -1078,6 +1133,49 @@ public class IntentService {
             default -> {
             }
         }
+    }
+
+    /**
+     * Preserves bounded deterministic travel support when the interpreter itself is unavailable.
+     * A successfully interpreted typed command never reaches this path.
+     */
+    private IntentResult interpreterFailureFallback(String text, String why,
+                                                     MutationBoundary mutationBoundary) {
+        return deterministicTravelFallback(text, mutationBoundary)
+                .orElseGet(() -> safeFallback(text, why, mutationBoundary));
+    }
+
+    private Optional<IntentResult> deterministicTravelFallback(
+            String text, MutationBoundary mutationBoundary) {
+        Optional<IntentResult> itinerary;
+        if (conversationFocusIntentExecutor == null) {
+            itinerary = travelItineraryDraftAnswerService.answer(
+                    text, mutationBoundary::beforeMutation);
+        } else {
+            itinerary = conversationFocusIntentExecutor.executeResolved(
+                    com.aproject.aidriven.mymobilesecretary.conversation.application
+                            .ConversationInboundIdempotency.fromRequestId(
+                                    RequestCorrelationContext.currentId()),
+                    () -> travelItineraryDraftAnswerService.answer(
+                            text, mutationBoundary::beforeMutation),
+                    IntentService::travelFallbackType);
+        }
+        if (itinerary.isPresent()) {
+            return itinerary;
+        }
+        Optional<IntentResult> packing = travelPackingAnswerService.answer(
+                text, mutationBoundary::beforeMutation);
+        return packing.isPresent() ? packing : travelPlanningIntakeService.answer(text);
+    }
+
+    private static IntentCommand.Type travelFallbackType(IntentResult result) {
+        return switch (result.action()) {
+            case TRAVEL_ITINERARY_CONFIRMED ->
+                    IntentCommand.Type.CONFIRM_TRAVEL_ITINERARY_DRAFT;
+            case TRAVEL_ITINERARY_DISCARDED ->
+                    IntentCommand.Type.DISCARD_TRAVEL_ITINERARY_DRAFT;
+            default -> IntentCommand.Type.SHOW_TRAVEL_ITINERARY_DRAFT;
+        };
     }
 
     /** LLM 失敗時只替明確要求「提醒／記下」的原文建保底待辦；查詢與修改指令絕不異動資料。 */

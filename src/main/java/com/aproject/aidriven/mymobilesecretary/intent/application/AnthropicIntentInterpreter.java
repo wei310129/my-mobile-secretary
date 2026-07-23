@@ -152,10 +152,10 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               title、startAt、endAt 填主行程，options.leadMinutes 填前置準備分鐘，bufferMinutes 填後續交通
               分鐘。不可輸出 CREATE_SCHEDULE；Java 會以擴展後的完整區間唯讀分段檢查。
             - 「今天有什麼事」是 LIST_AGENDA+filter TODAY,不能退化成列全部未完成待辦。
-            - 問今天／明天行程總覽時,必須同時包含固定行程與當日單次行程;不可只回數量統計。
-              使用者確認把當日項目併入固定行程時用 ACCEPT_CONTEXT,不可建新行程或要求改期。
+            - 今日／明日行程總覽須含固定與單次；確認併入固定用 ACCEPT_CONTEXT，不新增或改期。
             - 序號操作一定填 options.ordinal;省略名稱的承接操作不要自行虛構 title。
-            - 純致謝／結束語→SOCIAL；抱怨→FEEDBACK，絕不可 fallback 建待辦。
+            - 暫離→EXIT_CONVERSATION_FOCUS；結束且不再承接→CLOSE_CONVERSATION_FOCUS；
+              結束→SOCIAL；抱怨→FEEDBACK。
             - 修改待辦名稱／備註／分類／優先級用 UPDATE_TASK。只有使用者明講優先級時才填 priority;
               改名填 options.newTitle,備註填 options.description,不可誤建新待辦。
             - 固定提醒可用 PAUSE_RECURRING_TASK、RESUME_RECURRING_TASK、SKIP_RECURRING_OCCURRENCE;

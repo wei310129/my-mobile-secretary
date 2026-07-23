@@ -3,6 +3,7 @@ package com.aproject.aidriven.mymobilesecretary.knowledge.tag.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationContextService;
@@ -68,5 +69,15 @@ class TaggedRecordConversationServiceTest {
 
         assertThat(new TaggedRecordConversationService(query).answer("幫我查油漆購買價格和店家"))
                 .isEmpty();
+    }
+
+    @Test
+    void scheduleLookupFallsThroughUnlessUserExplicitlyAsksForTaggedRecords() {
+        TaggedRecordQueryService query = mock(TaggedRecordQueryService.class);
+
+        assertThat(new TaggedRecordConversationService(query)
+                .answer("查一下週五的牙醫行程")).isEmpty();
+
+        verifyNoInteractions(query);
     }
 }

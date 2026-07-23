@@ -20,6 +20,12 @@ public final class ConversationFocusTransitionPolicy {
     }
 
     private FocusDecision decideStartOrSwitch(FocusControl control, boolean hasActiveFocus) {
+        if (control instanceof FocusControl.Resume) {
+            return FocusDecision.transition(FocusTransitionType.RESUME);
+        }
+        if (control instanceof FocusControl.ChangeSubfocus && hasActiveFocus) {
+            return FocusDecision.transition(FocusTransitionType.CHANGE_SUBFOCUS);
+        }
         if (isEnter(control) && !hasActiveFocus) {
             return FocusDecision.transition(FocusTransitionType.ENTER);
         }
@@ -40,8 +46,11 @@ public final class ConversationFocusTransitionPolicy {
     }
 
     private FocusDecision decideControl(FocusControl control, boolean hasActiveFocus) {
-        if (control instanceof FocusControl.Resume && !hasActiveFocus) {
+        if (control instanceof FocusControl.Resume) {
             return FocusDecision.transition(FocusTransitionType.RESUME);
+        }
+        if (control instanceof FocusControl.InvalidateTarget) {
+            return FocusDecision.transition(FocusTransitionType.INVALIDATE);
         }
         if (!hasActiveFocus) {
             return FocusDecision.clarify();

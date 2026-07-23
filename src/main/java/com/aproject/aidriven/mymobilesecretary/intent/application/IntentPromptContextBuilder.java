@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.persistence.ItemRepository;
@@ -80,9 +81,10 @@ public final class IntentPromptContextBuilder {
     }
 
     private String openTasks() {
-        return taskRepository.findByStatusIn(EnumSet.of(
+        return taskRepository.findByStatusInAndCreatedByUserId(EnumSet.of(
                         TaskStatus.CREATED, TaskStatus.SCHEDULED,
-                        TaskStatus.REMINDED, TaskStatus.ESCALATED))
+                        TaskStatus.REMINDED, TaskStatus.ESCALATED),
+                        WorkspaceContextHolder.requireContext().actorId())
                 .stream()
                 .limit(MAX_STATE_ROWS)
                 .map(task -> "%d:%s%s".formatted(task.getId(), task.getTitle(),

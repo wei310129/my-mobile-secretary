@@ -380,3 +380,5 @@
 380|把週五牙醫行程改名成定期洗牙，地點改成陳醫師診所|UPDATE_SCHEDULE|title=週五牙醫;options.newTitle=定期洗牙;placeName=陳醫師診所;只更新明講欄位並重新驗算地點可行性
 381|照上次看牙醫的名稱和地點，幫我建下個月15日下午三點的新行程|COPY_SCHEDULE|options.referenceTitle=上次看牙醫;startAt=下個月15日15:00;未指定endAt沿用原時長，標題與地點沿用來源，不修改原行程
 382|把女兒上夏恩英語合併到送女兒到夏恩英語上課，保留後者|MERGE_SCHEDULES|title=送女兒到夏恩英語上課;options.referenceTitle=女兒上夏恩英語;Java補主要行程缺少的可重用欄位後終止重複項目
+383|先離開目前這件事，歇一下|EXIT_CONVERSATION_FOCUS|只暫離目前對話焦點；既有Task、Schedule與其他業務資料不完成、不取消、不刪除
+384|這個議題結束，不用再承接|CLOSE_CONVERSATION_FOCUS|結束目前對話承接並關閉該focus；業務資料不完成、不取消、不刪除

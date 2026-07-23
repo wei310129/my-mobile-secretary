@@ -1,7 +1,7 @@
 # 旅遊專案全流程開發與擬真測試計劃（Terra High 執行版）
 
-> 狀態：規劃完成，尚未開始產品程式碼實作
-> 更新日期：2026-07-21
+> 狀態：F5 已完成，依使用者要求暫停於舵輪 1 前
+> 更新日期：2026-07-23
 > 單一主題：安排一次出國旅行
 > 全服務前置：Conversation Focus／上下文主動對齊
 > 執行方式：每次只完成一個「舵輪」，通過該輪全部 hard gate 後才可進下一輪
@@ -1377,7 +1377,7 @@ G01 的 `finalExpect` 至少固定：Project=1 且 `COMPLETED`、active root foc
 - F5 前由 root agent 或使用者指定的獨立 evaluator 產生全服務 Focus holdout；W13 前再產生一份 fresh Focus set 與旅行 holdout。Terra builder 不得擔任自己的 holdout 作者。未收到時對應輪必須標 `BLOCKED`，不能用自產案例代替。
 - Repo 內只保存通用 scenario runner、`ConversationFocusHoldoutTest`（`@Tag("conversation-focus-holdout")` 加 `@EnabledIfSystemProperty(named="conversation.focus.holdout.enabled", matches="true")`）與 `TravelProjectHoldoutTest`（`@Tag("travel-project-holdout")` 加 `@EnabledIfSystemProperty(named="travel.holdout.enabled", matches="true")`）。sealed fixture 存在 evaluator 控制、未版控的臨時路徑，執行前以實際路徑取代命令 placeholder；路徑與 oracle 不輸出到公開回覆。一般 wildcard／full suite 不帶 opt-in，只能 skip，不能因缺 evaluator path 失敗或偷跑已揭示 holdout。
 - 每一組 holdout 固定跑兩個獨立 Maven invocation。`phase=capture` 只允許 input path + capture path；若 process 看見 oracle property 必須 fail。它實際執行 system、把 input SHA-256、canonical public output、typed action、mutation/state/event counts、scope/privacy facts 寫到 evaluator 控制的 untracked capture artifact，再封存 artifact SHA-256；CAPTURE 只代表「已取樣」，絕不能算 holdout pass。
-- CAPTURE 完成後 evaluator 才揭示 oracle path。`phase=assert` 只讀 immutable capture + oracle，先驗 input/capture hash，禁止再次呼叫 model/provider/handler或改 DB；只有逐案例 assertion 全通過才算 pass。若 hash 不符、phase/property 組合錯、capture 缺欄或 oracle 在 capture 前已存在於 builder 可見位置，一律 hard fail。測試報告必須保存兩次 invocation 的時間、hash 與 tests/failures/errors/skipped 摘要，但不公開 fixture 路徑、原句、oracle 或敏感輸出。
+- CAPTURE 完成後 evaluator 才揭示 oracle path。`phase=assert` 只讀 immutable capture + oracle，先驗 input/capture hash，禁止再次呼叫 model/provider/handler或改 DB；只有逐案例 assertion 全通過才算 pass。Focus artifact v2 的 oracle version 1 對 typed action、focus root/revision、Task/Item/Schedule/transition count 與 privacy 做 exact equality；公開回覆依 capture 前封存、至少一項非空的 required facts 及 forbidden facts 驗證，不以規格未承諾的標點、emoji 或段落 byte equality 代替語意 hard gate。若 hash 不符、phase/property 組合錯、capture 缺欄、required facts 空白／重複，或 oracle 在 capture 前已存在於 builder 可見位置，一律 hard fail；mismatch 只回報 scenario/turn/field index，不輸出文字。測試報告必須保存兩次 invocation 的時間、hash 與 tests/failures/errors/skipped 摘要，但不公開 fixture 路徑、原句、oracle 或敏感輸出。
 - Focus holdout 不能只換 root label；至少改變 domain 組合、activity、pending/high-risk、quote、channel、async 或並行順序。旅行 holdout 不能只換地名／日期；至少改變交通型態、旅客組合、時區、指代、並行 Project、provider 狀態或多重矛盾。
 - holdout 失敗後成為 permanent regression，另產生新的 sealed holdout。
 - 不得為過關刪案例、放寬 mutation、忽略 RLS、降低 UX 或 latency threshold。
@@ -1394,6 +1394,19 @@ G01 的 `finalExpect` 至少固定：Project=1 且 `COMPLETED`、active root foc
 - duplicate delivery 恰一 mutation。
 - success/failure 都無內部資訊洩漏。
 - 效能修正不改 action、mutation、scope 或 privacy。
+
+### 12.4 F5 v2 收斂門檻（2026-07-23 使用者拍板）
+
+- 安全 hard gates 必須 100% 通過；任何隱私／跨 actor 或 workspace／非預期 mutation／replay 或
+  idempotency hard failure，整份 holdout 直接 FAIL。
+- 核心意圖「直接成功」至少 95%；「直接成功或安全澄清」至少 98%。安全澄清必須保持零非預期
+  mutation、說明缺少什麼，而且不能洩漏內部資訊，不能用 generic UNKNOWN 充數。
+- sealed fixture 至少 20 scenarios／60 turns／8 personas，依風險類型、年齡層輸入習慣、簡寫、錯字、
+  多餘空格／符號、選字錯誤、上下文與跨 actor 隔離設計。這是風險分類 holdout，不得宣稱等同
+  95%–98% 真實世界覆蓋率。
+- 從本門檻拍板後最多兩輪：Round 1 為 builder 修正及 fresh evaluator R；若仍有可信產品缺陷，
+  Round 2 只修那些缺陷並交 fresh evaluator S。S 後仍未收斂就停止，回報證據並與使用者討論，
+  不得自動增加 evaluator 輪次。
 
 ## 13. Hard gates 與 UX 評分
 
@@ -1467,7 +1480,7 @@ Terra 每完成一輪，只更新狀態與實際證據，不把預期數字寫�
 | F4A | COMPLETED | `ConversationFocusAtomicityTest,ConversationFocusIdempotencyTest,ConversationFocusConcurrentMutationTest,ConversationFocusAtomicityIntegrationTest,ConversationFocusTransitionTest`：11/11 | N/A（F5 前不執行 sealed holdout） | transaction rollback、webhook idempotency、head concurrency、immutable transition hard gate 均通過 | — |
 | F4B | COMPLETED | `ConversationFocusPendingIsolationTest,ConversationFocusCandidateTest,ConversationFocusQuotedContextTest,ConversationReferenceServiceTest`：11/11；`WorkspaceMigrationTest`：3/3 | N/A（F5 前不執行 sealed holdout） | pending/referent/list scope isolation、revision expiry、candidate acceptance、quoted suspended focus 的 RESUME 與 fail-closed hard gate 均通過 | — |
 | F4C | COMPLETED | `ConversationFocusAsyncResultTest,ConversationFocusOutboxTest,ConversationFocusRestartIntegrationTest`：4/4；`WorkspaceMigrationTest,NotificationOutboxWorkerTest`：5/5 | N/A（F5 前不執行 sealed holdout） | durable job、terminal outbox、restart、retry/lease、actor/RLS 與 background 不搶 focus hard gate 均通過 | — |
-| F5 | BLOCKED | `ConversationFocusCrossDomainTest,ConversationFocusCapabilityCatalogTest,ConversationFocusApiTest,LineConversationFocusTest,ConversationFocusRlsIntegrationTest`：10/10；`ConversationContextServiceTest,ConversationFocusIntentHandlerTest,ConversationFocusServiceTest`：8/8；`ConversationFocusLatencyTest` core：6/6（含 5 個 application-cold context） | sealed holdout 尚未提供 | Task／Schedule resource contributor、實際 Intent entry、跨 domain golden flow、draft confirmation、RLS、context focus-null 隔離、warm 與 application-cold latency 已驗證；完整回歸為 1,137 項、4 failure、1 error，尚未通過 | 不得開始舵輪 1；等待獨立 evaluator 未揭示 fixture，並需先排除既有 Family Notice／LINE webhook／Anthropic regression |
+| F5 | COMPLETED | Round 1 修正後 focused 40/40、鄰接 57/57、latency 6/6；scope-first locking 修正後 concurrent mutation 3/3、focus 鄰接 39/39 | fresh evaluator R artifact-v2/oracle-v1：20 scenarios／60 turns／20 personas，direct 55/55、direct 或適當安全澄清 60/60、hard/privacy/state/mutation/reply facts 60/60、scenario 20/20，正式 PASS；input `4e40c46247f44668f3377d8cb1682a15a4858e7e140d6a1132104cddd8b7920a`、runner `dc12dcfb578e9a97ae520d3288281842621dcbedcb254d4d93392ea40115d87`、manifest `8e1f860d44f924ca7282701e723e9aa80a54026c1fb3b53b77b97e5c190aabf2`、capture `d1178c7b9c79d3c9b9c81a1c0e56e41374a0e0c2ba0af853ea50875cad4732dd`、oracle `e4dc6a2affca9ba3df6797b1260f369ccf86c73d7456120a211a2b31dd261047`；cleanup filename/content/target/git markers 全為 0 | `mvn-safe.ps1 test`：1,170 tests、0 failure、0 error、10 skipped；R median 220 ms、mixed structured P95 1,614 ms（低於 4 秒門檻），但 3 個 first-use/lazy-path outlier 令 max 27,164 ms，保留 cold-profile 監控 | —；依使用者要求暫停，不自動開始舵輪 1 |
 | 1 | NOT_STARTED | — | — | — | — |
 | 2 | NOT_STARTED | — | — | — | — |
 | 3A | NOT_STARTED | — | — | — | — |
@@ -1484,6 +1497,19 @@ Terra 每完成一輪，只更新狀態與實際證據，不把預期數字寫�
 | 11 | NOT_STARTED | — | — | — | live provider 未選時只完成人工/fake |
 | 12 | NOT_STARTED | — | — | — | — |
 | 13 | NOT_STARTED | — | — | — | — |
+
+### Context 壓縮候選點
+
+本節僅提供規劃時辨識的候選點；實際時機依根 `AGENTS.md` 由執行中的 agent 綜合開發品質、開發效率
+與 token 效率自主判斷，可依當下需求提前、延後、跳過或新增候選點。
+
+**F5 完成後**：F5 已由 fresh evaluator R 正式 PASS；direct 55/55、direct 或適當安全澄清
+60/60、安全 hard gates 60/60、20/20 scenarios，七種必要 transition 全觀察到，可信產品缺陷為
+0。builder 證據為 focused 40/40、鄰接 57/57、latency 6/6、concurrent mutation 3/3、focus
+鄰接 39/39、標準全量 1,170 tests 且 0 failure／0 error／10 skipped。R fixture、capture、oracle
+與 evaluator source／target 痕跡已清除，四類 marker 均為 0。限制是 controlled structured-output stub
+holdout 不等同真實世界覆蓋率，且未獨立重跑平台級 quoted-message artifact／LINE adapter；另保留
+first-use/lazy-path max 27,164 ms 的 cold-profile 監控。依使用者要求暫停，不自動開始舵輪 1。
 
 ## 17. 最終完成定義
 

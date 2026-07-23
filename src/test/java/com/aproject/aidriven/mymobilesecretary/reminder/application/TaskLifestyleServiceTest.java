@@ -4,6 +4,9 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskPriority;
 import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
@@ -11,6 +14,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.Optional;
+import java.util.UUID;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
@@ -23,6 +28,8 @@ import org.springframework.test.util.ReflectionTestUtils;
 class TaskLifestyleServiceTest {
 
     private static final Instant NOW = Instant.parse("2030-08-01T00:00:00Z");
+    private static final UUID ACTOR_ID = UUID.randomUUID();
+    private static final UUID WORKSPACE_ID = UUID.randomUUID();
 
     @Mock
     private TaskRepository repository;
@@ -32,17 +39,25 @@ class TaskLifestyleServiceTest {
     private ApplicationEventPublisher eventPublisher;
 
     private TaskService service;
+    private WorkspaceContextHolder.Scope workspaceScope;
 
     @BeforeEach
     void setUp() {
         service = new TaskService(repository, reminderSchedule, eventPublisher,
                 Clock.fixed(NOW, ZoneOffset.UTC));
+        workspaceScope = WorkspaceContextHolder.open(
+                new WorkspaceContext(ACTOR_ID, WORKSPACE_ID, WorkspaceChannel.TEST));
+    }
+
+    @AfterEach
+    void closeWorkspaceScope() {
+        workspaceScope.close();
     }
 
     @Test
     void updateTaskChangesOnlyProvidedFields() {
         Task task = recurringTask(NOW.plusSeconds(3600));
-        when(repository.findById(7L)).thenReturn(Optional.of(task));
+        when(repository.findByIdAndCreatedByUserId(7L, ACTOR_ID)).thenReturn(Optional.of(task));
 
         Task changed = service.updateTask(7L, "準備季報", "帶合約",
                 TaskPriority.HIGH, Task.Category.WORK);
@@ -58,7 +73,7 @@ class TaskLifestyleServiceTest {
     void pauseAndResumeKeepRuleButSynchronizeQueue() {
         Instant due = NOW.plusSeconds(3600);
         Task task = recurringTask(due);
-        when(repository.findById(7L)).thenReturn(Optional.of(task));
+        when(repository.findByIdAndCreatedByUserId(7L, ACTOR_ID)).thenReturn(Optional.of(task));
 
         service.pauseRecurrence(7L);
         assertThat(task.isRecurrencePaused()).isTrue();
@@ -73,7 +88,7 @@ class TaskLifestyleServiceTest {
     void skipOccurrenceMovesExactlyOneWeek() {
         Instant due = NOW.plusSeconds(3600);
         Task task = recurringTask(due);
-        when(repository.findById(7L)).thenReturn(Optional.of(task));
+        when(repository.findByIdAndCreatedByUserId(7L, ACTOR_ID)).thenReturn(Optional.of(task));
 
         service.skipRecurringOccurrence(7L);
 

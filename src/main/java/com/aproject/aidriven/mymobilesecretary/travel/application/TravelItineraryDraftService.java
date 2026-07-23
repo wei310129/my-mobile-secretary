@@ -86,6 +86,21 @@ public class TravelItineraryDraftService {
         });
     }
 
+    @Transactional(readOnly = true)
+    public boolean isAvailableForFocus(Long id, String safeLabel) {
+        if (id == null || safeLabel == null) {
+            return false;
+        }
+        Instant now = Instant.now(clock);
+        UUID actorId = WorkspaceContextHolder.requireContext().actorId();
+        return repository.findById(id)
+                .filter(draft -> actorId.equals(draft.getCreatedByUserId()))
+                .filter(draft -> draft.getStatus() == Status.PENDING)
+                .filter(draft -> draft.getExpiresAt().isAfter(now))
+                .map(draft -> draft.getTitle().equals(safeLabel))
+                .orElse(false);
+    }
+
     /** Must run under SYSTEM scope; the database policy grants only global expired-row deletion. */
     public int purgeExpired() {
         return repository.deleteExpiredForSystem(Instant.now(clock));

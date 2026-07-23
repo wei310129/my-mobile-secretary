@@ -1,5 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusBinding;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusDirective;
 import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusReplyDecorator;
 import com.aproject.aidriven.mymobilesecretary.conversation.application.FocusResponseEnvelope;
 import com.aproject.aidriven.mymobilesecretary.conversation.application.FocusTransitionNotice;
@@ -29,7 +31,9 @@ public record IntentResult(
         String message,
         Task task,
         ScheduleDecision decision,
-        FocusTransitionNotice focusNotice
+        FocusTransitionNotice focusNotice,
+        ConversationFocusBinding focusBinding,
+        ConversationFocusDirective focusDirective
 ) {
 
     public IntentResult {
@@ -37,11 +41,30 @@ public record IntentResult(
     }
 
     public IntentResult(Action action, String message, Task task, ScheduleDecision decision) {
-        this(action, message, task, decision, null);
+        this(action, message, task, decision, null, null, null);
+    }
+
+    public IntentResult(Action action, String message, Task task, ScheduleDecision decision,
+                        FocusTransitionNotice focusNotice) {
+        this(action, message, task, decision, focusNotice, null, null);
     }
 
     public IntentResult withFocusNotice(FocusTransitionNotice notice) {
-        return new IntentResult(action, message, task, decision, notice);
+        return new IntentResult(action, message, task, decision, notice, focusBinding, focusDirective);
+    }
+
+    public IntentResult withFocusBinding(ConversationFocusBinding binding) {
+        return new IntentResult(action, message, task, decision, focusNotice, binding, focusDirective);
+    }
+
+    public IntentResult withFocusDirective(ConversationFocusBinding binding,
+                                           ConversationFocusDirective directive) {
+        return new IntentResult(action, message, task, decision, focusNotice, binding, directive);
+    }
+
+    public IntentResult withFocusDirective(ConversationFocusDirective directive) {
+        return new IntentResult(
+                action, message, task, decision, focusNotice, focusBinding, directive);
     }
 
     public FocusResponseEnvelope responseEnvelope() {
@@ -339,7 +362,10 @@ public record IntentResult(
 
     public static IntentResult taskCanceled(Task task) {
         return new IntentResult(Action.TASK_CANCELED,
-                "「%s」已取消,不再追蹤提醒".formatted(task.getTitle()), task, null);
+                "「%s」已取消,不再追蹤提醒".formatted(task.getTitle()), task, null)
+                .withFocusDirective(new ConversationFocusBinding(
+                        "TASK", "task:" + task.getId(), task.getTitle()),
+                        ConversationFocusDirective.INVALIDATE_TARGET);
     }
 
     public static IntentResult taskRescheduled(Task task) {

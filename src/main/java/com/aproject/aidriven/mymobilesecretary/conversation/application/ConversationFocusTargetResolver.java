@@ -6,6 +6,7 @@ import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService.ScheduleDecision;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import java.util.Optional;
+import java.util.UUID;
 import org.springframework.stereotype.Component;
 
 /** Resolves focus roots only from a handler's persisted, typed outcome. */
@@ -15,6 +16,19 @@ public final class ConversationFocusTargetResolver {
     public Optional<ResourceTarget> resolve(IntentCommand command, IntentResult result) {
         if (command == null || result == null) {
             return Optional.empty();
+        }
+        return resolve(result);
+    }
+
+    public Optional<ResourceTarget> resolve(IntentResult result) {
+        if (result == null) {
+            return Optional.empty();
+        }
+        if (result.focusBinding() != null) {
+            ConversationFocusBinding binding = result.focusBinding();
+            return Optional.of(new ResourceTarget(
+                    binding.domain(), binding.routingKey(), binding.workflowId(),
+                    binding.safeLabel(), binding.activityCode(), binding.activityLabel()));
         }
         if (result.task() != null) {
             return task(result.task());
@@ -45,6 +59,20 @@ public final class ConversationFocusTargetResolver {
         return value == null || value.isBlank();
     }
 
-    public record ResourceTarget(String domain, String routingKey, String safeLabel) {
+    public record ResourceTarget(
+            String domain,
+            String routingKey,
+            UUID workflowId,
+            String safeLabel,
+            String activityCode,
+            String activityLabel) {
+
+        public ResourceTarget(String domain, String routingKey, String safeLabel) {
+            this(domain, routingKey, null, safeLabel, null, null);
+        }
+
+        public boolean workflow() {
+            return workflowId != null;
+        }
     }
 }

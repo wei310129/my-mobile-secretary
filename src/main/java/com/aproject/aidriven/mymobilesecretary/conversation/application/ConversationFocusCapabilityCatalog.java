@@ -48,9 +48,30 @@ public final class ConversationFocusCapabilityCatalog {
         values.put(IntentCommand.Type.SOCIAL, FocusBehavior.NEVER_TOUCH);
         values.put(IntentCommand.Type.FEEDBACK, FocusBehavior.NEVER_TOUCH);
         values.put(IntentCommand.Type.EXPLAIN_LAST_FAILURE, FocusBehavior.NEVER_TOUCH);
+        values.put(IntentCommand.Type.EXIT_CONVERSATION_FOCUS, FocusBehavior.CONTROL);
+        values.put(IntentCommand.Type.CLOSE_CONVERSATION_FOCUS, FocusBehavior.CONTROL);
+        values.put(IntentCommand.Type.ASK_TASK_INFO, FocusBehavior.START_OR_SWITCH);
         values.put(IntentCommand.Type.CREATE_TASK, FocusBehavior.START_OR_SWITCH);
         values.put(IntentCommand.Type.CREATE_SCHEDULE, FocusBehavior.START_OR_SWITCH);
         values.put(IntentCommand.Type.RESCHEDULE_SCHEDULE, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.UPDATE_TASK, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.RECORD_VENUE_VISIT_INFO, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.UPSERT_TAG_RELATION, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.ASK_TAGGED_RECORDS, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.SHOW_TRAVEL_ITINERARY_DRAFT, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.PLAN_TRIP, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.PLAN_PACKING_LIST, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.CANCEL_SCHEDULE, FocusBehavior.TERMINAL);
+        values.put(IntentCommand.Type.CANCEL_TASK, FocusBehavior.TERMINAL);
+        values.put(IntentCommand.Type.CONFIRM_TRAVEL_ITINERARY_DRAFT, FocusBehavior.TERMINAL);
+        values.put(IntentCommand.Type.DISCARD_TRAVEL_ITINERARY_DRAFT, FocusBehavior.TERMINAL);
+        values.put(IntentCommand.Type.ADD_SHOPPING_ITEMS, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.MARK_SHOPPING_PURCHASED, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.REMOVE_SHOPPING_ITEM, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.SET_INVENTORY, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.ADJUST_INVENTORY, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.BIND_ITEM_PLACE, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.ASK_ITEM_PLACES, FocusBehavior.START_OR_SWITCH);
         return values;
     }
 }

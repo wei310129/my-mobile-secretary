@@ -80,6 +80,10 @@ public class TravelPackingAnswerService {
     }
 
     public IntentResult draft(String requestText) {
+        if (referencesPriorTrip(requestText) && actorTripContext().isEmpty()) {
+            return IntentResult.clarificationNeeded(
+                    "我還不知道你指哪一趟旅行；請告訴我目的地或日期，再幫你整理行李清單。");
+        }
         String tripContext = tripContext(requestText);
         boolean international = containsAny(tripContext,
                 "出國", "國外", "日本", "韓國", "郵輪", "飛機", "航班");
@@ -181,8 +185,23 @@ public class TravelPackingAnswerService {
         if (looksLikeConcreteTrip(current) && !containsAny(current, "例如", "功能改善", "使用者")) {
             return current;
         }
+        return actorTripContext().orElse(current);
+    }
+
+    private Optional<String> actorTripContext() {
         String previous = conversationContextService.snapshot().lastUserText();
-        return previous == null ? current : normalize(previous);
+        if (previous == null) {
+            return Optional.empty();
+        }
+        String normalized = normalize(previous);
+        return looksLikeConcreteTrip(normalized)
+                ? Optional.of(normalized) : Optional.empty();
+    }
+
+    private static boolean referencesPriorTrip(String text) {
+        String normalized = normalize(text);
+        return containsAny(normalized, "剛才那趟", "剛剛那趟", "前面那趟", "上一趟",
+                "那趟旅行", "那次旅行", "那趟旅遊");
     }
 
     private static boolean looksLikeConcreteTrip(String text) {

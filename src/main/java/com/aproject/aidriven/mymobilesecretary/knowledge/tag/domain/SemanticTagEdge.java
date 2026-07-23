@@ -42,6 +42,7 @@ public class SemanticTagEdge extends WorkspaceOwnedEntity {
     }
 
     public Long getFromTagId() { return fromTagId; }
+    public Long getId() { return id; }
     public Long getToTagId() { return toTagId; }
     public RelationType getRelationType() { return relationType; }
 

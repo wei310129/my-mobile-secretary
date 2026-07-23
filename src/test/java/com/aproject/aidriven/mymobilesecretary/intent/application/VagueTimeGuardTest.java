@@ -55,6 +55,12 @@ class VagueTimeGuardTest {
     }
 
     @Test
+    void compactNumericHourRangeIsConcreteEvenWithMorningQualifier() {
+        assertThat(VagueTimeGuard.clarify("ㄟ社團練舞排8/6 早上10-12",
+                createSchedule("暑期社團練舞", "2026-08-06T10:00:00+08:00"))).isEmpty();
+    }
+
+    @Test
     void vagueRescheduleAsksBeforeMovingAnything() {
         Optional<IntentResult> result = VagueTimeGuard.clarify(
                 "把週會改到下午", reschedule("週會", "2026-07-16T14:00:00+08:00"));

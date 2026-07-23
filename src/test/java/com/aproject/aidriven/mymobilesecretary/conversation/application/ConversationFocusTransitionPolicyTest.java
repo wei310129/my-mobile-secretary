@@ -39,8 +39,14 @@ class ConversationFocusTransitionPolicyTest {
         assertThat(policy.decide(FocusBehavior.CONTROL,
                 new FocusControl.Resume(UUID.randomUUID()), false))
                 .isEqualTo(FocusDecision.transition(FocusTransitionType.RESUME));
+        assertThat(policy.decide(FocusBehavior.START_OR_SWITCH,
+                new FocusControl.Resume(UUID.randomUUID()), true))
+                .isEqualTo(FocusDecision.transition(FocusTransitionType.RESUME));
         assertThat(policy.decide(FocusBehavior.CONTROL,
                 new FocusControl.ChangeSubfocus("PAYMENT", "繳款方式"), true))
+                .isEqualTo(FocusDecision.transition(FocusTransitionType.CHANGE_SUBFOCUS));
+        assertThat(policy.decide(FocusBehavior.START_OR_SWITCH,
+                new FocusControl.ChangeSubfocus("PACKING", "行李準備"), true))
                 .isEqualTo(FocusDecision.transition(FocusTransitionType.CHANGE_SUBFOCUS));
         assertThat(policy.decide(FocusBehavior.TERMINAL, FocusControl.Invalidate.INSTANCE, true))
                 .isEqualTo(FocusDecision.transition(FocusTransitionType.INVALIDATE));

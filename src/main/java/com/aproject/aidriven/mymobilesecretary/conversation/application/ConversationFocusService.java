@@ -85,6 +85,32 @@ public class ConversationFocusService {
                 ConversationFocusCloseReason.TARGET_INVALIDATED.name(), null);
     }
 
+    /** Invalidates one authorized suspended target without disturbing another active focus. */
+    public void invalidate(UUID focusId, String inboundHmac) {
+        WorkspaceContext context = WorkspaceContextHolder.requireContext();
+        ConversationScopeKey scope = scope(context);
+        ConversationFocusHead head = head(context, scope);
+        if (existing(context, scope, inboundHmac) != null) {
+            return;
+        }
+        ConversationFocus target = focuses
+                .findByIdAndWorkspaceIdAndCreatedByUserIdAndChannelAndConversationScopeDigest(
+                        focusId, context.workspaceId(), context.actorId(), context.channel(),
+                        scope.digest())
+                .orElseThrow(() -> new IllegalStateException(
+                        "focus is not available in this scope"));
+        if (target.getStatus() != ConversationFocusStatus.SUSPENDED) {
+            throw new IllegalStateException("target focus is not suspended");
+        }
+        ConversationFocus retained = active(context, scope);
+        Instant now = Instant.now(clock);
+        target.close(ConversationFocusCloseReason.TARGET_INVALIDATED, now);
+        focuses.save(target);
+        record(context, scope, head, FocusTransitionType.INVALIDATE,
+                target.getId(), retained == null ? target.getId() : retained.getId(),
+                inboundHmac, now);
+    }
+
     public boolean hasActiveFocus() {
         return activeFocus().isPresent();
     }
@@ -99,34 +125,54 @@ public class ConversationFocusService {
     }
 
     public void resume(UUID focusId, String inboundHmac) {
+        resume(focusId, null, inboundHmac);
+    }
+
+    public void resume(UUID focusId, String safeLabel, String inboundHmac) {
         WorkspaceContext context = WorkspaceContextHolder.requireContext();
         ConversationScopeKey scope = scope(context);
+        ConversationFocusHead head = head(context, scope);
         if (existing(context, scope, inboundHmac) != null) {
             return;
-        }
-        if (active(context, scope) != null) {
-            throw new IllegalStateException("scope already has an active focus");
         }
         ConversationFocus focus = focuses
                 .findByIdAndWorkspaceIdAndCreatedByUserIdAndChannelAndConversationScopeDigest(
                         focusId, context.workspaceId(), context.actorId(), context.channel(), scope.digest())
                 .orElseThrow(() -> new IllegalStateException("focus is not available in this scope"));
+        if (focus.getStatus() != ConversationFocusStatus.SUSPENDED) {
+            throw new IllegalStateException("target focus is not suspended");
+        }
+        ConversationFocus previous = active(context, scope);
         Instant now = Instant.now(clock);
-        focus.resume(now);
+        if (previous != null) {
+            previous.suspend(now);
+            focuses.saveAndFlush(previous);
+        }
+        focus.resume(now, safeLabel);
         focuses.save(focus);
-        record(context, scope, head(context, scope), FocusTransitionType.RESUME,
-                focus.getId(), focus.getId(), inboundHmac, now);
+        record(context, scope, head, FocusTransitionType.RESUME,
+                previous == null ? focus.getId() : previous.getId(), focus.getId(), inboundHmac, now);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<ConversationFocus> suspendedResource(String domain, String routingKey) {
+        WorkspaceContext context = WorkspaceContextHolder.requireContext();
+        ConversationScopeKey scope = scope(context);
+        return focuses
+                .findFirstByWorkspaceIdAndCreatedByUserIdAndChannelAndConversationScopeDigestAndRootDomainAndRoutingKeyAndStatusOrderByUpdatedAtDesc(
+                        context.workspaceId(), context.actorId(), context.channel(), scope.digest(),
+                        domain, routingKey, ConversationFocusStatus.SUSPENDED);
     }
 
     private ConversationFocus enter(ConversationFocusRootKind kind, String domain, String routingKey,
                                     UUID workflowId, String label, String inboundHmac) {
         WorkspaceContext context = WorkspaceContextHolder.requireContext();
         ConversationScopeKey scope = scope(context);
+        ConversationFocusHead head = head(context, scope);
         FocusTransition duplicate = existing(context, scope, inboundHmac);
         if (duplicate != null) {
             return focusFromDuplicate(duplicate);
         }
-        ConversationFocusHead head = head(context, scope);
         if (active(context, scope) != null) {
             throw new IllegalStateException("scope already has an active focus");
         }
@@ -142,6 +188,7 @@ public class ConversationFocusService {
                                           String inboundHmac) {
         WorkspaceContext context = WorkspaceContextHolder.requireContext();
         ConversationScopeKey scope = scope(context);
+        ConversationFocusHead head = head(context, scope);
         FocusTransition duplicate = existing(context, scope, inboundHmac);
         if (duplicate != null) {
             return focusFromDuplicate(duplicate);
@@ -155,7 +202,7 @@ public class ConversationFocusService {
         focuses.saveAndFlush(previous);
         ConversationFocus next = createFocus(scope, context, kind, domain, routingKey, workflowId, label, now);
         focuses.save(next);
-        record(context, scope, head(context, scope), FocusTransitionType.SWITCH,
+        record(context, scope, head, FocusTransitionType.SWITCH,
                 previous.getId(), next.getId(), inboundHmac, now);
         return next;
     }
@@ -173,6 +220,7 @@ public class ConversationFocusService {
     private void mutate(FocusTransitionType type, String inboundHmac, String value, String label) {
         WorkspaceContext context = WorkspaceContextHolder.requireContext();
         ConversationScopeKey scope = scope(context);
+        ConversationFocusHead head = head(context, scope);
         if (existing(context, scope, inboundHmac) != null) {
             return;
         }
@@ -191,7 +239,7 @@ public class ConversationFocusService {
             throw new IllegalArgumentException("unsupported focus transition");
         }
         focuses.save(focus);
-        record(context, scope, head(context, scope), type, focus.getId(), focus.getId(), inboundHmac, now);
+        record(context, scope, head, type, focus.getId(), focus.getId(), inboundHmac, now);
     }
 
     private ConversationFocus active(WorkspaceContext context, ConversationScopeKey scope) {

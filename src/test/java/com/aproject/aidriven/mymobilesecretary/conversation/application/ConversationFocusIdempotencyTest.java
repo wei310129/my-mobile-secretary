@@ -50,9 +50,12 @@ class ConversationFocusIdempotencyTest extends IntegrationTestBase {
         FocusResponseEnvelope first = processWebhook(actorId, workspaceId, eventKey);
         FocusResponseEnvelope duplicate = processWebhook(actorId, workspaceId, eventKey);
 
-        assertThat(duplicate).isNull();
+        assertThat(duplicate).isNotNull();
         assertThat(first.notice().type()).isEqualTo(FocusTransitionType.ENTER);
         assertThat(first.message()).contains("主要回覆");
+        assertThat(duplicate.message()).isEqualTo(first.message());
+        assertThat(duplicate.message().split("目前先處理", -1)).hasSize(2);
+        assertThat(duplicate.notice()).isNull();
         assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM item "
                 + "WHERE name = 'idempotent focus item'", Long.class)).isEqualTo(1L);
         assertThat(jdbcTemplate.queryForObject("SELECT count(*) FROM conversation_focus "

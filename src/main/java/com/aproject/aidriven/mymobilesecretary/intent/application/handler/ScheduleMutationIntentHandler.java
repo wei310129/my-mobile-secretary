@@ -1,5 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application.handler;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusBinding;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusDirective;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.intent.application.BulkScheduleCancellationService;
@@ -46,7 +48,6 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
     private final PlaceAliasService placeAliasService;
     private final ConversationContextService contextService;
     private final BulkScheduleCancellationService bulkCancellationService;
-    private final TaskMutationIntentHandler taskMutationHandler;
 
     @Override
     public Set<IntentCommand.Type> supportedTypes() {
@@ -56,7 +57,7 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
     @Override
     public IntentResult handle(String text, IntentCommand command) {
         return switch (command.type()) {
-            case CREATE_SCHEDULE -> createSchedule(text, command);
+            case CREATE_SCHEDULE -> createSchedule(command);
             case UPDATE_SCHEDULE -> updateSchedule(command);
             case COPY_SCHEDULE -> copySchedule(command);
             case MERGE_SCHEDULES -> mergeSchedules(command);
@@ -75,7 +76,7 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
         };
     }
 
-    private IntentResult createSchedule(String text, IntentCommand command) {
+    private IntentResult createSchedule(IntentCommand command) {
         require(command.title(), "title");
         Instant startAt = parse(command.startAt());
         Instant endAt = parse(command.endAt());
@@ -83,11 +84,8 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
             throw new IllegalArgumentException("schedule missing startAt");
         }
         if (endAt == null) {
-            IntentCommand taskCommand = new IntentCommand(IntentCommand.Type.CREATE_TASK,
-                    command.title(), command.startAt(), null, null,
-                    command.placeName(), command.priority(), command.reason(),
-                    null, null, null, null, false, command.options());
-            return taskMutationHandler.handle(text, taskCommand);
+            return IntentResult.clarificationNeeded(
+                    "請告訴我行程的結束時間或預計多久，我會接著建立。");
         }
         Long placeId = placeAliasService.resolve(command.placeName()).map(Place::getId).orElse(null);
         ScheduleDecision decision = scheduleService.createSchedule(
@@ -176,10 +174,13 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
         if (match.failure() != null) return match.failure();
         ScheduleStatus prior = match.item().getStatus();
         ScheduleItem updated = scheduleService.discardSchedule(match.item().getId());
-        return prior == ScheduleStatus.PROPOSED
+        IntentResult result = prior == ScheduleStatus.PROPOSED
                 ? IntentResult.message(IntentResult.Action.SCHEDULE_CANCELED,
                         "已放棄待確認行程「%s」。".formatted(updated.getTitle()))
                 : IntentResult.scheduleCanceled(updated);
+        return result.withFocusDirective(new ConversationFocusBinding(
+                "SCHEDULE", "schedule:" + updated.getId(), updated.getTitle()),
+                ConversationFocusDirective.INVALIDATE_TARGET);
     }
 
     private IntentResult rescheduleSchedule(IntentCommand command) {

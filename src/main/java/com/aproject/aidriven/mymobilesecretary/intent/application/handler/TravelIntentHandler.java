@@ -6,6 +6,7 @@ import com.aproject.aidriven.mymobilesecretary.intent.application.RestaurantBook
 import com.aproject.aidriven.mymobilesecretary.intent.application.TravelItineraryDraftAnswerService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.TravelPackingAnswerService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.TravelPlanningIntakeService;
+import com.aproject.aidriven.mymobilesecretary.travel.application.TravelConversationFocusBindingFactory;
 import java.util.Set;
 import lombok.RequiredArgsConstructor;
 import org.springframework.stereotype.Component;
@@ -29,6 +30,7 @@ public final class TravelIntentHandler implements IntentHandler {
     private final TravelPackingAnswerService packingService;
     private final TravelItineraryDraftAnswerService itineraryDraftService;
     private final RestaurantBookingService restaurantBookingService;
+    private final TravelConversationFocusBindingFactory focusBindings;
 
     @Override
     public Set<IntentCommand.Type> supportedTypes() {
@@ -38,8 +40,9 @@ public final class TravelIntentHandler implements IntentHandler {
     @Override
     public IntentResult handle(String text, IntentCommand command) {
         return switch (command.type()) {
-            case PLAN_TRIP -> planningService.intake(text);
-            case PLAN_PACKING_LIST -> packingService.draft(text);
+            case PLAN_TRIP -> planningService.intake(text)
+                    .withFocusBinding(focusBindings.planning());
+            case PLAN_PACKING_LIST -> withPackingFocus(packingService.draft(text));
             case LIST_PACKING_PREFERENCES -> packingService.listPreferences();
             case SET_PACKING_PREFERENCE -> {
                 requireText(command.title(), "title");
@@ -59,5 +62,10 @@ public final class TravelIntentHandler implements IntentHandler {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(field + " missing");
         }
+    }
+
+    private IntentResult withPackingFocus(IntentResult result) {
+        return result.action() == IntentResult.Action.PACKING_LIST_INFO
+                ? result.withFocusBinding(focusBindings.packing()) : result;
     }
 }

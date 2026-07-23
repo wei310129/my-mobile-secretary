@@ -22,8 +22,7 @@ class ScheduleMutationIntentHandlerTest {
                 mock(ScheduleService.class),
                 mock(PlaceAliasService.class),
                 mock(ConversationContextService.class),
-                mock(BulkScheduleCancellationService.class),
-                mock(TaskMutationIntentHandler.class));
+                mock(BulkScheduleCancellationService.class));
     }
 
     @Test

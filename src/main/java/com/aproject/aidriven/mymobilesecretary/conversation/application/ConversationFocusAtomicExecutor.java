@@ -93,8 +93,10 @@ public class ConversationFocusAtomicExecutor {
                             change.domain(), change.routingKey(), change.safeLabel(), inboundHmac));
                 }
             }
-            case RESUME -> focusService.resume(require(control, FocusControl.Resume.class, type).focusId(),
-                    inboundHmac);
+            case RESUME -> {
+                FocusControl.Resume resume = require(control, FocusControl.Resume.class, type);
+                focusService.resume(resume.focusId(), resume.safeLabel(), inboundHmac);
+            }
             case EXIT -> {
                 require(control, FocusControl.Exit.class, type);
                 focusService.exit(inboundHmac);
@@ -104,8 +106,12 @@ public class ConversationFocusAtomicExecutor {
                 focusService.close(ConversationFocusCloseReason.USER_CLOSED, inboundHmac);
             }
             case INVALIDATE -> {
-                require(control, FocusControl.Invalidate.class, type);
-                focusService.invalidate(inboundHmac);
+                if (control instanceof FocusControl.InvalidateTarget target) {
+                    focusService.invalidate(target.focusId(), inboundHmac);
+                } else {
+                    require(control, FocusControl.Invalidate.class, type);
+                    focusService.invalidate(inboundHmac);
+                }
             }
         }
     }

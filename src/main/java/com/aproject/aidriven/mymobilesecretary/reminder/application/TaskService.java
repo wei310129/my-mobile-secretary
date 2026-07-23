@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.reminder.application;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskPriority;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskStatus;
@@ -11,6 +12,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.util.EnumSet;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -73,21 +75,22 @@ public class TaskService {
 
     @Transactional(readOnly = true)
     public List<Task> listTasks() {
-        return taskRepository.findAll();
+        return taskRepository.findByCreatedByUserId(currentActorId());
     }
 
     /** 查單一任務;不存在丟 NotFoundException(404)。 */
     @Transactional(readOnly = true)
     public Task getTask(Long taskId) {
-        return taskRepository.findById(taskId)
+        return taskRepository.findByIdAndCreatedByUserId(taskId, currentActorId())
                 .orElseThrow(() -> new NotFoundException("Task", taskId));
     }
 
     /** 未結案任務清單(自然語言「還有什麼要做」用);有期限的排前面。 */
     @Transactional(readOnly = true)
     public List<Task> listOpenTasks() {
-        return taskRepository.findByStatusIn(EnumSet.of(
-                        TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.REMINDED, TaskStatus.ESCALATED))
+        return taskRepository.findByStatusInAndCreatedByUserId(EnumSet.of(
+                        TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.REMINDED,
+                        TaskStatus.ESCALATED), currentActorId())
                 .stream()
                 .sorted(java.util.Comparator.comparing(Task::getDueAt,
                         java.util.Comparator.nullsLast(java.util.Comparator.naturalOrder())))
@@ -97,7 +100,8 @@ public class TaskService {
     /** 已完成待辦,最近完成的排前面。 */
     @Transactional(readOnly = true)
     public List<Task> listCompletedTasks() {
-        return taskRepository.findByStatusIn(EnumSet.of(TaskStatus.CONFIRMED)).stream()
+        return taskRepository.findByStatusInAndCreatedByUserId(
+                        EnumSet.of(TaskStatus.CONFIRMED), currentActorId()).stream()
                 .sorted(java.util.Comparator.comparing(Task::getUpdatedAt).reversed())
                 .toList();
     }
@@ -113,8 +117,9 @@ public class TaskService {
         if (needle.isEmpty()) {
             return List.of();
         }
-        return taskRepository.findByStatusIn(EnumSet.of(
-                        TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.REMINDED, TaskStatus.ESCALATED))
+        return taskRepository.findByStatusInAndCreatedByUserId(EnumSet.of(
+                        TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.REMINDED,
+                        TaskStatus.ESCALATED), currentActorId())
                 .stream()
                 .filter(task -> {
                     String title = task.getTitle().toLowerCase();
@@ -125,8 +130,9 @@ public class TaskService {
 
     /** 一次取消全部未結案任務(「全部待辦都取消」);回傳被取消的清單供回覆。 */
     public List<Task> cancelAllOpenTasks() {
-        List<Task> open = taskRepository.findByStatusIn(EnumSet.of(
-                TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.REMINDED, TaskStatus.ESCALATED));
+        List<Task> open = taskRepository.findByStatusInAndCreatedByUserId(EnumSet.of(
+                TaskStatus.CREATED, TaskStatus.SCHEDULED, TaskStatus.REMINDED,
+                TaskStatus.ESCALATED), currentActorId());
         Instant now = Instant.now(clock);
         open.forEach(task -> {
             task.cancel(now);
@@ -283,5 +289,9 @@ public class TaskService {
             }
         }
         return next.toInstant();
+    }
+
+    private static UUID currentActorId() {
+        return WorkspaceContextHolder.requireContext().actorId();
     }
 }

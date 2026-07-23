@@ -5,6 +5,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.CALLS_REAL_METHODS;
 import static org.mockito.Mockito.mock;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusControlIntentHandler;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationIntentHandler;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
@@ -58,6 +59,7 @@ class IntentHandlerRegistryTest {
                 mock(BloodDonationIntentHandler.class, CALLS_REAL_METHODS),
                 mock(ContactIntentHandler.class, CALLS_REAL_METHODS),
                 mock(ContextIntentHandler.class, CALLS_REAL_METHODS),
+                mock(ConversationFocusControlIntentHandler.class, CALLS_REAL_METHODS),
                 mock(ConversationIntentHandler.class, CALLS_REAL_METHODS),
                 mock(PlaceIntentHandler.class, CALLS_REAL_METHODS),
                 mock(PlannerIntentHandler.class, CALLS_REAL_METHODS),

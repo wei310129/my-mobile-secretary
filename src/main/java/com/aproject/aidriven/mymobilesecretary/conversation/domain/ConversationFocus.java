@@ -117,7 +117,8 @@ public class ConversationFocus extends WorkspaceOwnedEntity {
     }
 
     public void suspend(Instant now) { requireOpen(); status = ConversationFocusStatus.SUSPENDED; updatedAt = now; }
-    public void resume(Instant now) { if (status != ConversationFocusStatus.SUSPENDED) throw new IllegalStateException("only suspended focus can resume"); status = ConversationFocusStatus.ACTIVE; updatedAt = now; }
+    public void resume(Instant now) { resume(now, null); }
+    public void resume(Instant now, String refreshedSafeLabel) { if (status != ConversationFocusStatus.SUSPENDED) throw new IllegalStateException("only suspended focus can resume"); if (refreshedSafeLabel != null) safeLabel = required(refreshedSafeLabel, "safe label", 200); status = ConversationFocusStatus.ACTIVE; updatedAt = now; }
     public void close(ConversationFocusCloseReason reason, Instant now) { requireOpen(); status = ConversationFocusStatus.CLOSED; closeReason = java.util.Objects.requireNonNull(reason); updatedAt = now; }
 
     private void requireOpen() { if (status == ConversationFocusStatus.CLOSED) throw new IllegalStateException("closed focus cannot transition"); }

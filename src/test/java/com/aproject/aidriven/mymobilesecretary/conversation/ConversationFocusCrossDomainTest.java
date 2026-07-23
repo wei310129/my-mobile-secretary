@@ -82,6 +82,17 @@ class ConversationFocusCrossDomainTest extends IntegrationTestBase {
             assertThat(scheduleFocus.getRootDomain()).isEqualTo("SCHEDULE");
             assertThat(scheduleFocus.getRoutingKey()).isEqualTo("schedule:" + schedule.item().getId());
 
+            long scheduleFocusRevision = focusRevision(workspaceId);
+            IntentResult sameScheduleReply = executor.execute("同一個回診再改時間",
+                    command(IntentCommand.Type.RESCHEDULE_SCHEDULE), "1".repeat(64));
+            assertThat(sameScheduleReply.action()).isEqualTo(IntentResult.Action.SCHEDULE_RESCHEDULED);
+            assertThat(sameScheduleReply.focusNotice()).isNull();
+            assertThat(sameScheduleReply.responseEnvelope().message())
+                    .doesNotContain("先暫離").doesNotContain("改處理");
+            assertThat(focusService.activeFocus().orElseThrow().getId()).isEqualTo(scheduleFocus.getId());
+            assertThat(focusRevision(workspaceId)).isEqualTo(scheduleFocusRevision);
+            assertThat(transitionCount(workspaceId)).isEqualTo(2L);
+
             executor.execute("天氣", command(IntentCommand.Type.ASK_WEATHER), "c".repeat(64));
             executor.execute("這個回覆不對", command(IntentCommand.Type.FEEDBACK), "d".repeat(64));
             assertThat(focusService.activeFocus().orElseThrow().getId()).isEqualTo(scheduleFocus.getId());
@@ -175,6 +186,12 @@ class ConversationFocusCrossDomainTest extends IntegrationTestBase {
 
     private long transitionCount(UUID workspaceId) {
         return jdbcTemplate.queryForObject("SELECT count(*) FROM focus_transition WHERE workspace_id = ?",
+                Long.class, workspaceId);
+    }
+
+    private long focusRevision(UUID workspaceId) {
+        return jdbcTemplate.queryForObject(
+                "SELECT revision FROM conversation_focus_head WHERE workspace_id = ?",
                 Long.class, workspaceId);
     }
 

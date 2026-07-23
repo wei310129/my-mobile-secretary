@@ -23,6 +23,34 @@ class ConversationFocusCapabilityCatalogTest {
                 .isEqualTo(FocusBehavior.START_OR_SWITCH);
         assertThat(catalog.behaviorFor(IntentCommand.Type.RESCHEDULE_SCHEDULE))
                 .isEqualTo(FocusBehavior.START_OR_SWITCH);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.UPDATE_TASK))
+                .isEqualTo(FocusBehavior.START_OR_SWITCH);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.ASK_TASK_INFO))
+                .isEqualTo(FocusBehavior.START_OR_SWITCH);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.EXIT_CONVERSATION_FOCUS))
+                .isEqualTo(FocusBehavior.CONTROL);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.CLOSE_CONVERSATION_FOCUS))
+                .isEqualTo(FocusBehavior.CONTROL);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.RECORD_VENUE_VISIT_INFO))
+                .isEqualTo(FocusBehavior.START_OR_SWITCH);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.SHOW_TRAVEL_ITINERARY_DRAFT))
+                .isEqualTo(FocusBehavior.START_OR_SWITCH);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.PLAN_TRIP))
+                .isEqualTo(FocusBehavior.START_OR_SWITCH);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.PLAN_PACKING_LIST))
+                .isEqualTo(FocusBehavior.START_OR_SWITCH);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.CANCEL_SCHEDULE))
+                .isEqualTo(FocusBehavior.TERMINAL);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.CANCEL_TASK))
+                .isEqualTo(FocusBehavior.TERMINAL);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.CONFIRM_TRAVEL_ITINERARY_DRAFT))
+                .isEqualTo(FocusBehavior.TERMINAL);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.DISCARD_TRAVEL_ITINERARY_DRAFT))
+                .isEqualTo(FocusBehavior.TERMINAL);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.ADD_SHOPPING_ITEMS))
+                .isEqualTo(FocusBehavior.START_OR_SWITCH);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.MARK_SHOPPING_PURCHASED))
+                .isEqualTo(FocusBehavior.START_OR_SWITCH);
         assertThat(catalog.behaviorFor(IntentCommand.Type.ASK_WEATHER))
                 .isEqualTo(FocusBehavior.ONE_SHOT_KEEP);
         assertThat(catalog.behaviorFor(IntentCommand.Type.FEEDBACK))

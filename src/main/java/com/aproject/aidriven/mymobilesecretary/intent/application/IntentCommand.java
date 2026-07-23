@@ -91,6 +91,10 @@ public record IntentCommand(
         CANCEL_CONTEXT,
         SET_CONTEXT_PLACE,
         COPY_CONTEXT,
+        /** 明確只離開目前對話焦點；不得完成、取消或刪除業務資料。 */
+        EXIT_CONVERSATION_FOCUS,
+        /** 明確終結目前對話承接；不得完成、取消或刪除業務資料。 */
+        CLOSE_CONVERSATION_FOCUS,
         SOCIAL,
         UPDATE_TASK,
         PAUSE_RECURRING_TASK,

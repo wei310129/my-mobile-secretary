@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application.handler;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusBinding;
 import com.aproject.aidriven.mymobilesecretary.geo.application.GeofenceRuleService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationContextService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
@@ -92,10 +93,12 @@ public final class TaskQueryIntentHandler implements IntentHandler {
     private IntentResult askTaskInfo(IntentCommand command, IntentOptions options) {
         Task task = taskTarget(command, options);
         contextService.rememberTask(task);
-        return IntentResult.message(IntentResult.Action.TASK_INFO,
+        return IntentResult.taskMessage(IntentResult.Action.TASK_INFO,
                 "「%s」%s,分類 %s,狀態 %s。".formatted(task.getTitle(),
                         task.getDueAt() == null ? "沒有期限" : "期限 " + format(task.getDueAt()),
-                        task.getCategory(), task.getStatus()));
+                        task.getCategory(), task.getStatus()), task)
+                .withFocusBinding(new ConversationFocusBinding(
+                        "TASK", "task:" + task.getId(), task.getTitle()));
     }
 
     private IntentResult listCompleted(IntentOptions options) {

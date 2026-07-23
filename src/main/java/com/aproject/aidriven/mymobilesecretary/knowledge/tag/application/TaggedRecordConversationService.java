@@ -12,7 +12,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 /** Answers natural-language lookups only when the private tag graph has actual matching records. */
 @Service
-@Transactional(readOnly = true)
+@Transactional
 public class TaggedRecordConversationService {
     private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
     private static final DateTimeFormatter DATE = DateTimeFormatter.ofPattern("yyyy/MM/dd");
@@ -37,9 +37,14 @@ public class TaggedRecordConversationService {
         if (!matcher.matches()) return Optional.empty();
         String keyword = matcher.group(1).strip();
         if (keyword.isBlank()) return Optional.empty();
+        int explicitTagRelevance = score(text, "註記", "標籤", "記過", "紀錄", "記得");
+        if (explicitTagRelevance == 0 && score(text,
+                "行程", "日程", "待辦", "任務", "提醒", "日曆", "會議", "活動") > 0) {
+            return Optional.empty();
+        }
         var records = queryService.query(keyword, null, null, null);
         if (records.isEmpty()) return Optional.empty();
-        int tagRelevance = 60 + score(text, "註記", "標籤", "記過", "紀錄", "記得") * 15;
+        int tagRelevance = 60 + explicitTagRelevance * 15;
         int purchaseRelevance = score(text, "購買", "買的", "買過", "價格", "多少錢", "庫存", "店家") * 70;
         if (purchaseRelevance > tagRelevance + 10) return Optional.empty();
         if (purchaseRelevance > 0 && Math.abs(tagRelevance - purchaseRelevance) <= 10) {

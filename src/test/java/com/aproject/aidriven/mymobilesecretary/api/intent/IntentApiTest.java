@@ -649,18 +649,20 @@ class IntentApiTest extends IntegrationTestBase {
                         "資料沒有異動")));
     }
 
-    /** 單一明確時點的生活事項被誤判成缺 endAt 行程時，安全降為 timed task。 */
+    /** 單一明確時點的生活事項若被誤判成缺 endAt 行程，仍須 fail closed 而不偷轉型。 */
     @Test
-    void singlePointChoreWithMissingScheduleEndBecomesTimedTask() throws Exception {
+    void singlePointChoreMisclassifiedAsScheduleWithoutEndFailsClosed() throws Exception {
+        int before = taskService.listTasks().size();
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE, "診斷測試倒垃圾單點", null,
                 "2027-07-16T22:00:00+08:00", null, null, "NORMAL", null,
                 null, null, null, null, false));
 
         say("明年今天晚上10點要去倒垃圾",
-                jsonPath("$.action").value("TASK_CREATED"),
-                jsonPath("$.task.title").value("診斷測試倒垃圾單點"),
-                jsonPath("$.task.dueAt").value("2027-07-16T14:00:00Z"));
+                jsonPath("$.action").value("CLARIFICATION_NEEDED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("結束時間")),
+                jsonPath("$.task").value(org.hamcrest.Matchers.nullValue()));
+        org.assertj.core.api.Assertions.assertThat(taskService.listTasks()).hasSize(before);
     }
 
     /** 使用者實際問句走確定性查詢；即使 stub 沒回覆，也不能建成待辦。 */

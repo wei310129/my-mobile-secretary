@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusBinding;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
@@ -79,10 +80,11 @@ public class LifestyleItemIntentService {
             items.forEach(item -> itemService.bindItemToPlace(item.getName(), place.getId()));
         }
         String cautions = purchaseCautions(names);
-        return IntentResult.message(IntentResult.Action.SHOPPING_ITEMS_ADDED,
+        IntentResult result = IntentResult.message(IntentResult.Action.SHOPPING_ITEMS_ADDED,
                 "已加入購物清單:\n%s\n\n重複品項不會再新增一份。%s".formatted(
                         items.stream().map(Item::getName).collect(Collectors.joining("\n")),
                         cautions));
+        return withSingleItemFocus(result, items);
     }
 
     private String purchaseCautions(List<String> names) {
@@ -98,10 +100,11 @@ public class LifestyleItemIntentService {
 
     private IntentResult removeShopping(IntentCommand command, IntentOptions options) {
         String name = itemNames(command, options).getFirst();
-        boolean removed = itemService.removeShoppingItem(name).isPresent();
-        return IntentResult.message(IntentResult.Action.SHOPPING_ITEM_REMOVED,
-                removed ? "已從購物清單移除「%s」。".formatted(name)
+        Optional<Item> removed = itemService.removeShoppingItem(name);
+        IntentResult result = IntentResult.message(IntentResult.Action.SHOPPING_ITEM_REMOVED,
+                removed.isPresent() ? "已從購物清單移除「%s」。".formatted(name)
                         : "購物清單裡沒有「%s」。".formatted(name));
+        return removed.map(item -> withItemFocus(result, item)).orElse(result);
     }
 
     private IntentResult listShopping() {
@@ -115,9 +118,9 @@ public class LifestyleItemIntentService {
         String name = itemNames(command, options).getFirst();
         Item item = itemService.setInventory(name,
                 options.quantity() == null ? 0 : options.quantity());
-        return IntentResult.message(IntentResult.Action.INVENTORY_UPDATED,
+        return withItemFocus(IntentResult.message(IntentResult.Action.INVENTORY_UPDATED,
                 "已更新「%s」庫存為 %d。".formatted(
-                        item.getName(), item.getInventoryQuantity()));
+                        item.getName(), item.getInventoryQuantity())), item);
     }
 
     private IntentResult markShoppingPurchased(IntentCommand command, IntentOptions options) {
@@ -127,9 +130,9 @@ public class LifestyleItemIntentService {
             return IntentResult.message(IntentResult.Action.SHOPPING_ITEMS_PURCHASED,
                     "這些品項目前不在購物清單裡。 ");
         }
-        return IntentResult.message(IntentResult.Action.SHOPPING_ITEMS_PURCHASED,
+        return withSingleItemFocus(IntentResult.message(IntentResult.Action.SHOPPING_ITEMS_PURCHASED,
                 "已標記買到:\n%s".formatted(purchased.stream().map(Item::getName)
-                        .collect(Collectors.joining("\n"))));
+                        .collect(Collectors.joining("\n")))), purchased);
     }
 
     private IntentResult clearShopping() {
@@ -145,10 +148,10 @@ public class LifestyleItemIntentService {
             throw new IllegalArgumentException("missing inventory delta");
         }
         Item item = itemService.adjustInventory(command.title(), options.quantity());
-        return IntentResult.message(IntentResult.Action.INVENTORY_ADJUSTED,
+        return withItemFocus(IntentResult.message(IntentResult.Action.INVENTORY_ADJUSTED,
                 "已把「%s」庫存%s %d,目前是 %d。".formatted(item.getName(),
                         options.quantity() > 0 ? "增加" : "減少",
-                        Math.abs(options.quantity()), item.getInventoryQuantity()));
+                        Math.abs(options.quantity()), item.getInventoryQuantity())), item);
     }
 
     private IntentResult listInventory(IntentOptions options) {
@@ -222,10 +225,10 @@ public class LifestyleItemIntentService {
         Item item = found.get();
         List<String> places = item.getPlaceIds().stream().map(placeService::getPlace)
                 .map(Place::getName).sorted().toList();
-        return IntentResult.message(IntentResult.Action.ITEM_PLACES_INFO,
+        return withItemFocus(IntentResult.message(IntentResult.Action.ITEM_PLACES_INFO,
                 places.isEmpty() ? "還不知道「%s」可以在哪裡買。".formatted(item.getName())
                         : "「%s」可以在:\n%s".formatted(
-                                item.getName(), String.join("\n", places)));
+                                item.getName(), String.join("\n", places))), item);
     }
 
     private IntentResult bindItemPlace(IntentCommand command) {
@@ -234,9 +237,9 @@ public class LifestyleItemIntentService {
         Place place = resolvePlace(command.placeName()).orElseGet(() ->
                 placeService.createPlace(command.placeName(), null, null, null, null));
         Item item = itemService.bindItemToPlace(command.title(), place.getId());
-        return IntentResult.message(IntentResult.Action.ITEM_PLACE_BOUND,
+        return withItemFocus(IntentResult.message(IntentResult.Action.ITEM_PLACE_BOUND,
                 "記住了,「%s」可以在「%s」買。".formatted(
-                        item.getName(), place.getName()));
+                        item.getName(), place.getName())), item);
     }
 
     private IntentResult listItemsAt(IntentCommand command) {
@@ -442,6 +445,15 @@ public class LifestyleItemIntentService {
             names = List.of(command.title());
         }
         return names;
+    }
+
+    private static IntentResult withSingleItemFocus(IntentResult result, List<Item> items) {
+        return items.size() == 1 ? withItemFocus(result, items.getFirst()) : result;
+    }
+
+    private static IntentResult withItemFocus(IntentResult result, Item item) {
+        return result.withFocusBinding(new ConversationFocusBinding(
+                "ITEM", "item:" + item.getId(), item.getName()));
     }
 
     private static boolean hasText(String value) {

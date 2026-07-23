@@ -31,7 +31,7 @@ class ScheduleCrudIntentHandlerTest {
         context = mock(ConversationContextService.class);
         handler = new ScheduleMutationIntentHandler(
                 schedules, mock(PlaceAliasService.class), context,
-                mock(BulkScheduleCancellationService.class), mock(TaskMutationIntentHandler.class));
+                mock(BulkScheduleCancellationService.class));
     }
 
     @Test

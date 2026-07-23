@@ -15,11 +15,17 @@ public final class FocusTransitionNoticeRenderer {
                     notice.currentSafeLabel(), notice.activitySafeLabel());
             case SWITCH -> "先暫離「%s」，改處理「%s」。".formatted(
                     notice.previousSafeLabel(), notice.currentSafeLabel());
-            case RESUME -> "繼續處理「%s」。".formatted(notice.currentSafeLabel());
+            case RESUME -> notice.previousSafeLabel() == null
+                    ? "繼續處理「%s」。".formatted(notice.currentSafeLabel())
+                    : "先暫離「%s」，回到「%s」。".formatted(
+                            notice.previousSafeLabel(), notice.currentSafeLabel());
             case EXIT -> "已離開「%s」，目前沒有正在處理的事項。".formatted(
                     notice.currentSafeLabel());
             case CLOSE -> "已結束這段對話處理：「%s」。".formatted(notice.currentSafeLabel());
-            case INVALIDATE -> "「%s」目前無法再繼續處理。".formatted(notice.currentSafeLabel());
+            case INVALIDATE -> notice.previousSafeLabel() == null
+                    ? "「%s」目前無法再繼續處理。".formatted(notice.currentSafeLabel())
+                    : "「%s」目前無法再繼續處理；目前仍在處理「%s」。".formatted(
+                            notice.currentSafeLabel(), notice.previousSafeLabel());
         };
     }
 }

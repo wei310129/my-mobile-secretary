@@ -32,6 +32,7 @@ class ProjectScopeFromFocusServiceTest {
             assertThat(scope.workspaceId()).isEqualTo(fixture.workspaceId);
             assertThat(scope.actorId()).isEqualTo(fixture.actorId);
             assertThat(scope.type()).isEqualTo(ProjectType.TRAVEL);
+            assertThat(scope.projectVersion()).isEqualTo(3L);
         }
     }
 
@@ -92,6 +93,7 @@ class ProjectScopeFromFocusServiceTest {
             when(project.getId()).thenReturn(projectId);
             when(project.getStatus()).thenReturn(ProjectStatus.ACTIVE);
             when(project.getType()).thenReturn(ProjectType.TRAVEL);
+            when(project.getVersion()).thenReturn(3L);
         }
     }
 }

@@ -17,6 +17,7 @@ import com.aproject.aidriven.mymobilesecretary.conversation.application.FocusTra
 import com.aproject.aidriven.mymobilesecretary.conversation.domain.FocusTransitionType;
 import com.aproject.aidriven.mymobilesecretary.project.application.ProjectScope;
 import com.aproject.aidriven.mymobilesecretary.project.application.ProjectScopeFromFocusService;
+import com.aproject.aidriven.mymobilesecretary.project.application.ProjectScopedTransactionExecutor;
 import com.aproject.aidriven.mymobilesecretary.project.application.ProjectService;
 import com.aproject.aidriven.mymobilesecretary.project.domain.Project;
 import com.aproject.aidriven.mymobilesecretary.project.domain.ProjectType;
@@ -28,6 +29,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.dao.DataAccessException;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.support.TransactionSynchronizationManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 class ProjectConversationFocusBindingRlsIntegrationTest extends IntegrationTestBase {
@@ -39,6 +41,7 @@ class ProjectConversationFocusBindingRlsIntegrationTest extends IntegrationTestB
     @Autowired private ConversationFocusService focusService;
     @Autowired private ConversationFocusQuoteResolver quoteResolver;
     @Autowired private ProjectScopeFromFocusService scopes;
+    @Autowired private ProjectScopedTransactionExecutor scopedTransactions;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private PlatformTransactionManager transactions;
 
@@ -177,6 +180,37 @@ class ProjectConversationFocusBindingRlsIntegrationTest extends IntegrationTestB
                 context, () -> quoteResolver.resolveSuspendedFocus(focusId)))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessage("quoted focus target is unavailable");
+    }
+
+    @Test
+    void scopedCommandRevalidatesVersionAndKeepsCallbackInsideTransaction() {
+        UUID actorId = UUID.randomUUID();
+        UUID workspaceId = UUID.randomUUID();
+        seed(actorId, workspaceId, "transaction owner");
+        WorkspaceContext context = context(actorId, workspaceId, "transaction-thread");
+        Project project = inContext(context, () -> projects.createProject(
+                ProjectType.TRAVEL, "交易旅行", "6".repeat(64)));
+        enter(context, project, "7".repeat(64));
+        ProjectScope first = inContext(context, scopes::requireActive);
+
+        UUID authorized = inContext(context, () -> scopedTransactions.create(
+                first, command -> {
+                    assertThat(TransactionSynchronizationManager.isActualTransactionActive())
+                            .isTrue();
+                    return command.projectId();
+                }));
+        assertThat(authorized).isEqualTo(project.getId());
+
+        inContext(context, () -> projects.renameProject(project.getId(), "交易旅行新版"));
+        assertThatThrownBy(() -> inContext(
+                context, () -> scopedTransactions.query(first, command -> command.projectId())))
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("stale");
+
+        ProjectScope refreshed = inContext(context, scopes::requireActive);
+        UUID refreshedProjectId = inContext(context, () -> scopedTransactions.query(
+                refreshed, command -> command.projectId()));
+        assertThat(refreshedProjectId).isEqualTo(project.getId());
     }
 
     private void enter(WorkspaceContext context, Project project, String inboundHmac) {

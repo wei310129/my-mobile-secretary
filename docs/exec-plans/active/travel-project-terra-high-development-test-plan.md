@@ -1,6 +1,6 @@
 # 旅遊專案全流程開發與擬真測試計劃（Terra High 執行版）
 
-> 狀態：舵輪 2 已完成，舵輪 3A 尚未開始；3B 前須取得使用者明確確認
+> 狀態：舵輪 3A 已完成；3B 等待使用者明確確認
 > 更新日期：2026-07-23
 > 單一主題：安排一次出國旅行
 > 全服務前置：Conversation Focus／上下文主動對齊
@@ -1490,7 +1490,7 @@ Terra 每完成一輪，只更新狀態與實際證據，不把預期數字寫�
 | F5 | COMPLETED | Round 1 修正後 focused 40/40、鄰接 57/57、latency 6/6；scope-first locking 修正後 concurrent mutation 3/3、focus 鄰接 39/39 | fresh evaluator R artifact-v2/oracle-v1：20 scenarios／60 turns／20 personas，direct 55/55、direct 或適當安全澄清 60/60、hard/privacy/state/mutation/reply facts 60/60、scenario 20/20，正式 PASS；input `4e40c46247f44668f3377d8cb1682a15a4858e7e140d6a1132104cddd8b7920a`、runner `dc12dcfb578e9a97ae520d3288281842621dcbedcb254d4d93392ea40115d87`、manifest `8e1f860d44f924ca7282701e723e9aa80a54026c1fb3b53b77b97e5c190aabf2`、capture `d1178c7b9c79d3c9b9c81a1c0e56e41374a0e0c2ba0af853ea50875cad4732dd`、oracle `e4dc6a2affca9ba3df6797b1260f369ccf86c73d7456120a211a2b31dd261047`；cleanup filename/content/target/git markers 全為 0 | `mvn-safe.ps1 test`：1,170 tests、0 failure、0 error、10 skipped；R median 220 ms、mixed structured P95 1,614 ms（低於 4 秒門檻），但 3 個 first-use/lazy-path outlier 令 max 27,164 ms，保留 cold-profile 監控 | —；依使用者要求暫停，不自動開始舵輪 1 |
 | 1 | COMPLETED | `ProjectTest,ProjectServiceTest,ProjectRlsIntegrationTest,UniversalDomainEventRecorderTest,UniversalLifeRecordServiceTest,WorkspaceMigrationTest`：25/25；native query security＋Project 核心重驗 16/16 | N/A（Project domain／schema 輪） | `mvn-safe.ps1 test`：1,184 tests、0 failure、0 error、10 skipped | — |
 | 2 | COMPLETED | Project focus／scope／intent／API／typed binding RLS／quote／catalog focused gate：22/22；Project latency 6/6，既有 core latency 6/6 | N/A（本輪為 controlled deterministic adapter gate；未宣稱新的獨立自然語言覆蓋率） | `mvn-safe.ps1 test`：1,201 tests、0 failure、0 error、10 skipped | — |
-| 3A | NOT_STARTED | — | — | — | — |
+| 3A | COMPLETED | `ProjectScopeFromFocusServiceTest,ProjectScopePolicyTest,ProjectScopedTransactionExecutorTest,ProjectFocusContributorTest,ProjectConversationFocusBindingRlsIntegrationTest`：17/17 | N/A（純 deterministic scope／transaction foundation） | `mvn-safe.ps1 test`：1,209 tests、0 failure、0 error、10 skipped | 3B 前等待使用者明確確認 |
 | 3B | NOT_STARTED | — | — | — | — |
 | 3C | NOT_STARTED | — | — | — | — |
 | 3D | NOT_STARTED | — | — | — | — |
@@ -1539,6 +1539,15 @@ latency 6/6、既有 core latency 6/6、完整回歸 1,201 tests 且 0 failure�
 本輪未另做 fresh sealed NLU holdout，因此不宣稱 95–98% 真實輸入覆蓋率。行事曆工作線的 migration
 版本仍須在合併前協調；目前 Project 線使用 V64、V65。下一步只可進行 3A foundation，3B 仍須
 使用者當輪明確確認。
+
+**舵輪 3A 完成後**：`ProjectScope` 保存 Project ID、workspace、actor、type 與 version 的 immutable
+授權快照，只能由 application service 驗 active focus＋typed binding＋Project 後建立。
+`ProjectScopePolicy` 在 child repository callback 前拒絕跨 actor／workspace、跨 Project、ARCHIVED 與
+stale version；QUERY 在 read-only transaction 重新驗證，CREATE／UPDATE／DELETE 則持有 Project
+row lock直到 callback 完成。`ProjectScopedTransactionExecutor` 是後續 child CRUD 唯一預備的顯式
+transaction command contract；本輪沒有修改任何 child table、`schedule_item`、Schedule service 或
+controller。證據為 focused 17/17、完整回歸 1,209 tests 且 0 failure／0 error／10 skipped。現在已到
+3B hard gate，必須先回報行事曆重構合併狀態與 Schedule contract，再取得使用者明確確認。
 
 ## 17. 最終完成定義
 

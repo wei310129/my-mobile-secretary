@@ -5,7 +5,9 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import jakarta.persistence.LockModeType;
 import org.springframework.data.jpa.repository.JpaRepository;
+import org.springframework.data.jpa.repository.Lock;
 import org.springframework.data.jpa.repository.Modifying;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -16,6 +18,10 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
             UUID workspaceId, UUID actorId, String creationRequestHmac);
 
     Optional<Project> findByIdAndWorkspaceIdAndCreatedByUserId(
+            UUID id, UUID workspaceId, UUID actorId);
+
+    @Lock(LockModeType.PESSIMISTIC_READ)
+    Optional<Project> findWithLockByIdAndWorkspaceIdAndCreatedByUserId(
             UUID id, UUID workspaceId, UUID actorId);
 
     List<Project> findAllByWorkspaceIdAndCreatedByUserIdOrderByUpdatedAtDesc(

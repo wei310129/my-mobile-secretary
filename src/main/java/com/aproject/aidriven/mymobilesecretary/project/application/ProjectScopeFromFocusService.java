@@ -60,6 +60,7 @@ public class ProjectScopeFromFocusService {
             throw new IllegalStateException("archived Project cannot authorize a scope");
         }
         return ProjectScope.validated(
-                project.getId(), context.workspaceId(), context.actorId(), project.getType());
+                project.getId(), context.workspaceId(), context.actorId(), project.getType(),
+                project.getVersion());
     }
 }

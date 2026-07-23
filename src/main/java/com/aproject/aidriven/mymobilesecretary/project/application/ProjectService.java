@@ -76,6 +76,16 @@ public class ProjectService {
         return ProjectDisplay.from(authorizedProject(projectId));
     }
 
+    /**
+     * Locks the authorized Project for the caller's surrounding scoped command transaction.
+     */
+    public Project lockProjectForScope(UUID projectId) {
+        WorkspaceContext context = tenantContext();
+        return projects.findWithLockByIdAndWorkspaceIdAndCreatedByUserId(
+                        projectId, context.workspaceId(), context.actorId())
+                .orElseThrow(() -> new NotFoundException("Project", "requested project"));
+    }
+
     public Project renameProject(UUID projectId, String name) {
         Project project = authorizedProject(projectId);
         Instant now = Instant.now(clock);

@@ -95,6 +95,24 @@ public record IntentCommand(
         EXIT_CONVERSATION_FOCUS,
         /** 明確終結目前對話承接；不得完成、取消或刪除業務資料。 */
         CLOSE_CONVERSATION_FOCUS,
+        /** 建立旅行 Project 並在相同交易進入該 Project focus。 */
+        CREATE_PROJECT,
+        /** 開啟指定 Project mode；既有 suspended focus 由 Java 固定 RESUME。 */
+        OPEN_PROJECT_EDIT_MODE,
+        /** 從目前 focus 切換到指定 Project。 */
+        SWITCH_PROJECT_EDIT_MODE,
+        /** 回到指定 Project；只有既有 suspended focus 可 RESUME。 */
+        RESUME_PROJECT_EDIT_MODE,
+        /** 只離開目前 Project mode，固定委派全域 EXIT。 */
+        CLOSE_PROJECT_EDIT_MODE,
+        /** 顯示指定或目前 Project 的安全摘要。 */
+        SHOW_PROJECT_OVERVIEW,
+        /** 完成 Project，但保留 focus 供旅後事項。 */
+        COMPLETE_PROJECT,
+        /** 明確重新開啟已完成的 Project。 */
+        REOPEN_PROJECT,
+        /** 封存 Project，並只 INVALIDATE 本 conversation scope 的對應 focus。 */
+        ARCHIVE_PROJECT,
         SOCIAL,
         UPDATE_TASK,
         PAUSE_RECURRING_TASK,

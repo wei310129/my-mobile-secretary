@@ -50,6 +50,15 @@ public final class ConversationFocusCapabilityCatalog {
         values.put(IntentCommand.Type.EXPLAIN_LAST_FAILURE, FocusBehavior.NEVER_TOUCH);
         values.put(IntentCommand.Type.EXIT_CONVERSATION_FOCUS, FocusBehavior.CONTROL);
         values.put(IntentCommand.Type.CLOSE_CONVERSATION_FOCUS, FocusBehavior.CONTROL);
+        values.put(IntentCommand.Type.CLOSE_PROJECT_EDIT_MODE, FocusBehavior.CONTROL);
+        values.put(IntentCommand.Type.CREATE_PROJECT, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.OPEN_PROJECT_EDIT_MODE, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.SWITCH_PROJECT_EDIT_MODE, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.RESUME_PROJECT_EDIT_MODE, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.SHOW_PROJECT_OVERVIEW, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.COMPLETE_PROJECT, FocusBehavior.ONE_SHOT_KEEP);
+        values.put(IntentCommand.Type.REOPEN_PROJECT, FocusBehavior.ONE_SHOT_KEEP);
+        values.put(IntentCommand.Type.ARCHIVE_PROJECT, FocusBehavior.TERMINAL);
         values.put(IntentCommand.Type.ASK_TASK_INFO, FocusBehavior.START_OR_SWITCH);
         values.put(IntentCommand.Type.CREATE_TASK, FocusBehavior.START_OR_SWITCH);
         values.put(IntentCommand.Type.CREATE_SCHEDULE, FocusBehavior.START_OR_SWITCH);

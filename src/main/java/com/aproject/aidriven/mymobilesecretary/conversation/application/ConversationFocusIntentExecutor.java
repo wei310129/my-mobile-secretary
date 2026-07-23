@@ -62,6 +62,10 @@ public final class ConversationFocusIntentExecutor {
     }
 
     private ResolvedFocusExecution<IntentResult> resolve(String text, IntentCommand command) {
+        Optional<ResolvedFocusExecution<IntentResult>> stale = invalidateUnavailableActive();
+        if (stale.isPresent()) {
+            return stale.orElseThrow();
+        }
         IntentResult result = handlers.dispatch(text, command);
         if (focusIntentHandler.behaviorFor(command.type()) == FocusBehavior.CONTROL) {
             return control(command.type(), result, focusService.activeFocus().orElse(null));
@@ -69,15 +73,52 @@ public final class ConversationFocusIntentExecutor {
         return resolve(command.type(), result);
     }
 
+    private Optional<ResolvedFocusExecution<IntentResult>> invalidateUnavailableActive() {
+        ConversationFocus active = focusService.activeFocus().orElse(null);
+        if (active == null) {
+            return Optional.empty();
+        }
+        ConversationFocusContributor contributor =
+                contributors.find(active.getRootDomain()).orElse(null);
+        if (!(contributor instanceof ConversationFocusLazyInvalidationContributor)) {
+            return Optional.empty();
+        }
+        var target = new ConversationFocusTargetResolver.ResourceTarget(
+                active.getRootDomain(),
+                active.getRoutingKey(),
+                active.getWorkflowId(),
+                active.getSafeLabel(),
+                active.getActivityCode(),
+                active.getActivityLabel());
+        if (contributor.isAvailable(target)) {
+            return Optional.empty();
+        }
+        FocusTransitionNotice notice = FocusTransitionNotice.forTransition(
+                FocusTransitionType.INVALIDATE, null, active.getSafeLabel(), null);
+        IntentResult result = IntentResult.message(
+                        IntentResult.Action.CONTEXT_UPDATED,
+                        "原本承接的「%s」已封存或無法使用；已停止專案模式，請再說一次這次要做的事。"
+                                .formatted(active.getSafeLabel()))
+                .withFocusNotice(notice);
+        return Optional.of(new ResolvedFocusExecution<>(
+                result,
+                FocusDecision.transition(FocusTransitionType.INVALIDATE),
+                FocusControl.Invalidate.INSTANCE,
+                notice));
+    }
+
     private ResolvedFocusExecution<IntentResult> control(
             IntentCommand.Type type, IntentResult result, ConversationFocus previous) {
+        if (result.focusDirective() != ConversationFocusDirective.FOCUS_CONTROL_ONLY) {
+            return ResolvedFocusExecution.keep(result);
+        }
         if (previous == null) {
             return ResolvedFocusExecution.keep(IntentResult.clarificationNeeded(
                             "目前沒有正在處理的事項；這次沒有變更任何資料。")
                     .withFocusDirective(ConversationFocusDirective.FOCUS_CONTROL_ONLY));
         }
         FocusControl control = switch (type) {
-            case EXIT_CONVERSATION_FOCUS -> FocusControl.Exit.INSTANCE;
+            case EXIT_CONVERSATION_FOCUS, CLOSE_PROJECT_EDIT_MODE -> FocusControl.Exit.INSTANCE;
             case CLOSE_CONVERSATION_FOCUS -> FocusControl.Close.INSTANCE;
             default -> throw new IllegalStateException("unsupported focus control " + type);
         };
@@ -113,11 +154,17 @@ public final class ConversationFocusIntentExecutor {
         if (!target.workflow() && !contributors.require(target.domain()).isAvailable(target)) {
             throw new IllegalStateException("focus target is unavailable");
         }
+        if (target.workflow()
+                && contributors.find(target.domain())
+                        .filter(contributor -> !contributor.isAvailable(target))
+                        .isPresent()) {
+            throw new IllegalStateException("focus target is unavailable");
+        }
         if (sameTarget(previous, target)) {
             return changeSubfocus(type, result, target, previous);
         }
         var suspended = target.workflow()
-                ? Optional.<ConversationFocus>empty()
+                ? focusService.suspendedWorkflow(target.domain(), target.workflowId())
                 : focusService.suspendedResource(target.domain(), target.routingKey());
         if (suspended.isPresent()) {
             FocusControl.Resume control = new FocusControl.Resume(

@@ -164,6 +164,16 @@ public class ConversationFocusService {
                         domain, routingKey, ConversationFocusStatus.SUSPENDED);
     }
 
+    @Transactional(readOnly = true)
+    public Optional<ConversationFocus> suspendedWorkflow(String domain, UUID workflowId) {
+        WorkspaceContext context = WorkspaceContextHolder.requireContext();
+        ConversationScopeKey scope = scope(context);
+        return focuses
+                .findFirstByWorkspaceIdAndCreatedByUserIdAndChannelAndConversationScopeDigestAndRootDomainAndWorkflowIdAndStatusOrderByUpdatedAtDesc(
+                        context.workspaceId(), context.actorId(), context.channel(), scope.digest(),
+                        domain, workflowId, ConversationFocusStatus.SUSPENDED);
+    }
+
     private ConversationFocus enter(ConversationFocusRootKind kind, String domain, String routingKey,
                                     UUID workflowId, String label, String inboundHmac) {
         WorkspaceContext context = WorkspaceContextHolder.requireContext();

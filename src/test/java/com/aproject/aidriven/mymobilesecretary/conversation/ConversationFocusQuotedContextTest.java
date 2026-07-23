@@ -30,7 +30,7 @@ class ConversationFocusQuotedContextTest extends IntegrationTestBase {
         UUID focusId;
 
         try (WorkspaceContextHolder.Scope ignored = open(actorId, workspaceId)) {
-            focusId = focusService.enterWorkflow("PROJECT", UUID.randomUUID(), "葡萄牙旅行",
+            focusId = focusService.enterWorkflow("TRAVEL", UUID.randomUUID(), "葡萄牙旅行",
                     "a".repeat(64)).getId();
             focusService.exit("b".repeat(64));
 

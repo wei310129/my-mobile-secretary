@@ -3,6 +3,7 @@ package com.aproject.aidriven.mymobilesecretary.conversation.application;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.function.Function;
 import java.util.stream.Collectors;
 import org.springframework.stereotype.Component;
@@ -28,6 +29,10 @@ public final class ConversationFocusContributorRegistry {
             throw new IllegalStateException("missing focus contributor for root domain " + rootDomain);
         }
         return contributor;
+    }
+
+    public Optional<ConversationFocusContributor> find(String rootDomain) {
+        return Optional.ofNullable(contributors.get(requiredDomain(rootDomain)));
     }
 
     private static String requiredDomain(ConversationFocusContributor contributor) {

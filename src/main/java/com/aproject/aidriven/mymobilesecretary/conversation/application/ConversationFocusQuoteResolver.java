@@ -18,11 +18,14 @@ public class ConversationFocusQuoteResolver {
 
     private final ConversationScopeResolver resolver;
     private final ConversationFocusRepository focuses;
+    private final ConversationFocusContributorRegistry contributors;
 
     public ConversationFocusQuoteResolver(ConversationScopeResolver resolver,
-                                         ConversationFocusRepository focuses) {
+                                          ConversationFocusRepository focuses,
+                                          ConversationFocusContributorRegistry contributors) {
         this.resolver = Objects.requireNonNull(resolver, "resolver");
         this.focuses = Objects.requireNonNull(focuses, "focuses");
+        this.contributors = Objects.requireNonNull(contributors, "contributors");
     }
 
     @Transactional(readOnly = true)
@@ -34,6 +37,18 @@ public class ConversationFocusQuoteResolver {
                         context.workspaceId(), context.actorId(), context.channel(), scope.digest())
                 .filter(candidate -> candidate.getStatus() == ConversationFocusStatus.SUSPENDED)
                 .orElseThrow(() -> new IllegalStateException("quoted focus is unavailable"));
+        var target = new ConversationFocusTargetResolver.ResourceTarget(
+                focus.getRootDomain(),
+                focus.getRoutingKey(),
+                focus.getWorkflowId(),
+                focus.getSafeLabel(),
+                focus.getActivityCode(),
+                focus.getActivityLabel());
+        if (contributors.find(focus.getRootDomain())
+                .filter(contributor -> !contributor.isAvailable(target))
+                .isPresent()) {
+            throw new IllegalStateException("quoted focus target is unavailable");
+        }
         return new QuotedFocusResolution(FocusDecision.transition(FocusTransitionType.RESUME),
                 new FocusControl.Resume(focus.getId()), FocusTransitionNotice.forTransition(
                         FocusTransitionType.RESUME, null, focus.getSafeLabel(), null));

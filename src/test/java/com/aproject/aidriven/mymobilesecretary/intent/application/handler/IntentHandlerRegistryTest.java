@@ -64,6 +64,7 @@ class IntentHandlerRegistryTest {
                 mock(PlaceIntentHandler.class, CALLS_REAL_METHODS),
                 mock(PlannerIntentHandler.class, CALLS_REAL_METHODS),
                 mock(ProductExperienceIntentHandler.class, CALLS_REAL_METHODS),
+                mock(ProjectIntentHandler.class, CALLS_REAL_METHODS),
                 mock(ReminderIntentHandler.class, CALLS_REAL_METHODS),
                 mock(ScheduleMutationIntentHandler.class, CALLS_REAL_METHODS),
                 mock(ScheduleQueryIntentHandler.class, CALLS_REAL_METHODS),

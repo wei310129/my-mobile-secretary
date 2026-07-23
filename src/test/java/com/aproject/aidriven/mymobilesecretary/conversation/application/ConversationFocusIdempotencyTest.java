@@ -84,7 +84,7 @@ class ConversationFocusIdempotencyTest extends IntegrationTestBase {
                 new WorkspaceContext(actorId, workspaceId, WorkspaceChannel.LINE,
                         "line", "focus-idempotency"))) {
             reply = transactionalExecutor.execute(FocusDecision.transition(FocusTransitionType.ENTER),
-                    new FocusControl.EnterWorkflow("PROJECT", UUID.randomUUID(), "大阪旅行"),
+                    new FocusControl.EnterWorkflow("TRAVEL", UUID.randomUUID(), "大阪旅行"),
                     "d".repeat(64), FocusTransitionNotice.forTransition(
                             FocusTransitionType.ENTER, null, "大阪旅行", null), () -> {
                         jdbcTemplate.update("""

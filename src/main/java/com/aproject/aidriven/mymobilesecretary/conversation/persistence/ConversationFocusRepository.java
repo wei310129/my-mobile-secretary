@@ -19,4 +19,10 @@ public interface ConversationFocusRepository extends JpaRepository<ConversationF
                     UUID workspaceId, UUID actorId, WorkspaceChannel channel, String digest,
                     String rootDomain, String routingKey,
                     com.aproject.aidriven.mymobilesecretary.conversation.domain.ConversationFocusStatus status);
+
+    Optional<ConversationFocus>
+            findFirstByWorkspaceIdAndCreatedByUserIdAndChannelAndConversationScopeDigestAndRootDomainAndWorkflowIdAndStatusOrderByUpdatedAtDesc(
+                    UUID workspaceId, UUID actorId, WorkspaceChannel channel, String digest,
+                    String rootDomain, UUID workflowId,
+                    com.aproject.aidriven.mymobilesecretary.conversation.domain.ConversationFocusStatus status);
 }

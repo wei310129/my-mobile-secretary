@@ -18,7 +18,7 @@ class ConversationCapabilityCatalogTest {
                 .filter(line -> !line.isBlank())
                 .toList();
 
-        assertThat(lines).hasSize(384);
+        assertThat(lines).hasSize(404);
         Set<String> commandTypes = Arrays.stream(IntentCommand.Type.values())
                 .map(Enum::name)
                 .collect(java.util.stream.Collectors.toSet());

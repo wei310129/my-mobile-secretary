@@ -3,8 +3,10 @@ package com.aproject.aidriven.mymobilesecretary.conversation.application;
 import com.aproject.aidriven.mymobilesecretary.conversation.domain.ConversationFocus;
 import com.aproject.aidriven.mymobilesecretary.conversation.domain.ConversationFocusCloseReason;
 import com.aproject.aidriven.mymobilesecretary.conversation.domain.FocusTransitionType;
+import java.util.List;
 import java.util.Objects;
 import java.util.function.Supplier;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -14,11 +16,21 @@ public class ConversationFocusAtomicExecutor {
 
     private final ConversationFocusService focusService;
     private final ConversationFocusReplyDecorator replyDecorator;
+    private final ConversationFocusTypedBindingRegistry typedBindings;
 
     public ConversationFocusAtomicExecutor(ConversationFocusService focusService,
                                            ConversationFocusReplyDecorator replyDecorator) {
+        this(focusService, replyDecorator, new ConversationFocusTypedBindingRegistry(List.of()));
+    }
+
+    @Autowired
+    public ConversationFocusAtomicExecutor(
+            ConversationFocusService focusService,
+            ConversationFocusReplyDecorator replyDecorator,
+            ConversationFocusTypedBindingRegistry typedBindings) {
         this.focusService = Objects.requireNonNull(focusService, "focusService");
         this.replyDecorator = Objects.requireNonNull(replyDecorator, "replyDecorator");
+        this.typedBindings = Objects.requireNonNull(typedBindings, "typedBindings");
     }
 
     @Transactional
@@ -65,8 +77,8 @@ public class ConversationFocusAtomicExecutor {
         switch (type) {
             case ENTER -> {
                 if (control instanceof FocusControl.EnterWorkflow enter) {
-                    requirePersisted(focusService.enterWorkflow(
-                            enter.domain(), enter.workflowId(), enter.safeLabel(), inboundHmac));
+                    bind(requirePersisted(focusService.enterWorkflow(
+                            enter.domain(), enter.workflowId(), enter.safeLabel(), inboundHmac)));
                 } else if (control instanceof FocusControl.EnterResource enter) {
                     requirePersisted(focusService.enterResource(
                             enter.domain(), enter.routingKey(), enter.safeLabel(), inboundHmac));
@@ -84,8 +96,8 @@ public class ConversationFocusAtomicExecutor {
             }
             case SWITCH -> {
                 if (control instanceof FocusControl.SwitchWorkflow change) {
-                    requirePersisted(focusService.switchWorkflow(
-                            change.domain(), change.workflowId(), change.safeLabel(), inboundHmac));
+                    bind(requirePersisted(focusService.switchWorkflow(
+                            change.domain(), change.workflowId(), change.safeLabel(), inboundHmac)));
                 } else {
                     FocusControl.SwitchResource change = require(
                             control, FocusControl.SwitchResource.class, type);
@@ -124,9 +136,14 @@ public class ConversationFocusAtomicExecutor {
         return expected.cast(control);
     }
 
-    private static void requirePersisted(ConversationFocus focus) {
+    private static ConversationFocus requirePersisted(ConversationFocus focus) {
         if (focus == null) {
             throw new IllegalStateException("focus transition did not persist");
         }
+        return focus;
+    }
+
+    private void bind(ConversationFocus focus) {
+        typedBindings.bindIfSupported(focus);
     }
 }

@@ -18,6 +18,9 @@ import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.handler.IntentHandler;
 import com.aproject.aidriven.mymobilesecretary.intent.application.handler.IntentHandlerRegistry;
+import com.aproject.aidriven.mymobilesecretary.project.application.ProjectService;
+import com.aproject.aidriven.mymobilesecretary.project.domain.Project;
+import com.aproject.aidriven.mymobilesecretary.project.domain.ProjectType;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskPriority;
@@ -41,7 +44,7 @@ import org.springframework.context.ApplicationContext;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.test.annotation.DirtiesContext;
 
-/** Opt-in deterministic warm and application-cold measurement for the core focus profile. */
+/** Opt-in deterministic warm and application-cold measurement for core or Project focus. */
 @Tag("conversation-focus-latency")
 @EnabledIfSystemProperty(named = "conversation.focus.latency.enabled", matches = "true")
 @TestMethodOrder(OrderAnnotation.class)
@@ -59,6 +62,8 @@ class ConversationFocusLatencyTest extends IntegrationTestBase {
     @Autowired private ConversationFocusContributorRegistry contributors;
     @Autowired private ConversationFocusAtomicExecutor atomicExecutor;
     @Autowired private TaskService taskService;
+    @Autowired private ProjectService projectService;
+    @Autowired private IntentHandlerRegistry intentHandlers;
     @Autowired private IntentService intentService;
     @Autowired private StubIntentInterpreter interpreter;
     @Autowired private ApplicationContext applicationContext;
@@ -72,7 +77,11 @@ class ConversationFocusLatencyTest extends IntegrationTestBase {
     @Test
     @Order(1)
     void coreProfileMeasuresWarmFocusOperationsAndFocusAwareDispatch() {
-        assertThat(System.getProperty("conversation.focus.latency.profile", "core")).isEqualTo("core");
+        if ("project".equals(profile())) {
+            measureProjectWarmProfile();
+            return;
+        }
+        assertThat(profile()).isEqualTo("core");
         UUID actorId = UUID.randomUUID();
         UUID workspaceId = UUID.randomUUID();
         seedAccount(actorId, workspaceId);
@@ -154,8 +163,70 @@ class ConversationFocusLatencyTest extends IntegrationTestBase {
         }
     }
 
+    private void measureProjectWarmProfile() {
+        UUID actorId = UUID.randomUUID();
+        UUID workspaceId = UUID.randomUUID();
+        seedAccount(actorId, workspaceId);
+        Project first;
+        Project second;
+        try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(
+                context(actorId, workspaceId, "project-latency-seed"))) {
+            first = projectService.createProject(
+                    ProjectType.TRAVEL, "大阪 latency", hmac(10_000));
+            second = projectService.createProject(
+                    ProjectType.TRAVEL, "東京 latency", hmac(10_001));
+        }
+        ConversationFocusIntentExecutor executor = new ConversationFocusIntentExecutor(
+                intentHandlers, focusIntentHandler, targets, contributors, focusService, atomicExecutor);
+        EnumMap<Metric, List<Long>> samples = new EnumMap<>(Metric.class);
+        for (Metric metric : Metric.values()) {
+            samples.put(metric, new ArrayList<>());
+        }
+        for (int index = 0; index < WARM_UP_SAMPLES + MEASURED_SAMPLES; index++) {
+            WorkspaceContext context = context(
+                    actorId, workspaceId, "project-latency-" + index);
+            try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(context)) {
+                int sample = index;
+                measure(Metric.ASK, projectService::listProjects,
+                        (metric, nanos) -> samples.get(metric).add(nanos));
+                measure(Metric.ENTER, () -> executor.execute(
+                        "開大阪專案",
+                        projectCommand(IntentCommand.Type.OPEN_PROJECT_EDIT_MODE, first.getName()),
+                        hmac(sample + 20_000)),
+                        (metric, nanos) -> samples.get(metric).add(nanos));
+                measure(Metric.SWITCH, () -> executor.execute(
+                        "切東京專案",
+                        projectCommand(IntentCommand.Type.SWITCH_PROJECT_EDIT_MODE, second.getName()),
+                        hmac(sample + 30_000)),
+                        (metric, nanos) -> samples.get(metric).add(nanos));
+                measure(Metric.EXIT, () -> executor.execute(
+                        "先關掉專案模式",
+                        projectCommand(IntentCommand.Type.CLOSE_PROJECT_EDIT_MODE, null),
+                        hmac(sample + 40_000)),
+                        (metric, nanos) -> samples.get(metric).add(nanos));
+                measure(Metric.RESUME, () -> executor.execute(
+                        "回大阪專案",
+                        projectCommand(IntentCommand.Type.RESUME_PROJECT_EDIT_MODE, first.getName()),
+                        hmac(sample + 50_000)),
+                        (metric, nanos) -> samples.get(metric).add(nanos));
+                measure(Metric.FOCUS_AWARE_DISPATCH, () -> executor.execute(
+                        "看大阪專案",
+                        projectCommand(IntentCommand.Type.SHOW_PROJECT_OVERVIEW, first.getName()),
+                        hmac(sample + 60_000)),
+                        (metric, nanos) -> samples.get(metric).add(nanos));
+            }
+        }
+        samples.forEach((metric, values) -> {
+            List<Long> measured = values.subList(WARM_UP_SAMPLES, values.size());
+            assertThat(measured).hasSize(MEASURED_SAMPLES);
+            assertThat(p95Millis(measured))
+                    .as(metric + " Project warm P95")
+                    .isLessThanOrEqualTo(LOW_P95_MILLIS);
+        });
+    }
+
     private void measureColdInbound(int sample, boolean assertAggregate) {
-        assertThat(System.getProperty("conversation.focus.latency.profile", "core")).isEqualTo("core");
+        assertThat(profile()).isIn("core", "project");
         UUID actorId = UUID.randomUUID();
         UUID workspaceId = UUID.randomUUID();
         seedAccount(actorId, workspaceId);
@@ -163,16 +234,24 @@ class ConversationFocusLatencyTest extends IntegrationTestBase {
                 context(actorId, workspaceId, "cold-" + sample))) {
             assertThat(focusService.activeFocus()).isEmpty();
             assertThat(taskService.listTasks()).isEmpty();
-            String title = "cold focus task " + sample;
-            interpreter.nextCommand(new IntentCommand(IntentCommand.Type.CREATE_TASK, title,
-                    null, null, null, null, "NORMAL", null,
-                    null, null, null, null, null));
+            boolean projectProfile = "project".equals(profile());
+            String title = projectProfile
+                    ? "cold project " + sample : "cold focus task " + sample;
+            interpreter.nextCommand(projectProfile
+                    ? projectCommand(IntentCommand.Type.CREATE_PROJECT, title)
+                    : new IntentCommand(IntentCommand.Type.CREATE_TASK, title,
+                            null, null, null, null, "NORMAL", null,
+                            null, null, null, null, null));
             long started = System.nanoTime();
             IntentResult result = intentService.handle("建立 " + title, "TEST");
             long elapsed = System.nanoTime() - started;
 
-            assertThat(result.action()).isEqualTo(IntentResult.Action.TASK_CREATED);
-            assertThat(result.responseEnvelope().message()).contains("目前先處理「" + title + "」")
+            assertThat(result.action()).isEqualTo(projectProfile
+                    ? IntentResult.Action.PROJECT_CREATED
+                    : IntentResult.Action.TASK_CREATED);
+            assertThat(result.responseEnvelope().message()).contains(title)
+                    .doesNotContainPattern(
+                            "[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}")
                     .doesNotContain("task:");
             assertThat(focusService.activeFocus()).isPresent();
             COLD_SAMPLES.add(new ColdSample(System.identityHashCode(applicationContext), elapsed));
@@ -222,6 +301,15 @@ class ConversationFocusLatencyTest extends IntegrationTestBase {
     private static IntentCommand command() {
         return new IntentCommand(IntentCommand.Type.CREATE_TASK, "latency task", null, null, null,
                 null, null, null, null, null, null, null, null);
+    }
+
+    private static IntentCommand projectCommand(IntentCommand.Type type, String title) {
+        return new IntentCommand(type, title, null, null, null,
+                null, null, null, null, null, null, null, null);
+    }
+
+    private static String profile() {
+        return System.getProperty("conversation.focus.latency.profile", "core");
     }
 
     private void seedAccount(UUID actorId, UUID workspaceId) {

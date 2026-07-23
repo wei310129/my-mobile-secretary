@@ -36,7 +36,7 @@ class ConversationFocusCandidateTest extends IntegrationTestBase {
         try (WorkspaceContextHolder.Scope ignored = open(actorId, workspaceId)) {
             UUID candidateId = pendingTransitions.propose(
                     FocusDecision.transition(FocusTransitionType.ENTER),
-                    new FocusControl.EnterWorkflow("PROJECT", workflowId, "北海道旅行"),
+                    new FocusControl.EnterWorkflow("TRAVEL", workflowId, "北海道旅行"),
                     "a".repeat(64)).getId();
 
             assertThat(count("conversation_focus", workspaceId)).isZero();
@@ -82,9 +82,9 @@ class ConversationFocusCandidateTest extends IntegrationTestBase {
         try (WorkspaceContextHolder.Scope ignored = open(actorId, workspaceId)) {
             UUID candidateId = pendingTransitions.propose(
                     FocusDecision.transition(FocusTransitionType.ENTER),
-                    new FocusControl.EnterWorkflow("PROJECT", UUID.randomUUID(), "沖繩旅行"),
+                    new FocusControl.EnterWorkflow("TRAVEL", UUID.randomUUID(), "沖繩旅行"),
                     "b".repeat(64)).getId();
-            focusService.enterWorkflow("PROJECT", UUID.randomUUID(), "目前旅行", "c".repeat(64));
+            focusService.enterWorkflow("TRAVEL", UUID.randomUUID(), "目前旅行", "c".repeat(64));
 
             assertThatThrownBy(() -> pendingTransitions.accept(candidateId, () -> {
                 domainMutationRan.set(true);
@@ -107,11 +107,11 @@ class ConversationFocusCandidateTest extends IntegrationTestBase {
         try (WorkspaceContextHolder.Scope ignored = open(actorId, workspaceId)) {
             UUID firstCandidate = pendingTransitions.propose(
                     FocusDecision.transition(FocusTransitionType.ENTER),
-                    new FocusControl.EnterWorkflow("PROJECT", UUID.randomUUID(), "第一趟旅行"),
+                    new FocusControl.EnterWorkflow("TRAVEL", UUID.randomUUID(), "第一趟旅行"),
                     "d".repeat(64)).getId();
             UUID secondCandidate = pendingTransitions.propose(
                     FocusDecision.transition(FocusTransitionType.ENTER),
-                    new FocusControl.EnterWorkflow("PROJECT", UUID.randomUUID(), "第二趟旅行"),
+                    new FocusControl.EnterWorkflow("TRAVEL", UUID.randomUUID(), "第二趟旅行"),
                     "e".repeat(64)).getId();
 
             assertThat(status(firstCandidate)).isEqualTo("REJECTED");

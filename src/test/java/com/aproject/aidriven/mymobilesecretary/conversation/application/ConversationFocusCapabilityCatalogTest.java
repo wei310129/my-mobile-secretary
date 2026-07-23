@@ -31,6 +31,22 @@ class ConversationFocusCapabilityCatalogTest {
                 .isEqualTo(FocusBehavior.CONTROL);
         assertThat(catalog.behaviorFor(IntentCommand.Type.CLOSE_CONVERSATION_FOCUS))
                 .isEqualTo(FocusBehavior.CONTROL);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.CLOSE_PROJECT_EDIT_MODE))
+                .isEqualTo(FocusBehavior.CONTROL);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.CREATE_PROJECT))
+                .isEqualTo(FocusBehavior.START_OR_SWITCH);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.OPEN_PROJECT_EDIT_MODE))
+                .isEqualTo(FocusBehavior.START_OR_SWITCH);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.SWITCH_PROJECT_EDIT_MODE))
+                .isEqualTo(FocusBehavior.START_OR_SWITCH);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.RESUME_PROJECT_EDIT_MODE))
+                .isEqualTo(FocusBehavior.START_OR_SWITCH);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.SHOW_PROJECT_OVERVIEW))
+                .isEqualTo(FocusBehavior.START_OR_SWITCH);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.COMPLETE_PROJECT))
+                .isEqualTo(FocusBehavior.ONE_SHOT_KEEP);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.ARCHIVE_PROJECT))
+                .isEqualTo(FocusBehavior.TERMINAL);
         assertThat(catalog.behaviorFor(IntentCommand.Type.RECORD_VENUE_VISIT_INFO))
                 .isEqualTo(FocusBehavior.START_OR_SWITCH);
         assertThat(catalog.behaviorFor(IntentCommand.Type.SHOW_TRAVEL_ITINERARY_DRAFT))

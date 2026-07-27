@@ -1,5 +1,15 @@
 package com.aproject.aidriven.mymobilesecretary.knowledge.tag.application;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.adoption.CalendarAdoptionCreatedEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarNodeCanceledEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarNodeCreatedEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarNodeLocationRevisedEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarNodeRevisedEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarPlanCreatedEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarPlanLifecycleEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.participation.CalendarOwnershipTransferLifecycleEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.participation.CalendarOwnershipTransferLifecycleEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.reminder.CalendarReminderLifecycleEvent;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceCreatedEvent;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceUpdatedEvent;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.LocationExitRecorded;
@@ -68,6 +78,119 @@ public class UniversalDomainEventRecorder {
     public void onReminderTriggered(ReminderTriggeredEvent event) {
         lifeRecordService.recordDomainEvent(TaggedLifeRecord.RecordType.REMINDER,
                 event.taskTitle(), event.triggeredAt(), List.of("提醒", "觸發"));
+    }
+
+    @EventListener
+    public void onCalendarPlanCreated(CalendarPlanCreatedEvent event) {
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-plan/" + event.planId() + "/created",
+                TaggedLifeRecord.RecordType.SCHEDULE,
+                event.title(),
+                event.occurredAt(),
+                List.of("行程計畫", "建立"));
+    }
+
+    @EventListener
+    public void onCalendarPlanLifecycle(CalendarPlanLifecycleEvent event) {
+        boolean canceled =
+                event.action() == CalendarPlanLifecycleEvent.Action.CANCELED;
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-plan/" + event.planId()
+                        + (canceled ? "/canceled" : "/archived"),
+                TaggedLifeRecord.RecordType.SCHEDULE,
+                event.title(),
+                event.occurredAt(),
+                List.of("行程計畫", canceled ? "取消" : "封存"));
+    }
+
+    @EventListener
+    public void onCalendarReminderLifecycle(CalendarReminderLifecycleEvent event) {
+        String action = event.action() == CalendarReminderLifecycleEvent.Action.CREATED
+                ? "建立"
+                : "取消";
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-reminder/" + event.ruleId()
+                        + (event.action() == CalendarReminderLifecycleEvent.Action.CREATED
+                                ? "/created"
+                                : "/canceled"),
+                TaggedLifeRecord.RecordType.REMINDER,
+                event.nodeLabel(),
+                event.occurredAt(),
+                List.of("日曆提醒", action));
+    }
+
+    @EventListener
+    public void onCalendarNodeCreated(CalendarNodeCreatedEvent event) {
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-node/" + event.nodeId() + "/created",
+                TaggedLifeRecord.RecordType.SCHEDULE,
+                event.nodeLabel(),
+                event.occurredAt(),
+                List.of("行程節點", "建立"));
+    }
+
+    @EventListener
+    public void onCalendarNodeRevised(CalendarNodeRevisedEvent event) {
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-node/" + event.nodeId() + "/time/"
+                        + event.currentRevision(),
+                TaggedLifeRecord.RecordType.SCHEDULE,
+                event.nodeLabel(),
+                event.occurredAt(),
+                List.of("行程節點", "修訂"));
+    }
+
+    @EventListener
+    public void onCalendarNodeLocationRevised(
+            CalendarNodeLocationRevisedEvent event) {
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-node/" + event.nodeId() + "/location/"
+                        + event.revision(),
+                TaggedLifeRecord.RecordType.SCHEDULE,
+                event.nodeLabel(),
+                event.occurredAt(),
+                List.of("行程節點", "地點修訂"));
+    }
+
+    @EventListener
+    public void onCalendarNodeCanceled(
+            CalendarNodeCanceledEvent event) {
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-node/" + event.nodeId() + "/canceled/"
+                        + event.revision(),
+                TaggedLifeRecord.RecordType.SCHEDULE,
+                event.nodeLabel(),
+                event.occurredAt(),
+                List.of("行程節點", "取消"));
+    }
+
+    @EventListener
+    public void onCalendarAdoptionCreated(CalendarAdoptionCreatedEvent event) {
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-adoption/" + event.adoptionId() + "/created",
+                TaggedLifeRecord.RecordType.SCHEDULE,
+                event.planTitle(),
+                event.occurredAt(),
+                List.of("行程", "採用"));
+    }
+
+    @EventListener
+    public void onCalendarOwnershipTransfer(
+            CalendarOwnershipTransferLifecycleEvent event) {
+        String action = switch (event.action()) {
+            case OFFERED -> "提出";
+            case ACCEPTED -> "接受";
+            case CANCELED -> "取消";
+        };
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-ownership-transfer/"
+                        + event.transferId()
+                        + "/"
+                        + event.action().name().toLowerCase(),
+                TaggedLifeRecord.RecordType.SCHEDULE,
+                "日曆所有權移轉",
+                event.occurredAt(),
+                List.of("行程計畫", "所有權移轉", action));
     }
 
     @EventListener

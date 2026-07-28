@@ -1,0 +1,4 @@
+interface:
+  display_name: "Booking Execution Safety"
+  short_description: "Safely build and verify booking transaction workflows"
+  default_prompt: "Use $develop-and-validate-booking-execution to build and validate a safe provider booking workflow."

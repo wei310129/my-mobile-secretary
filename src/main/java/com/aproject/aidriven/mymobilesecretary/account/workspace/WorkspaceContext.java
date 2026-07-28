@@ -3,7 +3,9 @@ package com.aproject.aidriven.mymobilesecretary.account.workspace;
 import java.util.Objects;
 import java.util.UUID;
 
-public record WorkspaceContext(UUID actorId, UUID workspaceId, WorkspaceChannel channel) {
+public record WorkspaceContext(UUID actorId, UUID workspaceId, WorkspaceChannel channel,
+                               String conversationAdapterNamespace,
+                               String conversationScopeToken) {
 
     public static final UUID NIL_ID = new UUID(0L, 0L);
 
@@ -11,6 +13,13 @@ public record WorkspaceContext(UUID actorId, UUID workspaceId, WorkspaceChannel 
         Objects.requireNonNull(actorId, "actorId");
         Objects.requireNonNull(workspaceId, "workspaceId");
         Objects.requireNonNull(channel, "channel");
+        conversationAdapterNamespace = requireScopePart(
+                conversationAdapterNamespace, "conversation adapter namespace");
+        conversationScopeToken = requireScopePart(conversationScopeToken, "conversation scope token");
+    }
+
+    public WorkspaceContext(UUID actorId, UUID workspaceId, WorkspaceChannel channel) {
+        this(actorId, workspaceId, channel, "legacy", "legacy-default");
     }
 
     /**
@@ -36,5 +45,12 @@ public record WorkspaceContext(UUID actorId, UUID workspaceId, WorkspaceChannel 
 
     public boolean isTenantScope() {
         return !isAuthentication() && !isSystem();
+    }
+
+    private static String requireScopePart(String value, String label) {
+        if (value == null || value.isBlank()) {
+            throw new IllegalArgumentException(label + " is required");
+        }
+        return value.strip();
     }
 }

@@ -48,6 +48,23 @@ public record LineWebhookPayload(List<Event> events) {
     }
 
     @JsonIgnoreProperties(ignoreUnknown = true)
-    public record Source(String userId) {
+    public record Source(String type, String userId, String groupId, String roomId) {
+
+        public Source(String userId) {
+            this(null, userId, null, null);
+        }
+
+        public String trustedConversationScopeToken() {
+            if (groupId != null && !groupId.isBlank()) {
+                return "group:" + groupId.strip();
+            }
+            if (roomId != null && !roomId.isBlank()) {
+                return "room:" + roomId.strip();
+            }
+            if (userId != null && !userId.isBlank()) {
+                return "user:" + userId.strip();
+            }
+            return null;
+        }
     }
 }

@@ -3,12 +3,22 @@ package com.aproject.aidriven.mymobilesecretary.draft.application;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import java.time.LocalTime;
 import org.junit.jupiter.api.Test;
 
 class DraftRetentionConversationServiceTest {
+
+    @Test
+    void deletingAQuotedDraftIsNotMisreadAsRetentionConfiguration() {
+        var retention = mock(DraftRetentionService.class);
+        var service = new DraftRetentionConversationService(retention);
+
+        assertThat(service.answer("刪除這個草稿", () -> { })).isEmpty();
+        verifyNoInteractions(retention);
+    }
     @Test
     void parsesChineseHalfHour() {
         assertThat(DraftRetentionConversationService.parseTime("晚上十一點半"))
@@ -42,5 +52,18 @@ class DraftRetentionConversationServiceTest {
 
         assertThat(result).isPresent();
         verify(retention).customizeLatest(30, 2, LocalTime.of(21, 0));
+    }
+
+    @Test
+    void mentioningAnUnrelatedDraftAndCurrentConversationDoesNotConsumeFeedback() {
+        DraftRetentionService retention = mock(DraftRetentionService.class);
+        DraftRetentionConversationService conversation =
+                new DraftRetentionConversationService(retention);
+
+        var result = conversation.answer(
+                "工作坊草稿不該在目前對話亂跳出來，這是開發指示", () -> { });
+
+        assertThat(result).isEmpty();
+        verifyNoInteractions(retention);
     }
 }

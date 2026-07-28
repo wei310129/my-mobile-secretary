@@ -26,6 +26,7 @@ public final class PlaceIntentHandler implements IntentHandler {
     private static final Set<IntentCommand.Type> SUPPORTED_TYPES = Set.of(
             IntentCommand.Type.ASK_PLACE,
             IntentCommand.Type.CREATE_PLACE,
+            IntentCommand.Type.UPDATE_PLACE,
             IntentCommand.Type.BIND_TASK_PLACE,
             IntentCommand.Type.ASK_TASK_PLACE,
             IntentCommand.Type.SUGGEST_NEARBY,
@@ -75,6 +76,7 @@ public final class PlaceIntentHandler implements IntentHandler {
         return switch (command.type()) {
             case ASK_PLACE -> askPlace(command);
             case CREATE_PLACE -> createPlace(command);
+            case UPDATE_PLACE -> updatePlace(command);
             case BIND_TASK_PLACE -> bindTaskPlace(command, options);
             case ASK_TASK_PLACE -> askTaskPlace(command);
             case SUGGEST_NEARBY -> suggestNearby(command);
@@ -117,6 +119,19 @@ public final class PlaceIntentHandler implements IntentHandler {
         Optional<Place> existing = resolvePlace(command.placeName());
         return existing.map(this::placeInfo).orElseGet(() -> IntentResult.placeCreated(
                 placeService.createPlace(command.placeName(), null, null, null, null)));
+    }
+
+    private IntentResult updatePlace(IntentCommand command) {
+        require(command.placeName(), "placeName");
+        require(command.safeOptions().description(), "address");
+        Place existing = resolvePlace(command.placeName()).orElseThrow(() ->
+                new IllegalArgumentException("unknown destination place"));
+        Place updated = placeService.updateAddress(
+                existing.getId(), command.safeOptions().description());
+        contextService.rememberPlace(updated.getId());
+        return IntentResult.message(IntentResult.Action.PLACE_UPDATED,
+                "已更新地點「%s」。\n- 地址：%s".formatted(
+                        updated.getName(), updated.getAddress()));
     }
 
     private IntentResult bindTaskPlace(IntentCommand command, IntentOptions options) {

@@ -29,12 +29,16 @@ public class DraftRetentionConversationService {
     public Optional<IntentResult> answer(String text, Runnable beforeMutation) {
         if (text == null || text.isBlank()) return Optional.empty();
         String normalized = text.strip();
+        if (containsAny(normalized, "刪除草稿", "刪除這個草稿", "刪掉這個草稿", "放棄這個草稿")) {
+            return Optional.empty();
+        }
         boolean defaultScope = normalized.contains("預設") && normalized.contains("草稿");
-        boolean draftScope = normalized.contains("草稿")
-                && containsAny(normalized, "這份", "這個", "剛才", "個別", "目前");
-        boolean pendingTimeOnly = retention.hasUnconfirmedPreference()
+        boolean draftScope = containsAny(normalized,
+                "這份草稿", "這個草稿", "剛才的草稿", "剛剛的草稿", "個別草稿", "目前草稿");
+        boolean possiblePendingTime = !defaultScope && !draftScope
                 && normalized.length() <= 24 && parseTime(normalized).isPresent()
                 && !containsAny(normalized, "明天", "後天", "行程", "開會", "提醒我");
+        boolean pendingTimeOnly = possiblePendingTime && retention.hasUnconfirmedPreference();
         if (!defaultScope && !draftScope && !pendingTimeOnly) return Optional.empty();
         try {
             beforeMutation.run();

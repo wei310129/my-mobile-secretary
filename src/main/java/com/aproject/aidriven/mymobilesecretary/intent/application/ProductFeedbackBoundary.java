@@ -21,6 +21,11 @@ final class ProductFeedbackBoundary {
             "功能改善",
             "功能建議",
             "開發功能",
+            "開發指示",
+            "這是我的開發指示",
+            "要再開發這項能力",
+            "要好好改進",
+            "我認為你要",
             "你的回應要調整",
             "系統應該要",
             "秘書應該要");
@@ -32,7 +37,10 @@ final class ProductFeedbackBoundary {
             "你搞錯了",
             "你誤會了",
             "你答非所問",
-            "這不是我要的");
+            "這不是我要的",
+            "完全不知所云",
+            "你的格式不對",
+            "格式不對");
 
     private static final List<String> GENERALIZED_SUBJECTS = List.of(
             "使用者", "每個人", "未來", "一般也", "各種情況");
@@ -60,8 +68,8 @@ final class ProductFeedbackBoundary {
                 .replaceAll("[，。！？!?]+$", "");
         if (CORRECTION_MESSAGES.contains(compact) || isResponseCorrection(compact)) {
             return Optional.of(IntentResult.message(IntentResult.Action.FEEDBACK_RECEIVED,
-                    "🛠️ 收到，是我理解錯了。\n\n❓ 請直接告訴我原本要我做什麼，"
-                            + "我會把這次誤判一併留給功能改善追蹤。"));
+                    "🛠️ 收到，是我理解錯了。原本的主題與訊息仍會保留；"
+                            + "請直接指出要更正的內容，我會從原操作續接。"));
         }
         if (containsAny(compact, EXPLICIT_PRODUCT_MARKERS)
                 || isGeneralizedProductRule(text, compact)) {
@@ -72,9 +80,13 @@ final class ProductFeedbackBoundary {
 
     private static boolean isResponseCorrection(String compact) {
         boolean beginsAsCorrection = CORRECTION_MESSAGES.stream().anyMatch(compact::startsWith)
-                || compact.startsWith("你完全都沒聽懂");
+                || compact.startsWith("你完全都沒聽懂")
+                || compact.startsWith("首先你的格式不對")
+                || compact.startsWith("你把你的邏輯")
+                || compact.startsWith("為什麼你明明");
         return beginsAsCorrection && containsAny(compact, List.of(
-                "你再跟我講", "你卻", "你的回應", "我在回應你", "答成", "草稿"));
+                "你再跟我講", "你卻", "你的回應", "我在回應你", "答成", "草稿",
+                "回給使用者", "直接回", "還在問", "再問", "已經確認", "空行", "項次"));
     }
 
     private static boolean isGeneralizedProductRule(String text, String compact) {

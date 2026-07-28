@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application.handler;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusBinding;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentOptions;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
@@ -58,12 +59,14 @@ public final class TagGraphIntentHandler implements IntentHandler {
         IntentOptions options = command.safeOptions();
         require(options.referenceTitle(), "to tag");
         SemanticTagEdge.RelationType relation = parseRelation(options.referenceKind());
-        graphService.relate(command.title(), parseKind(options.category()), relation,
+        SemanticTagEdge edge = graphService.relate(
+                command.title(), parseKind(options.category()), relation,
                 options.referenceTitle(), parseKind(options.filter()),
                 SemanticTagEdge.SourceType.USER);
         return IntentResult.message(IntentResult.Action.TAG_RELATION_SAVED,
                 "已建立標籤關係：「%s」%s「%s」。".formatted(
-                        command.title(), display(relation), options.referenceTitle()));
+                        command.title(), display(relation), options.referenceTitle()))
+                .withFocusBinding(edgeBinding(edge, command.title()));
     }
 
     private IntentResult recordEvent(IntentCommand command) {
@@ -93,17 +96,31 @@ public final class TagGraphIntentHandler implements IntentHandler {
         Instant to = parseOptional(command.endAt());
         var records = queryService.query(
                 keyword, from, to, command.safeOptions().filter());
+        IntentResult result;
         if (records.isEmpty()) {
-            return IntentResult.message(IntentResult.Action.TAGGED_RECORDS_INFO,
+            result = IntentResult.message(IntentResult.Action.TAGGED_RECORDS_INFO,
                     "目前沒有標記為「%s」或其關聯標籤的紀錄。".formatted(keyword));
+        } else {
+            String lines = records.stream().map(record -> "%s｜%s｜%s%s".formatted(
+                            DATE.format(record.occurredAt().atZone(TAIPEI)), record.type(),
+                            record.title(), record.details() == null ? "" : "｜" + record.details()))
+                    .collect(Collectors.joining("\n"));
+            result = IntentResult.message(IntentResult.Action.TAGGED_RECORDS_INFO,
+                    "找到 %d 筆「%s」相關紀錄：\n%s".formatted(
+                            records.size(), keyword, lines));
         }
-        String lines = records.stream().map(record -> "%s｜%s｜%s%s".formatted(
-                        DATE.format(record.occurredAt().atZone(TAIPEI)), record.type(),
-                        record.title(), record.details() == null ? "" : "｜" + record.details()))
-                .collect(Collectors.joining("\n"));
-        return IntentResult.message(IntentResult.Action.TAGGED_RECORDS_INFO,
-                "找到 %d 筆「%s」相關紀錄：\n%s".formatted(
-                        records.size(), keyword, lines));
+        return graphService.latestRelationForTag(keyword)
+                .map(edge -> result.withFocusBinding(edgeBinding(edge, keyword)))
+                .orElse(result);
+    }
+
+    private static ConversationFocusBinding edgeBinding(
+            SemanticTagEdge edge, String safeLabel) {
+        if (edge == null || edge.getId() == null) {
+            throw new IllegalStateException("persisted tag relation is required for focus");
+        }
+        return new ConversationFocusBinding(
+                "KNOWLEDGE", "tag-edge:" + edge.getId(), safeLabel);
     }
 
     private static String lookupKeyword(String value) {

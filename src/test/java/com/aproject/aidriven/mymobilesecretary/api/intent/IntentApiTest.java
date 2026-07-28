@@ -35,6 +35,22 @@ class IntentApiTest extends IntegrationTestBase {
         }
     }
 
+    @Test
+    void schoolTransportFlowBypassesAiAndCreatesAllThreeSchedules() throws Exception {
+        String request = "到9月底以前，每週六我9:30從我家出發送女兒去上夏恩英語，10-12點上課，"
+                + "12點我在夏恩英語接，12:30結束";
+        say(request,
+                jsonPath("$.action").value("BATCH_EXECUTED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.containsString("女兒上夏恩英語"),
+                        org.hamcrest.Matchers.containsString("送女兒到夏恩英語"),
+                        org.hamcrest.Matchers.containsString("從夏恩英語接女兒"),
+                        org.hamcrest.Matchers.containsString("2026-09-30"))));
+        say(request,
+                jsonPath("$.action").value("CONTEXT_UPDATED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("沒有重複建立")));
+    }
+
     /** 一句話建任務:標題來自 LLM 解析,不是原文照存。 */
     @Test
     void createTaskIntentCreatesTask() throws Exception {
@@ -218,8 +234,9 @@ class IntentApiTest extends IntegrationTestBase {
                 null, null, null, null, null));
         say("你是不是重複建立任務了",
                 jsonPath("$.action").value("FEEDBACK_RECEIVED"),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("功能改善問題紀錄")),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不會建立待辦或行程")));
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("依你指出的方向調整")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不會建立待辦或行程")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不會修改既有待辦或行程")));
     }
 
     /** 自由文字提到「地點」是產品建議，不得接回先前任務的缺地點追問。 */
@@ -235,7 +252,7 @@ class IntentApiTest extends IntegrationTestBase {
                 "旅行功能要包含出發地點與交通工具", null, null, null, null, null));
         say("這是功能改善：旅行要詢問出發地點與交通工具",
                 jsonPath("$.action").value("FEEDBACK_RECEIVED"),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("功能改善問題紀錄")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("依你指出的方向調整")),
                 jsonPath("$.message").value(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("要在哪裡做"))));
     }
@@ -584,7 +601,7 @@ class IntentApiTest extends IntegrationTestBase {
         say("這句話一定要被留下來",
                 jsonPath("$.action").value("AI_UNAVAILABLE"),
                 jsonPath("$.task").value(org.hamcrest.Matchers.nullValue()),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("我沒有建立任何待辦")));
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("沒有建立或修改資料")));
         org.assertj.core.api.Assertions.assertThat(taskService.listTasks()).hasSize(before);
     }
 
@@ -620,31 +637,32 @@ class IntentApiTest extends IntegrationTestBase {
         say("診斷測試今晚十點倒垃圾",
                 jsonPath("$.action").value("AI_UNAVAILABLE"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
-                        "建立行程必須提供 startAt")),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
-                        "type=CREATE_SCHEDULE")),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("startAt=(空)")));
+                        "請告訴我行程的開始時間")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("startAt"))));
 
         say("為什麼失敗？",
                 jsonPath("$.action").value("FAILURE_EXPLAINED"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
-                        "建立行程必須提供 startAt")),
+                        "缺行程的開始時間")),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
-                        "沒有執行這筆操作")));
+                        "資料沒有異動")));
     }
 
-    /** 單一明確時點的生活事項被誤判成缺 endAt 行程時，安全降為 timed task。 */
+    /** 單一明確時點的生活事項若被誤判成缺 endAt 行程，仍須 fail closed 而不偷轉型。 */
     @Test
-    void singlePointChoreWithMissingScheduleEndBecomesTimedTask() throws Exception {
+    void singlePointChoreMisclassifiedAsScheduleWithoutEndFailsClosed() throws Exception {
+        int before = taskService.listTasks().size();
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE, "診斷測試倒垃圾單點", null,
                 "2027-07-16T22:00:00+08:00", null, null, "NORMAL", null,
                 null, null, null, null, false));
 
         say("明年今天晚上10點要去倒垃圾",
-                jsonPath("$.action").value("TASK_CREATED"),
-                jsonPath("$.task.title").value("診斷測試倒垃圾單點"),
-                jsonPath("$.task.dueAt").value("2027-07-16T14:00:00Z"));
+                jsonPath("$.action").value("CLARIFICATION_NEEDED"),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("結束時間")),
+                jsonPath("$.task").value(org.hamcrest.Matchers.nullValue()));
+        org.assertj.core.api.Assertions.assertThat(taskService.listTasks()).hasSize(before);
     }
 
     /** 使用者實際問句走確定性查詢；即使 stub 沒回覆，也不能建成待辦。 */

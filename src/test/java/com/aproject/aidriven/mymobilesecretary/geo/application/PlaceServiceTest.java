@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
@@ -124,5 +126,42 @@ class PlaceServiceTest {
         assertThatThrownBy(() -> service.createPlace("全聯", null, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("code", "PLACE_LOOKUP_FAILED");
+    }
+
+    @Test
+    void mismatchedGoogleAddressCannotOverwriteUserSuppliedHomeAddress() {
+        Place home = Place.create("我家", null, 24.97, 121.54, "住宅", NOW);
+        when(placeRepository.findById(7L)).thenReturn(Optional.of(home));
+        when(googlePlacesClient.usable()).thenReturn(true);
+        when(googlePlacesClient.searchFirst(anyString())).thenReturn(Optional.of(
+                new GooglePlacesClient.PlaceCandidate(
+                        "其他公寓", "新北市新店區北宜路一段115巷20弄10號",
+                        24.95, 121.55, "公寓")));
+
+        assertThatThrownBy(() -> service.updateAddress(
+                7L, "新北市新店區民權路5號五樓"))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "PLACE_ADDRESS_MISMATCH")
+                .hasMessageContaining("沒有更新");
+
+        verify(placeRepository, never()).save(any(Place.class));
+    }
+
+    @Test
+    void matchingStreetAndNumberUpdatesCoordinatesButPreservesExactUserAddress() {
+        Place home = Place.create("我家", null, 24.97, 121.54, "住宅", NOW);
+        when(placeRepository.findById(7L)).thenReturn(Optional.of(home));
+        when(googlePlacesClient.usable()).thenReturn(true);
+        when(googlePlacesClient.searchFirst(anyString())).thenReturn(Optional.of(
+                new GooglePlacesClient.PlaceCandidate(
+                        "住宅", "231新北市新店區民權路5號",
+                        24.967, 121.541, "公寓")));
+        saveReturnsInput();
+
+        Place updated = service.updateAddress(7L, "新北市新店區民權路5號五樓");
+
+        assertThat(updated.getAddress()).isEqualTo("新北市新店區民權路5號五樓");
+        assertThat(updated.getLatitude()).isEqualTo(24.967);
+        verify(eventPublisher).publishEvent(any(PlaceUpdatedEvent.class));
     }
 }

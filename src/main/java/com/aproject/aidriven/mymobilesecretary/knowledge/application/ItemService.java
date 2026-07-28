@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.knowledge.application;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
 import com.aproject.aidriven.mymobilesecretary.knowledge.domain.Item;
 import com.aproject.aidriven.mymobilesecretary.knowledge.persistence.ItemRepository;
@@ -144,6 +145,18 @@ public class ItemService {
     public java.util.Optional<Item> findItem(String name) {
         return name == null || name.isBlank() ? java.util.Optional.empty()
                 : itemRepository.findByNameIgnoreCase(name.strip());
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isAvailableForFocus(Long id, String safeLabel) {
+        if (id == null || safeLabel == null) {
+            return false;
+        }
+        var actorId = WorkspaceContextHolder.requireContext().actorId();
+        return itemRepository.findById(id)
+                .filter(item -> actorId.equals(item.getCreatedByUserId()))
+                .map(item -> item.getName().equals(safeLabel))
+                .orElse(false);
     }
 
     @Transactional(readOnly = true)

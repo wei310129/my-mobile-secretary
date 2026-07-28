@@ -102,7 +102,8 @@ public class TravelPlanningIntakeService {
             return false;
         }
         return !containsAny(text, "功能改善", "提出改善", "使用者", "對話情境", "例如你要",
-                "你要能", "你就要", "應該要能", "需求功能", "開發功能");
+                "你要能", "你就要", "應該要能", "需求功能", "開發功能", "回饋", "建議",
+                "抱怨");
     }
 
     private static boolean looksLikeHistoryQuestion(String text) {

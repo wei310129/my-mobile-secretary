@@ -50,7 +50,7 @@ class CodexLifecycleServiceIntegrationTest {
                     observed_first_pending_at = NULL, observed_last_pending_at = NULL,
                     eligible_at = NULL, retry_not_before = NULL,
                     consecutive_failure_count = 0, last_error_code = NULL,
-                    paused_reason = NULL, version = version + 1,
+                    paused_reason = NULL, coordinator_drain_requested = FALSE, version = version + 1,
                     updated_at = CURRENT_TIMESTAMP
                 WHERE lane_key = 'CODEX_DEVELOPMENT'
                 """);
@@ -95,6 +95,22 @@ class CodexLifecycleServiceIntegrationTest {
                         BASE.plus(Duration.ofMinutes(6))));
         assertThat(duplicate.outcome()).isEqualTo(CodexLifecycleResult.Outcome.DUPLICATE);
         assertThat(eventCount("CONSUMED")).isEqualTo(1);
+    }
+
+    @Test
+    void completedRunHonorsPersistedCoordinatorDrainRequest() {
+        UUID runId = startRunningEvent("event-drain");
+        long token = fencingToken(runId);
+        jdbcTemplate.update("UPDATE dispatcher_lane SET coordinator_drain_requested = TRUE WHERE lane_key = 'CODEX_DEVELOPMENT'");
+
+        CodexLifecycleResult result = lifecycleAt(BASE.plus(Duration.ofMinutes(6))).onCodexFinish(
+                runId, token,
+                new CodexCompletion(CodexCompletion.Status.SUCCEEDED, "COMPLETED", BASE.plus(Duration.ofMinutes(6))));
+
+        assertThat(result.outcome()).isEqualTo(CodexLifecycleResult.Outcome.COMPLETED);
+        assertThat(laneState()).isEqualTo("PAUSED");
+        assertThat(jdbcTemplate.queryForObject("SELECT last_error_code FROM dispatcher_lane WHERE lane_key = 'CODEX_DEVELOPMENT'", String.class))
+                .isEqualTo("COORDINATOR_DRAIN");
     }
 
     @Test

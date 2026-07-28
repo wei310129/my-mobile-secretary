@@ -59,6 +59,19 @@ public class Place extends WorkspaceOwnedEntity {
         return new Place(name, address, latitude, longitude, type, now);
     }
 
+    /** 使用者確認新地址後更新導航錨點；外部候選一致性由 application service 先驗證。 */
+    public void relocate(String address, double latitude, double longitude, String type) {
+        if (address == null || address.isBlank()) {
+            throw new IllegalArgumentException("address is required");
+        }
+        this.address = address.strip();
+        this.latitude = latitude;
+        this.longitude = longitude;
+        if (type != null && !type.isBlank()) {
+            this.type = type.strip();
+        }
+    }
+
     public Long getId() {
         return id;
     }

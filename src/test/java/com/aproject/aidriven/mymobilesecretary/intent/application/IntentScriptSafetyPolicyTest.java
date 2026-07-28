@@ -38,6 +38,22 @@ class IntentScriptSafetyPolicyTest {
     }
 
     @Test
+    void incompleteTeacherNoticeDoesNotDiscardAnotherGroundedScheduleInTheSameMessage() {
+        IntentScript raw = script(
+                commandWithSource(IntentCommand.Type.CREATE_SCHEDULE, "父親節活動",
+                        "老師通知明天十點報到，沒有說幾點結束"),
+                commandWithSource(IntentCommand.Type.CREATE_SCHEDULE, "產品會議",
+                        "明天下午兩點產品會議"));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "老師通知明天十點報到，沒有說幾點結束；明天下午兩點產品會議", raw);
+
+        assertThat(safe.commands()).extracting(IntentCommand::type).containsExactly(
+                IntentCommand.Type.CREATE_SCHEDULE, IntentCommand.Type.UNKNOWN);
+        assertThat(safe.commands().getFirst().title()).isEqualTo("產品會議");
+    }
+
+    @Test
     void scheduleReminderAlwaysCarriesTheExplicitLeadMinutes() {
         IntentScript raw = script(command(IntentCommand.Type.CREATE_TASK,
                 "提醒專案會議", null, null, null));
@@ -75,5 +91,11 @@ class IntentScriptSafetyPolicyTest {
                                          IntentOptions options) {
         return new IntentCommand(type, title, null, startAt, endAt, null, null, null,
                 null, null, null, null, null, options);
+    }
+
+    private static IntentCommand commandWithSource(IntentCommand.Type type, String title,
+                                                   String sourceText) {
+        return new IntentCommand(type, title, null, null, null, null, null, null,
+                null, null, null, null, null, null, sourceText);
     }
 }

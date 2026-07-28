@@ -73,7 +73,7 @@ public final class IntentReplyFormatter {
         }
 
         String first = lines.getFirst();
-        if (!LEADING_EMOJI.matcher(first).find()) {
+        if (!LEADING_EMOJI.matcher(first).find() && !LIST_ITEM.matcher(first).matches()) {
             first = emojiForBlock(defaultEmoji, first) + " " + first;
         }
 

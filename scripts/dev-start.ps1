@@ -16,6 +16,9 @@
 
 .PARAMETER ArmDispatcher
   Explicitly enables the read-only issue feed, scheduler, and Codex CLI adapter after preflight.
+
+.PARAMETER VerboseOutput
+  Prints normal per-layer startup progress in addition to the final summary.
 #>
 param(
     [string]$Profile = "local",
@@ -23,10 +26,12 @@ param(
     [switch]$SkipDocker,
     [switch]$SkipDispatcher,
     [switch]$ArmDispatcher,
-    [switch]$AllowDirtyWorktree
+    [switch]$AllowDirtyWorktree,
+    [switch]$VerboseOutput
 )
 
 . "$PSScriptRoot\_devops-common.ps1"
+$script:DevVerboseOutput = [bool]$VerboseOutput
 Normalize-ProcessPathEnvironment
 if ($SkipDispatcher -and $ArmDispatcher) { throw "-SkipDispatcher cannot be combined with -ArmDispatcher." }
 if ($AllowDirtyWorktree -and -not $ArmDispatcher) { throw "-AllowDirtyWorktree requires -ArmDispatcher." }
@@ -36,7 +41,15 @@ if ($ArmDispatcher) {
     Disable-DispatcherAutomationEnvironment
 }
 Ensure-LogsDir
+$script:StartServiceGeneration = $null
+function Resolve-StartLogPath {
+    param([Parameter(Mandatory)][string]$Name)
+    if ($null -eq $script:StartServiceGeneration) { $script:StartServiceGeneration = New-DevServiceGeneration }
+    return Join-Path $script:StartServiceGeneration.LogDirectory $Name
+}
 Set-Location $RepoRoot
+$lifecycleLease = Enter-DevLifecycleCoordination -Action start
+$lifecycleOutcome = 'FAILED'
 
 try {
     Assert-CommandAvailable -Name "docker"
@@ -49,19 +62,22 @@ try {
     if (-not $NoNgrok) { Assert-PortAvailableOrManaged -Port $NgrokApiPort -Kind "Ngrok" }
 } catch {
     Write-Host $_.Exception.Message -ForegroundColor Red
+    Exit-DevLifecycleCoordination -Operation $lifecycleLease -Action start -Outcome $lifecycleOutcome
     exit 1
 }
 
-Write-Host "=== Starting development environment (profile=$Profile) ===" -ForegroundColor Cyan
+try {
+Write-DevProgress -Message "=== Starting development environment (profile=$Profile) ===" -ForegroundColor Cyan
 $automationMode = if ($ArmDispatcher) { "ARMED" } else { "DISARMED" }
 $automationColor = if ($ArmDispatcher) { "Yellow" } else { "DarkGray" }
-Write-Host "  Dispatcher automation is $automationMode." -ForegroundColor $automationColor
+Write-DevProgress -Message "  Dispatcher automation is $automationMode." -ForegroundColor $automationColor
 
 # 1) Main application infrastructure is required.
 if (-not $SkipDocker) {
-    Write-Host "[1/6] Starting main Postgres and Redis..." -ForegroundColor Yellow
-    docker compose up -d
+    Write-DevProgress -Message "[1/6] Starting main Postgres and Redis..." -ForegroundColor Yellow
+    $composeOutput = docker compose up -d 2>&1
     if ($LASTEXITCODE -ne 0) {
+        $composeOutput | ForEach-Object { Write-Host $_ }
         Write-Host "Main docker compose startup failed." -ForegroundColor Red
         exit 1
     }
@@ -72,7 +88,7 @@ if (-not $SkipDocker) {
         exit 1
     }
 } else {
-    Write-Host "[1/6] Checking existing main containers (-SkipDocker)..." -ForegroundColor Yellow
+    Write-DevProgress -Message "[1/6] Checking existing main containers (-SkipDocker)..." -ForegroundColor Yellow
     $pgOk = (Get-ContainerHealth -ContainerName "mms-postgres") -eq "healthy"
     $redisOk = (Get-ContainerHealth -ContainerName "mms-redis") -eq "healthy"
     if (-not $pgOk -or -not $redisOk) {
@@ -90,14 +106,14 @@ if (-not (Wait-TcpPort -Port 5432 -TimeoutSec 60) -or
     exit 1
 }
 
-Write-Host "  Main Postgres and Redis are healthy." -ForegroundColor Green
+Write-DevProgress -Message "  Main Postgres and Redis are healthy." -ForegroundColor Green
 
 # 2) ngrok is part of the main application lifecycle.
 $ngrokUrl = $null
 $ngrokPid = $null
 $lineWebhookConfiguration = $null
 if (-not $NoNgrok) {
-    Write-Host "[2/6] Starting ngrok for the configured LINE webhook..." -ForegroundColor Yellow
+    Write-DevProgress -Message "[2/6] Starting ngrok for the configured LINE webhook..." -ForegroundColor Yellow
     $lineWebhookConfiguration = Get-LineWebhookConfiguration
     if (-not $lineWebhookConfiguration.Success) {
         Write-Host "Could not read LINE's configured webhook endpoint: $($lineWebhookConfiguration.Error)" `
@@ -131,7 +147,7 @@ if (-not $NoNgrok) {
         $ngrokUrl = Get-NgrokPublicUrl -TimeoutSec 10
         $ngrokHost = if ($ngrokUrl) { ([uri]$ngrokUrl).Host } else { $null }
         if ($ngrokHost -eq $lineWebhookUri.Host) {
-            Write-Host "  Reusing ngrok PID $ngrokPid for $ngrokHost." -ForegroundColor DarkGray
+            Write-DevProgress -Message "  Reusing ngrok PID $ngrokPid for $ngrokHost." -ForegroundColor DarkGray
         } else {
             Write-Host "  Existing ngrok host does not match LINE; restarting the managed tunnel." `
                 -ForegroundColor Yellow
@@ -156,8 +172,8 @@ if (-not $NoNgrok) {
         $proc = Start-Process -FilePath $ngrokExe `
             -ArgumentList $ngrokArguments `
             -WorkingDirectory $RepoRoot -WindowStyle Hidden -PassThru `
-            -RedirectStandardOutput (Join-Path $LogsDir "ngrok.out.log") `
-            -RedirectStandardError (Join-Path $LogsDir "ngrok.err.log")
+            -RedirectStandardOutput (Resolve-StartLogPath "ngrok.out.log") `
+            -RedirectStandardError (Resolve-StartLogPath "ngrok.err.log")
         $ngrokPid = $proc.Id
         $ngrokUrl = Get-NgrokPublicUrl -TimeoutSec 20
         if (-not $ngrokUrl) {
@@ -170,14 +186,14 @@ if (-not $NoNgrok) {
             Stop-ProcessTree -ProcessId $ngrokPid -Label "ngrok (wrong public host)"
             exit 1
         }
-        Write-Host "  ngrok is ready (PID $ngrokPid)." -ForegroundColor Green
+        Write-DevProgress -Message "  ngrok is ready (PID $ngrokPid)." -ForegroundColor Green
     }
 } else {
-    Write-Host "[2/6] Skipping ngrok and LINE webhook verification (-NoNgrok)." -ForegroundColor DarkGray
+    Write-DevProgress -Message "[2/6] Skipping ngrok and LINE webhook verification (-NoNgrok)." -ForegroundColor DarkGray
 }
 
 # 3) The main application is required and becomes healthy before any Dispatcher work.
-Write-Host "[3/6] Starting the main Spring Boot application..." -ForegroundColor Yellow
+Write-DevProgress -Message "[3/6] Starting the main Spring Boot application..." -ForegroundColor Yellow
 $existingAppPid = Resolve-ManagedProcessId -TrackedProcessId $null -Port $AppPort -Kind "SpringBoot"
 if ($existingAppPid) {
     $previousState = Read-DevState
@@ -189,45 +205,52 @@ if ($existingAppPid) {
         exit 1
     }
     $appPid = $existingAppPid
-    Write-Host "  Main application is already healthy (PID $appPid)." -ForegroundColor DarkGray
+    Write-DevProgress -Message "  Main application is already healthy (PID $appPid)." -ForegroundColor DarkGray
 } else {
-    $proc = Start-Process -FilePath "$RepoRoot\mvnw.cmd" `
-        -ArgumentList "spring-boot:run", "-Dmaven.test.skip=true", `
-            "-Dspring-boot.run.profiles=$Profile" `
+    $launchFile = if (Test-CoordinationMavenEnabled) { Join-Path $PSScriptRoot 'coordinated-maven-run.ps1' } else { "$RepoRoot\mvnw.cmd" }
+    $launchArguments = if (Test-CoordinationMavenEnabled) {
+        @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $launchFile, '-Application', 'root', '-Profile', $Profile)
+    } else {
+        @('spring-boot:run', '-Dmaven.test.skip=true', "-Dspring-boot.run.profiles=$Profile")
+    }
+    $launchExecutable = if (Test-CoordinationMavenEnabled) { Join-Path $PSHOME 'powershell.exe' } else { $launchFile }
+    $proc = Start-Process -FilePath $launchExecutable `
+        -ArgumentList $launchArguments `
         -WorkingDirectory $RepoRoot -WindowStyle Hidden -PassThru `
-        -RedirectStandardOutput (Join-Path $LogsDir "spring-boot.out.log") `
-        -RedirectStandardError (Join-Path $LogsDir "spring-boot.err.log")
+        -RedirectStandardOutput (Resolve-StartLogPath "spring-boot.out.log") `
+        -RedirectStandardError (Resolve-StartLogPath "spring-boot.err.log")
     $appPid = $proc.Id
-    if (-not (Wait-HttpOk -Url "http://localhost:$AppPort/actuator/health" -TimeoutSec 240)) {
+    if (-not (Wait-HttpOk -Url "http://localhost:$AppPort/actuator/health" -TimeoutSec 240 -ProcessId $appPid)) {
         Write-Host "Main health check failed. Check scripts\.logs\spring-boot.err.log." -ForegroundColor Red
         Stop-ProcessTree -ProcessId $appPid -Label "Spring Boot (failed startup)"
         exit 1
     }
-    Write-Host "  Main application is ready (PID $appPid)." -ForegroundColor Green
+    Write-DevProgress -Message "  Main application is ready (PID $appPid)." -ForegroundColor Green
 }
 
 # 4) Dispatcher database failure cannot delay the main application becoming ready.
 $dispatcherDbReady = $false
 if ($SkipDispatcher) {
-    Write-Host "[4/6] Skipping AI Dispatcher database (-SkipDispatcher)." -ForegroundColor DarkGray
+    Write-DevProgress -Message "[4/6] Skipping AI Dispatcher database (-SkipDispatcher)." -ForegroundColor DarkGray
 } elseif (-not (Test-Path $DispatcherComposeFile) -or -not (Test-Path $DispatcherPom)) {
     Write-Host "[4/6] AI Dispatcher files are incomplete. Main application remains available." -ForegroundColor Yellow
 } elseif (-not $SkipDocker) {
-    Write-Host "[4/6] Starting the isolated Dispatcher PostgreSQL..." -ForegroundColor Yellow
-    docker compose -f $DispatcherComposeFile up -d
+    Write-DevProgress -Message "[4/6] Starting the isolated Dispatcher PostgreSQL..." -ForegroundColor Yellow
+    $dispatcherComposeOutput = docker compose -f $DispatcherComposeFile up -d 2>&1
     if ($LASTEXITCODE -eq 0) {
         $dispatcherDbReady = Wait-ContainerHealthy -ContainerName "mms-ai-dispatcher-postgres" -TimeoutSec 60
     }
     if ($dispatcherDbReady) {
-        Write-Host "  Dispatcher PostgreSQL is healthy (isolated DB and volume)." -ForegroundColor Green
+        Write-DevProgress -Message "  Dispatcher PostgreSQL is healthy (isolated DB and volume)." -ForegroundColor Green
     } else {
+        $dispatcherComposeOutput | ForEach-Object { Write-Host $_ }
         Write-Host "  Dispatcher PostgreSQL failed. Dispatcher is skipped; main application remains up." -ForegroundColor Yellow
     }
 } else {
-    Write-Host "[4/6] Checking existing Dispatcher PostgreSQL (-SkipDocker)..." -ForegroundColor Yellow
+    Write-DevProgress -Message "[4/6] Checking existing Dispatcher PostgreSQL (-SkipDocker)..." -ForegroundColor Yellow
     $dispatcherDbReady = (Get-ContainerHealth -ContainerName "mms-ai-dispatcher-postgres") -eq "healthy"
     if ($dispatcherDbReady) {
-        Write-Host "  Dispatcher PostgreSQL is healthy." -ForegroundColor Green
+        Write-DevProgress -Message "  Dispatcher PostgreSQL is healthy." -ForegroundColor Green
     } else {
         Write-Host "  Dispatcher DB is not healthy. Dispatcher is skipped; main application remains up." -ForegroundColor Yellow
     }
@@ -240,15 +263,15 @@ if ($SkipDispatcher) {
     $dispatcherPid = Resolve-ManagedProcessId -TrackedProcessId $previousState.dispatcherPid `
         -Port $DispatcherPort -Kind "Dispatcher"
     if ($dispatcherPid) {
-        Write-Host "[5/6] Preserving existing AI Dispatcher PID $dispatcherPid (-SkipDispatcher)." `
+        Write-DevProgress -Message "[5/6] Preserving existing AI Dispatcher PID $dispatcherPid (-SkipDispatcher)." `
             -ForegroundColor DarkGray
     } else {
-        Write-Host "[5/6] AI Dispatcher was not requested." -ForegroundColor DarkGray
+        Write-DevProgress -Message "[5/6] AI Dispatcher was not requested." -ForegroundColor DarkGray
     }
 } elseif (-not $dispatcherDbReady) {
     Write-Host "[5/6] AI Dispatcher was not started because its DB is unavailable." -ForegroundColor Yellow
 } else {
-    Write-Host "[5/6] Starting AI Dispatcher..." -ForegroundColor Yellow
+    Write-DevProgress -Message "[5/6] Starting AI Dispatcher..." -ForegroundColor Yellow
     try {
         Assert-PortAvailableOrManaged -Port $DispatcherPort -Kind "Dispatcher"
         $existingDispatcherPid = Resolve-ManagedProcessId -TrackedProcessId $null `
@@ -260,19 +283,26 @@ if ($SkipDispatcher) {
             }
             if (Wait-HttpOk -Url "http://localhost:$DispatcherPort/actuator/health" -TimeoutSec 10) {
                 $dispatcherPid = $existingDispatcherPid
-                Write-Host "  AI Dispatcher is already healthy (PID $dispatcherPid)." -ForegroundColor DarkGray
+                Write-DevProgress -Message "  AI Dispatcher is already healthy (PID $dispatcherPid)." -ForegroundColor DarkGray
             } else {
                 Write-Host "  Dispatcher exists but is unhealthy. It was not interrupted; use dev-restart.ps1." -ForegroundColor Yellow
             }
         } else {
-            $proc = Start-Process -FilePath "$RepoRoot\mvnw.cmd" `
-                -ArgumentList "-f", "internal\ai-dispatcher\pom.xml", "spring-boot:run" `
+            $launchFile = if (Test-CoordinationMavenEnabled) { Join-Path $PSScriptRoot 'coordinated-maven-run.ps1' } else { "$RepoRoot\mvnw.cmd" }
+            $launchArguments = if (Test-CoordinationMavenEnabled) {
+                @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $launchFile, '-Application', 'dispatcher')
+            } else {
+                @('-f', 'internal\ai-dispatcher\pom.xml', 'spring-boot:run')
+            }
+            $launchExecutable = if (Test-CoordinationMavenEnabled) { Join-Path $PSHOME 'powershell.exe' } else { $launchFile }
+            $proc = Start-Process -FilePath $launchExecutable `
+                -ArgumentList $launchArguments `
                 -WorkingDirectory $RepoRoot -WindowStyle Hidden -PassThru `
-                -RedirectStandardOutput (Join-Path $LogsDir "ai-dispatcher.out.log") `
-                -RedirectStandardError (Join-Path $LogsDir "ai-dispatcher.err.log")
+                -RedirectStandardOutput (Resolve-StartLogPath "ai-dispatcher.out.log") `
+                -RedirectStandardError (Resolve-StartLogPath "ai-dispatcher.err.log")
             $dispatcherPid = $proc.Id
-            if (Wait-HttpOk -Url "http://localhost:$DispatcherPort/actuator/health" -TimeoutSec 120) {
-                Write-Host "  AI Dispatcher is ready (PID $dispatcherPid)." -ForegroundColor Green
+            if (Wait-HttpOk -Url "http://localhost:$DispatcherPort/actuator/health" -TimeoutSec 120 -ProcessId $dispatcherPid) {
+                Write-DevProgress -Message "  AI Dispatcher is ready (PID $dispatcherPid)." -ForegroundColor Green
             } else {
                 Write-Host "  Dispatcher health check failed. It was stopped; the main application remains up." -ForegroundColor Yellow
                 Stop-ProcessTree -ProcessId $dispatcherPid -Label "AI Dispatcher (failed startup)"
@@ -284,7 +314,7 @@ if ($SkipDispatcher) {
     }
 }
 
-Write-DevState -Updates @{
+$stateUpdates = @{
     springBootPid = $appPid
     dispatcherPid = $dispatcherPid
     ngrokPid      = $ngrokPid
@@ -293,16 +323,18 @@ Write-DevState -Updates @{
     dispatcherArmed = [bool]$ArmDispatcher
     startedAt     = (Get-Date).ToString("o")
 }
+if ($script:StartServiceGeneration) { $stateUpdates["serviceGeneration"] = $script:StartServiceGeneration.Generation; $stateUpdates["serviceLogDirectory"] = $script:StartServiceGeneration.LogDirectory }
+Write-DevState -Updates $stateUpdates
 
 # Final verification is intentionally outside-in. If it passes, every required layer from LINE's
 # platform through ngrok and Spring Boot is connected. Layered diagnostics are only needed on failure.
 $lineWebhookReady = $true
 if (-not $NoNgrok) {
-    Write-Host "[6/6] Testing LINE -> ngrok -> Spring Boot end to end..." -ForegroundColor Yellow
+    Write-DevProgress -Message "[6/6] Testing LINE -> ngrok -> Spring Boot end to end..." -ForegroundColor Yellow
     $lineTest = Test-LineWebhookEndToEnd
     $lineWebhookReady = $lineTest.Success
     if ($lineWebhookReady) {
-        Write-Host "  LINE webhook end-to-end test passed." -ForegroundColor Green
+        Write-DevProgress -Message "  LINE webhook end-to-end test passed." -ForegroundColor Green
     } else {
         Write-Host "  LINE webhook end-to-end test failed." -ForegroundColor Red
         if ($lineTest.Reason) { Write-Host "  LINE reason: $($lineTest.Reason)" -ForegroundColor Yellow }
@@ -317,18 +349,15 @@ if (-not $NoNgrok) {
         Write-Host "  Inspect logs under scripts\.logs\." -ForegroundColor Yellow
     }
 } else {
-    Write-Host "[6/6] LINE webhook test skipped (-NoNgrok)." -ForegroundColor DarkGray
+    Write-DevProgress -Message "[6/6] LINE webhook test skipped (-NoNgrok)." -ForegroundColor DarkGray
 }
 
-Write-Host ""
-Write-Host "=== Status ===" -ForegroundColor Cyan
-Write-Host "Main:          http://localhost:$AppPort"
-if ($dispatcherPid) {
-    Write-Host "AI Dispatcher: http://localhost:$DispatcherPort ($automationMode)"
-}
-if ($ngrokUrl) { Write-Host "LINE webhook:  $ngrokUrl/api/line/webhook" -ForegroundColor Cyan }
-Write-Host "Logs:          scripts\.logs\"
-Write-Host "Inspect:       .\scripts\dev-status.ps1"
-Write-Host "Stop:          .\scripts\dev-stop.ps1"
 if (-not $lineWebhookReady) { exit 1 }
 if ($ArmDispatcher -and -not $dispatcherPid) { exit 2 }
+$dispatcherSummary = if ($SkipDispatcher) { "dispatcher=skipped" } elseif ($dispatcherPid) { "dispatcher=$automationMode" } else { "dispatcher=unavailable" }
+$lineSummary = if ($NoNgrok) { "LINE=skipped" } else { "LINE=connected" }
+Write-Host "Development environment ready: main=http://localhost:$AppPort; $dispatcherSummary; $lineSummary; logs=scripts\.logs\." -ForegroundColor Green
+$lifecycleOutcome = 'READY'
+} finally {
+    Exit-DevLifecycleCoordination -Operation $lifecycleLease -Action start -Outcome $lifecycleOutcome
+}

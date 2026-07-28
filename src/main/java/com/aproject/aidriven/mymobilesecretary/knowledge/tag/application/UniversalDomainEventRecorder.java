@@ -1,11 +1,23 @@
 package com.aproject.aidriven.mymobilesecretary.knowledge.tag.application;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.adoption.CalendarAdoptionCreatedEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarNodeCanceledEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarNodeCreatedEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarNodeLocationRevisedEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarNodeRevisedEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarPlanCreatedEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarPlanLifecycleEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.participation.CalendarOwnershipTransferLifecycleEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.participation.CalendarOwnershipTransferLifecycleEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.reminder.CalendarReminderLifecycleEvent;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceCreatedEvent;
+import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceUpdatedEvent;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.LocationExitRecorded;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.ItemLifecycleEvent;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.ObjectAnnotationArchivedEvent;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.ObjectAnnotationUpdatedEvent;
 import com.aproject.aidriven.mymobilesecretary.knowledge.tag.domain.TaggedLifeRecord;
+import com.aproject.aidriven.mymobilesecretary.project.application.ProjectLifecycleEvent;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.ReminderTriggeredEvent;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskCanceledEvent;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskCompletedEvent;
@@ -50,6 +62,12 @@ public class UniversalDomainEventRecorder {
     }
 
     @EventListener
+    public void onProjectLifecycle(ProjectLifecycleEvent event) {
+        lifeRecordService.recordDomainEvent(TaggedLifeRecord.RecordType.PROJECT,
+                event.name(), event.occurredAt(), List.of("專案", projectAction(event.action())));
+    }
+
+    @EventListener
     public void onScheduleLifecycle(ScheduleLifecycleEvent event) {
         lifeRecordService.recordDomainEvent(TaggedLifeRecord.RecordType.SCHEDULE,
                 event.title(), event.occurredAt(),
@@ -63,9 +81,128 @@ public class UniversalDomainEventRecorder {
     }
 
     @EventListener
+    public void onCalendarPlanCreated(CalendarPlanCreatedEvent event) {
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-plan/" + event.planId() + "/created",
+                TaggedLifeRecord.RecordType.SCHEDULE,
+                event.title(),
+                event.occurredAt(),
+                List.of("行程計畫", "建立"));
+    }
+
+    @EventListener
+    public void onCalendarPlanLifecycle(CalendarPlanLifecycleEvent event) {
+        boolean canceled =
+                event.action() == CalendarPlanLifecycleEvent.Action.CANCELED;
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-plan/" + event.planId()
+                        + (canceled ? "/canceled" : "/archived"),
+                TaggedLifeRecord.RecordType.SCHEDULE,
+                event.title(),
+                event.occurredAt(),
+                List.of("行程計畫", canceled ? "取消" : "封存"));
+    }
+
+    @EventListener
+    public void onCalendarReminderLifecycle(CalendarReminderLifecycleEvent event) {
+        String action = event.action() == CalendarReminderLifecycleEvent.Action.CREATED
+                ? "建立"
+                : "取消";
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-reminder/" + event.ruleId()
+                        + (event.action() == CalendarReminderLifecycleEvent.Action.CREATED
+                                ? "/created"
+                                : "/canceled"),
+                TaggedLifeRecord.RecordType.REMINDER,
+                event.nodeLabel(),
+                event.occurredAt(),
+                List.of("日曆提醒", action));
+    }
+
+    @EventListener
+    public void onCalendarNodeCreated(CalendarNodeCreatedEvent event) {
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-node/" + event.nodeId() + "/created",
+                TaggedLifeRecord.RecordType.SCHEDULE,
+                event.nodeLabel(),
+                event.occurredAt(),
+                List.of("行程節點", "建立"));
+    }
+
+    @EventListener
+    public void onCalendarNodeRevised(CalendarNodeRevisedEvent event) {
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-node/" + event.nodeId() + "/time/"
+                        + event.currentRevision(),
+                TaggedLifeRecord.RecordType.SCHEDULE,
+                event.nodeLabel(),
+                event.occurredAt(),
+                List.of("行程節點", "修訂"));
+    }
+
+    @EventListener
+    public void onCalendarNodeLocationRevised(
+            CalendarNodeLocationRevisedEvent event) {
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-node/" + event.nodeId() + "/location/"
+                        + event.revision(),
+                TaggedLifeRecord.RecordType.SCHEDULE,
+                event.nodeLabel(),
+                event.occurredAt(),
+                List.of("行程節點", "地點修訂"));
+    }
+
+    @EventListener
+    public void onCalendarNodeCanceled(
+            CalendarNodeCanceledEvent event) {
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-node/" + event.nodeId() + "/canceled/"
+                        + event.revision(),
+                TaggedLifeRecord.RecordType.SCHEDULE,
+                event.nodeLabel(),
+                event.occurredAt(),
+                List.of("行程節點", "取消"));
+    }
+
+    @EventListener
+    public void onCalendarAdoptionCreated(CalendarAdoptionCreatedEvent event) {
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-adoption/" + event.adoptionId() + "/created",
+                TaggedLifeRecord.RecordType.SCHEDULE,
+                event.planTitle(),
+                event.occurredAt(),
+                List.of("行程", "採用"));
+    }
+
+    @EventListener
+    public void onCalendarOwnershipTransfer(
+            CalendarOwnershipTransferLifecycleEvent event) {
+        String action = switch (event.action()) {
+            case OFFERED -> "提出";
+            case ACCEPTED -> "接受";
+            case CANCELED -> "取消";
+        };
+        lifeRecordService.recordDomainEventOnce(
+                "calendar-ownership-transfer/"
+                        + event.transferId()
+                        + "/"
+                        + event.action().name().toLowerCase(),
+                TaggedLifeRecord.RecordType.SCHEDULE,
+                "日曆所有權移轉",
+                event.occurredAt(),
+                List.of("行程計畫", "所有權移轉", action));
+    }
+
+    @EventListener
     public void onPlaceCreated(PlaceCreatedEvent event) {
         lifeRecordService.recordDomainEvent(TaggedLifeRecord.RecordType.PLACE,
                 event.name(), event.createdAt(), List.of("地點", "建立"));
+    }
+
+    @EventListener
+    public void onPlaceUpdated(PlaceUpdatedEvent event) {
+        lifeRecordService.recordDomainEvent(TaggedLifeRecord.RecordType.PLACE,
+                event.name(), event.updatedAt(), List.of("地點", "更新"));
     }
 
     @EventListener
@@ -134,6 +271,16 @@ public class UniversalDomainEventRecorder {
             case RESTOCK_REQUESTED -> "補貨";
             case SHOPPING_CLEARED -> "清空購物清單";
             case PLACE_BOUND -> "綁定地點";
+        };
+    }
+
+    private static String projectAction(ProjectLifecycleEvent.Action action) {
+        return switch (action) {
+            case CREATED -> "建立";
+            case RENAMED -> "改名";
+            case COMPLETED -> "完成";
+            case REOPENED -> "重新開啟";
+            case ARCHIVED -> "封存";
         };
     }
 }

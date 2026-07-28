@@ -1,5 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application.handler;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusBinding;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusDirective;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.intent.application.BulkScheduleCancellationService;
@@ -10,6 +12,7 @@ import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService.ScheduleDecision;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
+import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.OffsetDateTime;
@@ -31,6 +34,9 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
     private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ofPattern("MM/dd HH:mm");
     private static final Set<IntentCommand.Type> SUPPORTED_TYPES = Set.of(
             IntentCommand.Type.CREATE_SCHEDULE,
+            IntentCommand.Type.UPDATE_SCHEDULE,
+            IntentCommand.Type.COPY_SCHEDULE,
+            IntentCommand.Type.MERGE_SCHEDULES,
             IntentCommand.Type.CREATE_RELATIVE_SCHEDULE,
             IntentCommand.Type.CANCEL_SCHEDULE,
             IntentCommand.Type.RESCHEDULE_SCHEDULE,
@@ -42,7 +48,6 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
     private final PlaceAliasService placeAliasService;
     private final ConversationContextService contextService;
     private final BulkScheduleCancellationService bulkCancellationService;
-    private final TaskMutationIntentHandler taskMutationHandler;
 
     @Override
     public Set<IntentCommand.Type> supportedTypes() {
@@ -52,7 +57,10 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
     @Override
     public IntentResult handle(String text, IntentCommand command) {
         return switch (command.type()) {
-            case CREATE_SCHEDULE -> createSchedule(text, command);
+            case CREATE_SCHEDULE -> createSchedule(command);
+            case UPDATE_SCHEDULE -> updateSchedule(command);
+            case COPY_SCHEDULE -> copySchedule(command);
+            case MERGE_SCHEDULES -> mergeSchedules(command);
             case CANCEL_SCHEDULE -> cancelSchedule(command);
             case RESCHEDULE_SCHEDULE -> rescheduleSchedule(command);
             case SET_SCHEDULE_RECURRING -> setScheduleRecurring(command);
@@ -68,7 +76,7 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
         };
     }
 
-    private IntentResult createSchedule(String text, IntentCommand command) {
+    private IntentResult createSchedule(IntentCommand command) {
         require(command.title(), "title");
         Instant startAt = parse(command.startAt());
         Instant endAt = parse(command.endAt());
@@ -76,11 +84,8 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
             throw new IllegalArgumentException("schedule missing startAt");
         }
         if (endAt == null) {
-            IntentCommand taskCommand = new IntentCommand(IntentCommand.Type.CREATE_TASK,
-                    command.title(), command.startAt(), null, null,
-                    command.placeName(), command.priority(), command.reason(),
-                    null, null, null, null, false, command.options());
-            return taskMutationHandler.handle(text, taskCommand);
+            return IntentResult.clarificationNeeded(
+                    "請告訴我行程的結束時間或預計多久，我會接著建立。");
         }
         Long placeId = placeAliasService.resolve(command.placeName()).map(Place::getId).orElse(null);
         ScheduleDecision decision = scheduleService.createSchedule(
@@ -90,11 +95,92 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
         return IntentResult.scheduleDecided(decision);
     }
 
+    private IntentResult updateSchedule(IntentCommand command) {
+        ScheduleMatch match = matchReschedulableSchedule(command, "修改");
+        if (match.failure() != null) return match.failure();
+        IntentOptions options = command.safeOptions();
+        boolean hasTitle = options.newTitle() != null && !options.newTitle().isBlank();
+        boolean hasCategory = options.category() != null && !options.category().isBlank();
+        boolean hasPlace = command.placeName() != null && !command.placeName().isBlank();
+        if (!hasTitle && !hasCategory && !hasPlace) {
+            return IntentResult.clarificationNeeded("請告訴我要修改標題、地點或分類中的哪一項。");
+        }
+        ScheduleItem updated = scheduleService.updateDetails(
+                match.item().getId(), options.newTitle(),
+                hasCategory ? parseScheduleCategory(options.category()) : null);
+        ScheduleDecision placeDecision = null;
+        if (hasPlace) {
+            Long placeId = placeAliasService.resolve(command.placeName())
+                    .map(Place::getId)
+                    .orElseThrow(() -> new IllegalArgumentException("找不到指定地點"));
+            placeDecision = scheduleService.changePlace(updated.getId(), placeId);
+            updated = placeDecision.item();
+        }
+        contextService.rememberSchedule(updated);
+        return IntentResult.scheduleMessage(IntentResult.Action.CONTEXT_UPDATED,
+                "已更新行程「%s」%s。".formatted(updated.getTitle(),
+                        hasPlace ? "，地點為「" + command.placeName() + "」" : ""),
+                placeDecision);
+    }
+
+    private IntentResult copySchedule(IntentCommand command) {
+        IntentOptions options = command.safeOptions();
+        String sourceTitle = options.referenceTitle() == null
+                ? command.title() : options.referenceTitle();
+        require(sourceTitle, "referenceTitle");
+        ScheduleItem source = uniqueSchedule(sourceTitle);
+        Instant start = parse(command.startAt());
+        if (start == null) {
+            return IntentResult.clarificationNeeded(
+                    "要用「%s」建立新行程，請告訴我新的日期與開始時間。"
+                            .formatted(source.getTitle()));
+        }
+        Instant end = parse(command.endAt());
+        if (end == null) end = start.plus(Duration.between(source.getStartAt(), source.getEndAt()));
+        Long placeId = source.getPlaceId();
+        if (command.placeName() != null && !command.placeName().isBlank()) {
+            placeId = placeAliasService.resolve(command.placeName()).map(Place::getId)
+                    .orElseThrow(() -> new IllegalArgumentException("找不到指定地點"));
+        }
+        String newTitle = options.newTitle() == null || options.newTitle().isBlank()
+                ? source.getTitle() : options.newTitle();
+        ScheduleDecision copied = scheduleService.createSchedule(
+                newTitle, start, end, placeId, ScheduleItem.Recurrence.NONE, null,
+                source.getCategory());
+        contextService.rememberSchedule(copied.item());
+        IntentResult.Action action = copied.item().getStatus() == ScheduleStatus.CONFIRMED
+                ? IntentResult.Action.SCHEDULE_CONFIRMED
+                : IntentResult.Action.SCHEDULE_NEEDS_DECISION;
+        return IntentResult.scheduleMessage(action,
+                "已沿用「%s」的標題、%s與原本時長，建立新行程「%s」。"
+                        .formatted(source.getTitle(), placeId == null ? "既有設定" : "地點",
+                                copied.item().getTitle()), copied);
+    }
+
+    private IntentResult mergeSchedules(IntentCommand command) {
+        require(command.title(), "title");
+        require(command.safeOptions().referenceTitle(), "referenceTitle");
+        ScheduleItem kept = uniqueSchedule(command.title());
+        ScheduleItem duplicate = uniqueSchedule(command.safeOptions().referenceTitle());
+        var merged = scheduleService.mergeSchedules(kept.getId(), duplicate.getId());
+        contextService.rememberSchedule(merged.kept());
+        return IntentResult.message(IntentResult.Action.SCHEDULE_CANCELED,
+                "已合併為一筆並保留「%s」；另一筆「%s」已終止。"
+                        .formatted(merged.kept().getTitle(), merged.discarded().getTitle()));
+    }
+
     private IntentResult cancelSchedule(IntentCommand command) {
         ScheduleMatch match = matchCancelableSchedule(command, "取消");
-        return match.failure() != null ? match.failure()
-                : IntentResult.scheduleCanceled(
-                        scheduleService.cancelSchedule(match.item().getId()));
+        if (match.failure() != null) return match.failure();
+        ScheduleStatus prior = match.item().getStatus();
+        ScheduleItem updated = scheduleService.discardSchedule(match.item().getId());
+        IntentResult result = prior == ScheduleStatus.PROPOSED
+                ? IntentResult.message(IntentResult.Action.SCHEDULE_CANCELED,
+                        "已放棄待確認行程「%s」。".formatted(updated.getTitle()))
+                : IntentResult.scheduleCanceled(updated);
+        return result.withFocusDirective(new ConversationFocusBinding(
+                "SCHEDULE", "schedule:" + updated.getId(), updated.getTitle()),
+                ConversationFocusDirective.INVALIDATE_TARGET);
     }
 
     private IntentResult rescheduleSchedule(IntentCommand command) {

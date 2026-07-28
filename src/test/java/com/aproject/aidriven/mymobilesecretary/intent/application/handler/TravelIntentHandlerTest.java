@@ -5,13 +5,16 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusBinding;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
 import com.aproject.aidriven.mymobilesecretary.intent.application.RestaurantBookingService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.TravelItineraryDraftAnswerService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.TravelPackingAnswerService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.TravelPlanningIntakeService;
+import com.aproject.aidriven.mymobilesecretary.travel.application.TravelConversationFocusBindingFactory;
 import java.util.Set;
+import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
@@ -21,6 +24,7 @@ class TravelIntentHandlerTest {
     private TravelPackingAnswerService packingService;
     private TravelItineraryDraftAnswerService itineraryService;
     private RestaurantBookingService restaurantService;
+    private TravelConversationFocusBindingFactory focusBindings;
     private TravelIntentHandler handler;
     private IntentResult expected;
 
@@ -30,8 +34,10 @@ class TravelIntentHandlerTest {
         packingService = mock(TravelPackingAnswerService.class);
         itineraryService = mock(TravelItineraryDraftAnswerService.class);
         restaurantService = mock(RestaurantBookingService.class);
+        focusBindings = mock(TravelConversationFocusBindingFactory.class);
         handler = new TravelIntentHandler(
-                planningService, packingService, itineraryService, restaurantService);
+                planningService, packingService, itineraryService, restaurantService,
+                focusBindings);
         expected = IntentResult.message(IntentResult.Action.SOCIAL_REPLIED, "ok");
     }
 
@@ -59,7 +65,15 @@ class TravelIntentHandlerTest {
         IntentCommand discard = command(IntentCommand.Type.DISCARD_TRAVEL_ITINERARY_DRAFT);
         IntentCommand restaurant = command(IntentCommand.Type.BOOK_RESTAURANT);
         when(planningService.intake("text")).thenReturn(expected);
-        when(packingService.draft("text")).thenReturn(expected);
+        IntentResult packingResult = IntentResult.message(
+                IntentResult.Action.PACKING_LIST_INFO, "packing");
+        when(packingService.draft("text")).thenReturn(packingResult);
+        ConversationFocusBinding planningBinding = ConversationFocusBinding.workflow(
+                "TRAVEL", UUID.randomUUID(), "旅行規劃");
+        ConversationFocusBinding packingBinding = ConversationFocusBinding.workflowActivity(
+                "TRAVEL", planningBinding.workflowId(), "旅行規劃", "PACKING", "行李準備");
+        when(focusBindings.planning()).thenReturn(planningBinding);
+        when(focusBindings.packing()).thenReturn(packingBinding);
         when(packingService.listPreferences()).thenReturn(expected);
         when(packingService.setPreference("旅行用品", null, null)).thenReturn(expected);
         when(itineraryService.showLatest()).thenReturn(expected);
@@ -67,8 +81,8 @@ class TravelIntentHandlerTest {
         when(itineraryService.discardLatest()).thenReturn(expected);
         when(restaurantService.handle("text", restaurant)).thenReturn(expected);
 
-        assertThat(handler.handle("text", plan)).isSameAs(expected);
-        assertThat(handler.handle("text", packing)).isSameAs(expected);
+        assertThat(handler.handle("text", plan).focusBinding()).isEqualTo(planningBinding);
+        assertThat(handler.handle("text", packing).focusBinding()).isEqualTo(packingBinding);
         assertThat(handler.handle("text", listPreferences)).isSameAs(expected);
         assertThat(handler.handle("text", setPreference)).isSameAs(expected);
         assertThat(handler.handle("text", show)).isSameAs(expected);
@@ -83,6 +97,18 @@ class TravelIntentHandlerTest {
         verify(itineraryService).confirmLatest();
         verify(itineraryService).discardLatest();
         verify(restaurantService).handle("text", restaurant);
+    }
+
+    @Test
+    void missingActorLocalTripContextDoesNotCreatePackingFocus() {
+        IntentCommand packing = command(IntentCommand.Type.PLAN_PACKING_LIST);
+        when(packingService.draft("剛才那趟的行李"))
+                .thenReturn(IntentResult.clarificationNeeded("請提供目的地"));
+
+        IntentResult result = handler.handle("剛才那趟的行李", packing);
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.CLARIFICATION_NEEDED);
+        assertThat(result.focusBinding()).isNull();
     }
 
     private static IntentCommand command(IntentCommand.Type type) {

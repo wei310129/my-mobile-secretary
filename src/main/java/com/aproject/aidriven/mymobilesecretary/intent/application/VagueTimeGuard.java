@@ -39,6 +39,8 @@ final class VagueTimeGuard {
      */
     private static final Pattern CONCRETE_HOUR = Pattern.compile(
             "[0-9０-９〇一兩二三四五六七八九十]+\\s*[點点時时:：]");
+    private static final Pattern CONCRETE_HOUR_RANGE = Pattern.compile(
+            "(?:[01]?[0-9]|2[0-3])\\s*[-–—~～到至]\\s*(?:[01]?[0-9]|2[0-3])(?:\\s*[點点時时])?");
 
     /** 具體日期:週幾、X月X日、X號、今天/明天/後天。 */
     private static final Pattern EXPLICIT_DAY = Pattern.compile(
@@ -98,7 +100,8 @@ final class VagueTimeGuard {
         // 出現在標題裡的詞是名稱的一部分,不是時間語(「歧義行程測試會議上午」的「上午」)
         String normalizedTitle = title == null ? "" : title.replaceAll("\\s+", "");
         boolean hasDay = EXPLICIT_DAY.matcher(normalized).find();
-        boolean hasHour = CONCRETE_HOUR.matcher(normalized).find();
+        boolean hasHour = CONCRETE_HOUR.matcher(normalized).find()
+                || CONCRETE_HOUR_RANGE.matcher(normalized).find();
         Optional<String> recurringVague = recurringVague(normalized, hasDay, hasHour);
         if (recurringVague.isPresent()) {
             return recurringVague;

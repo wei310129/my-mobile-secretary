@@ -8,7 +8,7 @@ import org.junit.jupiter.api.Test;
 class FailureExplanationServiceTest {
 
     @Test
-    void explainsThePersistedValidationReasonAndCommandWithoutReexecuting() {
+    void explainsTheMissingUserInformationWithoutBackendDetails() {
         IntentCommand command = new IntentCommand(IntentCommand.Type.CREATE_SCHEDULE,
                 "倒垃圾", null, "2026-07-16T22:00:00+08:00", null,
                 null, "NORMAL", null, null, null, null, null, false);
@@ -20,20 +20,19 @@ class FailureExplanationServiceTest {
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.FAILURE_EXPLAINED);
         assertThat(result.message())
-                .contains("建立行程必須同時有 startAt 與 endAt")
-                .contains("type=CREATE_SCHEDULE")
-                .contains("endAt=(空)")
-                .contains("沒有執行這筆操作");
+                .contains("缺行程的結束時間或預計時長", "資料沒有異動")
+                .doesNotContain("Java", "AI", "startAt", "endAt", "type=");
     }
 
     @Test
-    void tellsTheTruthWhenAnOldFailureDidNotPersistDiagnostics() {
+    void givesAnActionableRetryWhenOldFailureHasNoDetails() {
         ConversationSnapshot snapshot = snapshot(IntentResult.Action.AI_UNAVAILABLE.name(),
                 "⚠️ 解析結果不完整。\n- 我沒有建立任何待辦");
 
         IntentResult result = FailureExplanationService.answer("剛才怎麼了", snapshot).orElseThrow();
 
-        assertThat(result.message()).contains("舊版", "無法事後還原");
+        assertThat(result.message()).contains("沒有完成", "資料也沒有異動", "日期與時間")
+                .doesNotContain("舊版", "Java", "AI");
     }
 
     @Test

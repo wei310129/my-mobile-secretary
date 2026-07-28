@@ -54,7 +54,8 @@ final class IntentScriptSafetyPolicy {
         List<IntentCommand> safe = new ArrayList<>();
         boolean removed = false;
         for (IntentCommand command : script.commands()) {
-            if (command != null && command.type() == IntentCommand.Type.CREATE_SCHEDULE) {
+            if (command != null && command.type() == IntentCommand.Type.CREATE_SCHEDULE
+                    && belongsToTeacherNotice(command)) {
                 removed = true;
                 continue;
             }
@@ -64,6 +65,19 @@ final class IntentScriptSafetyPolicy {
             safe.add(unknown("老師通知尚缺活動結束時間；確認前不會建立行程，也不會自行補一小時。"));
         }
         return new IntentScript(List.copyOf(safe));
+    }
+
+    /**
+     * 舊版 command 沒有來源片段時維持 fail-closed；新版輸出可只阻擋老師通知那一項，
+     * 讓同句其他已具備明確時間的行程不會被連帶丟棄。
+     */
+    private static boolean belongsToTeacherNotice(IntentCommand command) {
+        String source = compact(command.sourceText());
+        if (source.isBlank()) {
+            return true;
+        }
+        return source.contains("老師")
+                && containsAny(source, "通知", "提醒", "老師說", "報到", "到校");
     }
 
     private static boolean hasExplicitEnd(String compact) {
@@ -115,7 +129,7 @@ final class IntentScriptSafetyPolicy {
             IntentCommand reminder = new IntentCommand(IntentCommand.Type.ADD_SCHEDULE_REMINDER,
                     target, null, null, null, null, null, null,
                     null, null, null, null, null,
-                    IntentOptions.empty().withLeadMinutes(leadMinutes));
+                    IntentOptions.empty().withLeadMinutes(leadMinutes), matcher.group(0));
             if (normalized.size() == 1 && (normalized.getFirst().type() == IntentCommand.Type.CREATE_TASK
                     || normalized.getFirst().type() == IntentCommand.Type.UNKNOWN)) {
                 normalized.set(0, reminder);
@@ -133,7 +147,7 @@ final class IntentScriptSafetyPolicy {
                 command.dueAt(), command.startAt(), command.endAt(), command.placeName(),
                 command.priority(), command.reason(), command.onTime(), command.overrunMinutes(),
                 command.outcomeReason(), command.windowHours(), command.recurring(),
-                command.safeOptions().withLeadMinutes(leadMinutes));
+                command.safeOptions().withLeadMinutes(leadMinutes), command.sourceText());
     }
 
     private static int leadMinutes(String amount, String unit) {

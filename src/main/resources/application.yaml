@@ -30,6 +30,10 @@ spring:
     multipart:
       max-file-size: 15MB
       max-request-size: 16MB
+  flyway:
+    placeholders:
+      conversation_scope_current_key_version: ${CONVERSATION_SCOPE_CURRENT_KEY_VERSION:1}
+      conversation_scope_hmac_key_base64: ${CONVERSATION_SCOPE_HMAC_KEY_BASE64:}
 
 management:
   endpoints:
@@ -49,6 +53,13 @@ app:
   workspace:
     # Production must never silently fall back to another tenant.
     legacy-fallback-enabled: false
+  conversation:
+    scope:
+      # Base64 HMAC material only comes from an environment variable or untracked secrets.yaml.
+      current-key-version: ${CONVERSATION_SCOPE_CURRENT_KEY_VERSION:1}
+      current-hmac-key-base64: ${CONVERSATION_SCOPE_HMAC_KEY_BASE64:}
+      previous-key-version: ${CONVERSATION_SCOPE_PREVIOUS_KEY_VERSION:}
+      previous-hmac-key-base64: ${CONVERSATION_SCOPE_PREVIOUS_HMAC_KEY_BASE64:}
   security:
     # Production must authenticate every REST endpoint. Local/test explicitly opt out below;
     # a production deployment without JWT configuration therefore fails closed at startup.

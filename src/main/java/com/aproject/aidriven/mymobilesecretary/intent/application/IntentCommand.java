@@ -19,6 +19,8 @@ package com.aproject.aidriven.mymobilesecretary.intent.application;
  * @param outcomeReason  RECORD_OUTCOME:MEETING_OVERRUN/TRAFFIC_INCIDENT/RUSH_HOUR/OTHER(聽得出才填)
  * @param windowHours    SUGGEST_NEARBY:使用者明講的時間長度(小時);沒講就空,不要猜
  * @param recurring      CREATE_SCHEDULE/SET_SCHEDULE_RECURRING:每週固定行程為 true
+ * @param options        各意圖專用的受限附加欄位
+ * @param sourceText     此 command 對應的使用者原話片段；保留辨識前文字供多意圖完整性檢查
  */
 public record IntentCommand(
         Type type,
@@ -34,8 +36,18 @@ public record IntentCommand(
         String outcomeReason,
         Integer windowHours,
         Boolean recurring,
-        IntentOptions options
+        IntentOptions options,
+        String sourceText
 ) {
+
+    /** 現有 14 欄 command 相容建構子；沒有來源片段時不猜測多意圖覆蓋率。 */
+    public IntentCommand(Type type, String title, String dueAt, String startAt, String endAt,
+                         String placeName, String priority, String reason, Boolean onTime,
+                         Integer overrunMinutes, String outcomeReason, Integer windowHours,
+                         Boolean recurring, IntentOptions options) {
+        this(type, title, dueAt, startAt, endAt, placeName, priority, reason, onTime,
+                overrunMinutes, outcomeReason, windowHours, recurring, options, null);
+    }
 
     /** 舊的 13 欄 command 仍可用;新增能力才需要 options。 */
     public IntentCommand(Type type, String title, String dueAt, String startAt, String endAt,
@@ -43,7 +55,7 @@ public record IntentCommand(
                          Integer overrunMinutes, String outcomeReason, Integer windowHours,
                          Boolean recurring) {
         this(type, title, dueAt, startAt, endAt, placeName, priority, reason, onTime,
-                overrunMinutes, outcomeReason, windowHours, recurring, null);
+                overrunMinutes, outcomeReason, windowHours, recurring, null, null);
     }
 
     public IntentOptions safeOptions() {
@@ -79,6 +91,28 @@ public record IntentCommand(
         CANCEL_CONTEXT,
         SET_CONTEXT_PLACE,
         COPY_CONTEXT,
+        /** 明確只離開目前對話焦點；不得完成、取消或刪除業務資料。 */
+        EXIT_CONVERSATION_FOCUS,
+        /** 明確終結目前對話承接；不得完成、取消或刪除業務資料。 */
+        CLOSE_CONVERSATION_FOCUS,
+        /** 建立旅行 Project 並在相同交易進入該 Project focus。 */
+        CREATE_PROJECT,
+        /** 開啟指定 Project mode；既有 suspended focus 由 Java 固定 RESUME。 */
+        OPEN_PROJECT_EDIT_MODE,
+        /** 從目前 focus 切換到指定 Project。 */
+        SWITCH_PROJECT_EDIT_MODE,
+        /** 回到指定 Project；只有既有 suspended focus 可 RESUME。 */
+        RESUME_PROJECT_EDIT_MODE,
+        /** 只離開目前 Project mode，固定委派全域 EXIT。 */
+        CLOSE_PROJECT_EDIT_MODE,
+        /** 顯示指定或目前 Project 的安全摘要。 */
+        SHOW_PROJECT_OVERVIEW,
+        /** 完成 Project，但保留 focus 供旅後事項。 */
+        COMPLETE_PROJECT,
+        /** 明確重新開啟已完成的 Project。 */
+        REOPEN_PROJECT,
+        /** 封存 Project，並只 INVALIDATE 本 conversation scope 的對應 focus。 */
+        ARCHIVE_PROJECT,
         SOCIAL,
         UPDATE_TASK,
         PAUSE_RECURRING_TASK,
@@ -184,6 +218,12 @@ public record IntentCommand(
         CREATE_FLEXIBLE_DAY_TASK,
         /** 建行程(有明確開始/結束時段的承諾)。 */
         CREATE_SCHEDULE,
+        /** 修改既有行程的標題、地點或分類；只改使用者明確提供的欄位。 */
+        UPDATE_SCHEDULE,
+        /** 以既有行程為範本建立新行程；沿用未重填的標題、地點與時長。 */
+        COPY_SCHEDULE,
+        /** 合併兩筆行程；title 是保留項目，options.referenceTitle 是要終止的重複項目。 */
+        MERGE_SCHEDULES,
         /** 回報任務做完了(「牛奶買到了」);title 放任務關鍵字,配對由 Java 規則做。 */
         COMPLETE_TASK,
         /** 取消待辦(「取消買排骨」);title 放關鍵字。 */
@@ -210,6 +250,8 @@ public record IntentCommand(
         ASK_PLACE,
         /** 建立地點(「建立地點:蝦皮店到店中興二店」);placeName 放地點名,詳細資訊由 Google 補全。 */
         CREATE_PLACE,
+        /** 更新既有地點地址；placeName 指定既有地點，options.description 放完整地址。 */
+        UPDATE_PLACE,
         /** 把待辦綁到地點(「拿包裹是要到蝦皮店到店」);title 任務關鍵字 + placeName 地點名。 */
         BIND_TASK_PLACE,
         /** 問某待辦要去哪裡做(「我要去哪取蝦皮?」);title 任務關鍵字。 */

@@ -44,6 +44,14 @@ Spring、PostgreSQL/PostGIS 與 Redis Testcontainers。
 2. Intent type、schema 或能力目錄：加跑 `ConversationCapabilityCatalogTest`。
 3. JPA entity 或 Flyway migration：在該批次收尾時跑最小相關 integration test，確認 migration 與 mapping。
 4. Redis reminder 流程：只有動到 queue member、claim、排程同步或 worker 時，才跑 reminder flow 測試。
+
+## 開發協調工具
+
+- Coordinator kernel、Maven/lifecycle adapter 與 handoff 一律先跑各自的 fake/disposable PowerShell gate；不得以
+  shared Compose、dev volume、Flyway history 或真實 LINE endpoint 作為 failure injection fixture。
+- Testcontainers integration 維持 serial；未完成 per-test infra 隔離前，不啟用 JUnit class/method parallel。
+- Dispatcher pause/drain、migration 與 protected management API 變更須跑最小 Dispatcher integration test；主應用與
+  Dispatcher Maven target 不可在同一 worktree 同時寫入。
 5. Controller／DTO：跑對應 API test；未改 controller 的 service 小修不重跑所有 API。
 6. 外部 API client：只跑該 client 測試，不打真實服務。
 7. 意圖確定性攔截（合併確認/拒絕、模糊時間守門 `VagueTimeGuard`）：跑對應單元測試
@@ -62,13 +70,13 @@ Spring、PostgreSQL/PostGIS 與 Redis Testcontainers。
 
 ```powershell
 # 編譯主程式與全部測試來源，不執行測試
-.\mvnw.cmd -DskipTests test-compile
+powershell -ExecutionPolicy Bypass -File .\scripts\mvn-safe.ps1 -DskipTests test-compile
 
 # 生活語句能力目錄 + 週期任務規則（不需 Docker）
-.\mvnw.cmd "-Dtest=ConversationCapabilityCatalogTest,TaskLifestyleServiceTest" test
+powershell -ExecutionPolicy Bypass -File .\scripts\mvn-safe.ps1 "-Dtest=ConversationCapabilityCatalogTest,TaskLifestyleServiceTest" test
 
 # 關鍵節點完整回歸
-.\mvnw.cmd test
+powershell -ExecutionPolicy Bypass -File .\scripts\mvn-safe.ps1 test
 ```
 
 測試範圍以「變更的依賴圖與失敗後果」決定，不用固定成功率門檻猜測品質；每次交付都要明確列出實際跑過與尚未跑的範圍。

@@ -23,24 +23,13 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_maven-quiet.ps1"
+. "$PSScriptRoot\coordination-maven.ps1"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $mavenWrapper = Join-Path $repoRoot 'mvnw.cmd'
-$mutexName = 'Local\my-mobile-secretary-root-maven-lifecycle'
-$mutex = [System.Threading.Mutex]::new($false, $mutexName)
-$lockAcquired = $false
 $exitCode = 1
 
 try {
-    try {
-        $lockAcquired = $mutex.WaitOne([TimeSpan]::FromSeconds($LockTimeoutSeconds))
-    } catch [System.Threading.AbandonedMutexException] {
-        # The previous owner exited unexpectedly. The OS released the lock for this process.
-        $lockAcquired = $true
-    }
-    if (-not $lockAcquired) {
-        throw "等待 Maven 執行鎖超過 $LockTimeoutSeconds 秒；另一個根專案 Maven lifecycle 可能仍在執行。"
-    }
     if (-not (Test-Path -LiteralPath $mavenWrapper)) {
         throw "找不到 Maven Wrapper：$mavenWrapper"
     }
@@ -56,25 +45,28 @@ try {
         [System.Environment]::SetEnvironmentVariable('Path', $processPath, 'Process')
     }
 
-    $arguments = [System.Collections.Generic.List[string]]::new()
+    $mavenInvocationArguments = [System.Collections.Generic.List[string]]::new()
     if ($Clean) {
-        $arguments.Add('clean')
+        $mavenInvocationArguments.Add('clean')
     }
     foreach ($argument in $MavenArguments) {
-        $arguments.Add($argument)
+        $mavenInvocationArguments.Add($argument)
     }
 
-    $exitCode = Invoke-QuietMaven `
-        -Arguments $arguments.ToArray() `
-        -SuccessMessage 'Maven 成功'
+    $operation = if ($Clean) { 'Clean' } elseif ($MavenArguments -match 'test') { 'Test' } else { 'Build' }
+    $coordination = Invoke-CoordinatedMavenOperation `
+        -Application root `
+        -Worktree $repoRoot `
+        -Operation $operation `
+        -TimeoutSeconds $LockTimeoutSeconds `
+        -Runner { Invoke-QuietMaven -Arguments $mavenInvocationArguments.ToArray() -SuccessMessage 'Maven 成功' }
+    if ($coordination.Outcome -eq 'BUSY') {
+        throw "等待 Maven 協調租約超過 $LockTimeoutSeconds 秒；另一個根專案 Maven writer 仍在執行。"
+    }
+    $exitCode = [int]$coordination.ExitCode
 } catch {
     Write-Output ("Maven runner 失敗：{0}" -f $_.Exception.Message)
     $exitCode = 1
-} finally {
-    if ($lockAcquired) {
-        $mutex.ReleaseMutex()
-    }
-    $mutex.Dispose()
 }
 
 exit $exitCode

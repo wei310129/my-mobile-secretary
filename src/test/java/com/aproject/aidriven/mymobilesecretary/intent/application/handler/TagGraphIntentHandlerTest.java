@@ -25,6 +25,11 @@ class TagGraphIntentHandlerTest {
                 graph, mock(TaggedRecordQueryService.class));
         IntentOptions options = IntentOptions.empty().withTagRelation(
                 "政府補助", "IS_A", "BENEFIT", "BENEFIT");
+        SemanticTagEdge edge = mock(SemanticTagEdge.class);
+        when(edge.getId()).thenReturn(17L);
+        when(graph.relate("節能補助", SemanticTag.Kind.BENEFIT,
+                SemanticTagEdge.RelationType.IS_A, "政府補助", SemanticTag.Kind.BENEFIT,
+                SemanticTagEdge.SourceType.USER)).thenReturn(edge);
         IntentCommand command = new IntentCommand(IntentCommand.Type.UPSERT_TAG_RELATION,
                 "節能補助", null, null, null, null, null, null,
                 null, null, null, null, null, options);
@@ -32,6 +37,7 @@ class TagGraphIntentHandlerTest {
         IntentResult result = handler.handle("節能補助是政府補助的一種", command);
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.TAG_RELATION_SAVED);
+        assertThat(result.focusBinding().routingKey()).isEqualTo("tag-edge:17");
         verify(graph).relate("節能補助", SemanticTag.Kind.BENEFIT,
                 SemanticTagEdge.RelationType.IS_A, "政府補助", SemanticTag.Kind.BENEFIT,
                 SemanticTagEdge.SourceType.USER);

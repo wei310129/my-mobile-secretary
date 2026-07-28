@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.put;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -62,13 +63,14 @@ class SessionBindingControllerIntegrationTest {
                     observed_first_pending_at = NULL, observed_last_pending_at = NULL,
                     eligible_at = NULL, retry_not_before = NULL,
                     consecutive_failure_count = 0, last_error_code = NULL,
-                    paused_reason = NULL, version = 0, updated_at = CURRENT_TIMESTAMP
+                    paused_reason = NULL, coordinator_drain_requested = FALSE, version = 0, updated_at = CURRENT_TIMESTAMP
                 WHERE lane_key = 'CODEX_DEVELOPMENT'
                 """);
         jdbcTemplate.update("DELETE FROM dispatcher_run_event");
         jdbcTemplate.update("DELETE FROM dispatcher_event");
         jdbcTemplate.update("DELETE FROM dispatcher_run");
         jdbcTemplate.update("DELETE FROM agent_session_binding_audit");
+        jdbcTemplate.update("DELETE FROM dispatcher_drain_audit");
         jdbcTemplate.update("""
                 UPDATE agent_session
                 SET status = 'UNBOUND', external_session_id = NULL,
@@ -86,6 +88,27 @@ class SessionBindingControllerIntegrationTest {
 
         mockMvc.perform(get(PATH).header("Authorization", "Bearer wrong-token"))
                 .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void drainsAndResumesOnlyThroughTheProtectedCoordinatorContract() throws Exception {
+        mockMvc.perform(post("/internal/v1/dispatcher-drain")
+                        .header("Authorization", AUTHORIZATION)
+                        .header("X-Dispatcher-Actor", "coordinator-a"))
+                .andExpect(status().isOk())
+                .andExpect(header().string("Cache-Control", "no-store"))
+                .andExpect(jsonPath("$.state").value("DRAINED"));
+
+        assertThat(jdbcTemplate.queryForObject("SELECT state FROM dispatcher_lane WHERE lane_key = 'CODEX_DEVELOPMENT'", String.class))
+                .isEqualTo("PAUSED");
+        assertThat(jdbcTemplate.queryForObject("SELECT action FROM dispatcher_drain_audit", String.class))
+                .isEqualTo("DRAINED");
+
+        mockMvc.perform(delete("/internal/v1/dispatcher-drain")
+                        .header("Authorization", AUTHORIZATION)
+                        .header("X-Dispatcher-Actor", "coordinator-a"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.state").value("RESUMED"));
     }
 
     @Test

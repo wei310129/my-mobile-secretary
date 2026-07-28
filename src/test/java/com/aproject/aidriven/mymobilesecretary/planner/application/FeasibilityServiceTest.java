@@ -83,8 +83,6 @@ class FeasibilityServiceTest {
         lenient().when(bufferRuleService.recommendedBuffer(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(Duration.ZERO);
         lenient().when(planningPreferenceService.extraTransferBuffer()).thenReturn(Duration.ZERO);
-        lenient().when(taskRepository.findByStatusIn(org.mockito.ArgumentMatchers.any()))
-                .thenReturn(List.of());
         lenient().when(lifestyleWindowService.list(org.mockito.ArgumentMatchers.any()))
                 .thenReturn(List.of());
     }

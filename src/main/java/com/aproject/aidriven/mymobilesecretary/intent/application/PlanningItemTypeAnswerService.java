@@ -51,7 +51,7 @@ public class PlanningItemTypeAnswerService {
                 String timing = "%s–%s".formatted(
                         DATE_TIME.format(item.getStartAt().atZone(TAIPEI)),
                         DateTimeFormatter.ofPattern("HH:mm").format(item.getEndAt().atZone(TAIPEI)));
-                rows.add(new Row(type, item.getTitle(), timing, item.getId()));
+                rows.add(new Row(type, item.getTitle(), timing, item.getId(), item.getStatus()));
             }
         }
         rows.sort(Comparator.comparing((Row row) -> row.type().ordinal())
@@ -69,7 +69,7 @@ public class PlanningItemTypeAnswerService {
         for (int index = 0; index < rows.size(); index++) {
             Row row = rows.get(index);
             message.append("\n").append(index + 1).append(". ")
-                    .append(row.type().displayName()).append("「")
+                    .append(row.type().displayName()).append(statusSuffix(row.status())).append("「")
                     .append(row.title()).append("」｜").append(row.timing());
         }
         message.append("\n\n").append(typeLegend());
@@ -97,6 +97,15 @@ public class PlanningItemTypeAnswerService {
                 || item.getStatus() == ScheduleStatus.CONFIRMED;
     }
 
+    private static String statusSuffix(ScheduleStatus status) {
+        if (status == null) return "";
+        return switch (status) {
+            case PROPOSED, PENDING -> "（待確認）";
+            case CONFIRMED -> "（已確認）";
+            default -> "（" + status.name() + "）";
+        };
+    }
+
     private static boolean mentions(String text, String title) {
         String normalizedTitle = normalize(title);
         return normalizedTitle.length() >= 2 && text.contains(normalizedTitle);
@@ -112,6 +121,10 @@ public class PlanningItemTypeAnswerService {
                 : value.replaceAll("[\\s「」『』:：，,。！？?]", "").toLowerCase();
     }
 
-    private record Row(PlanningItemType type, String title, String timing, Long id) {
+    private record Row(PlanningItemType type, String title, String timing, Long id,
+                       ScheduleStatus status) {
+        private Row(PlanningItemType type, String title, String timing, Long id) {
+            this(type, title, timing, id, null);
+        }
     }
 }

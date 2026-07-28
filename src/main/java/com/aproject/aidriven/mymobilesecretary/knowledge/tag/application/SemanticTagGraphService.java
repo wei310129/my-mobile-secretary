@@ -18,6 +18,7 @@ import java.time.Instant;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -103,6 +104,15 @@ public class SemanticTagGraphService {
         }
         return edgeRepository.save(SemanticTagEdge.create(
                 from.getId(), to.getId(), relation, source, Instant.now(clock)));
+    }
+
+    /** Finds the newest actor-scoped relation touching an exact tag or alias. */
+    public Optional<SemanticTagEdge> latestRelationForTag(String keyword) {
+        Set<Long> ids = resolveTagIds(keyword);
+        return edgeRepository.findAll().stream()
+                .filter(edge -> ids.contains(edge.getFromTagId())
+                        || ids.contains(edge.getToTagId()))
+                .max(java.util.Comparator.comparing(SemanticTagEdge::getId));
     }
 
     public TaggedLifeRecord recordLifeEvent(TaggedLifeRecord.RecordType type, String title,

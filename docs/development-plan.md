@@ -1,8 +1,10 @@
 # 分身秘書 App 開發計畫
 
-本文件是實作導向的開發計畫，承接 `docs/architecture.md` 的產品與架構方向。目標是讓每個階段都有明確交付物、驗收標準、測試要求與需要使用者決策的停靠點。
+本文件保留階段、驗收、進度與決策歷史，承接 `docs/architecture.md` 的產品與架構方向。最新有效決策與目前工作入口改見 `docs/decisions/current.md`；若摘要與本文件歷史文字衝突，先確認，不以舊段落靜默覆寫目前產品語意。
 
-## 1. 已確認決策
+## 1. 已確認決策（歷史基線）
+
+以下表格保留原始決策追溯；目前適用版本以 `docs/decisions/current.md` 為入口。
 
 | 項目 | 決策 |
 |---|---|
@@ -615,6 +617,36 @@ API：
 - 家庭成員的邀請與移除流程。
 - 共編衝突時的合併策略（後改覆蓋、或需擁有者裁決）。
 
+## 16.1 Phase 6：文件知識與 RAG（⬜ 未開始）
+
+定位：本階段不是把交易資料向量化；它只處理已保存且可抽取的自由文字／生活文件。已完成的
+Knowledge Retrieval Foundation 是此階段的前置抽象，不代表 RAG 已啟動。
+
+進場門檻：
+
+1. 已實際保存足量 PDF、通知、說明書或 OCR 文字，並能穩定抽取內容。
+2. 有真實查詢集證明 category、normalized subject、tag graph 與有界關鍵字召回不足。
+3. 文件可見性、刪除、保存期限、敏感資料分類與原檔／索引一致性已完成設計。
+4. embedding model、抽取／OCR 元件的成本、授權與 GPL/LGPL/AGPL/SSPL／商用限制均已逐項審核。
+
+交付順序：
+
+1. 建立 `KnowledgeDocument`／`KnowledgeChunk` 與 stored media 關聯；保留來源、頁碼、chunk、版本、
+   content hash、處理狀態與錯誤，但不預先猜定 embedding 維度。
+2. 依需求實作非同步文字抽取、OCR、正規化、chunk、失敗重試與舊索引清理；原檔先保存，索引只在
+   完整版本發布後可見。
+3. 選定 embedding model 後才加入 pgvector 與 metadata-first 的 workspace／actor filter；再由相似度排序。
+4. 建立混合檢索：Task、Schedule、Reminder、Place、Item、Price 仍走 SQL／領域服務；只有自由文字
+   文件走 keyword/vector Retriever，再由 Java rules 決定可用候選與回覆。
+5. 文件問答必須附來源名稱、頁碼或 chunk、版本與更新時間；高風險文件只回報證據支持的「文件記載內容」。
+
+不可逾越的邊界：RAG evidence 是不可信資料，不得改寫 system prompt、能力目錄或輸出 schema，也不得
+建立、取消、修改或刪除任何業務資料；所有 mutation 仍經 Intent → Java 驗證 → Application Service →
+Domain／Repository。
+
+驗收：跨 workspace 與 private document 零外洩、刪除後原檔與 chunk 同步不可檢索、重複／更新文件不會
+留下舊版本證據、找不到證據時不臆測，並以真實文件查詢集證明混合檢索比 Phase 1 Foundation 有可量測效益。
+
 ## 17. 決策通知規則
 
 遇到以下情況必須通知使用者，不直接替使用者決定：
@@ -994,3 +1026,32 @@ Phase 0-2 已完成、Phase 3 進行中（見 §20）。目前的開發節奏：
 - 同一案例暴露的 `EventIntakeService` nullable `Integer` 三元運算拆箱 NPE 已修正；缺提醒分鐘時保留
   未知並繼續追問，不再讓 LINE 文字訊息 500 且無回覆。
 - 能力目錄新增 #367–#368；36 項聚焦測試及 V1–V54 migration／actor RLS 整合測試通過。
+
+### 20.29 Knowledge Retrieval Foundation（2026-07-20）
+
+- 現況沒有已抽取的大量文件語料，pgvector 與 embedding model 暫不導入；PostgreSQL 仍是 source of truth。
+- 新增 persistence-neutral `KnowledgeQuery`、`KnowledgeEvidence`、`PersonalKnowledgeRetriever` 與
+  `JpaPersonalKnowledgeRetriever`，第一版只查 actor-private `UserKnowledgeFact`／active `ObjectAnnotation`。
+- 重用既有唯讀 `ASK_TAGGED_RECORDS`，只在 knowledge 分支接 Retriever；task、schedule、reminder、
+  price、place、item 與 stored media 清單仍走原領域服務，不新增 Intent enum。
+- V57 新增 annotation 正規化主旨與兩個 actor-scoped 前綴索引；limit 最大 20，空白 query 不查 DB，
+  relevance score／source version 無資料時保持 null。
+- 文件模型、抽取／OCR／chunk／embedding pipeline、prompt injection 與 pgvector 啟動條件記錄於
+  `docs/knowledge-retrieval.md`；本批次未新增第三方依賴或文件資料表。
+
+## 21. 旅遊專案全流程（2026-07-21，規劃完成／尚未實作）
+
+下一個複雜自然語言主題先聚焦「安排一次出國旅行」。完整、可交 Terra High 逐舵輪執行的領域設計、
+旅前／旅中／旅後標準清單、Project 編輯模式、同 Project 行程衝突語意、嚴苛擬真案例、holdout 與
+release gate，見 `docs/exec-plans/active/travel-project-terra-high-development-test-plan.md`。
+
+新增的全服務硬需求是：服務必須持久記得每個 conversation scope 目前共同處理的事情，且在首次進入、
+變更子題、切換、恢復、離開、結束或 target 失效時主動明說，不能讓使用者猜系統是否仍承接上一件事。這不是旅遊專用 mode；
+Terra 必須先完成全域 `ConversationFocus`、typed transition notice、focus-scoped referent／pending context
+及全 Intent policy catalog，再讓 Project 編輯模式以 typed binding 掛接，不得另建第二個 active pointer。
+既有 `ConversationContext` 只屬短期指代基線，不能直接冒充這項能力。架構語意見 `architecture.md` 第 35 節。
+
+本階段已鎖定方向：複雜旅行成立時直接建立正式 `ACTIVE` Project，Project 本身沒有 draft；Project
+可綁 child draft、行程、待辦、專屬知識及由待辦衍生的提醒。使用者確認前仍不得建立正式行程／待辦／
+提醒；確認事實也不等於授權寫入，仍需明確 materialization consent。此節只是規劃入口，不代表 runtime
+已支援上述能力；實作與通過狀態必須依專用計劃書逐輪回填。

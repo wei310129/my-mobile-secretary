@@ -9,6 +9,8 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.regex.Matcher;
+import java.util.regex.Pattern;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.context.ApplicationEventPublisher;
@@ -27,6 +29,8 @@ import org.springframework.transaction.annotation.Transactional;
 public class PlaceService {
 
     private static final Logger log = LoggerFactory.getLogger(PlaceService.class);
+    private static final Pattern STREET_NUMBER = Pattern.compile(
+            "([\\p{IsHan}]{1,20}(?:路|街|大道|巷)\\s*\\d+(?:之\\d+)?號)");
 
     private final PlaceRepository placeRepository;
     private final GooglePlacesClient googlePlacesClient;
@@ -62,6 +66,43 @@ public class PlaceService {
         eventPublisher.publishEvent(new PlaceCreatedEvent(
                 saved.getId(), saved.getName(), saved.getType(), saved.getCreatedAt()));
         return saved;
+    }
+
+    /**
+     * 更新既有地點地址。使用者原文地址保留為 source of truth；Google 只供座標，
+     * 但候選街路門牌不一致時整筆拒絕，避免把民權路寫成北宜路。
+     */
+    public Place updateAddress(Long placeId, String address) {
+        if (address == null || address.isBlank()) {
+            throw new IllegalArgumentException("address is required");
+        }
+        Place place = getPlace(placeId);
+        GooglePlacesClient.PlaceCandidate candidate = lookupOrThrow(place.getName(), address.strip());
+        if (!sameStreetNumber(address, candidate.address())) {
+            throw new BusinessException("PLACE_ADDRESS_MISMATCH",
+                    "查到的候選地址「%s」與你提供的「%s」街路門牌不一致，因此沒有更新。請確認地址或提供 Google Maps 連結。"
+                            .formatted(candidate.address(), address.strip()));
+        }
+        Instant now = Instant.now(clock);
+        place.relocate(address, candidate.latitude(), candidate.longitude(), candidate.type());
+        Place saved = placeRepository.save(place);
+        eventPublisher.publishEvent(new PlaceUpdatedEvent(
+                saved.getId(), saved.getName(), now));
+        return saved;
+    }
+
+    static boolean sameStreetNumber(String supplied, String candidate) {
+        String suppliedKey = streetNumber(supplied);
+        String candidateKey = streetNumber(candidate);
+        return suppliedKey != null && suppliedKey.equals(candidateKey);
+    }
+
+    private static String streetNumber(String address) {
+        if (address == null || address.isBlank()) return null;
+        Matcher matcher = STREET_NUMBER.matcher(
+                java.text.Normalizer.normalize(address, java.text.Normalizer.Form.NFKC)
+                        .replaceAll("\\s+", ""));
+        return matcher.find() ? matcher.group(1) : null;
     }
 
     /** Google 查詢;每一種失敗都要給使用者可行動的訊息。 */

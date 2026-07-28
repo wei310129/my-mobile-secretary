@@ -1,5 +1,11 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusBinding;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusDirective;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusReplyDecorator;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.FocusResponseEnvelope;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.FocusTransitionNotice;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.FocusTransitionNoticeRenderer;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleFollowUpService.OutcomeRecorded;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService.RecurringScheduleReschedule;
@@ -24,11 +30,49 @@ public record IntentResult(
         Action action,
         String message,
         Task task,
-        ScheduleDecision decision
+        ScheduleDecision decision,
+        FocusTransitionNotice focusNotice,
+        ConversationFocusBinding focusBinding,
+        ConversationFocusDirective focusDirective
 ) {
 
     public IntentResult {
-        message = IntentReplyFormatter.format(action, message);
+        message = IntentReplyFormatter.format(action, UserReplySafetyPolicy.sanitize(message));
+    }
+
+    public IntentResult(Action action, String message, Task task, ScheduleDecision decision) {
+        this(action, message, task, decision, null, null, null);
+    }
+
+    public IntentResult(Action action, String message, Task task, ScheduleDecision decision,
+                        FocusTransitionNotice focusNotice) {
+        this(action, message, task, decision, focusNotice, null, null);
+    }
+
+    public IntentResult withFocusNotice(FocusTransitionNotice notice) {
+        return new IntentResult(action, message, task, decision, notice, focusBinding, focusDirective);
+    }
+
+    public IntentResult withFocusBinding(ConversationFocusBinding binding) {
+        return new IntentResult(action, message, task, decision, focusNotice, binding, focusDirective);
+    }
+
+    public IntentResult withFocusDirective(ConversationFocusBinding binding,
+                                           ConversationFocusDirective directive) {
+        return new IntentResult(action, message, task, decision, focusNotice, binding, directive);
+    }
+
+    public IntentResult withFocusDirective(ConversationFocusDirective directive) {
+        return new IntentResult(
+                action, message, task, decision, focusNotice, focusBinding, directive);
+    }
+
+    public FocusResponseEnvelope responseEnvelope() {
+        if (focusNotice == null) {
+            return FocusResponseEnvelope.withoutNotice(message);
+        }
+        return FocusResponseEnvelope.withNotice(message, focusNotice,
+                new ConversationFocusReplyDecorator(new FocusTransitionNoticeRenderer()));
     }
 
     public enum Action {
@@ -49,6 +93,7 @@ public record IntentResult(
         SUGGESTION_MADE,
         PLACE_INFO,
         PLACE_CREATED,
+        PLACE_UPDATED,
         TASK_PLACE_BOUND,
         TASK_PLACE_INFO,
         FEEDBACK_RECEIVED,
@@ -142,6 +187,12 @@ public record IntentResult(
         CONTACT_INFO,
         TRANSFER_PAYMENT_DRAFTED,
         TRANSFER_PAYMENT_IMPORTED,
+        PROJECT_CREATED,
+        PROJECT_MODE_INFO,
+        PROJECT_OVERVIEW,
+        PROJECT_COMPLETED,
+        PROJECT_REOPENED,
+        PROJECT_ARCHIVED,
         SCHOOL_MEAL_INFO,
         VENUE_VISIT_INFO_SAVED,
         VENUE_VISIT_INFO,
@@ -317,7 +368,10 @@ public record IntentResult(
 
     public static IntentResult taskCanceled(Task task) {
         return new IntentResult(Action.TASK_CANCELED,
-                "「%s」已取消,不再追蹤提醒".formatted(task.getTitle()), task, null);
+                "「%s」已取消,不再追蹤提醒".formatted(task.getTitle()), task, null)
+                .withFocusDirective(new ConversationFocusBinding(
+                        "TASK", "task:" + task.getId(), task.getTitle()),
+                        ConversationFocusDirective.INVALIDATE_TARGET);
     }
 
     public static IntentResult taskRescheduled(Task task) {
@@ -487,7 +541,7 @@ public record IntentResult(
 
     public static IntentResult feedbackReceived() {
         return new IntentResult(Action.FEEDBACK_RECEIVED,
-                "🛠️ 收到，這則內容只會存進功能改善問題紀錄，不會建立待辦或行程。", null, null);
+                "收到，我會依你指出的方向調整。這則訊息不會建立待辦或行程，也不會修改既有待辦或行程。", null, null);
     }
 
     public static IntentResult placeInfo(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
@@ -515,7 +569,7 @@ public record IntentResult(
     public static IntentResult batchExecuted(List<String> lines) {
         StringBuilder message = new StringBuilder("一次處理 %d 件:".formatted(lines.size()));
         for (int i = 0; i < lines.size(); i++) {
-            message.append("\n%d.%s".formatted(i + 1, lines.get(i)));
+            message.append("\n\n%d.%s".formatted(i + 1, lines.get(i)));
         }
         return new IntentResult(Action.BATCH_EXECUTED, message.toString(), null, null);
     }
@@ -544,24 +598,21 @@ public record IntentResult(
 
     public static IntentResult aiUnavailable(String why) {
         return new IntentResult(Action.AI_UNAVAILABLE,
-                "⚠️ %s。\n- 我沒有建立任何待辦\n- 原訊息已保留在對話與問題紀錄"
-                        .formatted(why)
-                        + "\n\n🔄 請稍後再試一次。",
+                "這次沒有完成，也沒有建立或修改資料。請再傳一次，我會接著處理。",
                 null, null);
     }
 
     public static IntentResult aiUnavailable(String why, String validationReason, IntentCommand command) {
-        StringBuilder message = new StringBuilder("⚠️ ").append(why).append("。");
-        if (validationReason != null && !validationReason.isBlank()) {
-            message.append("\n- Java 驗證原因：").append(validationReason);
+        String guidance = "請補充你想處理的項目、日期或時間，我會接著處理。";
+        if (command != null && command.type() == IntentCommand.Type.CREATE_SCHEDULE) {
+            if (command.startAt() == null || command.startAt().isBlank()) {
+                guidance = "請告訴我行程的開始時間，我會接著建立。";
+            } else if (command.endAt() == null || command.endAt().isBlank()) {
+                guidance = "請告訴我行程的結束時間或預計多久，我會接著建立。";
+            }
         }
-        if (command != null) {
-            message.append("\n- AI 回覆資料：")
-                    .append(IntentValidationDiagnostic.summarize(command));
-        }
-        message.append("\n- 我沒有建立任何待辦或行程")
-                .append("\n- 原訊息與上述診斷已保留在對話與問題紀錄")
-                .append("\n\n🔄 請修正資訊後再試一次，或直接問我「為什麼失敗」。");
-        return new IntentResult(Action.AI_UNAVAILABLE, message.toString(), null, null);
+        return new IntentResult(Action.AI_UNAVAILABLE,
+                "這次沒有完成，也沒有建立或修改資料。" + guidance,
+                null, null);
     }
 }

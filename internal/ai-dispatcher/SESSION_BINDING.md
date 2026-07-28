@@ -109,6 +109,25 @@ Invoke-RestMethod `
 Binding a valid session resumes only a `SESSION_NOT_READY` pause. It never clears an operator pause
 or an uncertain execution.
 
+## Coordinator drain
+
+The same protected management token provides a coordinator-only drain contract at
+`/internal/v1/dispatcher-drain`. A drain never kills or clears an active run: with an active run it
+returns `DRAINING` and persists the request; normal terminal handling then enters
+`COORDINATOR_DRAIN` pause. With no active run it returns `DRAINED` immediately. Unknown outcomes
+remain blocked and must not be resumed by this endpoint.
+
+```powershell
+$headers = @{ Authorization = "Bearer $env:AI_DISPATCHER_SESSION_BINDING_ADMIN_TOKEN"; "X-Dispatcher-Actor" = $env:USERNAME }
+$drain = Invoke-RestMethod -Method Post -Uri "$baseUrl/internal/v1/dispatcher-drain" -Headers $headers
+if ($drain.state -eq "DRAINED") {
+  Invoke-RestMethod -Method Delete -Uri "$baseUrl/internal/v1/dispatcher-drain" -Headers $headers
+}
+```
+
+Only `COORDINATOR_DRAIN` can return `RESUMED`; a response other than `DRAINED` is not permission to
+stop the Dispatcher. Do not call the endpoint from an unmanaged script or use it to alter DB rows.
+
 ## Runtime guarantees
 
 - PostgreSQL lane/session row locks serialize binding and dispatch decisions across processes.

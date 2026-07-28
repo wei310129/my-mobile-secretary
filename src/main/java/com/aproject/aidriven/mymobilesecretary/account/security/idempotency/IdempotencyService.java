@@ -13,6 +13,7 @@ import java.util.HexFormat;
 import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.beans.factory.annotation.Qualifier;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -29,7 +30,8 @@ public class IdempotencyService {
     private final IdempotencyProperties properties;
     private final Clock clock;
 
-    public IdempotencyService(JdbcTemplate jdbcTemplate, SecretTextCipher cipher,
+    public IdempotencyService(JdbcTemplate jdbcTemplate,
+                              @Qualifier("idempotencyResponseCipher") SecretTextCipher cipher,
                               IdempotencyProperties properties, Clock clock) {
         this.jdbcTemplate = jdbcTemplate;
         this.cipher = cipher;

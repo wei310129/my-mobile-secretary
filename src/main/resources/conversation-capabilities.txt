@@ -376,3 +376,29 @@
 376|刷油漆的地點？|FOLLOW_UP|pending活動草稿不得只因「地點」等單一弱關鍵字接管；候選低於Java相關性門檻時必須fall through，LINE明確引用且指向同一草稿時才可接續
 377|把拿包裹的行程提醒改回沒有時間的待辦事項|CONVERT_TASK_TO_TODO|title放既有項目關鍵字；Java清除dueAt並移除提醒排程；不得轉回草稿
 378|列出目前有庫存的品項|LIST_INVENTORY|Java只列inventoryQuantity大於0的已知庫存；零筆固定回覆「📍 共找到 0 個品項：」，不得列出數量0
+379|我家地址改成新北市新店區民權路5號五樓|UPDATE_PLACE|placeName=我家;options.description=新北市新店區民權路5號五樓;外部候選街路門牌不一致時拒絕寫入
+380|把週五牙醫行程改名成定期洗牙，地點改成陳醫師診所|UPDATE_SCHEDULE|title=週五牙醫;options.newTitle=定期洗牙;placeName=陳醫師診所;只更新明講欄位並重新驗算地點可行性
+381|照上次看牙醫的名稱和地點，幫我建下個月15日下午三點的新行程|COPY_SCHEDULE|options.referenceTitle=上次看牙醫;startAt=下個月15日15:00;未指定endAt沿用原時長，標題與地點沿用來源，不修改原行程
+382|把女兒上夏恩英語合併到送女兒到夏恩英語上課，保留後者|MERGE_SCHEDULES|title=送女兒到夏恩英語上課;options.referenceTitle=女兒上夏恩英語;Java補主要行程缺少的可重用欄位後終止重複項目
+383|先離開目前這件事，歇一下|EXIT_CONVERSATION_FOCUS|只暫離目前對話焦點；既有Task、Schedule與其他業務資料不完成、不取消、不刪除
+384|這個議題結束，不用再承接|CLOSE_CONVERSATION_FOCUS|結束目前對話承接並關閉該focus；業務資料不完成、不取消、不刪除
+385|幫我開一個大阪家庭旅行專案|CREATE_PROJECT|title=大阪家庭旅行；建立TRAVEL Project並在同交易ENTER，回覆與notice不得顯示任何內部ID
+386|新增「明年北海道」旅行project|CREATE_PROJECT|中英夾雜與括號仍取title=明年北海道；Project類型由Java限制為TRAVEL，不由模型輸出ID或授權scope
+387|阿嬤日本行 專案幫我建一下～|CREATE_PROJECT|口語尾音與符號不影響title=阿嬤日本行；缺名稱才回問，不猜目的地或日期
+388|開啟大阪親子旅遊專案|OPEN_PROJECT_EDIT_MODE|title只放大阪親子旅遊；唯一候選才ENTER，重名由Java穩定列候選且零transition
+389|進大阪那個|OPEN_PROJECT_EDIT_MODE|title=大阪；只在已知Project唯一命中時開啟，候選不唯一就回問，不以最近一筆取代
+390|  進入。。北海道  專案！！ |OPEN_PROJECT_EDIT_MODE|多餘空格與標點可正規化，title=北海道；不得把符號存進Project名稱或routing資料
+391|幫我開專按模式，九州那趟|OPEN_PROJECT_EDIT_MODE|「專按」可由唯一Project上下文修正為專案，title=九州；沒有唯一證據就UNKNOWN
+392|切去東京賞櫻那趟|SWITCH_PROJECT_EDIT_MODE|title=東京賞櫻；目前有其他active focus時固定單一SWITCH，不拆成EXIT+ENTER
+393|改看畢旅proj|SWITCH_PROJECT_EDIT_MODE|簡稱proj視為專案語彙，title=畢旅；多候選必須回問，不能輸出Project ID
+394|回到剛才大阪那趟|RESUME_PROJECT_EDIT_MODE|title=大阪；同scope既有suspended Project才固定RESUME，沒有就不得假裝恢復
+395|繼續之前的日本家庭旅遊專案|RESUME_PROJECT_EDIT_MODE|title=日本家庭旅遊；resume前由Java重新驗證typed binding、workspace、actor與Project狀態
+396|回九州的   proj...|RESUME_PROJECT_EDIT_MODE|省字、多空格與符號仍解析title=九州；跨actor、跨channel或已封存一律fail closed
+397|先關掉專案模式|CLOSE_PROJECT_EDIT_MODE|不帶Project名稱時固定委派全域EXIT；Project、child與lifecycle完全不變
+398|project mode off|CLOSE_PROJECT_EDIT_MODE|常見英文簡寫等同只離開Project mode；不得映射COMPLETE、ARCHIVE或刪除
+399|先離開這趟，晚點再弄|CLOSE_PROJECT_EDIT_MODE|目前明確承接Project時只EXIT並保留suspended focus；沒有active focus則安全澄清
+400|關掉日本旅行|CLOSE_PROJECT_EDIT_MODE|「關掉」可能是離開mode、完成、封存或取消child；title=日本旅行且未選動作時固定澄清、零mutation
+401|現在是哪個旅行專案？|SHOW_PROJECT_OVERVIEW|沒有title時只使用經typed binding重新驗證的active ProjectScope；回覆名稱、類型與狀態但無ID
+402|大阪這趟完成了|COMPLETE_PROJECT|title=大阪；ACTIVE轉COMPLETED並保留focus供旅後事項，不得順帶EXIT或ARCHIVE
+403|大阪旅行重新開啟|REOPEN_PROJECT|title=大阪旅行；只有明確操作才允許COMPLETED轉ACTIVE，其他狀態由Java拒絕
+404|把這個旅行專案封存|ARCHIVE_PROJECT|沒有title時只用重新驗證的active Project；封存與本scope單一INVALIDATE同交易，其他scope下回合lazy revalidate

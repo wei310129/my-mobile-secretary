@@ -79,7 +79,8 @@ final class IntentScriptDateRangePolicy {
                 range.start().toOffsetDateTime().toString(),
                 range.endExclusive().toOffsetDateTime().toString(), command.placeName(),
                 command.priority(), command.reason(), command.onTime(), command.overrunMinutes(),
-                command.outcomeReason(), command.windowHours(), command.recurring(), command.options());
+                command.outcomeReason(), command.windowHours(), command.recurring(), command.options(),
+                command.sourceText());
     }
 
     private static boolean hasText(String value) {

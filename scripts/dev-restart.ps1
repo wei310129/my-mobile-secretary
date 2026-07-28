@@ -23,6 +23,7 @@ param(
 )
 
 . "$PSScriptRoot\_devops-common.ps1"
+$script:DevVerboseOutput = $false
 Set-Location $RepoRoot
 
 $startParameters = @{ Profile = $Profile }
@@ -37,15 +38,21 @@ if ($ArmDispatcher) {
     throw "-AllowDirtyWorktree requires -ArmDispatcher."
 }
 
+$lifecycleLease = Enter-DevLifecycleCoordination -Action restart
+$lifecycleOutcome = 'FAILED'
+try {
 if ($Full) {
     Write-Host "=== Full restart ===" -ForegroundColor Cyan
     & "$PSScriptRoot\dev-stop.ps1" -Docker
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     & "$PSScriptRoot\dev-start.ps1" @startParameters
-    exit $LASTEXITCODE
+    $childExitCode = $LASTEXITCODE
+    if ($childExitCode -eq 0) { $lifecycleOutcome = 'READY' }
+    exit $childExitCode
 }
 
 Write-Host "=== Restarting main application and AI Dispatcher ===" -ForegroundColor Cyan
+if (-not $SkipDispatcher) { Invoke-CoordinatorDispatcherDrainPreflight }
 $state = Read-DevState
 
 if (-not $SkipDispatcher) {
@@ -66,7 +73,8 @@ if (-not $SkipDispatcher) {
         exit 2
     }
     if ($dispatcherPid) {
-        Stop-ProcessTree -ProcessId $dispatcherPid -Label "AI Dispatcher (old)"
+        $stopResult = Stop-ProcessTree -ProcessId $dispatcherPid -Label "AI Dispatcher (old)" -Port $DispatcherPort
+        if (-not $stopResult.Success) { throw "Dispatcher stop verification failed; restart aborted." }
     } else {
         $dispatcherPortOwner = Get-PortOwnerPid -Port $DispatcherPort
         if ($dispatcherPortOwner) {
@@ -80,7 +88,8 @@ if (-not $SkipDispatcher) {
 $appPid = Resolve-ManagedProcessId -TrackedProcessId $state.springBootPid `
     -Port $AppPort -Kind "SpringBoot"
 if ($appPid) {
-    Stop-ProcessTree -ProcessId $appPid -Label "Spring Boot (old)"
+    $stopResult = Stop-ProcessTree -ProcessId $appPid -Label "Spring Boot (old)" -Port $AppPort
+    if (-not $stopResult.Success) { throw "Spring Boot stop verification failed; restart aborted." }
 } else {
     $appPortOwner = Get-PortOwnerPid -Port $AppPort
     if ($appPortOwner) {
@@ -91,4 +100,9 @@ if ($appPid) {
 }
 
 & "$PSScriptRoot\dev-start.ps1" @startParameters
-exit $LASTEXITCODE
+$childExitCode = $LASTEXITCODE
+if ($childExitCode -eq 0) { $lifecycleOutcome = 'READY' }
+exit $childExitCode
+} finally {
+    Exit-DevLifecycleCoordination -Operation $lifecycleLease -Action restart -Outcome $lifecycleOutcome
+}

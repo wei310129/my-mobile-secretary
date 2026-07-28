@@ -1,6 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.venue.application;
 
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusBinding;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
 import com.aproject.aidriven.mymobilesecretary.knowledge.tag.application.UniversalLifeRecordService;
@@ -14,6 +15,7 @@ import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import org.springframework.stereotype.Service;
@@ -159,7 +161,22 @@ public class VenueVisitInformationService {
     private IntentResult saved(VenueVisitInformation info) {
         return IntentResult.message(IntentResult.Action.VENUE_VISIT_INFO_SAVED,
                 "已保存「%s」的參觀資訊：%s。下次建立或提到這個場館的行程時，我會一併提醒；目前沒有替你建立行程或完成預約。"
-                        .formatted(info.getVenueName(), summary(info)));
+                        .formatted(info.getVenueName(), summary(info)))
+                .withFocusBinding(new ConversationFocusBinding(
+                        "KNOWLEDGE", "venue-visit-info:" + info.getId(), info.getVenueName()));
+    }
+
+    @Transactional(readOnly = true)
+    public boolean isAvailableForFocus(Long id, String safeLabel) {
+        if (id == null || safeLabel == null) {
+            return false;
+        }
+        UUID actorId = WorkspaceContextHolder.requireContext().actorId();
+        return repository.findById(id)
+                .filter(info -> actorId.equals(info.getCreatedByUserId()))
+                .filter(info -> info.getStatus() == Status.ACTIVE)
+                .map(info -> info.getVenueName().equals(safeLabel))
+                .orElse(false);
     }
 
     private String summary(VenueVisitInformation info) {

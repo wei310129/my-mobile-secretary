@@ -8,16 +8,20 @@ import java.sql.DriverManager;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Statement;
+import java.util.Map;
 import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationVersion;
+import org.junit.jupiter.api.MethodOrderer;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.TestMethodOrder;
 import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
+@TestMethodOrder(MethodOrderer.MethodName.class)
 class WorkspaceMigrationTest {
 
     @Container
@@ -73,11 +77,72 @@ class WorkspaceMigrationTest {
                 """.formatted(workspaceId, userId))).isEqualTo(14);
     }
 
+    @Test
+    void v60BackfillsOnlyCanonicalLegacyDigestWithoutInferringFocus() throws Exception {
+        migrateTo("59");
+        UUID actorId = UUID.fromString("30000000-0000-0000-0000-000000000001");
+        UUID workspaceId = UUID.fromString("30000000-0000-0000-0000-000000000101");
+        execute("""
+                INSERT INTO app_user (id, display_name, status, created_at, updated_at)
+                VALUES ('%s', 'Scope user', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                INSERT INTO workspace (id, name, type, created_by_user_id, created_at, updated_at)
+                VALUES ('%s', 'Scope workspace', 'PERSONAL', '%s', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                INSERT INTO conversation_context (
+                    last_task_id, updated_at, channel, workspace_id, created_by_user_id)
+                VALUES (42, CURRENT_TIMESTAMP, 'LINE', '%s', '%s');
+                """.formatted(actorId, workspaceId, actorId, workspaceId, actorId));
+
+        migrateTo("60", Map.of(
+                "conversation_scope_current_key_version", "1",
+                "conversation_scope_hmac_key_base64",
+                "dGVzdC1jb252ZXJzYXRpb24tc2NvcGUtaG1hYy1rZXk="));
+
+        assertThat(integer("SELECT scope_key_version FROM conversation_context WHERE last_task_id = 42"))
+                .isEqualTo(1);
+        assertThat(string("SELECT conversation_scope_digest FROM conversation_context WHERE last_task_id = 42"))
+                .matches("[0-9a-f]{64}")
+                .doesNotContain("legacy-default", actorId.toString(), workspaceId.toString());
+    }
+
+    @Test
+    void v61AddsNullableContextFocusLinkWithoutCreatingFocusFromLegacyContext() throws Exception {
+        migrateTo("60", Map.of(
+                "conversation_scope_current_key_version", "1",
+                "conversation_scope_hmac_key_base64",
+                "dGVzdC1jb252ZXJzYXRpb24tc2NvcGUtaG1hYy1rZXk="));
+        UUID actorId = UUID.fromString("31000000-0000-0000-0000-000000000001");
+        UUID workspaceId = UUID.fromString("31000000-0000-0000-0000-000000000101");
+        execute("""
+                INSERT INTO app_user (id, display_name, status, created_at, updated_at)
+                VALUES ('%s', 'Focus migration user', 'ACTIVE', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                INSERT INTO workspace (id, name, type, created_by_user_id, created_at, updated_at)
+                VALUES ('%s', 'Focus migration workspace', 'PERSONAL', '%s', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP);
+                INSERT INTO conversation_context (
+                    updated_at, channel, conversation_scope_digest, scope_key_version,
+                    workspace_id, created_by_user_id)
+                VALUES (CURRENT_TIMESTAMP, 'TEST', '%s', 1, '%s', '%s');
+                """.formatted(actorId, workspaceId, actorId, "c".repeat(64), workspaceId, actorId));
+
+        migrateTo("61", Map.of(
+                "conversation_scope_current_key_version", "1",
+                "conversation_scope_hmac_key_base64",
+                "dGVzdC1jb252ZXJzYXRpb24tc2NvcGUtaG1hYy1rZXk="));
+
+        assertThat(integer("SELECT count(*) FROM conversation_focus")).isZero();
+        assertThat(integer("SELECT count(*) FROM conversation_context WHERE conversation_focus_id IS NULL"))
+                .isPositive();
+    }
+
     private static void migrateTo(String version) {
+        migrateTo(version, Map.of());
+    }
+
+    private static void migrateTo(String version, Map<String, String> placeholders) {
         Flyway.configure()
                 .dataSource(POSTGRES.getJdbcUrl(), POSTGRES.getUsername(), POSTGRES.getPassword())
                 .locations("classpath:db/migration")
                 .target(MigrationVersion.fromVersion(version))
+                .placeholders(placeholders)
                 .load()
                 .migrate();
     }
@@ -101,6 +166,22 @@ class WorkspaceMigrationTest {
              ResultSet rows = statement.executeQuery(sql)) {
             rows.next();
             return rows.getObject(1, UUID.class);
+        }
+    }
+
+    private static Integer integer(String sql) throws SQLException {
+        try (Connection connection = connection(); Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery(sql)) {
+            rows.next();
+            return rows.getInt(1);
+        }
+    }
+
+    private static String string(String sql) throws SQLException {
+        try (Connection connection = connection(); Statement statement = connection.createStatement();
+             ResultSet rows = statement.executeQuery(sql)) {
+            rows.next();
+            return rows.getString(1);
         }
     }
 

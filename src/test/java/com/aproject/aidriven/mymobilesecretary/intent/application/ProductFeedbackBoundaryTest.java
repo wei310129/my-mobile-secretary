@@ -19,7 +19,9 @@ class ProductFeedbackBoundaryTest {
         IntentResult result = ProductFeedbackBoundary.answer(text).orElseThrow();
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
-        assertThat(result.message()).contains("功能改善問題紀錄").contains("不會建立待辦或行程");
+        assertThat(result.message()).contains("依你指出的方向調整").contains("不會建立待辦或行程")
+                .contains("不會修改既有待辦或行程")
+                .doesNotContain("問題紀錄", "後端");
     }
 
     @Test
@@ -27,7 +29,7 @@ class ProductFeedbackBoundaryTest {
         IntentResult result = ProductFeedbackBoundary.answer("你沒有聽懂").orElseThrow();
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
-        assertThat(result.message()).contains("理解錯了").contains("請直接告訴我");
+        assertThat(result.message()).contains("理解錯了").contains("原本的主題與訊息仍會保留").contains("從原操作續接");
     }
 
     @Test
@@ -61,5 +63,49 @@ class ProductFeedbackBoundaryTest {
                 .orElseThrow();
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+    }
+
+    @Test
+    void yesterdayMultiParagraphDevelopmentInstructionCannotFallIntoBusinessRouting() {
+        String text = """
+                1. 行程已經有說是10點到12點了，你至少先推斷我應該是在12點要接。
+                2. 如果你一次有好幾個問題要問使用者，你要用條列式。
+                3. 我認為你要記得近期的對談主題及相關內容作為動作上下文，避免每次要求使用者重新輸入完整訊息。
+                這是我的開發指示，不是要建立行程。
+                """;
+
+        IntentResult result = ProductFeedbackBoundary.answer(text).orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+        assertThat(result.message()).contains("依你指出的方向調整")
+                .doesNotContain("問題紀錄", "後端");
+    }
+
+    @Test
+    void realFormattingCorrectionDoesNotFallIntoScheduleConfirmation() {
+        IntentResult result = ProductFeedbackBoundary.answer(
+                "首先你的格式不對，1. 2. 3. 的內容如果有空行，那除了1.之外的項次之前也要空行")
+                .orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+        assertThat(result.message()).contains("理解錯了", "從原操作續接");
+    }
+
+    @Test
+    void complaintAboutLeakingReasoningIsCapturedAsResponseCorrection() {
+        IntentResult result = ProductFeedbackBoundary.answer(
+                "你把你的邏輯回給使用者要幹嘛？直接回答是哪一個，而且已經確認就不要再問")
+                .orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+    }
+
+    @Test
+    void realComplaintNeverLeaksAnotherInternalIntentExplanation() {
+        IntentResult result = ProductFeedbackBoundary.answer("完全不知所云").orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+        assertThat(result.message()).contains("理解錯了", "原本的主題")
+                .doesNotContain("使用者說", "無法判斷意圖");
     }
 }

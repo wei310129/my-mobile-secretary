@@ -5,6 +5,7 @@ import static org.mockito.Mockito.anyLong;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationContextService;
@@ -18,6 +19,12 @@ import org.junit.jupiter.api.Test;
 import org.springframework.context.ApplicationEventPublisher;
 
 class KnowledgeRecordDeletionServiceTest {
+
+    @Test
+    void numberedScheduleDeletionIsNotClaimedAsKnowledgeDeletion() {
+        assertThat(service.answer("刪除2.所指的行程", () -> { })).isEmpty();
+        verifyNoInteractions(repository);
+    }
     private static final Instant NOW = Instant.parse("2030-08-10T04:00:00Z");
     private final ObjectAnnotationRepository repository = mock(ObjectAnnotationRepository.class);
     private final ConversationContextService context = mock(ConversationContextService.class);

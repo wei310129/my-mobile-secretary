@@ -45,11 +45,19 @@ public class LineMessageLogService {
     /** Records LINE ids needed to resolve quoted messages; failures remain non-fatal. */
     public void recordSafely(LineMessageLog.Direction direction, String messageType, String content,
                              String externalMessageId, String quotedMessageId) {
+        recordSafely(direction, messageType, content, externalMessageId, quotedMessageId, null);
+    }
+
+    public void recordSafely(LineMessageLog.Direction direction, String messageType, String content,
+                             String externalMessageId, String quotedMessageId,
+                             String referencePayload) {
         try {
             Instant now = Instant.now(clock);
-            repository.save(LineMessageLog.of(direction, messageType, content,
+            LineMessageLog entry = LineMessageLog.of(direction, messageType, content,
                     externalMessageId, quotedMessageId,
-                    now, now.plus(properties.retention())));
+                    now, now.plus(properties.retention()));
+            entry.attachReferences(referencePayload);
+            repository.save(entry);
         } catch (Exception e) {
             log.warn("LINE message logging failed [direction={}]", direction, e);
         }
@@ -74,7 +82,7 @@ public class LineMessageLogService {
     @Transactional(readOnly = true)
     public String contextualize(String text, String quotedMessageId) {
         String original = text == null ? "" : text.strip();
-        if (quotedMessageId == null && !looksElliptical(original)) return original;
+        if (quotedMessageId == null && !needsConversationContext(original)) return original;
         WorkspaceContext scope = WorkspaceContextHolder.requireContext();
         LineMessageLog quotedEntry = quotedMessageId == null ? null
                 : repository.findFirstByWorkspaceIdAndCreatedByUserIdAndExternalMessageId(
@@ -90,21 +98,42 @@ public class LineMessageLogService {
                     .map(entry -> "[圖片解析結果]\n" + entry.getContent())
                     .orElse(quoted);
         }
-        List<LineMessageLog> recent = listRecent(6);
-        String recentText = recent.stream()
-                .sorted(java.util.Comparator.comparing(LineMessageLog::getCreatedAt))
-                .map(entry -> (entry.getDirection() == LineMessageLog.Direction.IN ? "使用者：" : "助理：")
-                        + truncateContext(entry.getContent()))
-                .collect(java.util.stream.Collectors.joining("\n"));
         StringBuilder context = new StringBuilder();
-        if (quoted != null) context.append("【LINE 明確引用】").append(truncateContext(quoted)).append('\n');
-        if (!recentText.isBlank()) context.append("【近期對話】\n").append(recentText).append('\n');
+        if (quoted != null) {
+            // A resolved LINE quote is the highest-signal context. Do not also attach the
+            // recent transcript: it is redundant, may introduce another topic, and increases
+            // every structured-output request without helping the reference resolution.
+            context.append("【LINE 明確引用】").append(truncateContext(quoted)).append('\n');
+            if (quotedEntry.getReferencePayload() != null) {
+                context.append("【LINE 引用參考】")
+                        .append(quotedEntry.getReferencePayload()).append('\n');
+            }
+        } else {
+            List<LineMessageLog> recent = listRecent(6);
+            String recentText = recent.stream()
+                    .sorted(java.util.Comparator.comparing(LineMessageLog::getCreatedAt))
+                    .map(entry -> (entry.getDirection() == LineMessageLog.Direction.IN
+                            ? "使用者：" : "助理：") + truncateContext(entry.getContent()))
+                    .collect(java.util.stream.Collectors.joining("\n"));
+            if (!recentText.isBlank()) context.append("【近期對話】\n").append(recentText).append('\n');
+        }
         return context.append("【使用者目前訊息】").append(original).toString();
     }
 
     private static boolean looksElliptical(String text) {
         return text.length() <= 30 || text.matches("\\d{1,2}[/-]\\d{1,2}")
                 || text.matches("(?i)(好|要|不用|不用了|可以|對|是|不是|這個|那個)");
+    }
+
+    /** 課程名稱是語音轉錄常見的同音字位置，長句也保留近期紀錄供唯一比對。 */
+    private static boolean needsConversationContext(String text) {
+        if (looksElliptical(text)) return true;
+        String compact = text.replaceAll("\\s+", "");
+        boolean child = compact.contains("女兒") || compact.contains("兒子")
+                || compact.contains("孩子") || compact.contains("小孩");
+        boolean course = compact.contains("課") || compact.contains("補習")
+                || compact.contains("安親") || compact.contains("英文") || compact.contains("才藝");
+        return child && course;
     }
 
     private static String truncateContext(String text) {

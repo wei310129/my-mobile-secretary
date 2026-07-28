@@ -4,6 +4,7 @@ import java.util.Base64;
 
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
+import org.springframework.context.annotation.Primary;
 import org.springframework.core.env.Environment;
 import org.springframework.core.env.Profiles;
 
@@ -12,6 +13,7 @@ import org.springframework.core.env.Profiles;
 class IntentTraceCipherConfiguration {
 
     @Bean
+    @Primary
     SecretTextCipher intentTraceSecretTextCipher(IntentTraceProperties properties, Environment environment) {
         String encodedKey = properties.encryptionKey();
         if (encodedKey == null || encodedKey.isBlank()) {

@@ -1,0 +1,29 @@
+{
+  "schemaVersion": 1,
+  "ownerLane": "desktop",
+  "updatedOn": "2026-07-26",
+  "consumedLaptopTriggers": {},
+  "gates": {
+    "TR-B3-CORE-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null
+    },
+    "TR-B4-FAKE-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null
+    },
+    "TR-B3-DURABLE-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null,
+      "consumedSchemaVersion": null
+    },
+    "TR-B3-UPSTREAM-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null
+    },
+    "TR-ADD-CORE-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null
+    }
+  }
+}

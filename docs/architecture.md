@@ -110,7 +110,8 @@ Java 21 重點：`spring.threads.virtual.enabled=true` 啟用虛擬執行緒；�
 
 PostgreSQL 16（主資料庫）：
 - PostGIS：空間查詢，如「我家 800 公尺內的舊衣回收箱」（回收點可匯入政府開放資料）。
-- pgvector（規劃中，尚未啟用）：對話與事件的語意向量，供 AI 記憶檢索。
+- pgvector（Project Phase 6 才評估，尚未啟用）：僅供已抽取的自由文字文件做語意檢索，
+  不取代交易型資料庫或結構化個人知識查詢。
 - 核心資料表概念：店家（座標／營業時間／販售品項）、物品（冷藏需求／重量估計／可購通路）、習慣規則（菜市場只去週末 8–12、排骨 10 點後風險高、回家爬五樓需 10 分鐘緩衝）、價格歷史、任務與狀態、事件紀錄。
 
 Redis 7 的三個角色：
@@ -126,7 +127,8 @@ Redis 7 的三個角色：
 2. **知識庫（PostgreSQL，非 LLM）**：結構化事實——哪裡買得到、營業時間、冷藏需求、重量、習慣規則、價格歷史。
 3. **規劃引擎（確定性 Java 程式）**：時間窗檢查、交通時間、負重上限、冷藏鏈、行程衝突、順路判斷。本質是「帶時間窗的排程問題」：先以貪婪法＋規則過濾做堪用版，再研究 interval scheduling、帶時間窗路徑規劃優化。
 4. **表達層（LLM）**：把計算結果轉成自然貼心的推播文字。
-5. **記憶層**：結構化 profile 為主，pgvector 語意檢索為輔（撈模糊記憶餵給 LLM 當上下文；pgvector 部分尚未啟用）。
+5. **記憶層**：結構化 profile 為主；Project Phase 6 才在有實際文件語料與檢索成效證據後，
+   以 pgvector 語意檢索作為受限輔助（只提供 untrusted evidence 給 LLM；目前尚未啟用）。
 
 LLM 成本控制原則：位置事件一天可能數十次，規則引擎先過濾（快且免費），只在需要「理解語言」或「生成語言」時呼叫模型，搭配快取，目標每月數百元台幣量級。
 
@@ -174,6 +176,8 @@ CREATED → SCHEDULED → REMINDED → 等待回報 ─→ CONFIRMED
 | Phase 2 | 4–6 週 | Spring AI 意圖理解、店家／物品知識庫、天氣＋交通整合、規劃引擎 v1 | 虛擬執行緒與多執行緒（平行呼叫外部 API）、時間窗排程演算法 |
 | Phase 3 | 4–6 週 | LINE bot、收據多模態解析、價格歷史與比價、任務狀態機閉環、Live Activities | 多模態 LLM 應用、狀態機設計 |
 | Phase 4 | 持續 | 事件流換 Kafka、拆 1–2 個模組練 Spring Cloud、K8s 部署、習慣自動學習 | Kafka、Spring Cloud、K8s |
+| Phase 5 | 核心穩定後 | 家庭行程共享／共編與重新檢視；workspace 隔離前置架構已先落地 | 多使用者協作與資料權限 |
+| Phase 6 | 有實際文件語料後 | 文件知識檢索：文字抽取／OCR、chunk 與版本治理、embedding、pgvector，最後以 SQL + vector + Java rules 混合檢索 | 文件處理、檢索評估與安全 RAG |
 
 > **進度現況（2026-07-17）**：本表是原始路線圖。因無 Mac，iOS／APNs／EventKit／Live Activities 全線未動，改以「API 模擬手機事件 + LINE Bot 互動」推進後端：Phase 1（後端版）與 Phase 2 已完成，Phase 3 進行中。逐項對照見 development-plan.md §20。
 
@@ -414,3 +418,133 @@ V51 新增 actor-isolated `conditional_venue_draft`，保存活動時間、原�
 場地文字不等於可導航地點。若選項能對上既有 `Place` 才綁 `placeId`；泛稱「健身房」在缺少座標與
 Places gateway 時仍保存為草稿的 `selectedPlaceName`，但行程不綁假座標，回覆也明說尚未綁定精確
 導航地點。此設計保證單一行程、保留使用者原意，且不以 LLM 或外部服務缺省值捏造位置。
+
+## 33. 個人知識檢索 Foundation（2026-07-20）
+
+目前沒有足夠長文件語料支持 pgvector／embedding：stored media 的 PDF 與 Office 文件仍是 opaque
+原檔，短知識可由 `UserKnowledgeFact`、`ObjectAnnotation` 與 semantic tag graph 找回。因此先建立
+`KnowledgeQuery`、`KnowledgeEvidence`、`PersonalKnowledgeRetriever` 與 actor-private JPA 實作，
+並重用唯讀 `ASK_TAGGED_RECORDS` 的知識分支；不新增 Intent 或 VectorStore bean。
+
+Task、Schedule、Reminder、Place、Item 庫存與 PriceRecord 仍走各自 SQL／Application Service；
+Retriever 不含 mutation service，檢索內容永遠是 untrusted evidence。完整文件 RAG 明確排入 **Phase 6**：
+僅在有穩定抽取的文件語料、關鍵字檢索實測不足，以及模型／授權／保存治理均已拍板後，才導入文件
+model、pipeline、embedding 與 pgvector；啟動條件與安全規則詳見 `docs/knowledge-retrieval.md`。
+
+## 34. 規劃項目心智模型與對話承接契約（2026-07-20）
+
+使用者可感知的規劃項目按資料要求由鬆到緊分為：草稿、待辦事項、行程提醒與行程。草稿是暫存資料，
+只能單向轉為其他持久類型；待辦事項沒有執行日期與時間；行程提醒是會顯示在日曆上的單一提醒時點，
+像鬧鐘一樣不占用時段、不參與撞期；行程代表本人必須到場或上線，必須有開始與結束時間，並通過
+撞期、地點與可行性檢查。三種持久規劃類型可在滿足目標型別規則後互轉，但不可轉回草稿。知識紀錄
+是另一種由草稿完成後形成的長期資料，不具完成狀態，也不轉成待辦、行程提醒或行程。共同語意由
+`planning` domain policy 驗證，不要求既有 JPA aggregate 彼此繼承。
+
+對話層必須先回答使用者當輪的直接問題，再說限制與下一步。短句的唯一承接順序為：同 actor 可驗證的
+明確 LINE 引用；明確焦點控制／新工作／feedback／meta／單次唯讀問題；尚待回答的 focus transition；
+active focus 內尚未回答的問題；active work／subject focus；最後才是同 scope 的有限近期上下文。
+多候選時以含類別、時間與可區分資訊的編號清單讓使用者選擇。功能改善回饋、唯讀詢問與解析失敗不得
+被舊草稿搶答，也不得降級成建立待辦或行程。LLM 可協助理解指代與表達，但選擇範圍、焦點與業務
+狀態轉換及 mutation 仍由 Java 驗證。
+
+## 35. 全服務對話焦點與上下文對齊（2026-07-21，規劃）
+
+`ConversationContext` 現有的上一筆 Task／Schedule／Place、候選清單與最近交換，只是短期指代資料；
+它不等於「使用者目前正在和服務共同處理哪一件事」。後者採 actor-private、durable 的兩層語意：
+work context 是根工作，例如大阪旅行或繳電費；activity focus 是根工作內目前子題，例如小孩護照或
+回程航班。兩層共同由一個 `ConversationFocus` aggregate 保存 root 與 nullable activity，不建立兩個
+current pointer。第一版作用域為
+`workspace + actor + channel conversation scope`，同一作用域最多一個 active work/focus；不同服務
+不得再各自保存互不相容的 current topic／edit mode 指標。
+
+conversation scope digest 由 trusted adapter 正規化 token 後，以含 workspace、actor、adapter namespace
+與 channel 的 HMAC-SHA-256 產生並保存 key version；secret 不進版控。rotation 同時接受 current/previous
+key，命中舊版時在鎖內遷移同 scope rows，不能因換 key 無聲分裂上下文。每 scope 另有不含 active target
+的 monotonic focus head revision，用於 optimistic ordering 與 pending fencing；active target 仍只有一個來源。
+
+work/focus 表示可延續的對話工作，不代表對應業務物件已完成。狀態固定為 `ACTIVE`、`SUSPENDED`、
+`CLOSED`：首次進入為 `ENTER`，回到暫離事項為 `RESUME`，由 A 改處理 B 為原子的 `SWITCH`，只離開
+目前事項為 `EXIT`。`SWITCH`／`EXIT` 只暫停對話焦點，不得暗中完成、封存、取消或刪除 Project、Task、
+Schedule、Draft 等業務資料；業務 lifecycle 仍由各 domain service 另行驗證。active focus 不得因時間
+經過而無聲消失，也不得只因模型猜測或最近一筆物件而切換。`CLOSED` 是對話終態，不能 resume；
+日後重談同一業務 target 時建立新的 enter，不恢復已關閉 focus 的 pending／referent。
+
+每次真正的 `ENTER`、`CHANGE_SUBFOCUS`、`SWITCH`、`RESUME`、`EXIT`、`CLOSE` 或 `INVALIDATE`，都必須產生 typed
+`FocusTransitionNotice`，由 Java 在統一 response envelope 與各 channel adapter 強制渲染。進入時明說
+目前處理的可理解名稱；切換時同時明說暫離哪件事及改處理哪件事；離開時明說目前已沒有 active focus。
+通知不得依賴 LLM 自行記得補寫，也不得顯示 UUID、平台 message ID 或敏感原文。相同 inbound 重播只能
+有一筆 transition 與一個 terminal reply。同一輪既要切換又要異動既有目標時，transition 與 domain
+mutation 必須原子提交；mutation 失敗就不切換，並明說仍停在哪個焦點。需要先建立新目標的長工作則先
+建立 `PENDING_DIALOG/ASYNC_WORK` work 與 durable job，成功持久化後才算進入；後續 terminal failure
+不會讓焦點偷偷跳回舊工作。
+
+並非每個單輪查詢都要建立新 focus。Java `ConversationFocusPolicy` 將輸入分為同焦點延續、支援目前
+焦點、無 pending state 的單次旁問、明確新工作與焦點控制。支援問題不切換；不相關但一次完成的唯讀
+旁問可直接回答，但在容易誤解時明說原焦點仍保留；會建立 pending state 或後續 mutation 的明確新工作
+才切換。若目前有 destructive／付款／外部 side effect 確認、候選不唯一，或 Project 的嚴格 scope 會被
+跨越，必須先澄清且零 transition、零業務 mutation。LLM 只能輸出關聯訊號與候選描述，focus 決策、
+target authorization、狀態轉移及告知內容皆由 Java 決定。
+
+Project 編輯模式是 `ConversationFocus` 中綁定 Project 的 root work，不是第二套 active context。開啟、切換或
+關閉專案模式分別委派全域 focus 的 enter／switch／exit；Project scope 由已驗證的 typed binding 取得。
+每個持久 domain anchor 使用有真實外鍵的 typed binding／adapter，不建立無 FK 的任意
+`resource_type/resource_id` 欄位。短期指代、pending question、候選清單與 quote 解析都必須按 focus
+隔離；暫離後恢復時只能取回該 focus 自己的指代資料。明確 quote 可提高 target 優先序，但不能繞過
+actor、workspace、focus transition、Project scope 或 destructive confirmation。
+
+Raw LINE room/thread token 與 REST thread token 不進 focus／scope／referent table。V39 既有受控 LINE
+message log 仍依 90 天政策保存 `external_message_id`／`quoted_message_id` 供同 actor 引用回查；這是引用
+稽核資料，不得複製到 Focus、transition、notice 或公開回覆。
+
+只有 focus-aware conversation entry 可在同交易做 Project create＋ENTER 或針對本 scope 做 archive＋單一
+INVALIDATE；不得再補 EXIT。若被關閉／失效的是 suspended A 而 B active，只關 A，B 不變。Direct
+CRUD API 與 background worker 不切換聊天 focus；若它們使 target 失效，下一個對話 turn 由 resolver
+fail closed、關閉該 scope 的 focus 並主動告知；同 Project 在其他 scope 也各自等下一 turn lazy invalidate。
+Async terminal notification 只標示原工作結果，不搶目前焦點。
+
+focus、active binding、transition 與 referent context 均需 workspace／actor application filter、RLS、
+optimistic version、注入 `Clock`、idempotency 與同 actor 跨 channel 隔離測試。焦點控制只屬對話狀態，
+不寫 LifeRecord／tag graph；真正可感知的業務 mutation 仍依原 domain event recorder 規則處理。
+
+## 36. 開發 Session 協調平面與共享資源生命週期（2026-07-22，規劃）
+
+本節記錄開發基礎設施的規劃基線，不表示協調工具已經落地。詳細 resource matrix、競態證據、階段 gate
+與故障注入 oracle 見
+[開發 Session 自協調 Pipeline 計畫](exec-plans/completed/development-session-coordination-pipeline.md)。
+
+開發協調平面屬 repository tooling，不是產品 runtime。產品 artifact、application dependency graph 與
+runtime correctness 不得依賴 coordinator 或 AI Dispatcher；開發者使用的 Maven／啟停 wrapper 可以依賴
+coordinator 來安全操作工作區。Coordinator 不得使用主產品 PostgreSQL／Redis 作為 bootstrap lock。
+internal/ai-dispatcher 繼續獨立擁有自己的 session、lane、run、heartbeat 與 fencing，只保證其自身
+最多一個 active run。Repository coordinator 目前只能使用既有唯讀 operator 狀態做 fail-closed 檢查；
+安全的 durable pause／drain contract 仍是 Phase 0/3 待設計、驗證的能力。不得以直接清 Dispatcher DB
+row、釋放 claimed event，或把不確定 outcome 當成 stale lock 取代該 contract。
+
+已確認的協調不變量是：共享 mutable resource 必須有可驗證 owner；multi-resource operation 必須避免
+死鎖；舊 owner 不得停止、清理或 settle 新 owner 的資源；逾時本身不能授權 destructive takeover；
+handoff 不得保存秘密。Phase 0 已 freeze `v1/{scope}/{resource-type}/{normalized-key}` key、既有 matrix 的
+rank/type/key total order，以及以 Windows `Global\\mms-coord-v1-{SHA-256(key)}` gate/slot mutex 實作的
+shared、exclusive 與 bounded counting lease。machine metadata 位於使用者的 `%LOCALAPPDATA%`，repo-common
+metadata 以 Git common-dir hash 區分同 clone worktree；Global mutex 是 correctness authority，JSON registry
+只供觀測並以 atomic replace 寫入。`LOCALAPPDATA`、Global mutex 或跨 Windows logon visibility 不可驗證時
+必須 BLOCKED，不能悄悄退化為 repo-local 假保護。資源涵蓋 worktree source／Git index、兩個 Maven target、
+environment consumer／transition、machine-wide Docker daemon與固定 ports、兩組 Compose、LINE/ngrok、
+database migration／destructive data 及 Docker capacity。
+
+建議的 Phase 0 pipeline 是 reserve、preflight、reconcile、execute、verify、commit receipt 與 release；
+outcome taxonomy 及 receipt schema 也在該 gate freeze。無論最後採用哪個 backend，start／stop／restart
+的 transition 不得交錯，合法 consumer 不得被另一 session 無聲重啟，成功、失敗與取消都要留下可判讀
+handoff。下一個 session 不得先 blanket clean 再猜測上輪狀態。
+
+第一版採「共享互動環境＋隔離測試 lane」作為建議基線：主 Compose、主 runtime、ngrok／LINE 與
+Dispatcher runtime 是單機 singleton，健康時可供多 session 使用，但生命週期 mutation 只經 coordinator；
+integration test 使用 Testcontainers、隨機 port 與受控 Docker capacity。獨立 writable agent 優先使用
+獨立 worktree；同一 worktree 的 Maven target 為單一 writer，Spotless apply 另需 source-write claim。
+Flyway migration 編號需 reservation，避免不同 worktree 同時選到同一版本。
+
+清理遵循 ownership 與資料分類：本 operation 建立、owner token 可驗證且已標 disposable 的測試
+ephemeral resource（包含專用測試 volume）可自動清理；共享健康服務與主／Dispatcher dev volume
+預設保留；Flyway history、Git/source、secrets 與 Dispatcher active/unknown run 都屬 persistent 或
+uncertain，不能自動刪除。禁止以 Docker
+system／volume prune、Redis FLUSHALL、Flyway clean、模糊名稱比對或例行 Maven clean 當作恢復策略。
+需要 destructive cleanup 時必須另取專用 lease、確認沒有 consumer、精確列出目標並取得使用者批准。

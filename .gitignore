@@ -38,6 +38,8 @@ secrets.yaml
 ### 本機開發環境腳本狀態(dev-start/stop/restart.ps1 產生)###
 scripts/.dev-state.json
 scripts/.logs/
+scripts/.coordination-test-state/
+scripts/.handoff-state/
 
 ### 本機私有上傳原檔（metadata 在 DB；bytes 不進版控）###
 /var/
@@ -45,3 +47,4 @@ scripts/.logs/
 ### 本機 AI 助理設定與執行日誌 ###
 /.claude/settings.local.json
 /.codex/*.log
+/docs/exec-plans/active/local/conversation-improvement-batches-2026-07-20.md

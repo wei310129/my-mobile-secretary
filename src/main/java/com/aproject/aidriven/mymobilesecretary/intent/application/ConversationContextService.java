@@ -2,6 +2,10 @@ package com.aproject.aidriven.mymobilesecretary.intent.application;
 
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationScopeResolver;
+import com.aproject.aidriven.mymobilesecretary.conversation.domain.ConversationFocusStatus;
+import com.aproject.aidriven.mymobilesecretary.conversation.domain.ConversationScopeKey;
+import com.aproject.aidriven.mymobilesecretary.conversation.persistence.ConversationFocusRepository;
 import com.aproject.aidriven.mymobilesecretary.intent.domain.ConversationContext;
 import com.aproject.aidriven.mymobilesecretary.intent.persistence.ConversationContextRepository;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
@@ -10,6 +14,9 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.Arrays;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -20,10 +27,22 @@ public class ConversationContextService {
 
     private final ConversationContextRepository repository;
     private final Clock clock;
+    private final ConversationScopeResolver scopeResolver;
+    private final ConversationFocusRepository focusRepository;
 
-    public ConversationContextService(ConversationContextRepository repository, Clock clock) {
+    public ConversationContextService(ConversationContextRepository repository, Clock clock,
+                                      ConversationScopeResolver scopeResolver) {
+        this(repository, clock, scopeResolver, null);
+    }
+
+    @Autowired
+    public ConversationContextService(ConversationContextRepository repository, Clock clock,
+                                      ConversationScopeResolver scopeResolver,
+                                      ConversationFocusRepository focusRepository) {
         this.repository = repository;
         this.clock = clock;
+        this.scopeResolver = scopeResolver;
+        this.focusRepository = focusRepository;
     }
 
     @Transactional(readOnly = true)
@@ -108,13 +127,54 @@ public class ConversationContextService {
 
     private ConversationContext current() {
         WorkspaceContext scope = WorkspaceContextHolder.requireContext();
+        ConversationScopeKey scopeKey = scopeResolver.current(scope);
         return findCurrent(scope).orElseGet(() -> repository.save(
-                ConversationContext.create(scope.channel(), Instant.now(clock))));
+                ConversationContext.create(scope.channel(), scopeKey,
+                        activeFocusId(scope, scopeKey).orElse(null), Instant.now(clock))));
     }
 
-    private java.util.Optional<ConversationContext> findCurrent(WorkspaceContext scope) {
-        return repository.findByWorkspaceIdAndCreatedByUserIdAndChannel(
-                scope.workspaceId(), scope.actorId(), scope.channel());
+    private Optional<ConversationContext> findCurrent(WorkspaceContext scope) {
+        ConversationScopeKey currentScope = scopeResolver.current(scope);
+        Optional<UUID> focusId = activeFocusId(scope, currentScope);
+        Optional<ConversationContext> current = focusId.map(id -> repository
+                        .findByWorkspaceIdAndCreatedByUserIdAndChannelAndConversationScopeDigestAndConversationFocusId(
+                                scope.workspaceId(), scope.actorId(), scope.channel(),
+                                currentScope.digest(), id))
+                .orElseGet(() -> repository
+                        .findByWorkspaceIdAndCreatedByUserIdAndChannelAndConversationScopeDigestAndConversationFocusIdIsNull(
+                                scope.workspaceId(), scope.actorId(), scope.channel(),
+                                currentScope.digest()));
+        if (current.isPresent()) {
+            validateStoredScope(current.get(), currentScope);
+            return current;
+        }
+        if (focusId.isPresent()) {
+            return Optional.empty();
+        }
+        return scopeResolver.previous(scope).flatMap(previousScope -> repository
+                .findWithLockByWorkspaceIdAndCreatedByUserIdAndChannelAndConversationScopeDigestAndConversationFocusIdIsNull(
+                        scope.workspaceId(), scope.actorId(), scope.channel(), previousScope.digest())
+                .map(context -> {
+                    validateStoredScope(context, previousScope);
+                    context.migrateScope(currentScope, Instant.now(clock));
+                    return context;
+                }));
+    }
+
+    private Optional<UUID> activeFocusId(WorkspaceContext scope, ConversationScopeKey scopeKey) {
+        if (focusRepository == null) {
+            return Optional.empty();
+        }
+        return focusRepository.findByWorkspaceIdAndCreatedByUserIdAndChannelAndConversationScopeDigestAndStatus(
+                scope.workspaceId(), scope.actorId(), scope.channel(), scopeKey.digest(),
+                ConversationFocusStatus.ACTIVE).map(focus -> focus.getId());
+    }
+
+    private static void validateStoredScope(ConversationContext context, ConversationScopeKey expected) {
+        if (!expected.digest().equals(context.getConversationScopeDigest())
+                || expected.keyVersion() != context.getScopeKeyVersion()) {
+            throw new IllegalStateException("conversation scope key version is not recognized");
+        }
     }
 
     private static Long at(List<Long> ids, int ordinal) {

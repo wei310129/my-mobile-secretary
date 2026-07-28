@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.persistence.ItemRepository;
@@ -80,9 +81,10 @@ public final class IntentPromptContextBuilder {
     }
 
     private String openTasks() {
-        return taskRepository.findByStatusIn(EnumSet.of(
+        return taskRepository.findByStatusInAndCreatedByUserId(EnumSet.of(
                         TaskStatus.CREATED, TaskStatus.SCHEDULED,
-                        TaskStatus.REMINDED, TaskStatus.ESCALATED))
+                        TaskStatus.REMINDED, TaskStatus.ESCALATED),
+                        WorkspaceContextHolder.requireContext().actorId())
                 .stream()
                 .limit(MAX_STATE_ROWS)
                 .map(task -> "%d:%s%s".formatted(task.getId(), task.getTitle(),
@@ -178,7 +180,12 @@ public final class IntentPromptContextBuilder {
                     "公司", "上班地點", "店到店", "入口", "後門", "路線", "接送", "在哪");
             boolean reminder = containsAny(value,
                     "提醒", "通知", "勿擾", "靜音", "不要吵", "幾分鐘前");
-            return new Selection(places, tasks, schedules, items, reminder, continuation);
+            // 語音轉錄常把課程／機構名稱辨成同音字。孩子上課的訊息即使沒有「上一個」
+            // 這類承接詞，也需要帶入剛才的已確認說法供模型做唯一比對。
+            boolean familyCourse = containsAny(value, "女兒", "兒子", "孩子", "小孩")
+                    && containsAny(value, "課", "補習", "安親", "英文", "才藝");
+            return new Selection(places, tasks, schedules, items, reminder,
+                    continuation || familyCourse);
         }
     }
 }

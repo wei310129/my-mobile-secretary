@@ -148,6 +148,22 @@ public record IntentOptions(
                 allowHighPriority, recurrenceUntil, recurrenceScope);
     }
 
+    public IntentOptions withReferenceTitle(String value) {
+        return new IntentOptions(filter, ordinal, durationMinutes, leadMinutes, radiusMeters,
+                triggerType, recurrence, category, itemNames, quantity, value,
+                referenceKind, timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName,
+                bufferMinutes, clarificationQuestion, alias, newTitle, description,
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+    }
+
+    public IntentOptions withNewTitle(String value) {
+        return new IntentOptions(filter, ordinal, durationMinutes, leadMinutes, radiusMeters,
+                triggerType, recurrence, category, itemNames, quantity, referenceTitle,
+                referenceKind, timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName,
+                bufferMinutes, clarificationQuestion, alias, value, description,
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+    }
+
     public IntentOptions withLifeRecord(String recordType, List<String> tags, String details) {
         return new IntentOptions(filter, ordinal, durationMinutes, leadMinutes, radiusMeters,
                 triggerType, recurrence, recordType, tags, quantity, referenceTitle,

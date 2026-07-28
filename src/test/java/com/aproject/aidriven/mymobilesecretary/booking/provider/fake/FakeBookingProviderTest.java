@@ -180,6 +180,44 @@ class FakeBookingProviderTest {
         assertThat(provider.externalMutationCount()).isEqualTo(1);
     }
 
+    @Test
+    void cancellationRejectsOrderForAnotherProviderInstanceWithoutMutation() {
+        var provider = new FakeBookingProvider("fake-air", CLOCK);
+        var target = order(
+                UUID.fromString("00000000-0000-0000-0000-000000000503"),
+                "other-provider",
+                ProviderEnvironment.FAKE,
+                ExternalBookingOrderStatus.CONFIRMED);
+        var grant = cancellationAuthorization(target);
+
+        var result = provider.cancel(new BookingCancellationRequest(
+                target, grant, "cancel-provider-misroute", WORKSPACE, ACTOR));
+
+        assertThat(result.outcome()).isEqualTo(ProviderOperationOutcome.FAILED);
+        assertThat(result.publicReason()).isEqualTo("provider-boundary-mismatch");
+        assertThat(result.order()).isEmpty();
+        assertThat(provider.externalMutationCount()).isZero();
+    }
+
+    @Test
+    void cancellationRejectsNonFakeEnvironmentWithoutMutation() {
+        var provider = new FakeBookingProvider("fake-air", CLOCK);
+        var target = order(
+                UUID.fromString("00000000-0000-0000-0000-000000000504"),
+                "fake-air",
+                ProviderEnvironment.LIVE,
+                ExternalBookingOrderStatus.CONFIRMED);
+        var grant = cancellationAuthorization(target);
+
+        var result = provider.cancel(new BookingCancellationRequest(
+                target, grant, "cancel-environment-misroute", WORKSPACE, ACTOR));
+
+        assertThat(result.outcome()).isEqualTo(ProviderOperationOutcome.FAILED);
+        assertThat(result.publicReason()).isEqualTo("provider-boundary-mismatch");
+        assertThat(result.order()).isEmpty();
+        assertThat(provider.externalMutationCount()).isZero();
+    }
+
     private static OfferSnapshot offer(
             boolean available, String amount, String termsFingerprint) {
         return offer(
@@ -236,12 +274,32 @@ class FakeBookingProviderTest {
 
     private static ExternalBookingOrder order(
             UUID orderId, ExternalBookingOrderStatus status) {
+        return order(orderId, "fake-air", ProviderEnvironment.FAKE, status);
+    }
+
+    private static ExternalBookingOrder order(
+            UUID orderId,
+            String provider,
+            ProviderEnvironment environment,
+            ExternalBookingOrderStatus status) {
         return new ExternalBookingOrder(
                 orderId,
-                "fake-air",
-                ProviderEnvironment.FAKE,
+                provider,
+                environment,
                 "fake-" + orderId.toString().substring(0, 8),
                 status,
                 NOW);
+    }
+
+    private static CancellationAuthorization cancellationAuthorization(
+            ExternalBookingOrder order) {
+        return new CancellationAuthorization(
+                UUID.nameUUIDFromBytes(("cancel:" + order.orderId()).getBytes()),
+                WORKSPACE,
+                ACTOR,
+                order.orderId(),
+                order.provider(),
+                order.environment(),
+                NOW.plusSeconds(60));
     }
 }

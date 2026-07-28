@@ -551,6 +551,76 @@ state-only PR，也不開啟 B3。
 }
 ```
 
+#### Integration final remediation（2026-07-28）
+
+Integration 對 PR #1 head `cb95d6f3ee281fdf7b29bc4565f55e5ce3645218` 的三路 native
+re-review 已收斂：conflicting replay semantic digest、lease fencing、terminal authorization／
+full equality、scope／history、V84／V88 blobs、claims receipt 與 GitHub mergeability 均 PASS；
+唯一剩餘 blocker 是 fake cancel adapter 未把 request 綁回目前 provider instance。
+
+Booking 以 `booking-b2-final-review-20260728-v84-r2` 原子取得 Testcontainers capacity、V84
+publication guard 與 source，且只修改 fake provider 與其測試。新增 provider misroute 與
+environment misroute 兩個 zero-mutation 測試；紅測為 7 tests 中 2 failure，兩者實際都錯誤回傳
+`SUCCEEDED`。修正後 cancel 在查詢 replay 或送出前驗證 order provider 必須等於目前 adapter
+instance，且 environment 必須為 `FAKE`；不符即回傳 `provider-boundary-mismatch`，不洩漏 order、
+不覆寫 replay cache，也不增加 external mutation count。
+
+實際 gate：
+
+- Fake provider red-first：exit 1，7 tests、2 failure、0 error、0 skipped；失敗案例正好為
+  provider misroute 與 environment misroute。
+- Fake provider green：exit 0，7 tests、0 failure、0 error、0 skipped，28.2 秒。
+- Booking scoped Spotless：`-DspotlessFiles=.*booking.*[.]java spotless:check`，exit 0，
+  0 tests、0 skipped，4.4 秒。
+- B0–B2 focused/security-neighbor：`OfferSnapshotTest,PurchaseAuthorizationTest,`
+  `CancellationAuthorizationTest,BookingPlanTest,FakeBookingProviderTest,`
+  `BookingDurableExecutionIntegrationTest,DatabaseAccessSafetyArchitectureTest,`
+  `CalendarSharedAdoptionMigrationTest,CalendarRlsIntegrationTest`，exit 0，37 tests、
+  0 failure、0 error、0 skipped，70.1 秒。
+- Root full regression：`scripts/mvn-safe.ps1 -Dspotless.check.skip=true test`，exit 0，
+  1,558 tests、0 failure、0 error、18 skipped，343.8 秒。
+
+External environment 維持 `FAKE`／`LOCAL_DB_ONLY`；provider、sandbox／live、Playwright、
+hosted checkout 與外部 mutation 仍為 0。V84、V88 與 Calendar 檔案均未修改。此 PASS 只允許
+刷新同一 draft PR head 並要求 Integration 最終複核；不得 mark ready／merge、不得建立
+state-only handoff、不得開始 B3。
+
+```json
+{
+  "eventId": "BOOKING-B2-INTEGRATION-FINAL-REMEDIATION",
+  "phase": "B2",
+  "status": "PASS_AWAITING_INTEGRATION_FINAL_REVIEW",
+  "reviewedHead": "cb95d6f3ee281fdf7b29bc4565f55e5ce3645218",
+  "migration": {
+    "booking": "V84",
+    "modified": false,
+    "calendarV88ModifiedByBooking": false
+  },
+  "tests": {
+    "focused": {
+      "exitCode": 0,
+      "tests": 37,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 70.1
+    },
+    "fullRegression": {
+      "exitCode": 0,
+      "tests": 1558,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 18,
+      "durationSeconds": 343.8
+    }
+  },
+  "externalEnvironment": "FAKE_LOCAL_DB_ONLY",
+  "externalMutationCount": 0,
+  "checkpointB": "BLOCKED_UNTIL_PRODUCT_AND_STATE_ONLY_MERGED",
+  "desktopStart": "BLOCKED"
+}
+```
+
 ### B3：Availability orchestration（分三個獨立 gate）
 
 #### B3-Core：純 Booking transient core

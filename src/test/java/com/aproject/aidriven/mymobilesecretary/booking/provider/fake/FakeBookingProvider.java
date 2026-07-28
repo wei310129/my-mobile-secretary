@@ -122,6 +122,10 @@ final class FakeBookingProvider implements BookingProvider {
     @Override
     public ProviderMutationResult cancel(BookingCancellationRequest request) {
         String digest = cancellationDigest(request);
+        if (!provider.equals(request.order().provider())
+                || request.order().environment() != ProviderEnvironment.FAKE) {
+            return ProviderMutationResult.failed("provider-boundary-mismatch");
+        }
         ProviderMutationResult replay = replayOrConflict(request.operationId(), digest);
         if (replay != null) {
             return replay;

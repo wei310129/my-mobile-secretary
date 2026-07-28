@@ -75,18 +75,20 @@ B2／V84，也不得以筆電工作樹的檔名或摘要猜測未提交內容。
 | C：桌電啟動 | 桌電 | 從 B 的 `origin/main` SHA 建立 `desktop/booking-b3-core` | read-only preflight 全部通過才可寫檔 |
 | S：Schema handoff | 筆電 | Calendar Wheel 10 完成後，針對 B3-Durable 發布一次性 schema token | 明示 owner、base SHA、當時 latest migration 與允許 scope |
 
-在 Checkpoint B 尚未發布前，下列 machine-readable 狀態是唯一解讀：
+Checkpoint B 產品 PR #1 已合併為
+`58e402944f612fd0fbb11d203d93114af1cbdebd`；下列 machine-readable 狀態是唯一解讀：
 
 ```json
 {
   "desktopStart": {
-    "status": "BLOCKED_PENDING_PUBLISHED_HANDOFF",
+    "status": "READY",
     "requiredCheckpoint": "B",
-    "baseSha": null,
+    "baseSha": "58e402944f612fd0fbb11d203d93114af1cbdebd",
     "bookingPhase": "B2",
-    "actualFlywayLatest": "V84",
-    "allowedAction": "READ_ONLY_PREFLIGHT",
-    "forbiddenAction": "PRODUCT_OR_SCHEMA_MUTATION"
+    "bookingMigration": "V84",
+    "actualFlywayLatest": "V88",
+    "allowedAction": "CREATE_DESKTOP_BOOKING_B3_CORE_FROM_BASE_SHA",
+    "forbiddenAction": "B3_DURABLE_OR_B4_OR_LATER"
   }
 }
 ```

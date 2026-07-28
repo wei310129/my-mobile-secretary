@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "ownerLane": "laptop",
-  "updatedOn": "2026-07-26",
+  "updatedOn": "2026-07-28",
   "humanAvailability": {
     "mode": "UNSPECIFIED",
     "timezone": "Asia/Taipei",
@@ -14,9 +14,8 @@
       "publishedSha": null
     },
     "TR-DESKTOP-B3-START": {
-      "status": "BLOCKED",
-      "publishedSha": null,
-      "reason": "Booking B2 and V84 have PASS evidence in the laptop worktree but no Git-retrievable handoff SHA."
+      "status": "READY",
+      "publishedSha": "58e402944f612fd0fbb11d203d93114af1cbdebd"
     },
     "TR-CALENDAR-W10-MERGED": {
       "status": "PENDING",

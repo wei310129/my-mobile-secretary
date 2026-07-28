@@ -17,6 +17,7 @@ import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.ArrayList;
 import java.util.Currency;
 import java.util.List;
@@ -254,12 +255,14 @@ public class BookingExecutionStore {
                     dispatched_at = ?, updated_at = ?
                 WHERE id = ? AND claim_token = ?
                   AND dispatch_state = 'CLAIMED'
+                  AND lease_until > ?
                   AND workspace_id = ? AND created_by_user_id = ?
                 """,
                 Timestamp.from(now),
                 Timestamp.from(now),
                 attemptId,
                 claimToken,
+                Timestamp.from(now),
                 owner.workspaceId(),
                 owner.actorId());
         if (updated != 1) {
@@ -286,12 +289,23 @@ public class BookingExecutionStore {
         WorkspaceContext owner = owner();
         ExistingAttempt attempt = findAttemptByIdForUpdate(owner, attemptId)
                 .orElseThrow(() -> new IllegalStateException("attempt not found"));
-        if (attempt.dispatchState().equals("SETTLED")
-                && order.orderId().equals(attempt.orderId())) {
+        if (attempt.dispatchState().equals("SETTLED")) {
+            if (!claimToken.equals(attempt.claimToken())
+                    || !order.orderId().equals(attempt.orderId())) {
+                throw new IllegalStateException("settled provider result conflicts with attempt");
+            }
+            assertOrderMatchesAuthorization(attempt.planId(), order, owner);
+            StoredOrder stored = findStoredOrderForUpdate(owner, order.orderId())
+                    .orElseThrow(() -> new IllegalStateException("settled order not found"));
+            if (!stored.planId().equals(attempt.planId())
+                    || !sameOrder(stored.order(), order)) {
+                throw new IllegalStateException("settled provider result conflicts with durable order");
+            }
             return;
         }
         if (!attempt.dispatchState().equals("DISPATCHED")
-                || !claimToken.equals(attempt.claimToken())) {
+                || !claimToken.equals(attempt.claimToken())
+                || !attempt.leaseUntil().isAfter(clock.instant())) {
             throw new IllegalStateException("provider result does not own dispatched attempt");
         }
         settleSuccess(attempt, order, owner);
@@ -320,7 +334,8 @@ public class BookingExecutionStore {
         ExistingAttempt attempt = findAttemptByIdForUpdate(owner, attemptId)
                 .orElseThrow(() -> new IllegalStateException("attempt not found"));
         if (!attempt.dispatchState().equals("DISPATCHED")
-                || !claimToken.equals(attempt.claimToken())) {
+                || !claimToken.equals(attempt.claimToken())
+                || !attempt.leaseUntil().isAfter(clock.instant())) {
             throw new IllegalStateException("provider result does not own dispatched attempt");
         }
         Instant now = clock.instant();
@@ -587,18 +602,21 @@ public class BookingExecutionStore {
     @Transactional
     public boolean acknowledgeTerminal(UUID outboxId, UUID claimToken) {
         WorkspaceContext owner = owner();
+        Instant now = clock.instant();
         return jdbc.update(
                         """
                         UPDATE booking_execution_outbox
                         SET status = 'ACKNOWLEDGED', acknowledged_at = ?,
                             claim_token = NULL, claim_until = NULL, updated_at = ?
                         WHERE id = ? AND claim_token = ? AND status = 'CLAIMED'
+                          AND claim_until > ?
                           AND workspace_id = ? AND created_by_user_id = ?
                         """,
-                        Timestamp.from(clock.instant()),
-                        Timestamp.from(clock.instant()),
+                        Timestamp.from(now),
+                        Timestamp.from(now),
                         outboxId,
                         claimToken,
+                        Timestamp.from(now),
                         owner.workspaceId(),
                         owner.actorId())
                 == 1;
@@ -660,6 +678,7 @@ public class BookingExecutionStore {
             ExternalBookingOrder order,
             WorkspaceContext owner) {
         Instant now = clock.instant();
+        assertOrderMatchesAuthorization(attempt.planId(), order, owner);
         jdbc.update(
                 """
                 INSERT INTO external_booking_order (
@@ -680,7 +699,13 @@ public class BookingExecutionStore {
                 Timestamp.from(now),
                 owner.workspaceId(),
                 owner.actorId());
-        jdbc.update(
+        StoredOrder stored = findStoredOrderForUpdate(owner, order.orderId())
+                .orElseThrow(() -> new IllegalStateException("provider order was not persisted"));
+        if (!stored.planId().equals(attempt.planId())
+                || !sameOrder(stored.order(), order)) {
+            throw new IllegalStateException("provider order conflicts with durable terminal result");
+        }
+        int settled = jdbc.update(
                 """
                 UPDATE booking_attempt
                 SET dispatch_state = 'SETTLED', outcome_status = 'SUCCEEDED',
@@ -693,6 +718,9 @@ public class BookingExecutionStore {
                 attempt.attemptId(),
                 owner.workspaceId(),
                 owner.actorId());
+        if (settled != 1) {
+            throw new IllegalStateException("attempt could not be settled");
+        }
         Integer totalItems = jdbc.queryForObject(
                 """
                 SELECT total_items
@@ -824,6 +852,68 @@ public class BookingExecutionStore {
                 .findFirst();
     }
 
+    private Optional<StoredOrder> findStoredOrderForUpdate(
+            WorkspaceContext owner, UUID orderId) {
+        return jdbc.query(
+                        """
+                        SELECT *
+                        FROM external_booking_order
+                        WHERE id = ? AND workspace_id = ? AND created_by_user_id = ?
+                        FOR UPDATE
+                        """,
+                        (result, row) -> new StoredOrder(
+                                result.getObject("plan_id", UUID.class),
+                                mapOrder(result)),
+                        orderId,
+                        owner.workspaceId(),
+                        owner.actorId())
+                .stream()
+                .findFirst();
+    }
+
+    private void assertOrderMatchesAuthorization(
+            UUID planId, ExternalBookingOrder order, WorkspaceContext owner) {
+        List<OrderBoundary> boundaries = jdbc.query(
+                """
+                SELECT auth.provider AS authorization_provider,
+                       auth.environment AS authorization_environment,
+                       offer.provider AS offer_provider,
+                       offer.environment AS offer_environment
+                FROM booking_plan plan
+                JOIN booking_purchase_authorization auth
+                  ON auth.id = plan.authorization_id
+                 AND auth.workspace_id = plan.workspace_id
+                 AND auth.created_by_user_id = plan.created_by_user_id
+                JOIN booking_offer_snapshot offer
+                  ON offer.id = auth.offer_id
+                 AND offer.workspace_id = auth.workspace_id
+                 AND offer.created_by_user_id = auth.created_by_user_id
+                WHERE plan.id = ?
+                  AND plan.workspace_id = ? AND plan.created_by_user_id = ?
+                FOR UPDATE OF plan, auth, offer
+                """,
+                (result, row) -> new OrderBoundary(
+                        result.getString("authorization_provider"),
+                        ProviderEnvironment.valueOf(
+                                result.getString("authorization_environment")),
+                        result.getString("offer_provider"),
+                        ProviderEnvironment.valueOf(result.getString("offer_environment"))),
+                planId,
+                owner.workspaceId(),
+                owner.actorId());
+        if (boundaries.size() != 1) {
+            throw new IllegalStateException("plan authorization boundary not found");
+        }
+        OrderBoundary boundary = boundaries.getFirst();
+        if (!boundary.authorizationProvider().equals(order.provider())
+                || boundary.authorizationEnvironment() != order.environment()
+                || !boundary.offerProvider().equals(order.provider())
+                || boundary.offerEnvironment() != order.environment()) {
+            throw new IllegalStateException(
+                    "provider result crosses authorization provider boundary");
+        }
+    }
+
     private static OfferSnapshot mapOffer(ResultSet result) throws SQLException {
         return new OfferSnapshot(
                 result.getObject("id", UUID.class),
@@ -922,6 +1012,17 @@ public class BookingExecutionStore {
                 && left.expiresAt().equals(right.expiresAt())
                 && left.confirmationMode() == right.confirmationMode()
                 && left.substitutionStrength() == right.substitutionStrength();
+    }
+
+    private static boolean sameOrder(
+            ExternalBookingOrder left, ExternalBookingOrder right) {
+        return left.orderId().equals(right.orderId())
+                && left.provider().equals(right.provider())
+                && left.environment() == right.environment()
+                && left.providerReference().equals(right.providerReference())
+                && left.status() == right.status()
+                && left.observedAt().truncatedTo(ChronoUnit.MICROS)
+                        .equals(right.observedAt().truncatedTo(ChronoUnit.MICROS));
     }
 
     private static Set<UUID> decodeUuids(String encoded) {
@@ -1025,6 +1126,14 @@ public class BookingExecutionStore {
             UUID claimToken,
             Instant leaseUntil) {
     }
+
+    private record StoredOrder(UUID planId, ExternalBookingOrder order) {}
+
+    private record OrderBoundary(
+            String authorizationProvider,
+            ProviderEnvironment authorizationEnvironment,
+            String offerProvider,
+            ProviderEnvironment offerEnvironment) {}
 
     private record PlanRow(
             UUID planId, int totalItems, BookingExecutionState state) {

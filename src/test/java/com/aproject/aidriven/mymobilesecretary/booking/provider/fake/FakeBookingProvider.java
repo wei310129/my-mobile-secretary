@@ -17,7 +17,10 @@ import com.aproject.aidriven.mymobilesecretary.booking.provider.spi.ProviderMuta
 import com.aproject.aidriven.mymobilesecretary.booking.provider.spi.QuoteRefreshRequest;
 import com.aproject.aidriven.mymobilesecretary.booking.provider.spi.ReconciliationRequest;
 import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
+import java.util.HexFormat;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -30,7 +33,7 @@ final class FakeBookingProvider implements BookingProvider {
     private final Clock clock;
     private final Map<UUID, OfferSnapshot> offers = new LinkedHashMap<>();
     private final Map<String, FakeMutationBehavior> scripts = new LinkedHashMap<>();
-    private final Map<String, ProviderMutationResult> replayResults = new LinkedHashMap<>();
+    private final Map<String, ReplayEntry> replayResults = new LinkedHashMap<>();
     private final Map<String, ExternalBookingOrder> unknownEffects = new LinkedHashMap<>();
     private final Map<UUID, ExternalBookingOrder> orders = new LinkedHashMap<>();
     private int externalMutationCount;
@@ -118,10 +121,47 @@ final class FakeBookingProvider implements BookingProvider {
 
     @Override
     public ProviderMutationResult cancel(BookingCancellationRequest request) {
-        return mutate(
-                request.command(),
-                ProviderCapability.CANCEL,
-                ExternalBookingOrderStatus.CANCELLED);
+        String digest = cancellationDigest(request);
+        ProviderMutationResult replay = replayOrConflict(request.operationId(), digest);
+        if (replay != null) {
+            return replay;
+        }
+        try {
+            request.authorization()
+                    .assertAllows(
+                            request.order(),
+                            request.workspaceId(),
+                            request.actorId(),
+                            clock);
+        } catch (AuthorizationViolation violation) {
+            return cacheFailure(
+                    request.operationId(), digest, "authorization-rejected");
+        }
+        FakeMutationBehavior behavior =
+                scripts.getOrDefault(request.operationId(), FakeMutationBehavior.SUCCESS);
+        if (behavior == FakeMutationBehavior.FAIL_BEFORE_SEND) {
+            return cacheFailure(
+                    request.operationId(), digest, "provider-rejected-before-send");
+        }
+
+        externalMutationCount++;
+        ExternalBookingOrder order = new ExternalBookingOrder(
+                request.order().orderId(),
+                request.order().provider(),
+                request.order().environment(),
+                request.order().providerReference(),
+                ExternalBookingOrderStatus.CANCELLED,
+                clock.instant());
+        if (behavior == FakeMutationBehavior.UNKNOWN_AFTER_SEND) {
+            unknownEffects.put(request.operationId(), order);
+            ProviderMutationResult unknown = ProviderMutationResult.needsReconciliation();
+            replayResults.put(request.operationId(), new ReplayEntry(digest, unknown));
+            return unknown;
+        }
+        orders.put(order.orderId(), order);
+        ProviderMutationResult succeeded = ProviderMutationResult.succeeded(order);
+        replayResults.put(request.operationId(), new ReplayEntry(digest, succeeded));
+        return succeeded;
     }
 
     @Override
@@ -132,13 +172,16 @@ final class FakeBookingProvider implements BookingProvider {
         }
         var effect = unknownEffects.remove(request.operationId());
         if (effect == null) {
-            return replayResults.getOrDefault(
-                    request.operationId(),
-                    ProviderMutationResult.failed("no-unknown-operation"));
+            ReplayEntry replay = replayResults.get(request.operationId());
+            return replay == null
+                    ? ProviderMutationResult.failed("no-unknown-operation")
+                    : replay.result();
         }
         orders.putIfAbsent(effect.orderId(), effect);
         var reconciled = ProviderMutationResult.succeeded(effect);
-        replayResults.put(request.operationId(), reconciled);
+        replayResults.computeIfPresent(
+                request.operationId(),
+                (operationId, previous) -> new ReplayEntry(previous.digest(), reconciled));
         return reconciled;
     }
 
@@ -146,12 +189,14 @@ final class FakeBookingProvider implements BookingProvider {
             ProviderMutationCommand command,
             ProviderCapability capability,
             ExternalBookingOrderStatus successStatus) {
-        var replay = replayResults.get(command.operationId());
+        String digest = mutationDigest(command, capability);
+        ProviderMutationResult replay = replayOrConflict(command.operationId(), digest);
         if (replay != null) {
             return replay;
         }
         if (!command.offer().capabilities().contains(capability)) {
-            return cacheFailure(command.operationId(), "provider-capability-unavailable");
+            return cacheFailure(
+                    command.operationId(), digest, "provider-capability-unavailable");
         }
         try {
             command.authorization()
@@ -162,13 +207,14 @@ final class FakeBookingProvider implements BookingProvider {
                             command.actorId(),
                             clock);
         } catch (AuthorizationViolation violation) {
-            return cacheFailure(command.operationId(), "authorization-rejected");
+            return cacheFailure(command.operationId(), digest, "authorization-rejected");
         }
 
         var behavior =
                 scripts.getOrDefault(command.operationId(), FakeMutationBehavior.SUCCESS);
         if (behavior == FakeMutationBehavior.FAIL_BEFORE_SEND) {
-            return cacheFailure(command.operationId(), "provider-rejected-before-send");
+            return cacheFailure(
+                    command.operationId(), digest, "provider-rejected-before-send");
         }
 
         externalMutationCount++;
@@ -176,20 +222,115 @@ final class FakeBookingProvider implements BookingProvider {
         if (behavior == FakeMutationBehavior.UNKNOWN_AFTER_SEND) {
             unknownEffects.put(command.operationId(), order);
             var unknown = ProviderMutationResult.needsReconciliation();
-            replayResults.put(command.operationId(), unknown);
+            replayResults.put(command.operationId(), new ReplayEntry(digest, unknown));
             return unknown;
         }
 
         orders.put(order.orderId(), order);
         var succeeded = ProviderMutationResult.succeeded(order);
-        replayResults.put(command.operationId(), succeeded);
+        replayResults.put(command.operationId(), new ReplayEntry(digest, succeeded));
         return succeeded;
     }
 
-    private ProviderMutationResult cacheFailure(String operationId, String publicReason) {
+    private ProviderMutationResult replayOrConflict(String operationId, String digest) {
+        ReplayEntry replay = replayResults.get(operationId);
+        if (replay == null) {
+            return null;
+        }
+        return replay.digest().equals(digest)
+                ? replay.result()
+                : ProviderMutationResult.failed("idempotency-conflict");
+    }
+
+    private ProviderMutationResult cacheFailure(
+            String operationId, String digest, String publicReason) {
         var failed = ProviderMutationResult.failed(publicReason);
-        replayResults.put(operationId, failed);
+        replayResults.put(operationId, new ReplayEntry(digest, failed));
         return failed;
+    }
+
+    private static String mutationDigest(
+            ProviderMutationCommand command, ProviderCapability capability) {
+        var offer = command.offer();
+        var authorization = command.authorization();
+        return sha256(
+                "mutation",
+                capability.name(),
+                command.workspaceId().toString(),
+                command.actorId().toString(),
+                offer.offerId().toString(),
+                offer.provider(),
+                offer.environment().name(),
+                offer.inventoryIdentity(),
+                offer.retrievedAt().toString(),
+                offer.expiresAt().toString(),
+                offer.totalPrice().stripTrailingZeros().toPlainString(),
+                offer.currency().getCurrencyCode(),
+                sorted(offer.travellerIds()),
+                offer.termsFingerprint(),
+                Boolean.toString(offer.nonRefundable()),
+                Boolean.toString(offer.available()),
+                sorted(offer.capabilities()),
+                authorization.authorizationId().toString(),
+                authorization.workspaceId().toString(),
+                authorization.actorId().toString(),
+                sorted(authorization.travellerIds()),
+                authorization.offerId().toString(),
+                authorization.provider(),
+                authorization.environment().name(),
+                authorization.maxTotalPrice().stripTrailingZeros().toPlainString(),
+                authorization.currency().getCurrencyCode(),
+                authorization.termsFingerprint(),
+                Boolean.toString(authorization.nonRefundableAccepted()),
+                authorization.expiresAt().toString(),
+                authorization.confirmationMode().name(),
+                authorization.substitutionStrength().name());
+    }
+
+    private static String cancellationDigest(BookingCancellationRequest request) {
+        var order = request.order();
+        var authorization = request.authorization();
+        return sha256(
+                "cancellation",
+                request.workspaceId().toString(),
+                request.actorId().toString(),
+                order.orderId().toString(),
+                order.provider(),
+                order.environment().name(),
+                order.providerReference(),
+                order.status().name(),
+                order.observedAt().toString(),
+                authorization.authorizationId().toString(),
+                authorization.workspaceId().toString(),
+                authorization.actorId().toString(),
+                authorization.orderId().toString(),
+                authorization.provider(),
+                authorization.environment().name(),
+                authorization.expiresAt().toString());
+    }
+
+    private static String sorted(Iterable<?> values) {
+        var sorted = new java.util.ArrayList<String>();
+        values.forEach(value -> sorted.add(value.toString()));
+        sorted.sort(String::compareTo);
+        return String.join(",", sorted);
+    }
+
+    private static String sha256(String... components) {
+        try {
+            MessageDigest digest = MessageDigest.getInstance("SHA-256");
+            for (String component : components) {
+                byte[] bytes = component.getBytes(StandardCharsets.UTF_8);
+                digest.update((byte) (bytes.length >>> 24));
+                digest.update((byte) (bytes.length >>> 16));
+                digest.update((byte) (bytes.length >>> 8));
+                digest.update((byte) bytes.length);
+                digest.update(bytes);
+            }
+            return HexFormat.of().formatHex(digest.digest());
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
+        }
     }
 
     private ExternalBookingOrder orderFor(
@@ -213,4 +354,6 @@ final class FakeBookingProvider implements BookingProvider {
             throw new IllegalArgumentException("offer provider boundary mismatch");
         }
     }
+
+    private record ReplayEntry(String digest, ProviderMutationResult result) {}
 }

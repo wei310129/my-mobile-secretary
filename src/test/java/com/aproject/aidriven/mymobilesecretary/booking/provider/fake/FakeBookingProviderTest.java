@@ -2,11 +2,15 @@ package com.aproject.aidriven.mymobilesecretary.booking.provider.fake;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aproject.aidriven.mymobilesecretary.booking.domain.CancellationAuthorization;
+import com.aproject.aidriven.mymobilesecretary.booking.domain.ExternalBookingOrder;
+import com.aproject.aidriven.mymobilesecretary.booking.domain.ExternalBookingOrderStatus;
 import com.aproject.aidriven.mymobilesecretary.booking.domain.OfferSnapshot;
 import com.aproject.aidriven.mymobilesecretary.booking.domain.ProviderCapability;
 import com.aproject.aidriven.mymobilesecretary.booking.domain.ProviderEnvironment;
 import com.aproject.aidriven.mymobilesecretary.booking.domain.PurchaseAuthorization;
 import com.aproject.aidriven.mymobilesecretary.booking.provider.spi.AvailabilitySearchRequest;
+import com.aproject.aidriven.mymobilesecretary.booking.provider.spi.BookingCancellationRequest;
 import com.aproject.aidriven.mymobilesecretary.booking.provider.spi.ProviderMutationCommand;
 import com.aproject.aidriven.mymobilesecretary.booking.provider.spi.ProviderOperationOutcome;
 import com.aproject.aidriven.mymobilesecretary.booking.provider.spi.QuoteRefreshRequest;
@@ -87,10 +91,108 @@ class FakeBookingProviderTest {
         assertThat(provider.externalMutationCount()).isZero();
     }
 
+    @Test
+    void conflictingReplayFailsClosedAcrossActorWorkspaceAndOfferWithoutLeakingResult() {
+        var provider = new FakeBookingProvider("fake-air", CLOCK);
+        var originalOffer = offer(true, "100.00", "terms-v1");
+        provider.registerOffer(originalOffer);
+        var original = new ProviderMutationCommand(
+                "book-conflict",
+                originalOffer,
+                authorization(originalOffer),
+                WORKSPACE,
+                ACTOR);
+
+        var first = provider.book(original);
+
+        UUID otherActor = UUID.fromString("00000000-0000-0000-0000-000000000303");
+        UUID otherWorkspace = UUID.fromString("00000000-0000-0000-0000-000000000304");
+        var actorConflict = provider.book(new ProviderMutationCommand(
+                "book-conflict",
+                originalOffer,
+                authorization(originalOffer, WORKSPACE, otherActor),
+                WORKSPACE,
+                otherActor));
+        var workspaceConflict = provider.book(new ProviderMutationCommand(
+                "book-conflict",
+                originalOffer,
+                authorization(originalOffer, otherWorkspace, ACTOR),
+                otherWorkspace,
+                ACTOR));
+        var otherOffer = offer(
+                UUID.fromString("00000000-0000-0000-0000-000000000202"),
+                true,
+                "100.00",
+                "terms-v1");
+        provider.registerOffer(otherOffer);
+        var offerConflict = provider.book(new ProviderMutationCommand(
+                "book-conflict",
+                otherOffer,
+                authorization(otherOffer),
+                WORKSPACE,
+                ACTOR));
+
+        assertThat(first.outcome()).isEqualTo(ProviderOperationOutcome.SUCCEEDED);
+        assertThat(java.util.List.of(actorConflict, workspaceConflict, offerConflict))
+                .allSatisfy(result -> {
+                    assertThat(result.outcome()).isEqualTo(ProviderOperationOutcome.FAILED);
+                    assertThat(result.publicReason()).isEqualTo("idempotency-conflict");
+                    assertThat(result.order()).isEmpty();
+                });
+        assertThat(provider.externalMutationCount()).isEqualTo(1);
+    }
+
+    @Test
+    void cancellationRequiresUnexpiredGrantBoundToExactOrderAndOwner() {
+        var provider = new FakeBookingProvider("fake-air", CLOCK);
+        var target = order(
+                UUID.fromString("00000000-0000-0000-0000-000000000501"),
+                ExternalBookingOrderStatus.CONFIRMED);
+        var otherOrder = order(
+                UUID.fromString("00000000-0000-0000-0000-000000000502"),
+                ExternalBookingOrderStatus.CONFIRMED);
+        var grant = new CancellationAuthorization(
+                UUID.fromString("00000000-0000-0000-0000-000000000601"),
+                WORKSPACE,
+                ACTOR,
+                target.orderId(),
+                "fake-air",
+                ProviderEnvironment.FAKE,
+                NOW.plusSeconds(60));
+
+        var mismatch = provider.cancel(new BookingCancellationRequest(
+                otherOrder, grant, "cancel-target", WORKSPACE, ACTOR));
+
+        assertThat(mismatch.outcome()).isEqualTo(ProviderOperationOutcome.FAILED);
+        assertThat(mismatch.publicReason()).isEqualTo("authorization-rejected");
+        assertThat(mismatch.order()).isEmpty();
+        assertThat(provider.externalMutationCount()).isZero();
+
+        var cancelled = provider.cancel(new BookingCancellationRequest(
+                target, grant, "cancel-authorized", WORKSPACE, ACTOR));
+
+        assertThat(cancelled.outcome()).isEqualTo(ProviderOperationOutcome.SUCCEEDED);
+        assertThat(cancelled.order()).hasValueSatisfying(order -> {
+            assertThat(order.orderId()).isEqualTo(target.orderId());
+            assertThat(order.providerReference()).isEqualTo(target.providerReference());
+            assertThat(order.status()).isEqualTo(ExternalBookingOrderStatus.CANCELLED);
+        });
+        assertThat(provider.externalMutationCount()).isEqualTo(1);
+    }
+
     private static OfferSnapshot offer(
             boolean available, String amount, String termsFingerprint) {
-        return new OfferSnapshot(
+        return offer(
                 UUID.fromString("00000000-0000-0000-0000-000000000201"),
+                available,
+                amount,
+                termsFingerprint);
+    }
+
+    private static OfferSnapshot offer(
+            UUID offerId, boolean available, String amount, String termsFingerprint) {
+        return new OfferSnapshot(
+                offerId,
                 "fake-air",
                 ProviderEnvironment.FAKE,
                 "inventory-1",
@@ -111,10 +213,16 @@ class FakeBookingProviderTest {
     }
 
     private static PurchaseAuthorization authorization(OfferSnapshot offer) {
+        return authorization(offer, WORKSPACE, ACTOR);
+    }
+
+    private static PurchaseAuthorization authorization(
+            OfferSnapshot offer, UUID workspaceId, UUID actorId) {
         return new PurchaseAuthorization(
-                UUID.fromString("00000000-0000-0000-0000-000000000401"),
-                WORKSPACE,
-                ACTOR,
+                UUID.nameUUIDFromBytes(
+                        (offer.offerId() + ":" + workspaceId + ":" + actorId).getBytes()),
+                workspaceId,
+                actorId,
                 Set.of(TRAVELLER),
                 offer.offerId(),
                 "fake-air",
@@ -124,5 +232,16 @@ class FakeBookingProviderTest {
                 "terms-v1",
                 false,
                 NOW.plusSeconds(120));
+    }
+
+    private static ExternalBookingOrder order(
+            UUID orderId, ExternalBookingOrderStatus status) {
+        return new ExternalBookingOrder(
+                orderId,
+                "fake-air",
+                ProviderEnvironment.FAKE,
+                "fake-" + orderId.toString().substring(0, 8),
+                status,
+                NOW);
     }
 }

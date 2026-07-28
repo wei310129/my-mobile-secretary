@@ -162,6 +162,50 @@ class BookingDurableExecutionIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    void expiredLeaseCannotDispatchBeforeOrAfterAnotherClaimReclaimsTheAttempt() {
+        Fixture fixture = fixture("expired-dispatch");
+        BookingExecutionStore.OperationClaim expired = inContext(fixture.context(), () -> {
+            store.saveOffer(fixture.offer());
+            store.saveAuthorization(fixture.authorization());
+            store.createAuthorizedPlan(
+                    fixture.planId(), fixture.authorization().authorizationId(), 1);
+            return store.claimOperation(
+                    fixture.planId(),
+                    "expired-dispatch-operation",
+                    ProviderCapability.BOOK,
+                    Duration.ofMinutes(2));
+        });
+        jdbc.update(
+                "UPDATE booking_attempt SET lease_until = ? WHERE id = ?",
+                Timestamp.from(Instant.EPOCH),
+                expired.attemptId());
+
+        assertThatThrownBy(() -> inContext(fixture.context(), () -> {
+                    store.markDispatched(expired.attemptId(), expired.claimToken());
+                    return null;
+                }))
+                .hasRootCauseInstanceOf(IllegalStateException.class);
+
+        BookingExecutionStore.OperationClaim reclaimed = inContext(
+                fixture.context(),
+                () -> store.claimOperation(
+                        fixture.planId(),
+                        "expired-dispatch-operation",
+                        ProviderCapability.BOOK,
+                        Duration.ofMinutes(2)));
+        assertThat(reclaimed.claimToken()).isNotEqualTo(expired.claimToken());
+        assertThatThrownBy(() -> inContext(fixture.context(), () -> {
+                    store.markDispatched(expired.attemptId(), expired.claimToken());
+                    return null;
+                }))
+                .hasRootCauseInstanceOf(IllegalStateException.class);
+        inContext(fixture.context(), () -> {
+            store.markDispatched(reclaimed.attemptId(), reclaimed.claimToken());
+            return null;
+        });
+    }
+
+    @Test
     void webhookInboxRejectsConflictingReplayAndTerminalOutboxUsesFencedAck() {
         Fixture fixture = fixture("inbox");
         inContext(fixture.context(), () -> {
@@ -205,6 +249,36 @@ class BookingDurableExecutionIntegrationTest extends IntegrationTestBase {
             assertThat(store.acknowledgeTerminal(claim.outboxId(), UUID.randomUUID())).isFalse();
             assertThat(store.acknowledgeTerminal(claim.outboxId(), claim.claimToken())).isTrue();
             assertThat(store.claimTerminalResults(1, Duration.ofMinutes(1))).isEmpty();
+            return null;
+        });
+    }
+
+    @Test
+    void expiredTerminalClaimCannotAcknowledgeBeforeOrAfterReclaim() {
+        Fixture fixture = fixture("expired-terminal");
+        BookingExecutionStore.TerminalClaim expired = inContext(fixture.context(), () -> {
+            complete(fixture);
+            return store.claimTerminalResults(1, Duration.ofMinutes(1)).getFirst();
+        });
+        jdbc.update(
+                "UPDATE booking_execution_outbox SET claim_until = ? WHERE id = ?",
+                Timestamp.from(Instant.EPOCH),
+                expired.outboxId());
+
+        inContext(fixture.context(), () -> {
+            assertThat(store.acknowledgeTerminal(expired.outboxId(), expired.claimToken()))
+                    .isFalse();
+            return null;
+        });
+        BookingExecutionStore.TerminalClaim reclaimed = inContext(
+                fixture.context(),
+                () -> store.claimTerminalResults(1, Duration.ofMinutes(1)).getFirst());
+        assertThat(reclaimed.claimToken()).isNotEqualTo(expired.claimToken());
+        inContext(fixture.context(), () -> {
+            assertThat(store.acknowledgeTerminal(expired.outboxId(), expired.claimToken()))
+                    .isFalse();
+            assertThat(store.acknowledgeTerminal(reclaimed.outboxId(), reclaimed.claimToken()))
+                    .isTrue();
             return null;
         });
     }
@@ -391,6 +465,91 @@ class BookingDurableExecutionIntegrationTest extends IntegrationTestBase {
         });
         assertThat(jdbc.queryForObject(
                         "SELECT count(*) FROM booking_execution_outbox WHERE plan_id = ?",
+                        Long.class,
+                        fixture.planId()))
+                .isEqualTo(1L);
+    }
+
+    @Test
+    void terminalSuccessMustMatchAuthorizedProviderEnvironmentAndFullOrderSemantics() {
+        Fixture fixture = fixture("terminal-boundary");
+        BookingExecutionStore.OperationClaim claim = inContext(fixture.context(), () -> {
+            store.saveOffer(fixture.offer());
+            store.saveAuthorization(fixture.authorization());
+            store.createAuthorizedPlan(
+                    fixture.planId(), fixture.authorization().authorizationId(), 1);
+            BookingExecutionStore.OperationClaim claimed = store.claimOperation(
+                    fixture.planId(),
+                    "terminal-boundary-operation",
+                    ProviderCapability.BOOK,
+                    Duration.ofMinutes(2));
+            store.markDispatched(claimed.attemptId(), claimed.claimToken());
+            return claimed;
+        });
+        ExternalBookingOrder wrongProvider = new ExternalBookingOrder(
+                fixture.order().orderId(),
+                "wrong-provider",
+                fixture.order().environment(),
+                fixture.order().providerReference(),
+                fixture.order().status(),
+                fixture.order().observedAt());
+        ExternalBookingOrder wrongEnvironment = new ExternalBookingOrder(
+                fixture.order().orderId(),
+                fixture.order().provider(),
+                ProviderEnvironment.LIVE,
+                fixture.order().providerReference(),
+                fixture.order().status(),
+                fixture.order().observedAt());
+
+        assertThatThrownBy(() -> inContext(fixture.context(), () -> {
+                    store.recordSuccess(claim.attemptId(), claim.claimToken(), wrongProvider);
+                    return null;
+                }))
+                .hasRootCauseInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> inContext(fixture.context(), () -> {
+                    store.recordSuccess(claim.attemptId(), claim.claimToken(), wrongEnvironment);
+                    return null;
+                }))
+                .hasRootCauseInstanceOf(IllegalStateException.class);
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM external_booking_order WHERE plan_id = ?",
+                        Long.class,
+                        fixture.planId()))
+                .isZero();
+
+        inContext(fixture.context(), () -> {
+            store.recordSuccess(claim.attemptId(), claim.claimToken(), fixture.order());
+            store.recordSuccess(claim.attemptId(), claim.claimToken(), fixture.order());
+            return null;
+        });
+        ExternalBookingOrder conflictingResult = new ExternalBookingOrder(
+                fixture.order().orderId(),
+                fixture.order().provider(),
+                fixture.order().environment(),
+                fixture.order().providerReference() + "-changed",
+                ExternalBookingOrderStatus.CANCELLED,
+                fixture.order().observedAt().plusSeconds(1));
+        ExternalBookingOrder wrongOrder = new ExternalBookingOrder(
+                UUID.randomUUID(),
+                fixture.order().provider(),
+                fixture.order().environment(),
+                fixture.order().providerReference(),
+                fixture.order().status(),
+                fixture.order().observedAt());
+
+        assertThatThrownBy(() -> inContext(fixture.context(), () -> {
+                    store.recordSuccess(
+                            claim.attemptId(), claim.claimToken(), conflictingResult);
+                    return null;
+                }))
+                .hasRootCauseInstanceOf(IllegalStateException.class);
+        assertThatThrownBy(() -> inContext(fixture.context(), () -> {
+                    store.recordSuccess(claim.attemptId(), claim.claimToken(), wrongOrder);
+                    return null;
+                }))
+                .hasRootCauseInstanceOf(IllegalStateException.class);
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM external_booking_order WHERE plan_id = ?",
                         Long.class,
                         fixture.planId()))
                 .isEqualTo(1L);

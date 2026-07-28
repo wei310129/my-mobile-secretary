@@ -473,6 +473,84 @@ Provider、sandbox、live、Playwright、hosted checkout、credential、真實�
 全部為 0。此證據只代表產品 commit 可進 PR review；產品 PR 與後續 state-only handoff 尚未合併
 前，`TR-DESKTOP-B3-START` 仍不得標成 READY。
 
+#### Integration review remediation（2026-07-28）
+
+Integration 對 PR #1 head `657119f226a0c6826e7d976f0434b2b8ad13af4b` 回覆
+`CHANGES_REQUIRED`。Calendar 先完成 W9-E，將 validated V88 與 22 個直接耦合檔提交為
+`7ab1407ec1e30d5b470bdb9774680a5ff9cb577b`；V88 的 HEAD／validated worktree blob 均為
+`300c58c0dca79f44497a7d7f72c62923d68f914c`。Calendar focused 19／19、
+security-neighbor 137／137、root 1,550／0／0／18 通過並釋放 source、V88、Git、Docker、
+Maven claims 後，Booking 才以 `booking-b2-review-20260728-v84-r1` 自行原子取得
+Testcontainers capacity、V84 publication guard 與 source；沒有 claim transfer。
+
+Booking 只修正 review 指定的四類 safety blocker，沒有修改 V84、V88 或 Calendar：
+
+- `CancellationAuthorization` 是獨立於 purchase authorization 的短效 grant，綁定
+  workspace、actor、provider、environment 與 exact order；到期當刻即拒絕。
+- fake provider 的 operation replay cache 綁定 SHA-256 command semantic digest；跨 actor、
+  workspace、offer 或 target 的相同 operation ID fail closed，不回傳舊 order，外部 mutation
+  count 不增加。取消成功保留原 order ID／provider reference，只改為 `CANCELLED`。
+- `markDispatched` 與 terminal ACK 在同一 SQL transition 同時驗 owner、token、state 與未過期
+  lease；過期前後及重新 claim 後的舊 token 均無法 transition。
+- durable success 先回查 plan → purchase authorization → offer 的 provider/environment
+  boundary；既存 order 必須與 plan、order ID、provider、environment、provider reference、
+  status、observed time 全語意一致，conflicting replay fail closed 且不新增 row。
+
+實際 gate：
+
+- Red-first focused：exit 1，停在 `testCompile`，唯一首要原因為尚無
+  `CancellationAuthorization`。
+- Booking scoped Spotless：`-DspotlessFiles=.*booking.*[.]java spotless:check`，exit 0。
+- B0–B2 focused/security-neighbor：
+  `OfferSnapshotTest,PurchaseAuthorizationTest,CancellationAuthorizationTest,BookingPlanTest,`
+  `FakeBookingProviderTest,BookingDurableExecutionIntegrationTest,`
+  `DatabaseAccessSafetyArchitectureTest,CalendarSharedAdoptionMigrationTest,`
+  `CalendarRlsIntegrationTest`，exit 0，35 tests、0 failure、0 error、0 skipped，89.1 秒。
+- Root full regression：`scripts/mvn-safe.ps1 -Dspotless.check.skip=true test`，exit 0，
+  1,556 tests、0 failure、0 error、18 skipped，361.3 秒。
+
+External environment 維持 `FAKE`／`LOCAL_DB_ONLY`；沒有 provider request、sandbox／live、
+Playwright、hosted checkout、credential、真實旅客／付款或外部 mutation。PR 仍為 draft；
+本段 PASS 只允許刷新產品 PR head 並要求 Integration re-review，不發布 Checkpoint B，不建立
+state-only PR，也不開啟 B3。
+
+```json
+{
+  "eventId": "BOOKING-B2-INTEGRATION-REVIEW-REMEDIATION",
+  "phase": "B2",
+  "status": "PASS_AWAITING_INTEGRATION_REREVIEW",
+  "reviewedHead": "657119f226a0c6826e7d976f0434b2b8ad13af4b",
+  "calendarHead": "7ab1407ec1e30d5b470bdb9774680a5ff9cb577b",
+  "migration": {
+    "booking": "V84",
+    "modified": false,
+    "calendarV88ModifiedByBooking": false
+  },
+  "tests": {
+    "focused": {
+      "exitCode": 0,
+      "tests": 35,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 89.1
+    },
+    "fullRegression": {
+      "exitCode": 0,
+      "tests": 1556,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 18,
+      "durationSeconds": 361.3
+    }
+  },
+  "externalEnvironment": "FAKE_LOCAL_DB_ONLY",
+  "externalMutationCount": 0,
+  "checkpointB": "BLOCKED_UNTIL_PRODUCT_AND_STATE_ONLY_MERGED",
+  "desktopStart": "BLOCKED"
+}
+```
+
 ### B3：Availability orchestration（分三個獨立 gate）
 
 #### B3-Core：純 Booking transient core

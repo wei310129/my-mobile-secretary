@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "ownerLane": "laptop",
+  "updatedOn": "2026-07-26",
+  "humanAvailability": {
+    "mode": "UNSPECIFIED",
+    "timezone": "Asia/Taipei",
+    "quietHours": null,
+    "note": "No user-approved availability schedule has been recorded."
+  },
+  "triggers": {
+    "TR-DOCS-PUBLISHED": {
+      "status": "PENDING",
+      "publishedSha": null
+    },
+    "TR-DESKTOP-B3-START": {
+      "status": "BLOCKED",
+      "publishedSha": null,
+      "reason": "Booking B2 and V84 have PASS evidence in the laptop worktree but no Git-retrievable handoff SHA."
+    },
+    "TR-CALENDAR-W10-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null
+    },
+    "TR-TRAVEL-3BB-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null
+    },
+    "TR-SCHEMA-B3-DURABLE-GRANT": {
+      "status": "PENDING",
+      "publishedSha": null,
+      "reservedVersion": null
+    },
+    "TR-TRAVEL-W6-W7-TYPED-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null
+    },
+    "TR-ADD-LINE-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null
+    }
+  }
+}

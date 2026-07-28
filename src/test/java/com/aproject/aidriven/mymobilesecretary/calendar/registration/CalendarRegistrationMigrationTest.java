@@ -18,9 +18,11 @@ class CalendarRegistrationMigrationTest extends IntegrationTestBase {
             "calendar_organizer_assignment",
             "calendar_registration_policy",
             "calendar_capacity_bucket",
+            "calendar_capacity_history",
             "calendar_registration",
             "calendar_registration_history",
             "calendar_waitlist_entry",
+            "calendar_waitlist_reorder_audit",
             "calendar_waitlist_offer",
             "calendar_participant_minimum_access",
             "calendar_registration_request_receipt",
@@ -66,9 +68,11 @@ class CalendarRegistrationMigrationTest extends IntegrationTestBase {
                   'calendar_organizer_assignment',
                   'calendar_registration_policy',
                   'calendar_capacity_bucket',
+                  'calendar_capacity_history',
                   'calendar_registration',
                   'calendar_registration_history',
                   'calendar_waitlist_entry',
+                  'calendar_waitlist_reorder_audit',
                   'calendar_waitlist_offer',
                   'calendar_participant_minimum_access',
                   'calendar_registration_request_receipt',
@@ -102,6 +106,9 @@ class CalendarRegistrationMigrationTest extends IntegrationTestBase {
                 FROM information_schema.triggers
                 WHERE trigger_name IN (
                     'trg_calendar_registration_history_append_only',
+                    'trg_calendar_waitlist_reorder_audit_append_only',
+                    'trg_calendar_refresh_registration_capacity_state',
+                    'trg_calendar_capacity_history_append_only',
                     'trg_calendar_registration_outbox_no_delete',
                     'trg_calendar_plan_ownership_source_immutable',
                     'trg_calendar_ownership_transfer_transition',
@@ -117,6 +124,6 @@ class CalendarRegistrationMigrationTest extends IntegrationTestBase {
                 String.class);
 
         assertThat(indexes).hasSize(4);
-        assertThat(triggers).hasSize(12);
+        assertThat(triggers).hasSize(15);
     }
 }

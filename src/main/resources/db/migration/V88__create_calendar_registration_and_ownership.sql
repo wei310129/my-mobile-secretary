@@ -445,6 +445,11 @@ BEGIN
           AND ownership.workspace_id = NEW.workspace_id
           AND ownership.source_created_by_user_id =
                 NEW.created_by_user_id
+          AND EXISTS (
+                SELECT 1
+                FROM workspace_member member
+                WHERE member.workspace_id = ownership.workspace_id
+                  AND member.user_id = ownership.owner_user_id)
         ON CONFLICT (plan_id) DO NOTHING;
     ELSE
         DELETE FROM calendar_active_owner_membership_guard
@@ -699,6 +704,178 @@ CREATE TABLE calendar_capacity_bucket (
             AND bucket_revision > 0)
 );
 
+CREATE FUNCTION refresh_calendar_registration_capacity_state()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = pg_catalog, public
+AS $$
+BEGIN
+    UPDATE calendar_registration_policy
+    SET capacity_state = CASE
+            WHEN NEW.over_capacity_count > 0
+                THEN 'OVER_CAPACITY'
+            ELSE 'WITHIN_CAPACITY'
+        END,
+        updated_at = GREATEST(updated_at, NEW.updated_at)
+    WHERE id = NEW.policy_id
+      AND plan_id = NEW.plan_id
+      AND workspace_id = NEW.workspace_id
+      AND source_created_by_user_id =
+            NEW.source_created_by_user_id
+      AND capacity_state IS DISTINCT FROM CASE
+            WHEN NEW.over_capacity_count > 0
+                THEN 'OVER_CAPACITY'
+            ELSE 'WITHIN_CAPACITY'
+        END;
+    RETURN NEW;
+END;
+$$;
+
+CREATE TRIGGER trg_calendar_refresh_registration_capacity_state
+AFTER UPDATE OF committed_count, over_capacity_count
+ON calendar_capacity_bucket
+FOR EACH ROW EXECUTE FUNCTION
+    refresh_calendar_registration_capacity_state();
+
+CREATE TABLE calendar_capacity_history (
+    id UUID PRIMARY KEY,
+    policy_id UUID NOT NULL,
+    bucket_id UUID NOT NULL,
+    plan_id UUID NOT NULL,
+    activity_id UUID,
+    event_type VARCHAR(40) NOT NULL,
+    previous_capacity INTEGER,
+    current_capacity INTEGER,
+    committed_count INTEGER NOT NULL,
+    previous_over_capacity_count INTEGER NOT NULL,
+    current_over_capacity_count INTEGER NOT NULL,
+    previous_state VARCHAR(30) NOT NULL,
+    current_state VARCHAR(30) NOT NULL,
+    policy_revision BIGINT NOT NULL,
+    bucket_revision BIGINT NOT NULL,
+    operation_request_hash VARCHAR(64) NOT NULL,
+    operation_payload_hash VARCHAR(64) NOT NULL,
+    semantic_identity_hash VARCHAR(64) NOT NULL,
+    occurred_at TIMESTAMPTZ NOT NULL,
+    workspace_id UUID NOT NULL,
+    created_by_user_id UUID NOT NULL,
+    source_created_by_user_id UUID NOT NULL,
+    CONSTRAINT uq_calendar_capacity_history_request
+        UNIQUE (
+            workspace_id, created_by_user_id,
+            operation_request_hash),
+    CONSTRAINT uq_calendar_capacity_history_semantic
+        UNIQUE (
+            workspace_id, source_created_by_user_id,
+            semantic_identity_hash),
+    CONSTRAINT fk_calendar_capacity_history_policy
+        FOREIGN KEY (
+            policy_id, plan_id, workspace_id,
+            source_created_by_user_id)
+        REFERENCES calendar_registration_policy (
+            id, plan_id, workspace_id,
+            source_created_by_user_id),
+    CONSTRAINT fk_calendar_capacity_history_bucket
+        FOREIGN KEY (bucket_id)
+        REFERENCES calendar_capacity_bucket (id),
+    CONSTRAINT fk_calendar_capacity_history_actor
+        FOREIGN KEY (created_by_user_id)
+        REFERENCES app_user (id),
+    CONSTRAINT chk_calendar_capacity_history_event
+        CHECK (event_type = 'CAPACITY_STATE_CHANGED'),
+    CONSTRAINT chk_calendar_capacity_history_capacity
+        CHECK (
+            (previous_capacity IS NULL OR previous_capacity > 0)
+            AND (current_capacity IS NULL OR current_capacity > 0)),
+    CONSTRAINT chk_calendar_capacity_history_counts
+        CHECK (
+            committed_count >= 0
+            AND previous_over_capacity_count >= 0
+            AND current_over_capacity_count >= 0),
+    CONSTRAINT chk_calendar_capacity_history_states
+        CHECK (
+            previous_state IN (
+                'WITHIN_CAPACITY', 'OVER_CAPACITY')
+            AND current_state IN (
+                'WITHIN_CAPACITY', 'OVER_CAPACITY')
+            AND previous_state <> current_state),
+    CONSTRAINT chk_calendar_capacity_history_revisions
+        CHECK (policy_revision > 0 AND bucket_revision > 0),
+    CONSTRAINT chk_calendar_capacity_history_hashes
+        CHECK (
+            operation_request_hash ~ '^[0-9a-f]{64}$'
+            AND operation_payload_hash ~ '^[0-9a-f]{64}$'
+            AND semantic_identity_hash ~ '^[0-9a-f]{64}$')
+);
+
+ALTER TABLE calendar_capacity_history ENABLE ROW LEVEL SECURITY;
+ALTER TABLE calendar_capacity_history FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY rls_calendar_capacity_history_manager_select
+    ON calendar_capacity_history
+    FOR SELECT
+    USING (
+        app_workspace_matches(workspace_id)
+        AND (
+            EXISTS (
+                SELECT 1
+                FROM calendar_plan_ownership ownership
+                WHERE ownership.plan_id =
+                        calendar_capacity_history.plan_id
+                  AND ownership.workspace_id =
+                        calendar_capacity_history.workspace_id
+                  AND ownership.source_created_by_user_id =
+                        calendar_capacity_history
+                            .source_created_by_user_id
+                  AND app_actor_matches(ownership.owner_user_id))
+            OR EXISTS (
+                SELECT 1
+                FROM calendar_organizer_assignment assignment
+                WHERE assignment.plan_id =
+                        calendar_capacity_history.plan_id
+                  AND assignment.activity_id IS NOT DISTINCT FROM
+                        calendar_capacity_history.activity_id
+                  AND assignment.workspace_id =
+                        calendar_capacity_history.workspace_id
+                  AND assignment.source_created_by_user_id =
+                        calendar_capacity_history
+                            .source_created_by_user_id
+                  AND assignment.assignment_status = 'ACTIVE'
+                  AND app_actor_matches(
+                        assignment.manager_user_id))));
+
+CREATE POLICY rls_calendar_capacity_history_owner_insert
+    ON calendar_capacity_history
+    FOR INSERT
+    WITH CHECK (
+        app_workspace_matches(workspace_id)
+        AND app_actor_matches(created_by_user_id)
+        AND EXISTS (
+            SELECT 1
+            FROM calendar_plan_ownership ownership
+            WHERE ownership.plan_id = calendar_capacity_history.plan_id
+              AND ownership.workspace_id =
+                    calendar_capacity_history.workspace_id
+              AND ownership.source_created_by_user_id =
+                    calendar_capacity_history
+                        .source_created_by_user_id
+              AND app_actor_matches(ownership.owner_user_id)));
+
+CREATE FUNCTION reject_calendar_capacity_history_mutation()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION 'calendar capacity history is append-only';
+END;
+$$;
+
+CREATE TRIGGER trg_calendar_capacity_history_append_only
+BEFORE UPDATE OR DELETE ON calendar_capacity_history
+FOR EACH ROW EXECUTE FUNCTION
+    reject_calendar_capacity_history_mutation();
+
 CREATE TABLE calendar_registration (
     id UUID PRIMARY KEY,
     policy_id UUID NOT NULL,
@@ -834,6 +1011,7 @@ CREATE TABLE calendar_registration_history (
     operation_request_hash VARCHAR(64) NOT NULL,
     operation_payload_hash VARCHAR(64) NOT NULL,
     reason_present BOOLEAN NOT NULL,
+    decision_reason VARCHAR(500),
     occurred_at TIMESTAMPTZ NOT NULL,
     workspace_id UUID NOT NULL,
     created_by_user_id UUID NOT NULL,
@@ -854,7 +1032,8 @@ CREATE TABLE calendar_registration_history (
     CONSTRAINT chk_calendar_registration_history_event
         CHECK (event_type IN (
             'JOINED', 'WAITLISTED', 'APPROVAL_REQUESTED',
-            'OFFER_ACCEPTED', 'WITHDRAWN_BY_USER',
+            'APPROVAL_APPROVED', 'APPROVAL_DECLINED',
+            'OFFER_ACCEPTED', 'OFFER_EXPIRED', 'WITHDRAWN_BY_USER',
             'REMOVED_BY_ORGANIZER', 'OVERRIDE_COMMITTED',
             'CAPACITY_STATE_CHANGED')),
     CONSTRAINT chk_calendar_registration_history_states
@@ -873,6 +1052,10 @@ CREATE TABLE calendar_registration_history (
         CHECK (status_origin IN ('USER', 'MANAGER', 'SYSTEM')),
     CONSTRAINT chk_calendar_registration_history_revision
         CHECK (registration_revision > 0),
+    CONSTRAINT chk_calendar_registration_history_decision_reason
+        CHECK (
+            decision_reason IS NULL
+            OR length(btrim(decision_reason)) BETWEEN 1 AND 500),
     CONSTRAINT chk_calendar_registration_history_hashes
         CHECK (
             operation_request_hash ~ '^[0-9a-f]{64}$'
@@ -953,6 +1136,142 @@ CREATE INDEX idx_calendar_waitlist_fifo
     ON calendar_waitlist_entry (
         workspace_id, source_created_by_user_id,
         plan_id, activity_id, entry_state, queue_sequence);
+
+CREATE TABLE calendar_waitlist_reorder_audit (
+    id UUID PRIMARY KEY,
+    plan_id UUID NOT NULL,
+    activity_id UUID,
+    waitlist_entry_id UUID NOT NULL,
+    previous_queue_sequence BIGINT NOT NULL,
+    current_queue_sequence BIGINT NOT NULL,
+    previous_entry_revision BIGINT NOT NULL,
+    current_entry_revision BIGINT NOT NULL,
+    reason VARCHAR(500) NOT NULL,
+    operation_request_hash VARCHAR(64) NOT NULL,
+    operation_payload_hash VARCHAR(64) NOT NULL,
+    occurred_at TIMESTAMPTZ NOT NULL,
+    workspace_id UUID NOT NULL,
+    created_by_user_id UUID NOT NULL,
+    source_created_by_user_id UUID NOT NULL,
+    CONSTRAINT uq_calendar_waitlist_reorder_audit_request
+        UNIQUE (
+            workspace_id, created_by_user_id,
+            operation_request_hash, waitlist_entry_id),
+    CONSTRAINT fk_calendar_waitlist_reorder_audit_plan
+        FOREIGN KEY (
+            plan_id, workspace_id, source_created_by_user_id)
+        REFERENCES calendar_plan (
+            id, workspace_id, created_by_user_id),
+    CONSTRAINT fk_calendar_waitlist_reorder_audit_entry
+        FOREIGN KEY (waitlist_entry_id)
+        REFERENCES calendar_waitlist_entry (id),
+    CONSTRAINT fk_calendar_waitlist_reorder_audit_actor
+        FOREIGN KEY (created_by_user_id)
+        REFERENCES app_user (id),
+    CONSTRAINT chk_calendar_waitlist_reorder_audit_sequence
+        CHECK (
+            previous_queue_sequence > 0
+            AND current_queue_sequence > 0),
+    CONSTRAINT chk_calendar_waitlist_reorder_audit_revision
+        CHECK (
+            previous_entry_revision > 0
+            AND current_entry_revision =
+                previous_entry_revision + 1),
+    CONSTRAINT chk_calendar_waitlist_reorder_audit_reason
+        CHECK (length(btrim(reason)) BETWEEN 1 AND 500),
+    CONSTRAINT chk_calendar_waitlist_reorder_audit_hashes
+        CHECK (
+            operation_request_hash ~ '^[0-9a-f]{64}$'
+            AND operation_payload_hash ~ '^[0-9a-f]{64}$')
+);
+
+ALTER TABLE calendar_waitlist_reorder_audit
+    ENABLE ROW LEVEL SECURITY;
+ALTER TABLE calendar_waitlist_reorder_audit
+    FORCE ROW LEVEL SECURITY;
+
+CREATE POLICY rls_calendar_waitlist_reorder_audit_manager
+    ON calendar_waitlist_reorder_audit
+    FOR SELECT
+    USING (
+        app_workspace_matches(workspace_id)
+        AND (
+            EXISTS (
+                SELECT 1
+                FROM calendar_plan_ownership ownership
+                WHERE ownership.plan_id =
+                        calendar_waitlist_reorder_audit.plan_id
+                  AND ownership.workspace_id =
+                        calendar_waitlist_reorder_audit.workspace_id
+                  AND ownership.source_created_by_user_id =
+                        calendar_waitlist_reorder_audit
+                            .source_created_by_user_id
+                  AND app_actor_matches(ownership.owner_user_id))
+            OR EXISTS (
+                SELECT 1
+                FROM calendar_organizer_assignment assignment
+                WHERE assignment.plan_id =
+                        calendar_waitlist_reorder_audit.plan_id
+                  AND assignment.activity_id IS NOT DISTINCT FROM
+                        calendar_waitlist_reorder_audit.activity_id
+                  AND assignment.workspace_id =
+                        calendar_waitlist_reorder_audit.workspace_id
+                  AND assignment.source_created_by_user_id =
+                        calendar_waitlist_reorder_audit
+                            .source_created_by_user_id
+                  AND assignment.assignment_status = 'ACTIVE'
+                  AND assignment.roster_permission
+                  AND app_actor_matches(
+                        assignment.manager_user_id))));
+
+CREATE POLICY rls_calendar_waitlist_reorder_audit_insert
+    ON calendar_waitlist_reorder_audit
+    FOR INSERT
+    WITH CHECK (
+        app_workspace_matches(workspace_id)
+        AND app_actor_matches(created_by_user_id)
+        AND (
+            EXISTS (
+                SELECT 1
+                FROM calendar_plan_ownership ownership
+                WHERE ownership.plan_id =
+                        calendar_waitlist_reorder_audit.plan_id
+                  AND ownership.workspace_id =
+                        calendar_waitlist_reorder_audit.workspace_id
+                  AND ownership.source_created_by_user_id =
+                        calendar_waitlist_reorder_audit
+                            .source_created_by_user_id
+                  AND app_actor_matches(ownership.owner_user_id))
+            OR EXISTS (
+                SELECT 1
+                FROM calendar_organizer_assignment assignment
+                WHERE assignment.plan_id =
+                        calendar_waitlist_reorder_audit.plan_id
+                  AND assignment.activity_id IS NOT DISTINCT FROM
+                        calendar_waitlist_reorder_audit.activity_id
+                  AND assignment.workspace_id =
+                        calendar_waitlist_reorder_audit.workspace_id
+                  AND assignment.source_created_by_user_id =
+                        calendar_waitlist_reorder_audit
+                            .source_created_by_user_id
+                  AND assignment.assignment_status = 'ACTIVE'
+                  AND assignment.roster_permission
+                  AND app_actor_matches(
+                        assignment.manager_user_id))));
+
+CREATE FUNCTION reject_calendar_waitlist_reorder_audit_mutation()
+RETURNS TRIGGER
+LANGUAGE plpgsql
+AS $$
+BEGIN
+    RAISE EXCEPTION 'calendar waitlist reorder audit is append-only';
+END;
+$$;
+
+CREATE TRIGGER trg_calendar_waitlist_reorder_audit_append_only
+BEFORE UPDATE OR DELETE ON calendar_waitlist_reorder_audit
+FOR EACH ROW EXECUTE FUNCTION
+    reject_calendar_waitlist_reorder_audit_mutation();
 
 CREATE TABLE calendar_waitlist_offer (
     id UUID PRIMARY KEY,
@@ -1130,6 +1449,7 @@ CREATE TABLE calendar_registration_request_receipt (
             'POLICY_CHANGE', 'MANAGER_ASSIGNMENT',
             'REGISTRATION_CHANGE', 'WAITLIST_OFFER',
             'WAITLIST_RESPONSE', 'ORGANIZER_REMOVAL',
+            'REGISTRATION_DECISION', 'WAITLIST_REORDER',
             'CAPACITY_OVERRIDE', 'MINIMUM_ACCESS',
             'OWNERSHIP_TRANSFER')),
     CONSTRAINT chk_calendar_registration_receipt_revision
@@ -2072,12 +2392,84 @@ CREATE POLICY rls_calendar_participation_registration_manager_update
         app_workspace_matches(workspace_id)
         AND participation_state = 'OPTED_OUT');
 
+CREATE POLICY rls_calendar_participation_registration_decision_update
+    ON calendar_participation FOR UPDATE
+    USING (
+        app_workspace_matches(workspace_id)
+        AND participation_state = 'TENTATIVE'
+        AND (
+            EXISTS (
+                SELECT 1
+                FROM calendar_plan_ownership ownership
+                WHERE ownership.plan_id =
+                        calendar_participation.plan_id
+                  AND ownership.workspace_id =
+                        calendar_participation.workspace_id
+                  AND ownership.source_created_by_user_id =
+                        calendar_participation
+                            .source_created_by_user_id
+                  AND app_actor_matches(ownership.owner_user_id))
+            OR EXISTS (
+                SELECT 1
+                FROM calendar_organizer_assignment assignment
+                WHERE assignment.plan_id =
+                        calendar_participation.plan_id
+                  AND assignment.activity_id IS NOT DISTINCT FROM
+                        calendar_participation.activity_id
+                  AND assignment.workspace_id =
+                        calendar_participation.workspace_id
+                  AND assignment.source_created_by_user_id =
+                        calendar_participation
+                            .source_created_by_user_id
+                  AND assignment.assignment_status = 'ACTIVE'
+                  AND assignment.roster_permission
+                  AND app_actor_matches(
+                        assignment.manager_user_id))))
+    WITH CHECK (
+        app_workspace_matches(workspace_id)
+        AND participation_state IN ('COMMITTED', 'DECLINED'));
+
 CREATE POLICY rls_calendar_participation_history_registration_manager_insert
     ON calendar_participation_history FOR INSERT
     WITH CHECK (
         app_workspace_matches(workspace_id)
         AND current_state = 'OPTED_OUT'
         AND previous_state IS NOT NULL
+        AND (
+            EXISTS (
+                SELECT 1
+                FROM calendar_plan_ownership ownership
+                WHERE ownership.plan_id =
+                        calendar_participation_history.plan_id
+                  AND ownership.workspace_id =
+                        calendar_participation_history.workspace_id
+                  AND ownership.source_created_by_user_id =
+                        calendar_participation_history
+                            .source_created_by_user_id
+                  AND app_actor_matches(ownership.owner_user_id))
+            OR EXISTS (
+                SELECT 1
+                FROM calendar_organizer_assignment assignment
+                WHERE assignment.plan_id =
+                        calendar_participation_history.plan_id
+                  AND assignment.activity_id IS NOT DISTINCT FROM
+                        calendar_participation_history.activity_id
+                  AND assignment.workspace_id =
+                        calendar_participation_history.workspace_id
+                  AND assignment.source_created_by_user_id =
+                        calendar_participation_history
+                            .source_created_by_user_id
+                  AND assignment.assignment_status = 'ACTIVE'
+                  AND assignment.roster_permission
+                  AND app_actor_matches(
+                        assignment.manager_user_id))));
+
+CREATE POLICY rls_calendar_participation_history_registration_decision_insert
+    ON calendar_participation_history FOR INSERT
+    WITH CHECK (
+        app_workspace_matches(workspace_id)
+        AND previous_state = 'TENTATIVE'
+        AND current_state IN ('COMMITTED', 'DECLINED')
         AND (
             EXISTS (
                 SELECT 1

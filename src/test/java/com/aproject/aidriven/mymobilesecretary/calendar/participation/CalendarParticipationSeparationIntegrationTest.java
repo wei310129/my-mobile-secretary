@@ -152,16 +152,18 @@ class CalendarParticipationSeparationIntegrationTest
                         "calendar_routine_subscription",
                         fixture.planId()))
                 .isZero();
-        assertThat(runtime(
+        assertThatThrownBy(() -> runtime(
                         fixture.ownerContext(),
                         () -> jdbc.update(
                                 """
                                 UPDATE calendar_participation
                                 SET participation_state = 'OPTED_OUT'
                                 WHERE plan_id = ?
+                                  AND created_by_user_id = ?
                                 """,
-                                fixture.planId())))
-                .isZero();
+                                fixture.planId(),
+                                fixture.recipientContext().actorId())))
+                .isInstanceOf(RuntimeException.class);
         for (var unauthorized :
                 List.of(fixture.adminContext(), fixture.peerContext())) {
             assertThat(runtimeCount(

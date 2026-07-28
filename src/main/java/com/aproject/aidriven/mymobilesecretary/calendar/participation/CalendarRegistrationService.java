@@ -219,6 +219,14 @@ public class CalendarRegistrationService {
                 lockCurrent(target);
         recordReceipt(
                 requestHash, payloadHash, inserted, target, now);
+        insertResultOutbox(
+                inserted,
+                bucket.closesAt() != null
+                        && !now.isBefore(bucket.closesAt()),
+                requestHash,
+                payloadHash,
+                now,
+                target);
         return view(inserted, target);
     }
 
@@ -579,6 +587,52 @@ public class CalendarRegistrationService {
                                 + row.revision()),
                 row.state().name(),
                 row.revision(),
+                Timestamp.from(now),
+                target.context().workspaceId(),
+                target.context().actorId(),
+                target.sourceOwnerId());
+    }
+
+    private void insertResultOutbox(
+            RegistrationRow row,
+            boolean late,
+            String requestHash,
+            String payloadHash,
+            Instant now,
+            CalendarRegistrationAccess.Target target) {
+        String eventType =
+                late ? "LATE_REGISTRATION" : "REGISTRATION_RESULT";
+        String semanticHash = CalendarParticipationAccess.hash(
+                eventType + "|" + row.id() + "|" + row.revision());
+        jdbc.update(
+                """
+                INSERT INTO calendar_registration_outbox (
+                    id, event_type, plan_id, activity_id,
+                    registration_id, waitlist_offer_id, transfer_id,
+                    recipient_user_id, operation_request_hash,
+                    operation_payload_hash, semantic_identity_hash,
+                    payload_text, delivery_status,
+                    delivery_attempt_count, next_delivery_attempt_at,
+                    delivered_at, last_delivery_failure,
+                    created_at, updated_at, workspace_id,
+                    created_by_user_id, source_created_by_user_id)
+                VALUES (
+                    ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?,
+                    ?, 'PENDING', 0, ?, NULL, NULL, ?, ?, ?, ?, ?)
+                ON CONFLICT DO NOTHING
+                """,
+                UUID.randomUUID(),
+                eventType,
+                target.planId(),
+                target.activityId(),
+                row.id(),
+                target.context().actorId(),
+                requestHash,
+                payloadHash,
+                semanticHash,
+                "Calendar registration is " + row.state().name(),
+                Timestamp.from(now),
+                Timestamp.from(now),
                 Timestamp.from(now),
                 target.context().workspaceId(),
                 target.context().actorId(),

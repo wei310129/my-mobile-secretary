@@ -5,6 +5,7 @@ import com.aproject.aidriven.mymobilesecretary.shared.error.NotFoundException;
 import java.sql.Timestamp;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.temporal.ChronoUnit;
 import java.util.List;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -42,7 +43,7 @@ public class CalendarWaitlistService {
                 CalendarParticipationAccess.hash(requestId);
         CalendarRegistrationAccess.Target target =
                 access.lockTarget(planId, scope);
-        access.requireManager(target, false);
+        access.requireManager(target, true);
         access.lock("waitlist-offer-request|" + requestHash);
         List<CalendarWaitlistOfferView> replay =
                 offerByRequest(requestHash, target);
@@ -56,6 +57,93 @@ public class CalendarWaitlistService {
                     "CALENDAR_WAITLIST_NO_AVAILABLE_SEAT",
                     "A waitlist offer requires available capacity");
         }
+        return createNextOffer(
+                requestHash,
+                target,
+                bucket,
+                Instant.now(clock),
+                true);
+    }
+
+    public CalendarWaitlistExpirySweepResult sweepExpired(
+            String requestId,
+            UUID planId,
+            CalendarParticipationScope scope) {
+        if (requestId == null || requestId.isBlank()) {
+            throw new IllegalArgumentException(
+                    "A waitlist expiry request is required");
+        }
+        String requestHash =
+                CalendarParticipationAccess.hash(requestId);
+        CalendarRegistrationAccess.Target target =
+                access.lockTarget(planId, scope);
+        access.requireManager(target, true);
+        access.lock("waitlist-expiry-request|" + requestHash);
+        CalendarWaitlistExpirySweepResult replay =
+                expiryByRequest(requestHash, target);
+        if (replay != null) {
+            return replay;
+        }
+        Bucket bucket = lockBucket(target);
+        ActiveOffer offer = lockActiveOffer(target);
+        if (offer == null) {
+            throw new NotFoundException(
+                    "Calendar waitlist offer",
+                    "active offer for expiry");
+        }
+        Instant now = Instant.now(clock);
+        if (now.isBefore(offer.expiresAt())
+                && offer.policyRevision()
+                        == bucket.policyRevision()) {
+            throw new BusinessException(
+                    "CALENDAR_WAITLIST_OFFER_NOT_EXPIRED",
+                    "The active waitlist offer has not expired");
+        }
+        String payloadHash = CalendarParticipationAccess.hash(
+                offer.id()
+                        + "|"
+                        + offer.revision()
+                        + "|EXPIRE|"
+                        + bucket.policyRevision());
+        long expiredRevision = expireOffer(
+                offer,
+                bucket,
+                requestHash,
+                payloadHash,
+                now,
+                target);
+        CalendarWaitlistOfferView nextOffer = null;
+        if (bucket.promotionMode()
+                        == CalendarWaitlistPromotionMode.AUTO_OFFER
+                && (bucket.capacity() == null
+                        || bucket.committed() < bucket.capacity())
+                && bucket.waitlisted() > 1) {
+            nextOffer = createNextOffer(
+                    requestHash,
+                    target,
+                    bucket,
+                    now,
+                    false);
+        }
+        recordExpiryReceipt(
+                requestHash,
+                payloadHash,
+                offer,
+                expiredRevision,
+                now,
+                target);
+        return new CalendarWaitlistExpirySweepResult(
+                offer.id(),
+                expiredRevision,
+                nextOffer);
+    }
+
+    private CalendarWaitlistOfferView createNextOffer(
+            String requestHash,
+            CalendarRegistrationAccess.Target target,
+            Bucket bucket,
+            Instant now,
+            boolean required) {
         List<Entry> entries = jdbc.query(
                 """
                 SELECT entry.id, entry.registration_id,
@@ -83,8 +171,12 @@ public class CalendarWaitlistService {
                 target.context().workspaceId(),
                 target.sourceOwnerId());
         if (entries.isEmpty()) {
-            throw new NotFoundException(
-                    "Calendar waitlist", "next waiting participant");
+            if (required) {
+                throw new NotFoundException(
+                        "Calendar waitlist",
+                        "next waiting participant");
+            }
+            return null;
         }
         Entry entry = entries.getFirst();
         String payloadHash = CalendarParticipationAccess.hash(
@@ -94,9 +186,8 @@ public class CalendarWaitlistService {
                         + "|"
                         + entry.id()
                         + "|OFFER");
-        Instant now = Instant.now(clock);
-        Instant expiresAt =
-                now.plusSeconds(bucket.offerTtlSeconds());
+        Instant expiresAt = now.plusSeconds(bucket.offerTtlSeconds())
+                .truncatedTo(ChronoUnit.MICROS);
         UUID offerId = UUID.randomUUID();
         jdbc.update(
                 """
@@ -142,6 +233,14 @@ public class CalendarWaitlistService {
                 target.context().workspaceId(),
                 target.sourceOwnerId(),
                 entry.revision());
+        insertOfferOutbox(
+                entry,
+                offerId,
+                requestHash,
+                payloadHash,
+                expiresAt,
+                now,
+                target);
         return new CalendarWaitlistOfferView(
                 offerId,
                 target.planId(),
@@ -149,6 +248,54 @@ public class CalendarWaitlistService {
                 expiresAt,
                 "OFFERED",
                 1);
+    }
+
+    private void insertOfferOutbox(
+            Entry entry,
+            UUID offerId,
+            String requestHash,
+            String payloadHash,
+            Instant expiresAt,
+            Instant now,
+            CalendarRegistrationAccess.Target target) {
+        jdbc.update(
+                """
+                INSERT INTO calendar_registration_outbox (
+                    id, event_type, plan_id, activity_id,
+                    registration_id, waitlist_offer_id,
+                    recipient_user_id, operation_request_hash,
+                    operation_payload_hash,
+                    semantic_identity_hash, payload_text,
+                    delivery_status, delivery_attempt_count,
+                    next_delivery_attempt_at, delivered_at,
+                    last_delivery_failure, created_at, updated_at,
+                    workspace_id, created_by_user_id,
+                    source_created_by_user_id)
+                VALUES (
+                    ?, 'WAITLIST_OFFERED', ?, ?, ?, ?, ?, ?, ?, ?,
+                    ?, 'PENDING', 0, ?, NULL, NULL, ?, ?, ?, ?, ?)
+                ON CONFLICT DO NOTHING
+                """,
+                UUID.randomUUID(),
+                target.planId(),
+                target.activityId(),
+                entry.registrationId(),
+                offerId,
+                entry.actorId(),
+                requestHash,
+                payloadHash,
+                CalendarParticipationAccess.hash(
+                        "WAITLIST_OFFERED|" + offerId + "|1"),
+                "event=WAITLIST_OFFERED; offer="
+                        + offerId
+                        + "; expiresAt="
+                        + expiresAt,
+                Timestamp.from(now),
+                Timestamp.from(now),
+                Timestamp.from(now),
+                target.context().workspaceId(),
+                target.context().actorId(),
+                target.sourceOwnerId());
     }
 
     public CalendarRegistrationView accept(
@@ -340,6 +487,359 @@ public class CalendarWaitlistService {
                 .orElseThrow();
     }
 
+    private ActiveOffer lockActiveOffer(
+            CalendarRegistrationAccess.Target target) {
+        List<ActiveOffer> rows = jdbc.query(
+                """
+                SELECT offer.id, offer.entry_id,
+                       offer.registration_id,
+                       offer.created_by_user_id,
+                       offer.applied_policy_revision,
+                       offer.offer_revision, offer.expires_at,
+                       entry.entry_revision,
+                       registration.registration_revision
+                FROM calendar_waitlist_offer offer
+                JOIN calendar_waitlist_entry entry
+                  ON entry.id = offer.entry_id
+                 AND entry.registration_id = offer.registration_id
+                 AND entry.workspace_id = offer.workspace_id
+                 AND entry.created_by_user_id =
+                        offer.created_by_user_id
+                 AND entry.source_created_by_user_id =
+                        offer.source_created_by_user_id
+                JOIN calendar_registration registration
+                  ON registration.id = offer.registration_id
+                 AND registration.workspace_id = offer.workspace_id
+                 AND registration.created_by_user_id =
+                        offer.created_by_user_id
+                 AND registration.source_created_by_user_id =
+                        offer.source_created_by_user_id
+                WHERE offer.plan_id = ?
+                  AND offer.activity_id IS NOT DISTINCT FROM ?
+                  AND offer.workspace_id = ?
+                  AND offer.source_created_by_user_id = ?
+                  AND offer.offer_status = 'OFFERED'
+                FOR UPDATE OF offer, entry, registration
+                """,
+                (row, ignored) -> new ActiveOffer(
+                        row.getObject("id", UUID.class),
+                        row.getObject("entry_id", UUID.class),
+                        row.getObject("registration_id", UUID.class),
+                        row.getObject("created_by_user_id", UUID.class),
+                        row.getLong("applied_policy_revision"),
+                        row.getLong("offer_revision"),
+                        row.getTimestamp("expires_at").toInstant(),
+                        row.getLong("entry_revision"),
+                        row.getLong("registration_revision")),
+                target.planId(),
+                target.activityId(),
+                target.context().workspaceId(),
+                target.sourceOwnerId());
+        if (rows.size() > 1) {
+            throw new IllegalStateException(
+                    "A calendar target has multiple active waitlist offers");
+        }
+        return rows.stream().findFirst().orElse(null);
+    }
+
+    private long expireOffer(
+            ActiveOffer offer,
+            Bucket bucket,
+            String requestHash,
+            String payloadHash,
+            Instant now,
+            CalendarRegistrationAccess.Target target) {
+        int offerChanged = jdbc.update(
+                """
+                UPDATE calendar_waitlist_offer
+                SET offer_status = 'EXPIRED',
+                    offer_revision = offer_revision + 1,
+                    responded_at = ?, updated_at = ?
+                WHERE id = ? AND workspace_id = ?
+                  AND source_created_by_user_id = ?
+                  AND offer_status = 'OFFERED'
+                  AND offer_revision = ?
+                """,
+                Timestamp.from(now),
+                Timestamp.from(now),
+                offer.id(),
+                target.context().workspaceId(),
+                target.sourceOwnerId(),
+                offer.revision());
+        int entryChanged = jdbc.update(
+                """
+                UPDATE calendar_waitlist_entry
+                SET entry_state = 'EXPIRED',
+                    entry_revision = entry_revision + 1,
+                    exited_at = ?, updated_at = ?
+                WHERE id = ? AND workspace_id = ?
+                  AND source_created_by_user_id = ?
+                  AND entry_state = 'OFFERED'
+                  AND entry_revision = ?
+                """,
+                Timestamp.from(now),
+                Timestamp.from(now),
+                offer.entryId(),
+                target.context().workspaceId(),
+                target.sourceOwnerId(),
+                offer.entryRevision());
+        int registrationChanged = jdbc.update(
+                """
+                UPDATE calendar_registration
+                SET registration_state = 'DECLINED',
+                    status_origin = 'SYSTEM',
+                    applied_policy_revision = ?,
+                    registration_revision =
+                        registration_revision + 1,
+                    operation_request_hash = ?,
+                    operation_payload_hash = ?,
+                    updated_at = ?
+                WHERE id = ? AND workspace_id = ?
+                  AND created_by_user_id = ?
+                  AND source_created_by_user_id = ?
+                  AND registration_state = 'WAITLISTED'
+                  AND registration_revision = ?
+                """,
+                bucket.policyRevision(),
+                requestHash,
+                payloadHash,
+                Timestamp.from(now),
+                offer.registrationId(),
+                target.context().workspaceId(),
+                offer.actorId(),
+                target.sourceOwnerId(),
+                offer.registrationRevision());
+        int bucketChanged = jdbc.update(
+                """
+                UPDATE calendar_capacity_bucket
+                SET waitlisted_count = waitlisted_count - 1,
+                    bucket_revision = bucket_revision + 1,
+                    updated_at = ?
+                WHERE id = ? AND workspace_id = ?
+                  AND source_created_by_user_id = ?
+                  AND waitlisted_count > 0
+                  AND bucket_revision = ?
+                """,
+                Timestamp.from(now),
+                bucket.id(),
+                target.context().workspaceId(),
+                target.sourceOwnerId(),
+                bucket.revision());
+        if (offerChanged != 1
+                || entryChanged != 1
+                || registrationChanged != 1
+                || bucketChanged != 1) {
+            throw new BusinessException(
+                    "CALENDAR_WAITLIST_OFFER_CHANGED",
+                    "Waitlist offer changed before expiry was applied");
+        }
+        long registrationRevision =
+                offer.registrationRevision() + 1;
+        jdbc.update(
+                """
+                INSERT INTO calendar_registration_history (
+                    id, registration_id, plan_id, activity_id,
+                    event_type, previous_state, current_state,
+                    status_origin, registration_revision,
+                    operation_request_hash, operation_payload_hash,
+                    reason_present, occurred_at, workspace_id,
+                    created_by_user_id, source_created_by_user_id)
+                VALUES (
+                    ?, ?, ?, ?, 'OFFER_EXPIRED', 'WAITLISTED',
+                    'DECLINED', 'SYSTEM', ?, ?, ?, FALSE, ?, ?, ?, ?)
+                """,
+                UUID.randomUUID(),
+                offer.registrationId(),
+                target.planId(),
+                target.activityId(),
+                registrationRevision,
+                requestHash,
+                payloadHash,
+                Timestamp.from(now),
+                target.context().workspaceId(),
+                offer.actorId(),
+                target.sourceOwnerId());
+        insertExpiryOutbox(
+                offer,
+                bucket,
+                requestHash,
+                payloadHash,
+                now,
+                target);
+        return offer.revision() + 1;
+    }
+
+    private void insertExpiryOutbox(
+            ActiveOffer offer,
+            Bucket bucket,
+            String requestHash,
+            String payloadHash,
+            Instant now,
+            CalendarRegistrationAccess.Target target) {
+        String semanticHash = CalendarParticipationAccess.hash(
+                "WAITLIST_OFFER_EXPIRED|"
+                        + offer.id()
+                        + "|"
+                        + (offer.revision() + 1));
+        String message = "event=WAITLIST_OFFER_EXPIRED"
+                + "; offer="
+                + offer.id()
+                + "; waitlisted="
+                + bucket.waitlisted()
+                + "->"
+                + (bucket.waitlisted() - 1);
+        jdbc.update(
+                """
+                INSERT INTO calendar_registration_outbox (
+                    id, event_type, plan_id, activity_id,
+                    registration_id, waitlist_offer_id,
+                    recipient_user_id, operation_request_hash,
+                    operation_payload_hash,
+                    semantic_identity_hash, payload_text,
+                    delivery_status, delivery_attempt_count,
+                    next_delivery_attempt_at, delivered_at,
+                    last_delivery_failure, created_at, updated_at,
+                    workspace_id, created_by_user_id,
+                    source_created_by_user_id)
+                VALUES (
+                    ?, 'WAITLIST_OFFER_EXPIRED', ?, ?, ?, ?, ?, ?, ?,
+                    ?, ?, 'PENDING', 0, ?, NULL, NULL, ?, ?, ?, ?, ?)
+                ON CONFLICT DO NOTHING
+                """,
+                UUID.randomUUID(),
+                target.planId(),
+                target.activityId(),
+                offer.registrationId(),
+                offer.id(),
+                offer.actorId(),
+                requestHash,
+                payloadHash,
+                semanticHash,
+                message,
+                Timestamp.from(now),
+                Timestamp.from(now),
+                Timestamp.from(now),
+                target.context().workspaceId(),
+                target.context().actorId(),
+                target.sourceOwnerId());
+    }
+
+    private void recordExpiryReceipt(
+            String requestHash,
+            String payloadHash,
+            ActiveOffer offer,
+            long expiredRevision,
+            Instant now,
+            CalendarRegistrationAccess.Target target) {
+        jdbc.update(
+                """
+                INSERT INTO calendar_registration_request_receipt (
+                    id, request_kind, plan_id, activity_id,
+                    registration_id, waitlist_entry_id,
+                    waitlist_offer_id, operation_request_hash,
+                    operation_payload_hash,
+                    semantic_identity_hash, result_state,
+                    result_revision, created_at, workspace_id,
+                    created_by_user_id, source_created_by_user_id)
+                VALUES (
+                    ?, 'WAITLIST_OFFER', ?, ?, ?, ?, ?, ?, ?, ?,
+                    'EXPIRED', ?, ?, ?, ?, ?)
+                """,
+                UUID.randomUUID(),
+                target.planId(),
+                target.activityId(),
+                offer.registrationId(),
+                offer.entryId(),
+                offer.id(),
+                requestHash,
+                payloadHash,
+                CalendarParticipationAccess.hash(
+                        "WAITLIST_EXPIRE|"
+                                + offer.id()
+                                + "|"
+                                + expiredRevision),
+                expiredRevision,
+                Timestamp.from(now),
+                target.context().workspaceId(),
+                target.context().actorId(),
+                target.sourceOwnerId());
+    }
+
+    private CalendarWaitlistExpirySweepResult expiryByRequest(
+            String requestHash,
+            CalendarRegistrationAccess.Target target) {
+        List<ExpiryReceipt> receipts = jdbc.query(
+                """
+                SELECT waitlist_offer_id, result_revision
+                FROM calendar_registration_request_receipt
+                WHERE request_kind = 'WAITLIST_OFFER'
+                  AND operation_request_hash = ?
+                  AND plan_id = ?
+                  AND activity_id IS NOT DISTINCT FROM ?
+                  AND workspace_id = ?
+                  AND created_by_user_id = ?
+                  AND source_created_by_user_id = ?
+                  AND result_state = 'EXPIRED'
+                """,
+                (row, ignored) -> new ExpiryReceipt(
+                        row.getObject(
+                                "waitlist_offer_id", UUID.class),
+                        row.getLong("result_revision")),
+                requestHash,
+                target.planId(),
+                target.activityId(),
+                target.context().workspaceId(),
+                target.context().actorId(),
+                target.sourceOwnerId());
+        if (receipts.isEmpty()) {
+            return null;
+        }
+        ExpiryReceipt receipt = receipts.getFirst();
+        CalendarWaitlistOfferView nextOffer =
+                offeredByExpiryRequest(requestHash, target);
+        return new CalendarWaitlistExpirySweepResult(
+                receipt.offerId(),
+                receipt.revision(),
+                nextOffer);
+    }
+
+    private CalendarWaitlistOfferView offeredByExpiryRequest(
+            String requestHash,
+            CalendarRegistrationAccess.Target target) {
+        List<CalendarWaitlistOfferView> rows = jdbc.query(
+                """
+                SELECT offer.id, offer.expires_at
+                FROM calendar_registration_outbox outbox
+                JOIN calendar_waitlist_offer offer
+                  ON offer.id = outbox.waitlist_offer_id
+                 AND offer.plan_id = outbox.plan_id
+                 AND offer.workspace_id = outbox.workspace_id
+                 AND offer.source_created_by_user_id =
+                        outbox.source_created_by_user_id
+                WHERE outbox.event_type = 'WAITLIST_OFFERED'
+                  AND outbox.operation_request_hash = ?
+                  AND outbox.plan_id = ?
+                  AND outbox.activity_id IS NOT DISTINCT FROM ?
+                  AND outbox.workspace_id = ?
+                  AND outbox.created_by_user_id = ?
+                  AND outbox.source_created_by_user_id = ?
+                """,
+                (row, ignored) -> new CalendarWaitlistOfferView(
+                        row.getObject("id", UUID.class),
+                        target.planId(),
+                        target.scope(),
+                        row.getTimestamp("expires_at").toInstant(),
+                        "OFFERED",
+                        1),
+                requestHash,
+                target.planId(),
+                target.activityId(),
+                target.context().workspaceId(),
+                target.context().actorId(),
+                target.sourceOwnerId());
+        return rows.stream().findFirst().orElse(null);
+    }
+
     private void recordResponseReceipt(
             String requestHash,
             String payloadHash,
@@ -443,6 +943,7 @@ public class CalendarWaitlistService {
                 SELECT bucket.id, bucket.policy_id,
                        policy.capacity, policy.offer_ttl_seconds,
                        policy.policy_revision,
+                       policy.promotion_mode,
                        bucket.committed_count,
                        bucket.waitlisted_count,
                        bucket.bucket_revision
@@ -470,6 +971,8 @@ public class CalendarWaitlistService {
                                     : capacity.intValue(),
                             row.getLong("offer_ttl_seconds"),
                             row.getLong("policy_revision"),
+                            CalendarWaitlistPromotionMode.valueOf(
+                                    row.getString("promotion_mode")),
                             row.getInt("committed_count"),
                             row.getInt("waitlisted_count"),
                             row.getLong("bucket_revision"));
@@ -532,12 +1035,26 @@ public class CalendarWaitlistService {
             long revision,
             Instant expiresAt) {}
 
+    private record ActiveOffer(
+            UUID id,
+            UUID entryId,
+            UUID registrationId,
+            UUID actorId,
+            long policyRevision,
+            long revision,
+            Instant expiresAt,
+            long entryRevision,
+            long registrationRevision) {}
+
+    private record ExpiryReceipt(UUID offerId, long revision) {}
+
     private record Bucket(
             UUID id,
             UUID policyId,
             Integer capacity,
             long offerTtlSeconds,
             long policyRevision,
+            CalendarWaitlistPromotionMode promotionMode,
             int committed,
             int waitlisted,
             long revision) {}

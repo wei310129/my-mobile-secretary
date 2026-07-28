@@ -6,7 +6,9 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
@@ -85,6 +87,9 @@ public class CalendarRegistrationPolicyService {
                 && current.revision() != command.expectedRevision()) {
             throw revisionConflict();
         }
+        CapacityBucketRow previousBucket = current == null
+                ? null
+                : capacityBucketForUpdate(target, current.id());
         Instant now = Instant.now(clock);
         long revision = current == null ? 1 : current.revision() + 1;
         int committed = current == null
@@ -212,6 +217,18 @@ public class CalendarRegistrationPolicyService {
                     target.context().workspaceId(),
                     target.sourceOwnerId());
         }
+        recordCapacityTransition(
+                current,
+                previousBucket,
+                command.capacity(),
+                committed,
+                overCapacity(committed, command.capacity()),
+                capacityState,
+                revision,
+                requestHash,
+                payloadHash,
+                now,
+                target);
         recordReceipt(
                 requestHash,
                 payloadHash,
@@ -223,6 +240,196 @@ public class CalendarRegistrationPolicyService {
                 now,
                 target);
         return view(currentForUpdate(target));
+    }
+
+    private CapacityBucketRow capacityBucketForUpdate(
+            CalendarRegistrationAccess.Target target,
+            UUID policyId) {
+        List<CapacityBucketRow> rows = jdbc.query(
+                """
+                SELECT id, committed_count, over_capacity_count,
+                       bucket_revision
+                FROM calendar_capacity_bucket
+                WHERE policy_id = ? AND plan_id = ?
+                  AND activity_id IS NOT DISTINCT FROM ?
+                  AND workspace_id = ?
+                  AND source_created_by_user_id = ?
+                FOR UPDATE
+                """,
+                (row, ignored) -> new CapacityBucketRow(
+                        row.getObject("id", UUID.class),
+                        row.getInt("committed_count"),
+                        row.getInt("over_capacity_count"),
+                        row.getLong("bucket_revision")),
+                policyId,
+                target.planId(),
+                target.activityId(),
+                target.context().workspaceId(),
+                target.sourceOwnerId());
+        if (rows.size() != 1) {
+            throw new BusinessException(
+                    "CALENDAR_CAPACITY_BUCKET_REQUIRED",
+                    "Registration policy capacity state is unavailable");
+        }
+        return rows.getFirst();
+    }
+
+    private void recordCapacityTransition(
+            PolicyRow previous,
+            CapacityBucketRow previousBucket,
+            Integer currentCapacity,
+            int committed,
+            int currentOverCapacity,
+            CalendarCapacityState currentState,
+            long policyRevision,
+            String requestHash,
+            String payloadHash,
+            Instant now,
+            CalendarRegistrationAccess.Target target) {
+        if (previous == null
+                || previousBucket == null
+                || previous.capacityState().equals(currentState.name())) {
+            return;
+        }
+        long bucketRevision = previousBucket.revision() + 1;
+        String semanticHash = CalendarParticipationAccess.hash(
+                "CAPACITY_STATE|"
+                        + previous.id()
+                        + "|"
+                        + policyRevision
+                        + "|"
+                        + currentState);
+        jdbc.update(
+                """
+                INSERT INTO calendar_capacity_history (
+                    id, policy_id, bucket_id, plan_id, activity_id,
+                    event_type, previous_capacity, current_capacity,
+                    committed_count, previous_over_capacity_count,
+                    current_over_capacity_count, previous_state,
+                    current_state, policy_revision, bucket_revision,
+                    operation_request_hash, operation_payload_hash,
+                    semantic_identity_hash, occurred_at, workspace_id,
+                    created_by_user_id, source_created_by_user_id)
+                VALUES (
+                    ?, ?, ?, ?, ?, 'CAPACITY_STATE_CHANGED', ?, ?, ?,
+                    ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                UUID.randomUUID(),
+                previous.id(),
+                previousBucket.id(),
+                target.planId(),
+                target.activityId(),
+                previous.capacity(),
+                currentCapacity,
+                committed,
+                previousBucket.overCapacity(),
+                currentOverCapacity,
+                previous.capacityState(),
+                currentState.name(),
+                policyRevision,
+                bucketRevision,
+                requestHash,
+                payloadHash,
+                semanticHash,
+                Timestamp.from(now),
+                target.context().workspaceId(),
+                target.context().actorId(),
+                target.sourceOwnerId());
+        if (currentState == CalendarCapacityState.OVER_CAPACITY) {
+            insertOverCapacityOutbox(
+                    previous,
+                    previousBucket,
+                    currentCapacity,
+                    committed,
+                    currentOverCapacity,
+                    policyRevision,
+                    requestHash,
+                    payloadHash,
+                    now,
+                    target);
+        }
+    }
+
+    private void insertOverCapacityOutbox(
+            PolicyRow previous,
+            CapacityBucketRow previousBucket,
+            Integer currentCapacity,
+            int committed,
+            int currentOverCapacity,
+            long policyRevision,
+            String requestHash,
+            String payloadHash,
+            Instant now,
+            CalendarRegistrationAccess.Target target) {
+        Set<UUID> recipients = new LinkedHashSet<>();
+        recipients.add(target.effectiveOwnerId());
+        recipients.addAll(jdbc.queryForList(
+                """
+                SELECT manager_user_id
+                FROM calendar_organizer_assignment
+                WHERE plan_id = ?
+                  AND activity_id IS NOT DISTINCT FROM ?
+                  AND workspace_id = ?
+                  AND source_created_by_user_id = ?
+                  AND assignment_status = 'ACTIVE'
+                  AND notification_recipient
+                ORDER BY manager_user_id
+                """,
+                UUID.class,
+                target.planId(),
+                target.activityId(),
+                target.context().workspaceId(),
+                target.sourceOwnerId()));
+        String message = "event=CAPACITY_OVER_CAPACITY"
+                + "; capacity="
+                + previous.capacity()
+                + "->"
+                + currentCapacity
+                + "; committed="
+                + committed
+                + "; overCapacity="
+                + previousBucket.overCapacity()
+                + "->"
+                + currentOverCapacity;
+        for (UUID recipient : recipients) {
+            jdbc.update(
+                    """
+                    INSERT INTO calendar_registration_outbox (
+                        id, event_type, plan_id, activity_id,
+                        recipient_user_id, operation_request_hash,
+                        operation_payload_hash,
+                        semantic_identity_hash, payload_text,
+                        delivery_status, delivery_attempt_count,
+                        next_delivery_attempt_at, delivered_at,
+                        last_delivery_failure, created_at, updated_at,
+                        workspace_id, created_by_user_id,
+                        source_created_by_user_id)
+                    VALUES (
+                        ?, 'CAPACITY_OVER_CAPACITY', ?, ?, ?, ?, ?, ?,
+                        ?, 'PENDING', 0, ?, NULL, NULL, ?, ?, ?, ?, ?)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    UUID.randomUUID(),
+                    target.planId(),
+                    target.activityId(),
+                    recipient,
+                    requestHash,
+                    payloadHash,
+                    CalendarParticipationAccess.hash(
+                            "CAPACITY_OVER_CAPACITY|"
+                                    + previous.id()
+                                    + "|"
+                                    + policyRevision
+                                    + "|"
+                                    + recipient),
+                    message,
+                    Timestamp.from(now),
+                    Timestamp.from(now),
+                    Timestamp.from(now),
+                    target.context().workspaceId(),
+                    target.context().actorId(),
+                    target.sourceOwnerId());
+        }
     }
 
     private void recordReceipt(
@@ -455,4 +662,10 @@ public class CalendarRegistrationPolicyService {
             String capacityState,
             long revision,
             String payloadHash) {}
+
+    private record CapacityBucketRow(
+            UUID id,
+            int committed,
+            int overCapacity,
+            long revision) {}
 }

@@ -57,6 +57,9 @@ class IntentHandlerRegistryTest {
         IntentHandlerRegistry registry = new IntentHandlerRegistry(List.of(
                 mock(ActivityIntentHandler.class, CALLS_REAL_METHODS),
                 mock(BloodDonationIntentHandler.class, CALLS_REAL_METHODS),
+                mock(CalendarAttachmentIntentHandler.class, CALLS_REAL_METHODS),
+                mock(CalendarCategoryIntentHandler.class, CALLS_REAL_METHODS),
+                mock(CalendarKnowledgeIntentHandler.class, CALLS_REAL_METHODS),
                 mock(ContactIntentHandler.class, CALLS_REAL_METHODS),
                 mock(ContextIntentHandler.class, CALLS_REAL_METHODS),
                 mock(ConversationFocusControlIntentHandler.class, CALLS_REAL_METHODS),

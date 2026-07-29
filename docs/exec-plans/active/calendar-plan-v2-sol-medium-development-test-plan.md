@@ -2208,7 +2208,7 @@ Gate：
 {
   "plan": "calendar-plan-v2",
   "phase": "10-A",
-  "status": "FOCUSED_GREEN_SECURITY_NEIGHBOR_PENDING",
+  "status": "PASS_LOCAL",
   "baseRevision": "cbea39699d368104a60b5298af4201e417976456",
   "uniqueTarget": "typed recurrence kernel and bounded expansion contract",
   "nonGoals": [
@@ -2245,10 +2245,24 @@ Gate：
       "skipped": 0,
       "durationSeconds": 40.1
     },
-    "pending": [
-      "Calendar security-neighbor regression",
-      "root regression"
-    ]
+    "securityNeighbor": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceRuleTest,CalendarRlsIntegrationTest,CalendarShareRlsIntegrationTest,CalendarSharedAdoptionMigrationTest,CalendarSharedAdoptionRlsIntegrationTest test",
+      "exitCode": 0,
+      "tests": 19,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 51.9
+    },
+    "rootRegression": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true test",
+      "exitCode": 0,
+      "tests": 1516,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 16,
+      "durationSeconds": 331.0
+    }
   }
 }
 ```

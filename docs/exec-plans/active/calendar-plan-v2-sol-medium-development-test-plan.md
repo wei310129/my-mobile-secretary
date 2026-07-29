@@ -2207,10 +2207,10 @@ Gate：
 ```json
 {
   "plan": "calendar-plan-v2",
-  "phase": "10-A",
-  "status": "PASS_LOCAL",
+  "phase": "10-B",
+  "status": "DOMAIN_GREEN_MIGRATION_PENDING",
   "baseRevision": "cbea39699d368104a60b5298af4201e417976456",
-  "uniqueTarget": "typed recurrence kernel and bounded expansion contract",
+  "uniqueTarget": "versioned recurrence series, exception persistence, and immutable split lineage",
   "nonGoals": [
     "Travel 3B-B implementation",
     "EventKit or native iOS access",
@@ -2220,49 +2220,50 @@ Gate：
   ],
   "candidatePaths": [
     "src/main/java/com/aproject/aidriven/mymobilesecretary/calendar/recurrence/**",
+    "src/main/java/com/aproject/aidriven/mymobilesecretary/calendar/recurrence/persistence/**",
+    "src/main/resources/db/migration/V89__create_calendar_recurrence_series.sql",
     "src/test/java/com/aproject/aidriven/mymobilesecretary/calendar/recurrence/**",
     "docs/exec-plans/active/calendar-plan-v2-sol-medium-development-test-plan.md"
   ],
   "resourceClaim": {
-    "operationId": "calendar-w10a-20260729-r1",
-    "ownerPid": 323008,
+    "operationId": "calendar-w10b-20260729-v89-r1",
+    "ownerPid": 381432,
     "status": "ACTIVE",
-    "reservedMigration": null,
+    "reservedMigration": "V89",
     "worktree": "var/worktrees/calendar-w10"
   },
-  "validation": {
-    "red": {
-      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceRuleTest test",
-      "exitCode": 1,
-      "result": "testCompile failed only because the typed recurrence production API did not exist"
-    },
+  "validationOrder": [
+    "C83-C85 domain/service red contract",
+    "V89 migration constraints and effective-owner RLS red contract",
+    "focused recurrence mutation and migration tests",
+    "Calendar security-neighbor regression",
+    "root regression"
+  ],
+  "currentEvidence": {
+    "red": "CalendarRecurrenceSeriesTest testCompile failed only on the absent series/revision API",
     "focused": {
-      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceRuleTest test",
-      "exitCode": 0,
-      "tests": 10,
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceRuleTest,CalendarRecurrenceSeriesTest test",
+      "tests": 14,
       "failures": 0,
       "errors": 0,
       "skipped": 0,
-      "durationSeconds": 40.1
+      "durationSeconds": 40.7
     },
-    "securityNeighbor": {
-      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceRuleTest,CalendarRlsIntegrationTest,CalendarShareRlsIntegrationTest,CalendarSharedAdoptionMigrationTest,CalendarSharedAdoptionRlsIntegrationTest test",
-      "exitCode": 0,
-      "tests": 19,
-      "failures": 0,
-      "errors": 0,
-      "skipped": 0,
-      "durationSeconds": 51.9
-    },
-    "rootRegression": {
-      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true test",
-      "exitCode": 0,
-      "tests": 1516,
-      "failures": 0,
-      "errors": 0,
-      "skipped": 16,
-      "durationSeconds": 331.0
-    }
+    "pending": [
+      "V89 migration contract",
+      "effective-owner RLS integration",
+      "Calendar security-neighbor regression",
+      "root regression"
+    ]
+  },
+  "previousGate": {
+    "phase": "10-A",
+    "status": "PASS_LOCAL",
+    "commits": ["186bad8", "7179aaf", "0a13f6a"],
+    "focused": "10/10",
+    "securityNeighbor": "19/19",
+    "rootRegression": "1516 tests, 0 failures, 0 errors, 16 skipped",
+    "claim": "calendar-w10a-20260729-r1 RELEASED at 2026-07-29T14:51:39.2417302Z"
   }
 }
 ```

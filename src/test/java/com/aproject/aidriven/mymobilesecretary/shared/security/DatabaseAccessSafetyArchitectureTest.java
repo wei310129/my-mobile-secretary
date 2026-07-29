@@ -60,7 +60,6 @@ class DatabaseAccessSafetyArchitectureTest {
             "com/aproject/aidriven/mymobilesecretary/calendar/share/CalendarSelectedScopeQueryService.java",
             "com/aproject/aidriven/mymobilesecretary/calendar/share/CalendarShareContentGrantService.java",
             "com/aproject/aidriven/mymobilesecretary/calendar/share/CalendarShareService.java",
-            "com/aproject/aidriven/mymobilesecretary/knowledge/tag/application/CalendarAuthoritativeLifeRecordProcessor.java",
             "com/aproject/aidriven/mymobilesecretary/calendar/task/CalendarNodeFollowUpIntentService.java",
             "com/aproject/aidriven/mymobilesecretary/integration/notification/NotificationPublisher.java",
             "com/aproject/aidriven/mymobilesecretary/knowledge/tag/persistence/TaggedLifeRecordExactlyOnceStore.java",

@@ -2208,7 +2208,7 @@ Gate：
 {
   "plan": "calendar-plan-v2",
   "phase": "10-B",
-  "status": "SECURITY_NEIGHBOR_GREEN_ROOT_PENDING",
+  "status": "PASS_LOCAL",
   "baseRevision": "cbea39699d368104a60b5298af4201e417976456",
   "uniqueTarget": "versioned recurrence series, exception persistence, and immutable split lineage",
   "nonGoals": [
@@ -2287,9 +2287,14 @@ Gate：
       "skipped": 0,
       "durationSeconds": 87.9
     },
-    "pending": [
-      "root regression"
-    ]
+    "rootRegression": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true test",
+      "tests": 1525,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 16,
+      "durationSeconds": 396.3
+    }
   },
   "previousGate": {
     "phase": "10-A",

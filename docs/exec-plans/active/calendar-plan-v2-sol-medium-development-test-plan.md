@@ -2155,9 +2155,95 @@ Gate：
 }
 ```
 
+實作進度（2026-07-28，W9-E PASS／PUBLISHED）：
+
+- registration、roster、capacity、waitlist、ownership／last-access resolution 已由
+  `7ab1407ec1e30d5b470bdb9774680a5ff9cb577b` 發布；V88
+  `V88__create_calendar_registration_and_ownership.sql` 已進產品 merge
+  `58e402944f612fd0fbb11d203d93114af1cbdebd`，並可由最新 `origin/main` 祖先關係驗證。
+- focused 19/19、security-neighbor 137/137、root regression 1,550 tests／0 failure／
+  0 error／18 skipped；V88 PR blob 與 validated worktree blob 均為
+  `300c58c0dca79f44497a7d7f72c62923d68f914c`。
+- W9-E source／V88／Maven／Docker claims 均已 RELEASED；Booking Checkpoint B 隨後完成
+  product＋state-only merge，使用者已於 2026-07-29 明示桌電 Booking／ADD consumer session
+  已啟動，因此 laptop Calendar lane 可恢復 W10。
+
+```json
+{
+  "plan": "calendar-plan-v2",
+  "phase": "9-E",
+  "status": "PASS_PUBLISHED",
+  "wheelStatus": "PASS",
+  "commit": "7ab1407ec1e30d5b470bdb9774680a5ff9cb577b",
+  "productMerge": "58e402944f612fd0fbb11d203d93114af1cbdebd",
+  "migration": {
+    "reserved": "V88",
+    "file": "V88__create_calendar_registration_and_ownership.sql",
+    "actualLatestAfterGate": "V88",
+    "validatedBlob": "300c58c0dca79f44497a7d7f72c62923d68f914c"
+  },
+  "tests": {
+    "focused": {"tests": 19, "failures": 0, "errors": 0, "skipped": 0},
+    "securityNeighbor": {"tests": 137, "failures": 0, "errors": 0, "skipped": 0},
+    "rootRegression": {"tests": 1550, "failures": 0, "errors": 0, "skipped": 18}
+  },
+  "claimsReleased": [
+    "worktree/source",
+    "repo/flyway-sequence/main/V88",
+    "machine/docker-capacity/testcontainers",
+    "wrapper-owned Maven target"
+  ],
+  "remainingWork": ["Wheels 10-12"],
+  "nextAction": "start Wheel 10 recurrence and ICS anti-corruption adapter from latest origin/main"
+}
+```
+
 ### 舵輪 10：Recurrence 與 ICS anti-corruption adapter
 
 前提：核心 one-off flow 已穩定；D12、D32–D38、D49–D56 已拍板。
+
+本輪 current gate（2026-07-29，IN_PROGRESS）：
+
+```json
+{
+  "plan": "calendar-plan-v2",
+  "phase": "10-A",
+  "status": "RED_CONTRACT_IN_PROGRESS",
+  "baseRevision": "934773c550724330da09be76f9582d32de04842c",
+  "targetBaseRevision": "cbea39699d368104a60b5298af4201e417976456",
+  "uniqueTarget": "typed recurrence kernel and bounded expansion contract",
+  "nonGoals": [
+    "Travel 3B-B implementation",
+    "EventKit or native iOS access",
+    "external invitation or email delivery",
+    "legacy cutover or retirement",
+    "Booking or desktop state mutation"
+  ],
+  "candidatePaths": [
+    "src/main/java/com/aproject/aidriven/mymobilesecretary/calendar/recurrence/**",
+    "src/test/java/com/aproject/aidriven/mymobilesecretary/calendar/recurrence/**",
+    "docs/exec-plans/active/calendar-plan-v2-sol-medium-development-test-plan.md"
+  ],
+  "resourceClaim": {
+    "operationId": "calendar-w10a-20260729-r1",
+    "ownerPid": 323008,
+    "status": "ACTIVE",
+    "reservedMigration": null,
+    "worktree": "var/worktrees/calendar-w10"
+  },
+  "validationOrder": [
+    "consolidated red domain contract",
+    "merge latest origin/main",
+    "test-compile",
+    "focused CalendarRecurrenceRuleTest"
+  ]
+}
+```
+
+W10-A 不把 ICS 的 366 天 export window／10,000 VEVENT parser limit 升格成 recurrence
+domain 的通用上限。Domain window 必須是有限半開區間並帶正 caller limit；各 application adapter
+另套自己的 policy。W10-A 只交付 typed rule／exception／logical key／wall-clock expansion，
+不宣稱 split lineage、persistence、adoption、registration、reminder materialization 或 ICS 已完成。
 
 Gate：
 

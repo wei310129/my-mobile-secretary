@@ -2208,7 +2208,7 @@ Gate：
 {
   "plan": "calendar-plan-v2",
   "phase": "10-B",
-  "status": "DOMAIN_GREEN_MIGRATION_PENDING",
+  "status": "MIGRATION_APPLIES_CONTRACT_AND_RLS_TESTS_PENDING",
   "baseRevision": "cbea39699d368104a60b5298af4201e417976456",
   "uniqueTarget": "versioned recurrence series, exception persistence, and immutable split lineage",
   "nonGoals": [
@@ -2249,8 +2249,16 @@ Gate：
       "skipped": 0,
       "durationSeconds": 40.7
     },
+    "migrationApply": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarSharedAdoptionMigrationTest test",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 17.5
+    },
     "pending": [
-      "V89 migration contract",
+      "V89 constraint contract assertions",
       "effective-owner RLS integration",
       "Calendar security-neighbor regression",
       "root regression"

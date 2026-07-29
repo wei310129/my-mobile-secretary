@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "ownerLane": "laptop",
-  "updatedOn": "2026-07-28",
+  "updatedOn": "2026-07-29",
   "humanAvailability": {
     "mode": "UNSPECIFIED",
     "timezone": "Asia/Taipei",
@@ -15,7 +15,7 @@
     },
     "TR-DESKTOP-B3-START": {
       "status": "READY",
-      "publishedSha": "58e402944f612fd0fbb11d203d93114af1cbdebd"
+      "publishedSha": "6219edcc9d6da08a410ebe38160c253316977d5b"
     },
     "TR-CALENDAR-W10-MERGED": {
       "status": "PENDING",

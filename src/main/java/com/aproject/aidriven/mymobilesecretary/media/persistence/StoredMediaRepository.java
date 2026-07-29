@@ -13,6 +13,9 @@ import org.springframework.data.repository.query.Param;
 
 public interface StoredMediaRepository extends JpaRepository<StoredMedia, Long> {
 
+    Optional<StoredMedia> findByIdAndWorkspaceIdAndCreatedByUserIdAndStatus(
+            Long id, UUID workspaceId, UUID actorId, Status status);
+
     Optional<StoredMedia> findByIdAndCreatedByUserIdAndStatus(
             Long id, UUID actorId, Status status);
 

@@ -17,6 +17,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import java.util.UUID;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -35,6 +36,7 @@ public class MediaStorageService {
     private final MediaTypeSniffer typeSniffer;
     private final MediaStorageProperties properties;
     private final MediaTagRecorder tagRecorder;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
     public MediaStorageService(StoredMediaRepository repository,
@@ -42,12 +44,14 @@ public class MediaStorageService {
                                MediaTypeSniffer typeSniffer,
                                MediaStorageProperties properties,
                                MediaTagRecorder tagRecorder,
+                               ApplicationEventPublisher events,
                                Clock clock) {
         this.repository = repository;
         this.objectStorage = objectStorage;
         this.typeSniffer = typeSniffer;
         this.properties = properties;
         this.tagRecorder = tagRecorder;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -125,14 +129,16 @@ public class MediaStorageService {
     }
 
     public void delete(Long id) {
-        UUID actorId = WorkspaceContextHolder.requireContext().actorId();
+        var context = WorkspaceContextHolder.requireContext();
         StoredMedia media = repository.findByIdAndCreatedByUserIdAndStatus(
-                        id, actorId, Status.AVAILABLE)
+                        id, context.actorId(), Status.AVAILABLE)
                 .orElseThrow(() -> new NotFoundException("StoredMedia", id));
         Instant now = Instant.now(clock);
         media.markDeleted(now);
         repository.saveAndFlush(media);
         tagRecorder.deleted(media, now);
+        events.publishEvent(new StoredMediaDeletedEvent(
+                media.getId(), context.workspaceId(), context.actorId(), now));
         deleteObjectAfterCommit(media.getStorageKey());
     }
 

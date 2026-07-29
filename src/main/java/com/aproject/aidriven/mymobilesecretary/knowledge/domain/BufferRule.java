@@ -38,6 +38,15 @@ public class BufferRule extends WorkspaceOwnedEntity {
     @Column(nullable = false)
     private long totalOverrunMinutes;
 
+    @Column
+    private Integer explicitBufferMinutes;
+
+    @Column(nullable = false)
+    private long explicitRevision;
+
+    @Column
+    private Instant explicitUpdatedAt;
+
     @Column(nullable = false)
     private Instant createdAt;
 
@@ -55,6 +64,25 @@ public class BufferRule extends WorkspaceOwnedEntity {
         this.totalOverrunMinutes = 0;
         this.createdAt = now;
         this.updatedAt = now;
+    }
+
+    /**
+     * Sets an actor-confirmed buffer without manufacturing an observed outcome sample.
+     */
+    public void setExplicitBuffer(int bufferMinutes, long expectedRevision, Instant now) {
+        if (bufferMinutes < 0 || bufferMinutes > 1440) {
+            throw new IllegalArgumentException(
+                    "explicit buffer must be between 0 and 1440 minutes");
+        }
+        if (explicitRevision != expectedRevision) {
+            throw new com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException(
+                    "BUFFER_RULE_REVISION_CONFLICT",
+                    "Buffer rule changed; reload before continuing");
+        }
+        explicitBufferMinutes = bufferMinutes;
+        explicitRevision++;
+        explicitUpdatedAt = java.util.Objects.requireNonNull(now, "now");
+        updatedAt = now;
     }
 
     /** 為地點建立空白統計。 */
@@ -99,6 +127,18 @@ public class BufferRule extends WorkspaceOwnedEntity {
 
     public long getTotalOverrunMinutes() {
         return totalOverrunMinutes;
+    }
+
+    public Integer getExplicitBufferMinutes() {
+        return explicitBufferMinutes;
+    }
+
+    public long getExplicitRevision() {
+        return explicitRevision;
+    }
+
+    public Instant getExplicitUpdatedAt() {
+        return explicitUpdatedAt;
     }
 
     public Instant getCreatedAt() {

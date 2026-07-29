@@ -11,6 +11,9 @@ import org.springframework.data.repository.query.Param;
 
 public interface ObjectAnnotationRepository extends JpaRepository<ObjectAnnotation, Long> {
 
+    java.util.Optional<ObjectAnnotation> findByIdAndWorkspaceIdAndCreatedByUserId(
+            Long id, UUID workspaceId, UUID actorId);
+
     @Query("""
             select annotation from ObjectAnnotation annotation
             where annotation.workspaceId = :workspaceId

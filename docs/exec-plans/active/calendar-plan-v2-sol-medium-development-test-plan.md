@@ -2717,3 +2717,45 @@ Git state、published SHA 與 trigger receipt 為準。
 
 使用者已確認本節。另產生「Sol Medium 啟動開發提示詞」；提示詞必須引用正式 active plan、
 列出已拍板 decision、第一個舵輪 allowlist、停止條件與精確測試 gate，不能只說「照文件全部開發」。
+
+## 17. Laptop dependency-closure recovery gate（2026-07-29）
+
+狀態：`PASS_AWAITING_PUBLISH`。本 gate 不重做已 PASS 的 Calendar wheels；目的只是在乾淨
+`origin/main@934773c550724330da09be76f9582d32de04842c` checkout 補齊已發布 Calendar consumers
+所依賴、但先前只存在 shared dirty worktree 的 provider API、lifecycle event、intent handler 與
+能力目錄宣告。產品 branch 為 `codex/calendar-dependency-closure`，PR #3 保持 draft，最終產品
+commit（未含本 evidence commit）為 `645c5c124fc88343d8beb9455b50a8ba7981bea2`。
+
+範圍與不變量：
+
+- 補齊 conversation trusted reference／safe failure、notification delivery state、tenant-scoped
+  repository API、buffer explicit policy、LifeRecord exactly-once store，以及直接依賴測試；
+  沒有新增 migration，Flyway latest 仍為 V88。
+- `MediaStorageService` 與 `UserKnowledgeService` 在來源 mutation 同一交易同步發布 typed lifecycle
+  event；listener failure 會回滾來源 mutation，實體 media delete 仍只在 transaction commit 後執行。
+- Calendar knowledge／attachment／category 六種 intent 由三個薄型 production handler 委派既有
+  deterministic Java services；能力目錄由 404 增至 439，prompt 維持既有 `< 12500` 長度 gate。
+- 未修改 `booking/**`、V84、desktop-owned state，也沒有真實外部 mutation；測試環境為本機
+  PostgreSQL／Redis Testcontainers。
+
+驗證證據：
+
+- clean main-only compile 與全 test-source compile：PASS。
+- dependency focused：48 tests，0 failure／0 error，6 skipped；notification／buffer 19/19；
+  reminder／exactly-once Testcontainers 7/7。
+- lifecycle focused：21/21；security-neighbor（Calendar RLS、attachment、knowledge、participation、
+  workers、exactly-once、architecture）51/51。
+- Calendar intent focused（registry、439-case catalog、structured prompt、三個 conversation
+  services）26/26；prompt 長度 assertion 未放寬。
+- root regression：1506 tests，0 failure／0 error，16 skipped，318.0 秒。
+
+基礎設施與 ownership：
+
+- `laptop-closure-20260729-r1`、`r2` 因筆電 process／重啟由 coordinator 原生判定
+  `ABANDONED`；沒有 claim transfer。
+- 重啟後以 `laptop-closure-20260729-r3` 重新 atomic claim source、git-index／git-common、
+  Docker daemon 與 Testcontainers capacity。測試中 Docker Desktop 曾重啟；engine 恢復後
+  `docker desktop status=running`、server `28.3.2`，當時 focused gate 21/21 完整返回，因此記為
+  infrastructure event，不列產品紅。
+- PR 合併、state-only handoff 與 r3 release receipt 尚未完成；在 matching Git state 可由
+  `origin/main` 驗證且 claims 已釋放前，desktop B3 維持 fail closed。

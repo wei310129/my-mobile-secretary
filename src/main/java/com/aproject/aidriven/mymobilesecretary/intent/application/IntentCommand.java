@@ -211,6 +211,18 @@ public record IntentCommand(
         CHECK_SHOPPING_INVENTORY,
         LIST_UNPLACED_ITEMS,
         ASK_ITEM_KNOWLEDGE_SUMMARY,
+        /** 唯讀查詢已由本人綁到 Calendar plan/activity/node 的知識證據。 */
+        ASK_CALENDAR_KNOWLEDGE,
+        /** 把本人唯一知識事實或註記綁到本人唯一 Calendar 目標；不 materialize 或分享。 */
+        BIND_KNOWLEDGE_TO_CALENDAR,
+        /** 提案、確認或取消將已綁 Knowledge materialize 成 typed 業務結果。 */
+        MATERIALIZE_CALENDAR_KNOWLEDGE,
+        /** 綁定可信引用附件，並分開預覽 core share 與逐 asset content grant。 */
+        BIND_CALENDAR_ATTACHMENT_AND_PREVIEW_SHARE,
+        /** UNLINK／REPLACE／DELETE_SOURCE 三種附件生命週期語意。 */
+        MANAGE_CALENDAR_ATTACHMENT,
+        /** 修改本人唯一 Calendar plan 的共享 category；color 仍未交付。 */
+        CHANGE_CALENDAR_CATEGORY,
         ASK_SCHEDULE_REMINDER,
         /** 建任務(待辦,無固定時段;可有期限)。 */
         CREATE_TASK,

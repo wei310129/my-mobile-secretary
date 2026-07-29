@@ -14,6 +14,9 @@ import org.springframework.data.repository.query.Param;
 
 public interface UserKnowledgeFactRepository extends JpaRepository<UserKnowledgeFact, Long> {
 
+    Optional<UserKnowledgeFact> findByIdAndWorkspaceIdAndCreatedByUserId(
+            Long id, UUID workspaceId, UUID actorId);
+
     Optional<UserKnowledgeFact> findByWorkspaceIdAndCreatedByUserIdAndCategoryAndNormalizedSubject(
             UUID workspaceId, UUID actorId, Category category, String normalizedSubject);
 

@@ -9,6 +9,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import org.springframework.context.ApplicationEventPublisher;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -18,10 +19,15 @@ import org.springframework.transaction.annotation.Transactional;
 public class UserKnowledgeService {
 
     private final UserKnowledgeFactRepository repository;
+    private final ApplicationEventPublisher events;
     private final Clock clock;
 
-    public UserKnowledgeService(UserKnowledgeFactRepository repository, Clock clock) {
+    public UserKnowledgeService(
+            UserKnowledgeFactRepository repository,
+            ApplicationEventPublisher events,
+            Clock clock) {
         this.repository = repository;
+        this.events = events;
         this.clock = clock;
     }
 
@@ -36,10 +42,16 @@ public class UserKnowledgeService {
                         context.workspaceId(), context.actorId(), category, normalized)
                 .orElseGet(() -> UserKnowledgeFact.create(
                         category, safeSubject, normalized, safeDetail, now));
-        if (fact.getId() != null) {
+        boolean updated = fact.getId() != null;
+        if (updated) {
             fact.update(safeSubject, safeDetail, now);
         }
-        return repository.save(fact);
+        UserKnowledgeFact saved = repository.save(fact);
+        if (updated) {
+            events.publishEvent(new UserKnowledgeFactUpdatedEvent(
+                    saved.getId(), saved.getSubject(), now));
+        }
+        return saved;
     }
 
     @Transactional(readOnly = true)

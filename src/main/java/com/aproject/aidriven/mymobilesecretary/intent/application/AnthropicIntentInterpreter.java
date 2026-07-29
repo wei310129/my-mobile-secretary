@@ -206,8 +206,9 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               itemNames=明講標籤；時間不明就 UNKNOWN，不猜日期。Java 共同 LifeRecord 排除 FEEDBACK。
             - 依標籤查紀錄用 ASK_TAGGED_RECORDS：title 放標籤，指定期間才填 startAt/endAt；
               options.filter 可放 PURCHASE、APPLICATION 等 record type。查詢會沿已保存的 tag edge，唯讀且最多 20 筆。
-            - 查原始照片／文件用 ASK_STORED_MEDIA：title=搜尋詞、filter=IMAGE/DOCUMENT；只列本人 App 授權 URL。
-              聊天要求刪除仍用此型別，Java 只指引 App 檔案管理，不得刪除。
+            - ASK_STORED_MEDIA：title=搜尋詞、filter=IMAGE/DOCUMENT；Java查本人授權檔，
+              刪除要求只指引App管理。
+            - Calendar知識/附件/分類選enum；target/ID/權限/執行由Java驗證。
             - 查名片聯絡人用 ASK_CONTACT，title=姓名／公司／專業關鍵字；空白列最近資料，全程唯讀。
             - 查學校／幼兒園菜單用 ASK_SCHOOL_MEAL：startAt/endAt 放指定日或週的台北時區邊界；
               options.filter 只能是 BREAKFAST/LUNCH/SNACK/DINNER；查「牛奶是哪天」時 title=牛奶，

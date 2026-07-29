@@ -5,6 +5,9 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.reminder.persistence.ReminderDeliveryRepository;
 import com.aproject.aidriven.mymobilesecretary.shared.time.TimeDisplayPreferenceService;
 import java.time.Clock;
@@ -27,6 +30,8 @@ class NotificationOutboxServiceTest {
     private static final Instant NOW = Instant.parse("2026-07-17T00:00:00Z");
     private static final UUID TARGET =
             UUID.fromString("30000000-0000-0000-0000-000000000002");
+    private static final UUID WORKSPACE =
+            UUID.fromString("30000000-0000-0000-0000-000000000101");
 
     @Mock private NotificationOutboxRepository repository;
     @Mock private ReminderDeliveryRepository deliveryRepository;
@@ -76,6 +81,74 @@ class NotificationOutboxServiceTest {
         ReminderNotification notification = service(2).claimDue(TARGET).getFirst().envelope();
 
         assertThat(notification.message()).contains("下午 7:00").doesNotContain("19:00");
+    }
+
+    @Test
+    void deliveryStateIsNotFoundWhenStableKeyHasNoEnvelope() {
+        when(repository.findAllByWorkspaceIdAndTargetUserIdAndDeliveryKeyOrderByChannel(
+                        WORKSPACE, TARGET, "calendar:missing"))
+                .thenReturn(List.of());
+
+        assertThat(deliveryState("calendar:missing").status())
+                .isEqualTo(NotificationDeliveryState.Status.NOT_FOUND);
+    }
+
+    @Test
+    void deliveryStateRemainsInFlightWhileAnyChannelIsPending() {
+        NotificationOutbox pending = NotificationOutboxTest.pending(true);
+        NotificationOutbox sent = NotificationOutboxTest.pending(true);
+        sent.claim(UUID.randomUUID(), NOW.plusSeconds(30));
+        sent.markSent(NOW.plusSeconds(1));
+        when(repository.findAllByWorkspaceIdAndTargetUserIdAndDeliveryKeyOrderByChannel(
+                        WORKSPACE, TARGET, "calendar:in-flight"))
+                .thenReturn(List.of(pending, sent));
+
+        assertThat(deliveryState("calendar:in-flight").status())
+                .isEqualTo(NotificationDeliveryState.Status.IN_FLIGHT);
+    }
+
+    @Test
+    void deliveryStateIsSentOnlyWhenEveryChannelWasSent() {
+        NotificationOutbox first = NotificationOutboxTest.pending(true);
+        NotificationOutbox second = NotificationOutboxTest.pending(true);
+        first.claim(UUID.randomUUID(), NOW.plusSeconds(30));
+        first.markSent(NOW.plusSeconds(1));
+        second.claim(UUID.randomUUID(), NOW.plusSeconds(30));
+        second.markSent(NOW.plusSeconds(2));
+        when(repository.findAllByWorkspaceIdAndTargetUserIdAndDeliveryKeyOrderByChannel(
+                        WORKSPACE, TARGET, "calendar:sent"))
+                .thenReturn(List.of(first, second));
+
+        NotificationDeliveryState state = deliveryState("calendar:sent");
+
+        assertThat(state.status()).isEqualTo(NotificationDeliveryState.Status.SENT);
+        assertThat(state.sentAt()).isEqualTo(NOW.plusSeconds(2));
+    }
+
+    @Test
+    void partialMultiChannelDeadLetterIsVisibleAsFailure() {
+        NotificationOutbox sent = NotificationOutboxTest.pending(true);
+        sent.claim(UUID.randomUUID(), NOW.plusSeconds(30));
+        sent.markSent(NOW.plusSeconds(1));
+        NotificationOutbox failed = NotificationOutboxTest.pending(true);
+        failed.claim(UUID.randomUUID(), NOW.plusSeconds(30));
+        failed.deadLetter(NOW.plusSeconds(2), "PROVIDER_REJECTED");
+        when(repository.findAllByWorkspaceIdAndTargetUserIdAndDeliveryKeyOrderByChannel(
+                        WORKSPACE, TARGET, "calendar:failed"))
+                .thenReturn(List.of(sent, failed));
+
+        NotificationDeliveryState state = deliveryState("calendar:failed");
+
+        assertThat(state.status()).isEqualTo(NotificationDeliveryState.Status.FAILED);
+        assertThat(state.lastError()).isEqualTo("PROVIDER_REJECTED");
+    }
+
+    private NotificationDeliveryState deliveryState(String key) {
+        try (var ignored =
+                WorkspaceContextHolder.open(
+                        new WorkspaceContext(TARGET, WORKSPACE, WorkspaceChannel.TEST))) {
+            return service(2).deliveryState(TARGET, key);
+        }
     }
 
     private NotificationOutboxService service(int maxBatch) {

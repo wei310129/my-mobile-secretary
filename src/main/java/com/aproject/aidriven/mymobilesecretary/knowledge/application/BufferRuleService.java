@@ -1,8 +1,12 @@
 package com.aproject.aidriven.mymobilesecretary.knowledge.application;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
+import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.domain.BufferRule;
 import com.aproject.aidriven.mymobilesecretary.knowledge.persistence.BufferRuleRepository;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleOutcomeRecorded;
+import com.aproject.aidriven.mymobilesecretary.shared.error.NotFoundException;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -25,13 +29,17 @@ public class BufferRuleService {
     private static final Logger log = LoggerFactory.getLogger(BufferRuleService.class);
 
     private final BufferRuleRepository bufferRuleRepository;
+    private final PlaceRepository placeRepository;
     private final BufferRuleProperties properties;
     private final Clock clock;
 
-    public BufferRuleService(BufferRuleRepository bufferRuleRepository,
-                             BufferRuleProperties properties,
-                             Clock clock) {
+    public BufferRuleService(
+            BufferRuleRepository bufferRuleRepository,
+            PlaceRepository placeRepository,
+            BufferRuleProperties properties,
+            Clock clock) {
         this.bufferRuleRepository = bufferRuleRepository;
+        this.placeRepository = placeRepository;
         this.properties = properties;
         this.clock = clock;
     }
@@ -42,8 +50,11 @@ public class BufferRuleService {
         if (event.placeId() == null) {
             return;
         }
+        WorkspaceContext context = tenantContext();
+        requireOwnedPlace(event.placeId(), context);
         Instant now = Instant.now(clock);
-        BufferRule rule = bufferRuleRepository.findByPlaceId(event.placeId())
+        BufferRule rule = bufferRuleRepository
+                .findForUpdateByPlaceIdAndActorId(event.placeId(), context.actorId())
                 .orElseGet(() -> BufferRule.create(event.placeId(), now));
         rule.recordSample(event.onTime() ? 0 : event.overrunMinutes() == null ? 0 : event.overrunMinutes(), now);
         bufferRuleRepository.save(rule);
@@ -60,12 +71,63 @@ public class BufferRuleService {
         if (placeId == null) {
             return Duration.ZERO;
         }
-        return bufferRuleRepository.findByPlaceId(placeId)
-                .filter(rule -> rule.getSampleCount() >= properties.minSamples())
-                .map(rule -> {
-                    Duration average = Duration.ofMinutes(rule.averageOverrunMinutes());
-                    return average.compareTo(properties.maxBuffer()) > 0 ? properties.maxBuffer() : average;
-                })
+        WorkspaceContext context = tenantContext();
+        return bufferRuleRepository
+                .findByPlaceIdAndCreatedByUserId(placeId, context.actorId())
+                .map(this::effectiveBuffer)
                 .orElse(Duration.ZERO);
+    }
+
+    /**
+     * Saves an explicit actor-confirmed policy while preserving learned outcome counters.
+     */
+    public BufferRule setExplicitBuffer(Long placeId, int bufferMinutes, long expectedRevision) {
+        WorkspaceContext context = tenantContext();
+        if (placeId == null || placeId <= 0) {
+            throw new IllegalArgumentException("place id must be positive");
+        }
+        if (bufferMinutes < 0) {
+            throw new IllegalArgumentException("explicit buffer must not be negative");
+        }
+        long maxMinutes = properties.maxBuffer().toMinutes();
+        if (bufferMinutes > maxMinutes) {
+            throw new IllegalArgumentException("explicit buffer exceeds configured maximum");
+        }
+        requireOwnedPlace(placeId, context);
+        Instant now = Instant.now(clock);
+        BufferRule rule =
+                bufferRuleRepository
+                        .findForUpdateByPlaceIdAndActorId(placeId, context.actorId())
+                        .orElseGet(() -> BufferRule.create(placeId, now));
+        rule.setExplicitBuffer(bufferMinutes, expectedRevision, now);
+        return bufferRuleRepository.save(rule);
+    }
+
+    private Duration effectiveBuffer(BufferRule rule) {
+        if (rule.getExplicitBufferMinutes() != null) {
+            return Duration.ofMinutes(rule.getExplicitBufferMinutes());
+        }
+        if (rule.getSampleCount() < properties.minSamples()) {
+            return Duration.ZERO;
+        }
+        Duration average = Duration.ofMinutes(rule.averageOverrunMinutes());
+        return average.compareTo(properties.maxBuffer()) > 0
+                ? properties.maxBuffer()
+                : average;
+    }
+
+    private void requireOwnedPlace(Long placeId, WorkspaceContext context) {
+        placeRepository
+                .findById(placeId)
+                .filter(place -> context.actorId().equals(place.getCreatedByUserId()))
+                .orElseThrow(() -> new NotFoundException("Place", "requested place"));
+    }
+
+    private static WorkspaceContext tenantContext() {
+        WorkspaceContext context = WorkspaceContextHolder.requireContext();
+        if (!context.isTenantScope()) {
+            throw new SecurityException("Buffer rule requires tenant scope");
+        }
+        return context;
     }
 }

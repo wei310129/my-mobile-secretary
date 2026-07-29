@@ -2208,7 +2208,7 @@ Gate：
 {
   "plan": "calendar-plan-v2",
   "phase": "10-B",
-  "status": "MIGRATION_APPLIES_CONTRACT_AND_RLS_TESTS_PENDING",
+  "status": "SECURITY_NEIGHBOR_GREEN_ROOT_PENDING",
   "baseRevision": "cbea39699d368104a60b5298af4201e417976456",
   "uniqueTarget": "versioned recurrence series, exception persistence, and immutable split lineage",
   "nonGoals": [
@@ -2226,8 +2226,8 @@ Gate：
     "docs/exec-plans/active/calendar-plan-v2-sol-medium-development-test-plan.md"
   ],
   "resourceClaim": {
-    "operationId": "calendar-w10b-20260729-v89-r1",
-    "ownerPid": 381432,
+    "operationId": "calendar-w10b-20260729-v89-r2",
+    "ownerPid": 394456,
     "status": "ACTIVE",
     "reservedMigration": "V89",
     "worktree": "var/worktrees/calendar-w10"
@@ -2257,10 +2257,37 @@ Gate：
       "skipped": 0,
       "durationSeconds": 17.5
     },
+    "migrationContract": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceMigrationTest test",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 37.0
+    },
+    "effectiveOwnerRls": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceRlsIntegrationTest test",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 57.5
+    },
+    "combinedFocused": {
+      "tests": 19,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 45.4
+    },
+    "securityNeighbor": {
+      "tests": 36,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 87.9
+    },
     "pending": [
-      "V89 constraint contract assertions",
-      "effective-owner RLS integration",
-      "Calendar security-neighbor regression",
       "root regression"
     ]
   },

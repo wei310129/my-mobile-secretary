@@ -166,12 +166,12 @@ class CalendarRecurrenceMigrationTest {
     }
 
     @Test
-    void v89IsTheLatestAppliedMigration() throws Exception {
+    void v89RemainsAppliedWhenLaterMigrationsExist() throws Exception {
         assertThat(strings(
                         """
-                        SELECT max(version::integer)::text
+                        SELECT version
                         FROM flyway_schema_history
-                        WHERE success
+                        WHERE success AND version = '89'
                         """))
                 .containsExactly("89");
     }

@@ -2207,10 +2207,10 @@ Gate：
 ```json
 {
   "plan": "calendar-plan-v2",
-  "phase": "10-B",
-  "status": "PASS_LOCAL",
+  "phase": "10-C",
+  "status": "PAUSED_AWAITING_TR-B3-CORE-MERGED",
   "baseRevision": "cbea39699d368104a60b5298af4201e417976456",
-  "uniqueTarget": "versioned recurrence series, exception persistence, and immutable split lineage",
+  "uniqueTarget": "recurrence ancestry, revision-bound adoption, personal occurrence skip, and rolling reminder identity",
   "nonGoals": [
     "Travel 3B-B implementation",
     "EventKit or native iOS access",
@@ -2222,15 +2222,23 @@ Gate：
     "src/main/java/com/aproject/aidriven/mymobilesecretary/calendar/recurrence/**",
     "src/main/java/com/aproject/aidriven/mymobilesecretary/calendar/recurrence/persistence/**",
     "src/main/resources/db/migration/V89__create_calendar_recurrence_series.sql",
+    "src/main/resources/db/migration/V90__integrate_calendar_recurrence_projection.sql",
     "src/test/java/com/aproject/aidriven/mymobilesecretary/calendar/recurrence/**",
     "docs/exec-plans/active/calendar-plan-v2-sol-medium-development-test-plan.md"
   ],
   "resourceClaim": {
-    "operationId": "calendar-w10b-20260729-v89-r2",
-    "ownerPid": 394456,
+    "operationId": "calendar-w10c-20260730-v90-r2",
+    "ownerPid": 50100,
     "status": "ACTIVE",
-    "reservedMigration": "V89",
+    "reservedMigration": "V90",
     "worktree": "var/worktrees/calendar-w10"
+  },
+  "hardYield": {
+    "eventId": "TR-B3-CORE-MERGED",
+    "observedOriginMain": "cbea39699d368104a60b5298af4201e417976456",
+    "desktopState": "PENDING",
+    "publishedSha": null,
+    "action": "preserve the unvalidated V90 checkpoint, release all claims, and do not resume W10 until a matching Git-retrievable product/state receipt exists"
   },
   "validationOrder": [
     "C83-C85 domain/service red contract",

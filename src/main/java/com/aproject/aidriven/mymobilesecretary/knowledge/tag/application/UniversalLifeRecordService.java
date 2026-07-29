@@ -6,11 +6,17 @@ import com.aproject.aidriven.mymobilesecretary.knowledge.domain.ExpenseCategory;
 import com.aproject.aidriven.mymobilesecretary.knowledge.tag.domain.SemanticTag;
 import com.aproject.aidriven.mymobilesecretary.knowledge.tag.domain.SemanticTagEdge;
 import com.aproject.aidriven.mymobilesecretary.knowledge.tag.domain.TaggedLifeRecord;
+import java.nio.charset.StandardCharsets;
+import java.security.MessageDigest;
+import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Comparator;
+import java.util.HexFormat;
 import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Objects;
 import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
@@ -59,7 +65,58 @@ public class UniversalLifeRecordService {
 
     public void recordDomainEvent(TaggedLifeRecord.RecordType type, String title,
                                   Instant occurredAt, List<String> tagNames) {
+        DomainRecord record = domainRecord(type, title, occurredAt, tagNames);
+        graphService.recordLifeEvent(
+                record.type(), record.title(), record.occurredAt(), null, record.tags());
+    }
+
+    public void recordDomainEventOnce(
+            String sourceEventIdentity,
+            TaggedLifeRecord.RecordType type,
+            String title,
+            Instant occurredAt,
+            List<String> tagNames) {
+        if (sourceEventIdentity == null || sourceEventIdentity.isBlank()) {
+            throw new IllegalArgumentException("source event identity is required");
+        }
+        DomainRecord record = domainRecord(type, title, occurredAt, tagNames);
+        String canonicalTags =
+                record.tags().stream()
+                        .map(
+                                spec ->
+                                        spec.name()
+                                                + "\u001f"
+                                                + spec.kind().name()
+                                                + "\u001f"
+                                                + spec.source().name())
+                        .collect(java.util.stream.Collectors.joining("\u001e"));
+        String payload =
+                record.type().name()
+                        + "\n"
+                        + record.title()
+                        + "\n"
+                        + record.occurredAt()
+                        + "\n"
+                        + canonicalTags;
+        graphService.recordLifeEventOnce(
+                record.type(),
+                record.title(),
+                record.occurredAt(),
+                null,
+                record.tags(),
+                sha256(sourceEventIdentity.strip()),
+                sha256(payload));
+    }
+
+    private DomainRecord domainRecord(
+            TaggedLifeRecord.RecordType type,
+            String title,
+            Instant occurredAt,
+            List<String> tagNames) {
+        TaggedLifeRecord.RecordType safeType =
+                Objects.requireNonNull(type, "record type is required");
         String safeTitle = safeTitle(title);
+        Instant effectiveOccurredAt = occurredAt == null ? Instant.now(clock) : occurredAt;
         List<SemanticTagGraphService.TagSpec> tags = new ArrayList<>();
         tags.add(new SemanticTagGraphService.TagSpec(
                 "生活事件", SemanticTag.Kind.TOPIC, SemanticTagEdge.SourceType.SYSTEM_RULE));
@@ -71,8 +128,21 @@ public class UniversalLifeRecordService {
                 .map(seed -> new SemanticTagGraphService.TagSpec(
                         seed.name(), seed.kind(), SemanticTagEdge.SourceType.SYSTEM_RULE))
                 .forEach(tags::add);
-        graphService.recordLifeEvent(type, safeTitle,
-                occurredAt == null ? Instant.now(clock) : occurredAt, null, tags);
+        List<SemanticTagGraphService.TagSpec> canonicalTags =
+                tags.stream()
+                        .map(
+                                spec ->
+                                        new SemanticTagGraphService.TagSpec(
+                                                spec.name().strip(),
+                                                spec.kind(),
+                                                spec.source()))
+                        .distinct()
+                        .sorted(
+                                Comparator.comparing(SemanticTagGraphService.TagSpec::name)
+                                        .thenComparing(spec -> spec.kind().name())
+                                        .thenComparing(spec -> spec.source().name()))
+                        .toList();
+        return new DomainRecord(safeType, safeTitle, effectiveOccurredAt, canonicalTags);
     }
 
     private Set<TagSeed> extractSeeds(String text, IntentResult.Action action) {
@@ -116,6 +186,23 @@ public class UniversalLifeRecordService {
     private static String truncate(String value, int maximum) {
         return value.length() <= maximum ? value : value.substring(0, maximum);
     }
+
+    private static String sha256(String value) {
+        try {
+            return HexFormat.of()
+                    .formatHex(
+                            MessageDigest.getInstance("SHA-256")
+                                    .digest(value.getBytes(StandardCharsets.UTF_8)));
+        } catch (NoSuchAlgorithmException impossible) {
+            throw new IllegalStateException("SHA-256 unavailable", impossible);
+        }
+    }
+
+    private record DomainRecord(
+            TaggedLifeRecord.RecordType type,
+            String title,
+            Instant occurredAt,
+            List<SemanticTagGraphService.TagSpec> tags) {}
 
     private record TagSeed(String name, SemanticTag.Kind kind) {
     }

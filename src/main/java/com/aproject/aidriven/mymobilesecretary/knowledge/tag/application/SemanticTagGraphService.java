@@ -11,6 +11,7 @@ import com.aproject.aidriven.mymobilesecretary.knowledge.tag.persistence.Semanti
 import com.aproject.aidriven.mymobilesecretary.knowledge.tag.persistence.SemanticTagBindingRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.tag.persistence.SemanticTagEdgeRepository;
 import com.aproject.aidriven.mymobilesecretary.knowledge.tag.persistence.SemanticTagRepository;
+import com.aproject.aidriven.mymobilesecretary.knowledge.tag.persistence.TaggedLifeRecordExactlyOnceStore;
 import com.aproject.aidriven.mymobilesecretary.knowledge.tag.persistence.TaggedLifeRecordRepository;
 import com.aproject.aidriven.mymobilesecretary.media.domain.StoredMedia;
 import java.time.Clock;
@@ -52,6 +53,7 @@ public class SemanticTagGraphService {
     private final SemanticTagEdgeRepository edgeRepository;
     private final SemanticTagBindingRepository bindingRepository;
     private final TaggedLifeRecordRepository lifeRecordRepository;
+    private final TaggedLifeRecordExactlyOnceStore exactlyOnceStore;
     private final Clock clock;
 
     public SemanticTagGraphService(
@@ -60,12 +62,14 @@ public class SemanticTagGraphService {
             SemanticTagEdgeRepository edgeRepository,
             SemanticTagBindingRepository bindingRepository,
             TaggedLifeRecordRepository lifeRecordRepository,
+            TaggedLifeRecordExactlyOnceStore exactlyOnceStore,
             Clock clock) {
         this.tagRepository = tagRepository;
         this.aliasRepository = aliasRepository;
         this.edgeRepository = edgeRepository;
         this.bindingRepository = bindingRepository;
         this.lifeRecordRepository = lifeRecordRepository;
+        this.exactlyOnceStore = exactlyOnceStore;
         this.clock = clock;
     }
 
@@ -125,6 +129,36 @@ public class SemanticTagGraphService {
                     SemanticTagBinding.TargetType.LIFE_RECORD, record.getId(), spec.source());
         }
         return record;
+    }
+
+    public TaggedLifeRecordExactlyOnceStore.RecordResult recordLifeEventOnce(
+            TaggedLifeRecord.RecordType type,
+            String title,
+            Instant occurredAt,
+            String details,
+            List<TagSpec> tags,
+            String sourceEventKeyHash,
+            String sourcePayloadHash) {
+        TaggedLifeRecordExactlyOnceStore.RecordResult result =
+                exactlyOnceStore.insertOrVerify(
+                        type,
+                        title,
+                        occurredAt,
+                        details,
+                        Instant.now(clock),
+                        sourceEventKeyHash,
+                        sourcePayloadHash);
+        if (!result.inserted()) {
+            return result;
+        }
+        for (TagSpec spec : tags == null ? List.<TagSpec>of() : tags) {
+            bind(
+                    ensureTag(spec.name(), spec.kind()),
+                    SemanticTagBinding.TargetType.LIFE_RECORD,
+                    result.recordId(),
+                    spec.source());
+        }
+        return result;
     }
 
     public void indexPriceRecord(PriceRecord record) {

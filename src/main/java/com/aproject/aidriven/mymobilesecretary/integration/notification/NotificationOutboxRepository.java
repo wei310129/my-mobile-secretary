@@ -13,6 +13,10 @@ import org.springframework.data.repository.query.Param;
 
 interface NotificationOutboxRepository extends JpaRepository<NotificationOutbox, Long> {
 
+    List<NotificationOutbox>
+            findAllByWorkspaceIdAndTargetUserIdAndDeliveryKeyOrderByChannel(
+                    UUID workspaceId, UUID targetUserId, String deliveryKey);
+
     @Lock(LockModeType.PESSIMISTIC_WRITE)
     @Query("""
             select n from NotificationOutbox n

@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -96,6 +97,26 @@ class NotificationPublisherTest {
         assertThatThrownBy(() -> publisher().enqueue(new NotificationRequest(
                 TARGET, "task:7:due", null, 7L, "提醒", "該出門了")))
                 .isInstanceOf(DataAccessResourceFailureException.class);
+    }
+
+    @Test
+    void explicitChannelPreferenceSkipsOtherSendersBeforeDestinationLookup() {
+        when(sender.channel()).thenReturn(NotificationChannel.LOG);
+
+        assertThat(
+                        publisher()
+                                .enqueue(
+                                        new NotificationRequest(
+                                                TARGET,
+                                                "calendar-reminder:preferred-channel",
+                                                null,
+                                                null,
+                                                "行程提醒",
+                                                "該出門了",
+                                                Set.of(NotificationChannel.APNS))))
+                .isZero();
+
+        verifyNoInteractions(jdbcTemplate);
     }
 
     private NotificationPublisher publisher() {

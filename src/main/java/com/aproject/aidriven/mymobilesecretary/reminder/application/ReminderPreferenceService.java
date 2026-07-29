@@ -60,9 +60,14 @@ public class ReminderPreferenceService {
     /** 回 empty 表示現在可送;有值表示應把同一提醒延後到該時間。 */
     @Transactional(readOnly = true)
     public Optional<Instant> deferUntil(Task task, Instant now) {
+        return deferUntil(task.getPriority() == TaskPriority.HIGH, now);
+    }
+
+    @Transactional(readOnly = true)
+    public Optional<Instant> deferUntil(boolean highPriority, Instant now) {
         ReminderPreference preference = repository.findFirstByOrderByIdAsc().orElse(null);
         if (preference == null
-                || (task.getPriority() == TaskPriority.HIGH && preference.isAllowHighPriority())) {
+                || (highPriority && preference.isAllowHighPriority())) {
             return Optional.empty();
         }
 

@@ -1,12 +1,42 @@
 {
   "schemaVersion": 1,
   "ownerLane": "desktop",
-  "updatedOn": "2026-07-26",
-  "consumedLaptopTriggers": {},
+  "updatedOn": "2026-07-30",
+  "consumedLaptopTriggers": {
+    "TR-DESKTOP-B3-START": {
+      "status": "ACKNOWLEDGED",
+      "publishedSha": "6219edcc9d6da08a410ebe38160c253316977d5b",
+      "acknowledgedOn": "2026-07-29"
+    }
+  },
   "gates": {
     "TR-B3-CORE-MERGED": {
-      "status": "PENDING",
-      "publishedSha": null
+      "status": "PASS",
+      "publishedSha": null,
+      "evidence": {
+        "baseSha": "cbea39699d368104a60b5298af4201e417976456",
+        "focused": {
+          "tests": 12,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "securityNeighbor": {
+          "tests": 31,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "rootRegression": {
+          "tests": 1518,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 16,
+          "durationSeconds": 357.0
+        },
+        "externalEnvironment": "NONE",
+        "externalMutationCount": 0
+      }
     },
     "TR-B4-FAKE-MERGED": {
       "status": "PENDING",

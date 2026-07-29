@@ -2208,9 +2208,8 @@ Gate：
 {
   "plan": "calendar-plan-v2",
   "phase": "10-A",
-  "status": "RED_CONTRACT_IN_PROGRESS",
-  "baseRevision": "934773c550724330da09be76f9582d32de04842c",
-  "targetBaseRevision": "cbea39699d368104a60b5298af4201e417976456",
+  "status": "FOCUSED_GREEN_SECURITY_NEIGHBOR_PENDING",
+  "baseRevision": "cbea39699d368104a60b5298af4201e417976456",
   "uniqueTarget": "typed recurrence kernel and bounded expansion contract",
   "nonGoals": [
     "Travel 3B-B implementation",
@@ -2231,12 +2230,26 @@ Gate：
     "reservedMigration": null,
     "worktree": "var/worktrees/calendar-w10"
   },
-  "validationOrder": [
-    "consolidated red domain contract",
-    "merge latest origin/main",
-    "test-compile",
-    "focused CalendarRecurrenceRuleTest"
-  ]
+  "validation": {
+    "red": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceRuleTest test",
+      "exitCode": 1,
+      "result": "testCompile failed only because the typed recurrence production API did not exist"
+    },
+    "focused": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceRuleTest test",
+      "exitCode": 0,
+      "tests": 10,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 40.1
+    },
+    "pending": [
+      "Calendar security-neighbor regression",
+      "root regression"
+    ]
+  }
 }
 ```
 

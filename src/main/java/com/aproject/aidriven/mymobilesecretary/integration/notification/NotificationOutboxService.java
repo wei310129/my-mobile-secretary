@@ -1,5 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.integration.notification;
 
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
+import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.ReminderDelivery;
 import com.aproject.aidriven.mymobilesecretary.reminder.persistence.ReminderDeliveryRepository;
 import com.aproject.aidriven.mymobilesecretary.shared.time.TimeDisplayPreferenceService;
@@ -96,6 +98,60 @@ public class NotificationOutboxService {
             entry.deadLetter(now, errorCode);
         }
         return true;
+    }
+
+    @Transactional(readOnly = true)
+    public NotificationDeliveryState deliveryState(UUID targetUserId, String deliveryKey) {
+        WorkspaceContext context = WorkspaceContextHolder.requireContext();
+        List<NotificationOutbox> entries =
+                repository.findAllByWorkspaceIdAndTargetUserIdAndDeliveryKeyOrderByChannel(
+                        context.workspaceId(), targetUserId, deliveryKey);
+        if (entries.isEmpty()) {
+            return NotificationDeliveryState.notFound();
+        }
+        int attempts =
+                entries.stream().mapToInt(NotificationOutbox::getAttemptCount).max().orElse(0);
+        Instant nextAttemptAt =
+                entries.stream()
+                        .filter(entry -> entry.getStatus() == NotificationOutboxStatus.PENDING)
+                        .map(NotificationOutbox::getAvailableAt)
+                        .min(Instant::compareTo)
+                        .orElse(null);
+        boolean inFlight =
+                entries.stream()
+                        .anyMatch(
+                                entry ->
+                                        entry.getStatus() == NotificationOutboxStatus.PENDING
+                                                || entry.getStatus()
+                                                        == NotificationOutboxStatus.SENDING);
+        if (inFlight) {
+            return NotificationDeliveryState.inFlight(attempts, nextAttemptAt);
+        }
+        NotificationOutbox failed =
+                entries.stream()
+                        .filter(
+                                entry ->
+                                        entry.getStatus()
+                                                == NotificationOutboxStatus.DEAD_LETTER)
+                        .findFirst()
+                        .orElse(null);
+        if (failed != null) {
+            Instant terminalAt =
+                    entries.stream()
+                            .map(NotificationOutbox::getTerminalAt)
+                            .filter(java.util.Objects::nonNull)
+                            .max(Instant::compareTo)
+                            .orElse(failed.getTerminalAt());
+            return NotificationDeliveryState.failed(
+                    attempts, terminalAt, failed.getLastError());
+        }
+        Instant sentAt =
+                entries.stream()
+                        .map(NotificationOutbox::getSentAt)
+                        .filter(java.util.Objects::nonNull)
+                        .max(Instant::compareTo)
+                        .orElse(null);
+        return NotificationDeliveryState.sent(attempts, sentAt);
     }
 
     private void recordFailure(NotificationOutbox entry, String code, Instant now) {

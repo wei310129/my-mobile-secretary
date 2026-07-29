@@ -82,6 +82,7 @@ class MediaStorageServiceTest {
                 repository, storage, new MediaTypeSniffer(),
                 new MediaStorageProperties("ignored", DataSize.ofMegabytes(1), quota),
                 mock(MediaTagRecorder.class),
+                mock(org.springframework.context.ApplicationEventPublisher.class),
                 Clock.fixed(Instant.parse("2026-07-19T00:00:00Z"), ZoneOffset.UTC));
     }
 

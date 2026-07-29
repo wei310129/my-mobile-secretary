@@ -161,5 +161,7 @@ public class NotificationOutbox extends WorkspaceOwnedEntity {
     String getTitle() { return title; }
     String getMessage() { return message; }
     Instant getAvailableAt() { return availableAt; }
+    String getLastError() { return lastError; }
+    Instant getSentAt() { return sentAt; }
     Instant getTerminalAt() { return terminalAt; }
 }

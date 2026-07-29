@@ -48,6 +48,9 @@ public class NotificationPublisher {
                 if (channel == null) {
                     throw new IllegalStateException("notification channel is required");
                 }
+                if (!request.allows(channel)) {
+                    continue;
+                }
                 var resolved = sender.destinationFor(scope.workspaceId(), targetUserId);
                 if (resolved.isEmpty()) {
                     log.warn("Notification destination unavailable [channel={}, workspace={}, target={}]",

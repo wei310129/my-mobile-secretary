@@ -21,11 +21,15 @@ public record KnowledgeQuery(
 ) {
     public static final int DEFAULT_LIMIT = 10;
     public static final int MAX_LIMIT = 20;
+    public static final int MAX_QUERY_TEXT_LENGTH = 160;
 
     public KnowledgeQuery {
         Objects.requireNonNull(workspaceId, "workspaceId");
         Objects.requireNonNull(actorUserId, "actorUserId");
         queryText = queryText == null ? "" : queryText.strip();
+        if (queryText.length() > MAX_QUERY_TEXT_LENGTH) {
+            throw new IllegalArgumentException("knowledge query text is too long");
+        }
         categories = categories == null ? Set.of() : Set.copyOf(categories);
         sourceTypes = sourceTypes == null ? Set.of() : Set.copyOf(sourceTypes);
         limit = Math.min(limit <= 0 ? DEFAULT_LIMIT : limit, MAX_LIMIT);

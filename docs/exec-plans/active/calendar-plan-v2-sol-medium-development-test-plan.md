@@ -2286,6 +2286,14 @@ Gate：
         "replay inserts zero duplicate rows and advances a bounded cursor"
       ]
     },
+    "combinedRecurrenceFocused": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceRuleTest,CalendarRecurrenceSeriesTest,CalendarRecurrenceMigrationTest,CalendarRecurrenceProjectionMigrationTest,CalendarRecurrenceRlsIntegrationTest,CalendarRecurringReminderPlannerTest test",
+      "tests": 27,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 121.6
+    },
     "pending": [
       "security-neighbor and root regression"
     ]

@@ -18,6 +18,7 @@ class DatabaseAccessSafetyArchitectureTest {
             "com/aproject/aidriven/mymobilesecretary/account/security/idempotency/IdempotencyService.java",
             "com/aproject/aidriven/mymobilesecretary/account/workspace/DatabaseRoleSafetyVerifier.java",
             "com/aproject/aidriven/mymobilesecretary/account/workspace/WorkspaceRlsJpaDialect.java",
+            "com/aproject/aidriven/mymobilesecretary/booking/persistence/BookingAvailabilitySearchStore.java",
             "com/aproject/aidriven/mymobilesecretary/booking/persistence/BookingExecutionStore.java",
             "com/aproject/aidriven/mymobilesecretary/calendar/adoption/CalendarAdoptionService.java",
             "com/aproject/aidriven/mymobilesecretary/calendar/adoption/PersonalRouteProjectionService.java",

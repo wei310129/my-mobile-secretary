@@ -213,13 +213,15 @@ class CalendarRecurringRegistrationIntegrationTest
                             """
                             INSERT INTO calendar_recurrence_rule_revision (
                                 series_id, revision, frequency,
-                                recurrence_interval, timed_anchor,
+                                recurrence_interval, weekdays, week_start,
+                                timed_anchor,
                                 duration_seconds, zone_id, end_kind,
                                 effective_from_timed, state,
                                 request_hash, payload_hash,
                                 created_by_actor_id, created_at,
                                 workspace_id, source_created_by_user_id)
-                            VALUES (?, 1, 'WEEKLY', 1, ?, 3600,
+                            VALUES (?, 1, 'WEEKLY', 1,
+                                ARRAY[6]::smallint[], 1, ?, 3600,
                                 'Asia/Taipei', 'UNBOUNDED', ?, 'ACTIVE',
                                 ?, ?, ?, CURRENT_TIMESTAMP, ?, ?)
                             """,

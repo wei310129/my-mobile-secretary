@@ -437,3 +437,4 @@
 437|從日本旅行移除船票 PDF 附件|MANAGE_CALENDAR_ATTACHMENT|title=船票 PDF;options.condition=UNLINK;options.referenceTitle=日本旅行;options.category=PLAN；只解除 binding，原始 StoredMedia 保留
 438|引用剛上傳的新版船票說「把日本旅行的船票 PDF 換成這版」|MANAGE_CALENDAR_ATTACHMENT|title=船票 PDF;options.condition=REPLACE;options.referenceTitle=日本旅行;options.category=PLAN；只接受 server trusted media reference，binding revision+1且舊 content grants全撤銷
 439|永久刪掉日本旅行的船票 PDF 原檔|MANAGE_CALENDAR_ATTACHMENT|title=船票 PDF;options.condition=DELETE_SOURCE;options.referenceTitle=日本旅行;options.category=PLAN；只回永久刪除確認預覽，未確認前 media/binding/grant mutation=0
+440|直接同步到我的 iPhone 行事曆|EXPLAIN_CALENDAR_EXTERNAL_SYNC|只說明一次性 ICS 與未來 iOS client/EventKit 邊界；不得宣稱已寫入裝置、背景刷新或雙向同步，所有業務 mutation=0

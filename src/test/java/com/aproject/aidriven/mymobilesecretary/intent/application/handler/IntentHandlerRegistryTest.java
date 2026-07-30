@@ -59,6 +59,7 @@ class IntentHandlerRegistryTest {
                 mock(BloodDonationIntentHandler.class, CALLS_REAL_METHODS),
                 mock(CalendarAttachmentIntentHandler.class, CALLS_REAL_METHODS),
                 mock(CalendarCategoryIntentHandler.class, CALLS_REAL_METHODS),
+                mock(CalendarExternalSyncIntentHandler.class, CALLS_REAL_METHODS),
                 mock(CalendarKnowledgeIntentHandler.class, CALLS_REAL_METHODS),
                 mock(ContactIntentHandler.class, CALLS_REAL_METHODS),
                 mock(ContextIntentHandler.class, CALLS_REAL_METHODS),

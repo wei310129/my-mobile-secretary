@@ -2474,13 +2474,20 @@ W10-D current gate（2026-07-30，IN_PROGRESS）：
 }
 ```
 
-W10-E–G local release gate（2026-07-30，PASS_LOCAL_AWAITING_PRODUCT_PUBLISH）：
+W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
 
 ```json
 {
   "phase": "10-E-G",
-  "status": "PASS_LOCAL_AWAITING_PRODUCT_PUBLISH",
+  "status": "PASS_PUBLISHED",
   "validatedIntegrationHead": "433cd7a16ff3ac75705ab14973cf049e135eb7b4",
+  "productHead": "7fb8579252f58dce0677fad245fe01ce2cec6757",
+  "gatePublishedSha": "c4ade0b88d44457f5200a6849bbc10ea1516f692",
+  "productPr": {
+    "number": 9,
+    "status": "MERGED",
+    "url": "https://github.com/wei310129/my-mobile-secretary/pull/9"
+  },
   "migration": "V92__create_calendar_ics_exchange.sql",
   "commits": {
     "recurrenceAwareExport": "4ba486b",
@@ -2539,14 +2546,14 @@ W10-E–G local release gate（2026-07-30，PASS_LOCAL_AWAITING_PRODUCT_PUBLISH�
       "status": "ABANDONED",
       "reason": "owner-pid-not-running"
     },
-    "publishOperation": {
-      "operationId": "calendar-w10-publish-20260730-v92-r1",
-      "status": "ACTIVE",
+    "productPublishOperation": {
+      "operationId": "calendar-w10-publish-20260730-v92-r2",
+      "status": "RELEASED",
+      "releasedAt": "2026-07-30T08:44:25.6658131Z",
       "reservedMigration": "V92"
     }
   },
   "pending": [
-    "product PR merge and origin/main ancestry verification",
     "matching state-only handoff PR merge",
     "release all claims",
     "TR-CALENDAR-W10-MERGED HARD_YIELD receipt"

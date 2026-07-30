@@ -3,6 +3,7 @@ package com.aproject.aidriven.mymobilesecretary.calendar.ics;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.time.Instant;
+import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
 import java.util.UUID;
@@ -39,5 +40,25 @@ class CalendarIcsWriterTest {
                 .doesNotContain("roster")
                 .doesNotContain("route")
                 .doesNotContain("ATTENDEE");
+    }
+
+    @Test
+    void allDayActivityUsesExclusiveDateBoundary() {
+        UUID activityId =
+                UUID.fromString("20000000-0000-0000-0000-000000000002");
+        String text = new String(
+                CalendarIcsWriter.write(List.of(CalendarIcsEvent.allDay(
+                        activityId,
+                        "activity",
+                        "全天活動",
+                        "",
+                        LocalDate.of(2026, 8, 2),
+                        LocalDate.of(2026, 8, 4)))),
+                java.nio.charset.StandardCharsets.UTF_8);
+
+        assertThat(text)
+                .contains("UID:calendar-activity-" + activityId)
+                .contains("DTSTART;VALUE=DATE:20260802\r\n")
+                .contains("DTEND;VALUE=DATE:20260804\r\n");
     }
 }

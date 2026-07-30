@@ -24,8 +24,12 @@ public final class CalendarIcsWriter {
                 .append(CRLF)
                 .append("CALSCALE:GREGORIAN").append(CRLF);
         events.stream()
-                .sorted(Comparator.comparing(CalendarIcsEvent::startsAt)
-                        .thenComparing(CalendarIcsEvent::planId))
+                .sorted(Comparator.comparing(
+                                (CalendarIcsEvent event) ->
+                                        event.timed()
+                                                ? event.startsAt().toString()
+                                                : event.allDayStart().toString())
+                        .thenComparing(CalendarIcsEvent::sourceId))
                 .forEach(event -> append(output, event));
         output.append("END:VCALENDAR").append(CRLF);
         return output.toString().getBytes(StandardCharsets.UTF_8);
@@ -33,15 +37,26 @@ public final class CalendarIcsWriter {
 
     private static void append(StringBuilder output, CalendarIcsEvent event) {
         output.append("BEGIN:VEVENT").append(CRLF)
-                .append("UID:calendar-plan-").append(event.planId())
-                .append("@my-mobile-secretary").append(CRLF)
-                .append("DTSTART;TZID=").append(event.zoneId().getId()).append(':')
-                .append(LOCAL.format(event.startsAt().atZone(event.zoneId())))
-                .append(CRLF)
-                .append("DTEND;TZID=").append(event.zoneId().getId()).append(':')
-                .append(LOCAL.format(event.endsAt().atZone(event.zoneId())))
-                .append(CRLF)
-                .append("SUMMARY:").append(escape(event.summary())).append(CRLF)
+                .append("UID:calendar-").append(event.sourceType()).append('-')
+                .append(event.sourceId()).append("@my-mobile-secretary")
+                .append(CRLF);
+        if (event.timed()) {
+            output.append("DTSTART;TZID=").append(event.zoneId().getId()).append(':')
+                    .append(LOCAL.format(event.startsAt().atZone(event.zoneId())))
+                    .append(CRLF)
+                    .append("DTEND;TZID=").append(event.zoneId().getId()).append(':')
+                    .append(LOCAL.format(event.endsAt().atZone(event.zoneId())))
+                    .append(CRLF);
+        } else {
+            output.append("DTSTART;VALUE=DATE:")
+                    .append(DateTimeFormatter.BASIC_ISO_DATE.format(event.allDayStart()))
+                    .append(CRLF)
+                    .append("DTEND;VALUE=DATE:")
+                    .append(DateTimeFormatter.BASIC_ISO_DATE.format(
+                            event.allDayEndExclusive()))
+                    .append(CRLF);
+        }
+        output.append("SUMMARY:").append(escape(event.summary())).append(CRLF)
                 .append("DESCRIPTION:").append(escape(event.description())).append(CRLF)
                 .append("END:VEVENT").append(CRLF);
     }

@@ -174,7 +174,28 @@ public class CalendarIcsExportArtifactService {
                 context.actorId(),
                 context.actorId());
         if (owners.size() != 1) {
-            throw denied();
+            owners = jdbc.queryForList(
+                    """
+                    SELECT DISTINCT snapshot.source_created_by_user_id
+                    FROM calendar_personal_projection_snapshot snapshot
+                    JOIN calendar_adoption adoption
+                      ON adoption.id = snapshot.adoption_id
+                     AND adoption.workspace_id = snapshot.workspace_id
+                     AND adoption.created_by_user_id =
+                            snapshot.created_by_user_id
+                    WHERE snapshot.plan_id = ? AND snapshot.workspace_id = ?
+                      AND snapshot.created_by_user_id = ?
+                      AND snapshot.projection_status IN (
+                        'ACTIVE', 'RETAINED_NO_SOURCE_ACCESS')
+                      AND adoption.status = 'ACTIVE'
+                    """,
+                    UUID.class,
+                    planId,
+                    context.workspaceId(),
+                    context.actorId());
+            if (owners.size() != 1) {
+                throw denied();
+            }
         }
         return owners.getFirst();
     }

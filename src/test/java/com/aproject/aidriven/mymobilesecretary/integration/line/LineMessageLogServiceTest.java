@@ -118,6 +118,19 @@ class LineMessageLogServiceTest {
     }
 
     @Test
+    void unresolvedExplicitQuoteFailsClosedWithoutBorrowingRecentHistory() {
+        when(repository.findFirstByWorkspaceIdAndCreatedByUserIdAndExternalMessageId(
+                WORKSPACE_ID, ACTOR_ID, "unavailable-quote")).thenReturn(Optional.empty());
+
+        assertThatThrownBy(() -> inScope(() ->
+                service.contextualize("這個", "unavailable-quote")))
+                .isInstanceOf(LineMessageLogService.QuotedMessageUnavailableException.class)
+                .hasMessage("quoted message is unavailable");
+        verify(repository, never()).findAllByWorkspaceIdAndCreatedByUserIdOrderByCreatedAtDescIdDesc(
+                WORKSPACE_ID, ACTOR_ID, PageRequest.of(0, 6));
+    }
+
+    @Test
     void resolvedQuoteCarriesStableTypedReferences() {
         LineMessageLog quoted = LineMessageLog.of(
                 LineMessageLog.Direction.OUT, "TEXT",

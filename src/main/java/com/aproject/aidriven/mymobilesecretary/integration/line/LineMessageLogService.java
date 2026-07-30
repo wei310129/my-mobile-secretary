@@ -88,6 +88,9 @@ public class LineMessageLogService {
                 : repository.findFirstByWorkspaceIdAndCreatedByUserIdAndExternalMessageId(
                                 scope.workspaceId(), scope.actorId(), quotedMessageId)
                         .orElse(null);
+        if (quotedMessageId != null && quotedEntry == null) {
+            throw new QuotedMessageUnavailableException();
+        }
         String quoted = quotedEntry == null ? null : quotedEntry.getContent();
         if (quotedEntry != null && "IMAGE".equals(quotedEntry.getMessageType())
                 && !quoted.startsWith("[圖片解析結果]")) {
@@ -118,6 +121,13 @@ public class LineMessageLogService {
             if (!recentText.isBlank()) context.append("【近期對話】\n").append(recentText).append('\n');
         }
         return context.append("【使用者目前訊息】").append(original).toString();
+    }
+
+    /** Explicit LINE quotes never fall back to an unrelated recent transcript. */
+    public static final class QuotedMessageUnavailableException extends RuntimeException {
+        public QuotedMessageUnavailableException() {
+            super("quoted message is unavailable");
+        }
     }
 
     private static boolean looksElliptical(String text) {

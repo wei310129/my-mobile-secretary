@@ -38,18 +38,21 @@ class ConversationFocusHoldoutOracleTest {
     private static ConversationFocusHoldoutTest.CaptureArtifact capture(
             String action, String publicReply, long taskCount) {
         var turn = new ConversationFocusHoldoutTest.TurnCapture(
-                action, publicReply, "TASK", 1L, taskCount, 0L, 0L, 1L, true);
+                "owner", "SUCCESS", action, publicReply, "interpreted",
+                "task-focus", "TASK", 1L, taskCount, 0L, 0L, 1L, true);
         return new ConversationFocusHoldoutTest.CaptureArtifact(
-                "2", "input-hash", List.of(
+                "3", "input-hash", List.of(
                         new ConversationFocusHoldoutTest.ScenarioCapture("scenario-1", List.of(turn))));
     }
 
     private static ConversationFocusHoldoutTest.HoldoutOracle oracle(
             String action, List<String> required, List<String> forbidden, long taskCount) {
         var turn = new ConversationFocusHoldoutTest.TurnOracle(
-                action, required, forbidden, "TASK", 1L, taskCount, 0L, 0L, 1L, true);
+                "owner", "SUCCESS", action, required, forbidden,
+                List.of(), List.of(), "task-focus", "TASK",
+                1L, taskCount, 0L, 0L, 1L, true);
         return new ConversationFocusHoldoutTest.HoldoutOracle(
-                "1", "input-hash", "capture-hash", List.of(
+                "2", "input-hash", "capture-hash", List.of(
                         new ConversationFocusHoldoutTest.ScenarioOracle("scenario-1", List.of(turn))));
     }
 }

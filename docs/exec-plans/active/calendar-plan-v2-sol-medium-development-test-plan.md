@@ -1002,7 +1002,7 @@ stack trace、provider error 或 router reason。
 | 8 | COMPLETED | V72–V82；精準功能／隔離／RLS／neighbor／latency gate 全通過；sealed holdout 16 cases／19 turns；root regression 1417 tests、0 failure、0 error、18 skipped | — |
 | 9 | COMPLETED | W9-A–E PASS_PUBLISHED；latest V88；產品 merge `58e4029` | — |
 | 10 | COMPLETED | V89–V92 recurrence／ICS gates PASS_PUBLISHED；產品 merge `c4ade0b`、state merge `b657970`；`TR-CALENDAR-W10-MERGED=READY` | — |
-| 11 | IN_PROGRESS | W11-A routing、W11-B flag-off/on actual entry、W11-C latency 與官方 LINE webhook E2E 已通過；root regression 1624 tests／0 failure／0 error／16 opt-in skipped | evaluator-owned fresh sealed holdout；本人實際使用／監控期 |
+| 11 | IN_PROGRESS | W11-A routing、W11-B flag-off/on actual entry、W11-C latency、W11-E fresh sealed holdout 與 root regression 1632 tests／0 failure／0 error／16 opt-in skipped | 本人實際使用／監控期；產品 PR 與 state-only handoff |
 | 12 | REQUIRES_DESTRUCTIVE_APPROVAL | — | 舵輪 11＋精確刪除清單／備份／復原演練＋使用者當輪批准 |
 
 ### 舵輪 0：決策 freeze 與 scenario manifest
@@ -2584,7 +2584,7 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
 
 ### 舵輪 11：Cutover rehearsal 與全路徑 release gate
 
-目前證據（2026-07-30，`IN_PROGRESS`，不得標成 READY）：
+目前證據（2026-07-31，`IN_PROGRESS`，不得標成 READY）：
 
 ```json
 {
@@ -2605,6 +2605,11 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
       "phase": "W11-C",
       "commit": "b075ca9",
       "result": "Calendar Knowledge latency 6/6; Conversation Focus all-profile latency 6/6"
+    },
+    {
+      "phase": "W11-E",
+      "commit": "2cc19b922ab0fcfb6aed3c7b092a6842aa0c96bf",
+      "result": "sealed runner v3/oracle v2; quoted message fail-closed; typed schedule lookup wins over implicit tagged-record shortcut"
     }
   ],
   "tests": {
@@ -2616,7 +2621,9 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
       "applicationColdP95Millis": 241
     },
     "conversationFocusLatencyAll": "6 tests, 0 failures, 0 errors, 0 skipped; core and project warm/cold thresholds asserted",
-    "rootRegression": "1624 tests, 0 failures, 0 errors, 16 opt-in skipped",
+    "neighborFocused": "57 tests, 0 failures, 0 errors, 0 skipped",
+    "sealedHoldout": "fresh 20 scenarios/63 turns; capture SHA a893bbccb55662ac9dfa67816f15beef8308ca6d228e409018c4627f91e79aa2; assert 1/1 PASS with phase=assert and no input property",
+    "rootRegression": "operation 100c42f6-fcf5-444c-9bfb-26f16c8cfb34 READY; 1632 tests, 0 failures, 0 errors, 16 opt-in skipped",
     "officialLineWebhookE2E": "scripts/dev-start.ps1 -SkipDocker -SkipDispatcher exit 0; LINE -> ngrok -> W11 Spring Boot"
   },
   "security": {
@@ -2626,12 +2633,10 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "externalChatMessageSent": false
   },
   "remainingWork": [
-    "independent evaluator fresh sealed holdout capture then oracle assert",
     "approved personal-use and monitoring window",
     "final product PR, state-only handoff and HARD_YIELD receipt"
   ],
   "userDecisionRequired": [
-    "provide or designate the independent evaluator path for fresh sealed input and post-capture oracle",
     "define or approve the personal-use monitoring window before declaring Wheel 11 complete"
   ]
 }

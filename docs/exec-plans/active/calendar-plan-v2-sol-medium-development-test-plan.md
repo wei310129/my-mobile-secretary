@@ -2208,7 +2208,7 @@ Gate：
 {
   "plan": "calendar-plan-v2",
   "phase": "10-C",
-  "status": "V90_MIGRATION_CONTRACT_IN_PROGRESS",
+  "status": "V90_MIGRATION_GREEN_RLS_ORCHESTRATION_PENDING",
   "baseRevision": "1198fcd1e8581a78d2d531603f2db2882329e69b",
   "uniqueTarget": "recurrence ancestry, revision-bound adoption, personal occurrence skip, and rolling reminder identity",
   "nonGoals": [
@@ -2240,6 +2240,23 @@ Gate：
     "publishedSha": "ee1cfcbea8bf9b2c5ab36e8ac1922931ac24ddcf",
     "stateOnlyMerge": "1198fcd1e8581a78d2d531603f2db2882329e69b",
     "action": "W10 resumed after matching Git product/state evidence"
+  },
+  "currentEvidence": {
+    "v89V90MigrationContract": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceMigrationTest,CalendarRecurrenceProjectionMigrationTest test",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 65.9
+    },
+    "pending": [
+      "V90 actor-private RLS and ancestry integration",
+      "C87 revision-bound adoption orchestration",
+      "C88 occurrence skip versus series opt-out",
+      "C91 bounded reminder materialization",
+      "security-neighbor and root regression"
+    ]
   },
   "validationOrder": [
     "C83-C85 domain/service red contract",

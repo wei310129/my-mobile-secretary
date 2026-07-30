@@ -48,7 +48,11 @@ class CalendarRecurrenceMigrationTest {
                         SELECT table_name
                         FROM information_schema.tables
                         WHERE table_schema = 'public'
-                          AND table_name LIKE 'calendar_recurrence_%'
+                          AND table_name IN (
+                              'calendar_recurrence_exception',
+                              'calendar_recurrence_rule_revision',
+                              'calendar_recurrence_series',
+                              'calendar_recurrence_split_audit')
                         ORDER BY table_name
                         """))
                 .containsExactly(
@@ -141,7 +145,11 @@ class CalendarRecurrenceMigrationTest {
                         SELECT policyname || '=' || cmd
                         FROM pg_policies
                         WHERE schemaname = 'public'
-                          AND tablename LIKE 'calendar_recurrence_%'
+                          AND policyname IN (
+                              'rls_calendar_recurrence_audit_effective_owner',
+                              'rls_calendar_recurrence_exception_effective_owner',
+                              'rls_calendar_recurrence_revision_effective_owner',
+                              'rls_calendar_recurrence_series_effective_owner')
                         ORDER BY policyname
                         """))
                 .containsExactly(

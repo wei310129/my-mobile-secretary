@@ -986,7 +986,7 @@ stack trace、provider error 或 router reason。
 
 每一階段都要紅燈測試先行；未過 gate 不得進下一階段。
 
-目前舵輪：`9 — IN_PROGRESS`。舵輪 0–8 已通過；以下只回填實際證據，
+目前舵輪：`11 — IN_PROGRESS`。舵輪 0–10 已通過；以下只回填實際證據，
 不把預期數字寫成已通過：
 
 | 舵輪 | 狀態 | 實際 tests／gate evidence | 剩餘 blocker |
@@ -1000,9 +1000,9 @@ stack trace、provider error 或 router reason。
 | 6 | COMPLETED | actor-scoped query／feature flag pilot；Calendar wheels 1–6 56/56；legacy regression 94/94 | — |
 | 7 | COMPLETED | V70/V71、Task/Planning/Planner convergence；完整功能 gate 51/51；legacy regression 101/101 | — |
 | 8 | COMPLETED | V72–V82；精準功能／隔離／RLS／neighbor／latency gate 全通過；sealed holdout 16 cases／19 turns；root regression 1417 tests、0 failure、0 error、18 skipped | — |
-| 9 | IN_PROGRESS | W9-A／W9-B／W9-C／W9-D PASS；latest V87；W9-D security/neighbor 119/119、root regression 1514 tests／0 failure／0 error／18 skipped | W9-E |
-| 10 | NOT_STARTED | — | 舵輪 9 |
-| 11 | NOT_STARTED | — | 舵輪 10 |
+| 9 | COMPLETED | W9-A–E PASS_PUBLISHED；latest V88；產品 merge `58e4029` | — |
+| 10 | COMPLETED | V89–V92 recurrence／ICS gates PASS_PUBLISHED；產品 merge `c4ade0b`、state merge `b657970`；`TR-CALENDAR-W10-MERGED=READY` | — |
+| 11 | IN_PROGRESS | W11-A routing、W11-B flag-off/on actual entry、W11-C latency 與官方 LINE webhook E2E 已通過；root regression 1624 tests／0 failure／0 error／16 opt-in skipped | evaluator-owned fresh sealed holdout；本人實際使用／監控期 |
 | 12 | REQUIRES_DESTRUCTIVE_APPROVAL | — | 舵輪 11＋精確刪除清單／備份／復原演練＋使用者當輪批准 |
 
 ### 舵輪 0：決策 freeze 與 scenario manifest
@@ -2583,6 +2583,59 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
 - Backend／LINE 對 EventKit 要明確說明需未來 iOS client，不宣稱已寫入 Apple Calendar。
 
 ### 舵輪 11：Cutover rehearsal 與全路徑 release gate
+
+目前證據（2026-07-30，`IN_PROGRESS`，不得標成 READY）：
+
+```json
+{
+  "branch": "codex/calendar-w11-cutover",
+  "baseSha": "132308e42d8a4c5dcd4929372a885fe1db66fd8a",
+  "checkpoints": [
+    {
+      "phase": "W11-A",
+      "commit": "a14b79b1df9510afd555e6bbf9adbc6f799dbe5b",
+      "result": "flag-off, pilot and cutover routing; CREATE/LIST/INFO/DATE delegate to exactly one engine"
+    },
+    {
+      "phase": "W11-B",
+      "commit": "ae440b0b8bc19603b70cff4b993c5b065c2fc4b9",
+      "result": "actual /api/intent flag-off/on persistence assertions prove zero dual-write"
+    },
+    {
+      "phase": "W11-C",
+      "commit": "b075ca9",
+      "result": "Calendar Knowledge latency 6/6; Conversation Focus all-profile latency 6/6"
+    }
+  ],
+  "tests": {
+    "routingFocused": "30 tests, 0 failures, 0 errors, 0 skipped",
+    "calendarKnowledgeLatency": {
+      "tests": 6,
+      "directWarmP95Millis": 9,
+      "apiWarmP95Millis": 173,
+      "applicationColdP95Millis": 241
+    },
+    "conversationFocusLatencyAll": "6 tests, 0 failures, 0 errors, 0 skipped; core and project warm/cold thresholds asserted",
+    "rootRegression": "1624 tests, 0 failures, 0 errors, 16 opt-in skipped",
+    "officialLineWebhookE2E": "scripts/dev-start.ps1 -SkipDocker -SkipDispatcher exit 0; LINE -> ngrok -> W11 Spring Boot"
+  },
+  "security": {
+    "legacyFlagOffPreserved": true,
+    "cutoverZeroDualWrite": true,
+    "secretCopiedOrCommitted": false,
+    "externalChatMessageSent": false
+  },
+  "remainingWork": [
+    "independent evaluator fresh sealed holdout capture then oracle assert",
+    "approved personal-use and monitoring window",
+    "final product PR, state-only handoff and HARD_YIELD receipt"
+  ],
+  "userDecisionRequired": [
+    "provide or designate the independent evaluator path for fresh sealed input and post-capture oracle",
+    "define or approve the personal-use monitoring window before declaring Wheel 11 complete"
+  ]
+}
+```
 
 Gate：
 

@@ -77,11 +77,18 @@ class ConversationFocusLatencyTest extends IntegrationTestBase {
     @Test
     @Order(1)
     void coreProfileMeasuresWarmFocusOperationsAndFocusAwareDispatch() {
-        if ("project".equals(profile())) {
-            measureProjectWarmProfile();
-            return;
+        switch (profile()) {
+            case "core" -> measureCoreWarmProfile();
+            case "project" -> measureProjectWarmProfile();
+            case "all" -> {
+                measureCoreWarmProfile();
+                measureProjectWarmProfile();
+            }
+            default -> throw new AssertionError("unsupported latency profile");
         }
-        assertThat(profile()).isEqualTo("core");
+    }
+
+    private void measureCoreWarmProfile() {
         UUID actorId = UUID.randomUUID();
         UUID workspaceId = UUID.randomUUID();
         seedAccount(actorId, workspaceId);
@@ -226,7 +233,24 @@ class ConversationFocusLatencyTest extends IntegrationTestBase {
     }
 
     private void measureColdInbound(int sample, boolean assertAggregate) {
-        assertThat(profile()).isIn("core", "project");
+        assertThat(profile()).isIn("core", "project", "all");
+        if ("all".equals(profile())) {
+            measureColdInboundProfile(sample, false);
+            measureColdInboundProfile(sample, true);
+        } else {
+            measureColdInboundProfile(sample, "project".equals(profile()));
+        }
+        if (assertAggregate) {
+            int expectedSamples = "all".equals(profile()) ? 10 : 5;
+            assertThat(COLD_SAMPLES).hasSize(expectedSamples);
+            assertThat(COLD_SAMPLES.stream().map(ColdSample::contextIdentity).distinct()).hasSize(5);
+            assertThat(p95Millis(COLD_SAMPLES.stream().map(ColdSample::elapsedNanos).toList()))
+                    .as("application-cold focus-aware inbound P95")
+                    .isLessThanOrEqualTo(MEDIUM_P95_MILLIS);
+        }
+    }
+
+    private void measureColdInboundProfile(int sample, boolean projectProfile) {
         UUID actorId = UUID.randomUUID();
         UUID workspaceId = UUID.randomUUID();
         seedAccount(actorId, workspaceId);
@@ -234,7 +258,6 @@ class ConversationFocusLatencyTest extends IntegrationTestBase {
                 context(actorId, workspaceId, "cold-" + sample))) {
             assertThat(focusService.activeFocus()).isEmpty();
             assertThat(taskService.listTasks()).isEmpty();
-            boolean projectProfile = "project".equals(profile());
             String title = projectProfile
                     ? "cold project " + sample : "cold focus task " + sample;
             interpreter.nextCommand(projectProfile
@@ -255,13 +278,6 @@ class ConversationFocusLatencyTest extends IntegrationTestBase {
                     .doesNotContain("task:");
             assertThat(focusService.activeFocus()).isPresent();
             COLD_SAMPLES.add(new ColdSample(System.identityHashCode(applicationContext), elapsed));
-        }
-        if (assertAggregate) {
-            assertThat(COLD_SAMPLES).hasSize(5);
-            assertThat(COLD_SAMPLES.stream().map(ColdSample::contextIdentity).distinct()).hasSize(5);
-            assertThat(p95Millis(COLD_SAMPLES.stream().map(ColdSample::elapsedNanos).toList()))
-                    .as("five application-cold focus-aware inbound P95")
-                    .isLessThanOrEqualTo(MEDIUM_P95_MILLIS);
         }
     }
 

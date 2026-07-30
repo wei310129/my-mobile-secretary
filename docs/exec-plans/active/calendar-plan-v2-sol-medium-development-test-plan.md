@@ -2480,7 +2480,7 @@ W10-E–G local release gate（2026-07-30，PASS_LOCAL_AWAITING_PRODUCT_PUBLISH�
 {
   "phase": "10-E-G",
   "status": "PASS_LOCAL_AWAITING_PRODUCT_PUBLISH",
-  "head": "de7e458ca4c043b36d93e3b874fd81136e5332eb",
+  "validatedIntegrationHead": "433cd7a16ff3ac75705ab14973cf049e135eb7b4",
   "migration": "V92__create_calendar_ics_exchange.sql",
   "commits": {
     "recurrenceAwareExport": "4ba486b",
@@ -2527,11 +2527,11 @@ W10-E–G local release gate（2026-07-30，PASS_LOCAL_AWAITING_PRODUCT_PUBLISH�
     ]
   },
   "rootRegression": {
-    "tests": 1575,
+    "tests": 1590,
     "failures": 0,
     "errors": 0,
     "skipped": 16,
-    "durationSeconds": 410.5
+    "durationSeconds": 396.4
   },
   "coordination": {
     "previousOperation": {

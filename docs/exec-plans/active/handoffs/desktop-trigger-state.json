@@ -77,10 +77,11 @@
       "publishedSha": null
     },
     "TR-ADD-CORE-MERGED": {
-      "status": "PASS",
-      "publishedSha": null,
+      "status": "MERGED",
+      "publishedSha": "194413cd78004494a30c6c64a7aba60c6cb525f2",
       "evidence": {
-        "baseSha": "0cf4fda1fe9ae96d0f4adec3abd0ed46de38bd0f",
+        "baseSha": "b657970ce811fa271480a23f5185218d8190b47f",
+        "integrationVerifiedSha": "194413cd78004494a30c6c64a7aba60c6cb525f2",
         "focused": {
           "tests": 19,
           "failures": 0,
@@ -94,11 +95,11 @@
           "skipped": 0
         },
         "rootRegression": {
-          "tests": 1552,
+          "tests": 1609,
           "failures": 0,
           "errors": 0,
           "skipped": 16,
-          "durationSeconds": 295.0
+          "durationSeconds": 335.8
         },
         "externalEnvironment": "NONE",
         "externalMutationCount": 0,

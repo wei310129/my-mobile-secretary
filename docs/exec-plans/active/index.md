@@ -2,10 +2,10 @@
 
 | Plan | Status | Source and handling |
 | --- | --- | --- |
-| Calendar v2 / itinerary map | Wheels 0–8 completed; Wheel 9 W9-A/W9-B/W9-C/W9-D PASS, W9-E pending | `calendar-plan-v2-sol-medium-development-test-plan.md`; V87 participation/personal projection propagation, durable notification delivery and owner general mutation handoff PASS; security/neighbor 119/119 and root regression 1,514 tests / 0 failure / 0 error / 18 skipped; Wheel 10 remains the only Calendar dependency for Travel 3B-B |
+| Calendar v2 / itinerary map | Calendar W10 尚未發布 matching handoff | `calendar-plan-v2-sol-medium-development-test-plan.md`; W10 仍是 Travel 3B-B 的唯一 Calendar dependency；local PASS、commit、push 或 draft PR 不算 `TR-CALENDAR-W10-MERGED=READY` |
 | Travel project and global Conversation Focus | 3B-A completed; stable handoff published | `travel-project-terra-high-development-test-plan.md`; one-off ownership, lifecycle and RLS gates are green under the Calendar Wheel 8 full-regression baseline; 3B-B stays `BLOCKED_BY_CALENDAR_WHEEL_10`; no legacy Schedule ownership and no automatic 3C |
-| Booking / commerce execution | B0–B2 completed in laptop worktree; Git handoff pending | `booking-commerce-sol-medium-development-test-plan.md`; V84 durable persistence/RLS, crash recovery, reconciliation and exactly-once-visible terminal foundation PASS; final root regression 1,435 tests / 0 failure / 0 error / 18 skipped. Desktop B3 remains blocked until the handoff SHA is published |
-| Laptop × desktop parallel development | Documented; desktop product development blocked pending published handoff | `two-machine-parallel-development-plan.md` and `parallel-development-trigger-registry.md`; producer-owned laptop/desktop JSON state, both lane runbooks and the GPT-5.6 SOL Medium desktop prompt are registered. Booking B2 has PASS evidence in the laptop worktree but no Git-retrievable desktop base SHA yet |
+| Booking / commerce execution | B3-Core、B4-Fake 已合併；B3-Durable、B3-Upstream、ADD Core pending | `booking-commerce-sol-medium-development-test-plan.md`; B4-Fake 產品 SHA `513eb117864cedbcaa63a99027cec22f9bd45bbf`，fake／reconciliation／mutation-count 與 root regression evidence 在 desktop state；目前不啟動下一 gate |
+| Laptop × desktop parallel development | Legacy ownership active；role swap prepared、尚未啟用 | `two-machine-parallel-development-plan.md`、`machine-lane-role-swap-plan.md` 與 trigger registry；等待 Calendar W10 safe exit 後才可建立 state-only activation PR |
 | Real conversation improvement batches | Active local backlog | `local/conversation-improvement-batches-2026-07-20.md`; ignored because it derives from real LINE conversation logs; never commit its raw contents |
 
 ```json

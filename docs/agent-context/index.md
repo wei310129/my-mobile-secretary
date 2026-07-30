@@ -10,6 +10,7 @@ Use this page as the repository knowledge map. Start with the task row, read onl
 | AI Dispatcher | `internal/ai-dispatcher/AGENTS.md` | Only the dispatcher document named by that local routing table |
 | Pure documentation or product decision | Relevant heading in `docs/architecture.md`; relevant current/active plan section | Historical sections only for traceability or conflict resolution |
 | Future phase or large implementation plan | Current phase heading in `docs/development-plan.md`; applicable active plan | Earlier phases only when the current phase explicitly depends on them |
+| Multi-machine lane assignment, worktree handoff or cross-session trigger | `docs/exec-plans/active/handoffs/machine-lane-assignment.json`; `docs/exec-plans/active/machine-lane-role-swap-plan.md`; `docs/exec-plans/active/parallel-development-trigger-registry.md` | Only the currently active role runbook and producer-owned state file; legacy machine runbooks remain authoritative until the swap trigger is READY |
 
 ## Reading rules
 

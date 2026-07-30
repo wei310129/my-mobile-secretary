@@ -1,10 +1,10 @@
 # 筆電 × 桌電雙機平行開發總體計畫
 
-> 狀態：`DOCUMENTED_NOT_STARTED`
+> 狀態：`ACTIVE_LEGACY_OWNERSHIP；ROLE_SWAP_PREPARED_NOT_ACTIVE`
 >
-> 文件日期：2026-07-26
+> 文件日期：2026-07-26；角色對調補充：2026-07-30
 >
-> 目前桌電產品開發閘門：`BLOCKED_PENDING_PUBLISHED_HANDOFF`
+> 目前共同閘門：Booking B4 已合併；Calendar W10 尚未發布；角色對調尚未啟用
 
 ## 1. 文件目的與優先序
 
@@ -22,6 +22,11 @@
 
 產品 active plan 仍是該 bounded context 的功能契約；本文件只決定「誰、何時、在哪一條 branch
 實作」，不重寫 Calendar、Travel、Booking 或 Conversation 的產品語意。
+
+2026-07-30 使用者因筆電長時間執行容易過熱當機，已核准在下一個雙方 safe boundary 對調物理
+機器與 lane 角色。完整條件、worktree 規則與 session disposition 見
+`machine-lane-role-swap-plan.md`。在 `TR-MACHINE-LANE-SWAP-MERGED=READY` 前，本文件原有的
+Laptop Integration／Desktop Booking ownership 仍然有效；不得把 prepared plan 當成啟用。
 
 ## 2. 已拍板決策
 

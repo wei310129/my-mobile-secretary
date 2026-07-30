@@ -4,11 +4,16 @@
 >
 > 建議模型：GPT‑5.6 SOL，reasoning Medium
 >
-> 狀態：`BLOCKED_PENDING_PUBLISHED_HANDOFF`
+> 狀態：`LEGACY_SAFE_EXIT_B4_MERGED_UNTIL_TR_MACHINE_LANE_SWAP_MERGED`
 >
 > 上位契約：`two-machine-parallel-development-plan.md`
 >
 > 觸發契約：`parallel-development-trigger-registry.md`
+
+Booking B3-Core 與 B4-Fake 已在 `origin/main` 有 matching durable evidence。此舊桌電 lane 保持
+safe exit，不因空閒開始 B3-Durable 或 ADD Core。在
+`TR-MACHINE-LANE-SWAP-MERGED=READY` 前本 runbook 仍是 ownership 依據；啟用後轉為 historical
+read-only，Commerce／ADD 改用 `laptop-commerce-add-lane-runbook.md`。
 
 ## 1. 啟動前置
 

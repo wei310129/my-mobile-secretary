@@ -1,6 +1,6 @@
 # 多路並行開發 Trigger／Reminder Registry
 
-> 狀態：`DOCUMENTED_NOT_PUBLISHED`
+> 狀態：`ACTIVE；ROLE_SWAP_PREPARED_NOT_ACTIVE`
 >
 > Owner：筆電 Integration lane
 >
@@ -22,13 +22,17 @@
 
 ## 2. 狀態檔 ownership
 
-| 檔案 | 唯一 writer | Consumer |
-| --- | --- | --- |
-| `handoffs/laptop-trigger-state.json` | 筆電 | 桌電與使用者 |
-| `handoffs/desktop-trigger-state.json` | 桌電（Checkpoint B 後） | 筆電與使用者 |
+| 檔案 | 生命周期 | 唯一 writer | Consumer |
+| --- | --- | --- | --- |
+| `handoffs/laptop-trigger-state.json` | 對調前 active；對調後 historical read-only | 筆電 Integration | 桌電與使用者 |
+| `handoffs/desktop-trigger-state.json` | 對調前 active；對調後 historical read-only | 桌電 Booking／ADD | 筆電與使用者 |
+| `handoffs/machine-lane-assignment.json` | assignment authority | 對調前 Integration owner；啟用後 Upstream／Integration role | 所有 session |
+| `handoffs/upstream-integration-trigger-state.json` | `PREPARED_NOT_ACTIVE`，對調後 active | Upstream／Integration role | Commerce／ADD 與使用者 |
+| `handoffs/commerce-add-trigger-state.json` | `PREPARED_NOT_ACTIVE`，對調後 active | Commerce／ADD role | Upstream／Integration 與使用者 |
 
-不得由 consumer 修改 producer 的狀態檔。中央 trigger registry、雙機總體計畫、active index 與
-current decisions 仍由筆電維護。桌電只在自己的 state file ACK 已消費的 laptop trigger。
+不得由 consumer 修改 producer 的狀態檔。`TR-MACHINE-LANE-SWAP-MERGED` 啟用前，中央文件仍由
+筆電 Integration 維護；啟用後 ownership 跟隨 Upstream／Integration role，不再永久綁定物理
+機器。舊 machine-named state 不交換內容，也不能被另一台機器回寫。
 
 ## 3. Trigger 狀態與通知等級
 
@@ -91,21 +95,27 @@ preflight，回報 `BLOCKED` 後結束，不輪詢、不持有 branch／claim／
 | Event ID | Producer | READY 條件 | Consumer／動作 | 通知 |
 | --- | --- | --- | --- | --- |
 | `TR-DOCS-PUBLISHED` | 筆電 | 文件 checkpoint D 已進 `origin/main`，引用與 JSON 驗證通過 | 所有新 session 改讀雙機文件；不解鎖產品開發 | `DURABLE_ONLY` |
+| `TR-MACHINE-LANE-SWAP-MERGED` | 對調前筆電 Integration | Prepared coordination PR 已合併；W10 與 B4 matching state 可驗證；無 active schema token；雙方 claims 已釋放；state-only activation PR 已合併並填入 `effectiveFromSha` | Desktop ACK Upstream／Integration；Laptop ACK Commerce／ADD；各自由 `origin/main` 建立 clean role-based worktree | `HARD_YIELD` |
 | `TR-DESKTOP-B3-START` | 筆電 | Checkpoint B／B2／V84 與必要依賴已合併；focused＋full regression 綠；`baseSha` 可取得 | 使用者啟動桌電；桌電建立 `desktop/booking-b3-core` | `HARD_YIELD` |
 | `TR-B3-CORE-MERGED` | 桌電 | B3-Core PR 已合併、main ancestry 與 focused/full gate 可驗證 | 桌電下一輪建立 `desktop/booking-b4-fake` | `HARD_YIELD` |
 | `TR-B4-FAKE-MERGED` | 桌電 | B4-Fake PR 已合併、9 組模式與 reconciliation/mutation-count gates 綠 | 若 schema token READY 做 B3-Durable；否則做 ADD Core | `HARD_YIELD` |
-| `TR-CALENDAR-W10-MERGED` | 筆電 | Calendar W10 PR 已合併、完整 gate 綠 | 解鎖 Travel 3B-B 的「可開始驗證」；只讓 B3-Durable schema 成為候選，不自動 grant | `HARD_YIELD` |
-| `TR-TRAVEL-3BB-MERGED` | 筆電 | Travel 3B-B 自己的 recurrence/copy/split propagation gate 已合併 | 後續 Travel 可繼續；不得冒稱 Wheels 6–7 PASS | `NOTIFY_AND_CONTINUE` |
-| `TR-SCHEMA-B3-DURABLE-GRANT` | 筆電 | W10 merged、schema lane 空閒、B3-Core/B4-Fake merged、當下 latest migration 已鎖定 | 桌電建立 `desktop/booking-b3-durable` | `HARD_YIELD` |
-| `TR-SCHEMA-B3-DURABLE-STALE` | 任一偵測者、筆電裁決 | reserved version 被 main 使用、base SHA 不再有效或 scope 改變 | 桌電不得跳號；筆電 revoke 並重發新 token | `HARD_YIELD` |
-| `TR-B3-DURABLE-MERGED` | 桌電 | migration／RLS／retention／outbox gate 合併，token consumed | 筆電收回 schema lane；桌電等待 typed handoff或做 ADD Core | `HARD_YIELD` |
-| `TR-TRAVEL-W6-W7-TYPED-MERGED` | 筆電 | Travel Wheels 6–7 typed transport／stay／traveller views 與 tests 已合併 | 桌電建立 `desktop/booking-b3-upstream-adapters` | `HARD_YIELD` |
-| `TR-B3-UPSTREAM-MERGED` | 桌電 | adapters PR 合併且上游 contract tests 綠 | 才可宣稱完整 B3；B5 仍禁止，等待新使用者授權 | `HARD_YIELD` |
-| `TR-ADD-CORE-MERGED` | 桌電 | ADD core PR 合併，Clock／prep window／dependency／uniqueness gates 綠 | 筆電建立 `laptop/add-execution-line-pilot-v1` | `HARD_YIELD` |
-| `TR-ADD-LINE-MERGED` | 筆電 | flag-off、owner pilot、LINE/capability regression 與 full gate 合併 | 可提出 owner pilot 啟用決策；不得自行開 flag | `HARD_YIELD` |
+| `TR-CALENDAR-W10-MERGED` | Upstream／Integration（對調前為筆電） | Calendar W10 PR 已合併、完整 gate 綠 | 解鎖 Travel 3B-B 的「可開始驗證」；只讓 B3-Durable schema 成為候選，不自動 grant | `HARD_YIELD` |
+| `TR-TRAVEL-3BB-MERGED` | Upstream／Integration | Travel 3B-B 自己的 recurrence/copy/split propagation gate 已合併 | 後續 Travel 可繼續；不得冒稱 Wheels 6–7 PASS | `NOTIFY_AND_CONTINUE` |
+| `TR-SCHEMA-B3-DURABLE-GRANT` | Upstream／Integration | W10 merged、schema lane 空閒、B3-Core/B4-Fake merged、當下 latest migration 已鎖定 | Commerce／ADD 建立獨立 B3-Durable branch | `HARD_YIELD` |
+| `TR-SCHEMA-B3-DURABLE-STALE` | 任一偵測者、Upstream／Integration 裁決 | reserved version 被 main 使用、base SHA 不再有效或 scope 改變 | Commerce／ADD 不得跳號；Upstream revoke 並重發新 token | `HARD_YIELD` |
+| `TR-B3-DURABLE-MERGED` | Commerce／ADD | migration／RLS／retention／outbox gate 合併，token consumed | Upstream 收回 schema lane；Commerce 等待 typed handoff或做 ADD Core | `HARD_YIELD` |
+| `TR-TRAVEL-W6-W7-TYPED-MERGED` | Upstream／Integration | Travel Wheels 6–7 typed transport／stay／traveller views 與 tests 已合併 | Commerce／ADD 建立獨立 B3-Upstream Adapters branch | `HARD_YIELD` |
+| `TR-B3-UPSTREAM-MERGED` | Commerce／ADD | adapters PR 合併且上游 contract tests 綠 | 才可宣稱完整 B3；B5 仍禁止，等待新使用者授權 | `HARD_YIELD` |
+| `TR-ADD-CORE-MERGED` | Commerce／ADD | ADD core PR 合併，Clock／prep window／dependency／uniqueness gates 綠 | Upstream／Integration 建立獨立 ADD LINE pilot branch | `HARD_YIELD` |
+| `TR-ADD-LINE-MERGED` | Upstream／Integration | flag-off、owner pilot、LINE/capability regression 與 full gate 合併 | 可提出 owner pilot 啟用決策；不得自行開 flag | `HARD_YIELD` |
 
 `MERGED` 是跨 lane 解鎖的最低產品狀態，且 matching state-only handoff 必須已在 main。
 Focused test PASS、local commit、已 push branch 或 draft PR 都不能讓 consumer 開始。
+
+角色對調採兩階段：先合併 `PREPARED_NOT_ACTIVE` coordination PR，再由 W10 safe-exit producer
+建立 state-only activation PR。只有後者合併、重新 fetch 且 published SHA ancestry 通過，才可
+把 assignment 設為 `ACTIVE`。對調 trigger ACK 只改 lane ownership，不讓 Travel 3B-B、
+B3-Durable、ADD Core 或其他產品 gate 自動開始或 PASS。
 
 ## 6. Git／CI／Ownership／Safety Trigger
 

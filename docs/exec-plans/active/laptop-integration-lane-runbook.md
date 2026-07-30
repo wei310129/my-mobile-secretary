@@ -2,11 +2,16 @@
 
 > Owner：筆電
 >
-> 狀態：`DOCUMENTED_NOT_STARTED`
+> 狀態：`ACTIVE_LEGACY_UNTIL_TR_MACHINE_LANE_SWAP_MERGED`
 >
 > 上位契約：`two-machine-parallel-development-plan.md`
 >
 > 觸發契約：`parallel-development-trigger-registry.md`
+
+本 runbook 在 `TR-MACHINE-LANE-SWAP-MERGED=READY` 前仍具效力。Calendar W10 必須由既有 owner
+完成產品 PR、state-only handoff與 hard-yield；不得因角色對調已準備就中途搬 worktree或改
+writer。對調啟用後，本文件轉為 historical read-only，改用
+`desktop-upstream-integration-lane-runbook.md`。
 
 ## 1. 筆電唯一責任
 

@@ -1,0 +1,60 @@
+{
+  "schemaVersion": 1,
+  "assignmentRevision": 2,
+  "status": "PREPARED_NOT_ACTIVE",
+  "preparedOn": "2026-07-30",
+  "effectiveFromSha": null,
+  "activationTrigger": {
+    "eventId": "TR-MACHINE-LANE-SWAP-MERGED",
+    "status": "PENDING",
+    "publishedSha": null
+  },
+  "reason": {
+    "eventId": "TR-HUMAN-AVAILABILITY-RISK",
+    "observedEvidence": [
+      "The user reports that the laptop can overheat and crash during long-running development.",
+      "Upstream integration uses long-running Docker, Testcontainers, security-neighbor and root-regression gates."
+    ],
+    "approvedChange": "Move Upstream/Integration to desktop and Commerce/ADD to laptop at the next dual safe boundary."
+  },
+  "currentAssignment": {
+    "upstreamIntegration": {
+      "machine": "LAPTOP",
+      "stateFile": "docs/exec-plans/active/handoffs/laptop-trigger-state.json",
+      "runbook": "docs/exec-plans/active/laptop-integration-lane-runbook.md"
+    },
+    "commerceAdd": {
+      "machine": "DESKTOP",
+      "stateFile": "docs/exec-plans/active/handoffs/desktop-trigger-state.json",
+      "runbook": "docs/exec-plans/active/desktop-booking-add-lane-runbook.md"
+    }
+  },
+  "preparedAssignment": {
+    "upstreamIntegration": {
+      "machine": "DESKTOP",
+      "stateFile": "docs/exec-plans/active/handoffs/upstream-integration-trigger-state.json",
+      "runbook": "docs/exec-plans/active/desktop-upstream-integration-lane-runbook.md"
+    },
+    "commerceAdd": {
+      "machine": "LAPTOP",
+      "stateFile": "docs/exec-plans/active/handoffs/commerce-add-trigger-state.json",
+      "runbook": "docs/exec-plans/active/laptop-commerce-add-lane-runbook.md"
+    }
+  },
+  "activationConditions": [
+    "TR-CALENDAR-W10-MERGED=READY with matching origin/main evidence",
+    "TR-B4-FAKE-MERGED=MERGED",
+    "No active or granted schema token",
+    "All source, Flyway, Maven, Docker and coordination claims released",
+    "Prepared coordination PR merged",
+    "State-only activation PR merged and publishedSha available from origin/main"
+  ],
+  "safeBehaviorUntilActivation": "Keep legacy machine ownership active. Finish Calendar W10 only; do not start W11, Travel 3B-B, B3-Durable or ADD Core as part of this swap.",
+  "worktreePolicy": {
+    "createFreshFromOriginMain": true,
+    "copyExistingWorktree": false,
+    "copyGitMetadata": false,
+    "copyTargetOrDockerVolumes": false,
+    "quarantineDirtyLegacyWorktrees": true
+  }
+}

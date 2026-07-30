@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "ownerRole": "upstream-integration",
+  "assignedMachine": "DESKTOP",
+  "status": "PREPARED_NOT_ACTIVE",
+  "updatedOn": "2026-07-30",
+  "activation": {
+    "requiredEventId": "TR-MACHINE-LANE-SWAP-MERGED",
+    "status": "PENDING",
+    "publishedSha": null,
+    "acknowledgedSha": null
+  },
+  "legacyEvidenceSources": [
+    "docs/exec-plans/active/handoffs/laptop-trigger-state.json",
+    "docs/exec-plans/active/handoffs/desktop-trigger-state.json"
+  ],
+  "triggers": {
+    "TR-CALENDAR-W10-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null
+    },
+    "TR-TRAVEL-3BB-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null
+    },
+    "TR-SCHEMA-B3-DURABLE-GRANT": {
+      "status": "PENDING",
+      "publishedSha": null,
+      "reservedVersion": null
+    },
+    "TR-TRAVEL-W6-W7-TYPED-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null
+    },
+    "TR-ADD-LINE-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null
+    }
+  },
+  "allowedActionNow": "NONE",
+  "firstCandidateAfterActivation": "Travel 3B-B only after Calendar W10 evidence and explicit user confirmation",
+  "resourceClaimsHeld": []
+}

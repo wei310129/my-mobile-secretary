@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "ownerRole": "commerce-add",
+  "assignedMachine": "LAPTOP",
+  "status": "PREPARED_NOT_ACTIVE",
+  "updatedOn": "2026-07-30",
+  "activation": {
+    "requiredEventId": "TR-MACHINE-LANE-SWAP-MERGED",
+    "status": "PENDING",
+    "publishedSha": null,
+    "acknowledgedSha": null
+  },
+  "legacyEvidenceSources": [
+    "docs/exec-plans/active/handoffs/desktop-trigger-state.json"
+  ],
+  "inheritedGateEvidence": {
+    "TR-B3-CORE-MERGED": {
+      "status": "VERIFY_FROM_LEGACY_STATE",
+      "expectedPublishedSha": "ee1cfcbea8bf9b2c5ab36e8ac1922931ac24ddcf"
+    },
+    "TR-B4-FAKE-MERGED": {
+      "status": "VERIFY_FROM_LEGACY_STATE",
+      "expectedPublishedSha": "513eb117864cedbcaa63a99027cec22f9bd45bbf"
+    }
+  },
+  "gates": {
+    "TR-B3-DURABLE-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null,
+      "consumedSchemaVersion": null
+    },
+    "TR-B3-UPSTREAM-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null
+    },
+    "TR-ADD-CORE-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null
+    }
+  },
+  "allowedActionNow": "NONE",
+  "recommendedFirstCandidateAfterActivation": "ADD Core because it is schema-free and avoids a long-running laptop Docker/RLS gate",
+  "resourceClaimsHeld": []
+}

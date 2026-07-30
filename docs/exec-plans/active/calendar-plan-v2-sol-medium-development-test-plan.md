@@ -2208,8 +2208,8 @@ Gate：
 {
   "plan": "calendar-plan-v2",
   "phase": "10-C",
-  "status": "PAUSED_AWAITING_TR-B3-CORE-MERGED",
-  "baseRevision": "cbea39699d368104a60b5298af4201e417976456",
+  "status": "V90_MIGRATION_CONTRACT_IN_PROGRESS",
+  "baseRevision": "1198fcd1e8581a78d2d531603f2db2882329e69b",
   "uniqueTarget": "recurrence ancestry, revision-bound adoption, personal occurrence skip, and rolling reminder identity",
   "nonGoals": [
     "Travel 3B-B implementation",
@@ -2227,18 +2227,19 @@ Gate：
     "docs/exec-plans/active/calendar-plan-v2-sol-medium-development-test-plan.md"
   ],
   "resourceClaim": {
-    "operationId": "calendar-w10c-20260730-v90-r2",
-    "ownerPid": 50100,
+    "operationId": "calendar-w10c-20260730-v90-r3",
+    "ownerPid": 12860,
     "status": "ACTIVE",
     "reservedMigration": "V90",
     "worktree": "var/worktrees/calendar-w10"
   },
-  "hardYield": {
+  "resolvedHardYield": {
     "eventId": "TR-B3-CORE-MERGED",
-    "observedOriginMain": "cbea39699d368104a60b5298af4201e417976456",
-    "desktopState": "PENDING",
-    "publishedSha": null,
-    "action": "preserve the unvalidated V90 checkpoint, release all claims, and do not resume W10 until a matching Git-retrievable product/state receipt exists"
+    "observedOriginMain": "1198fcd1e8581a78d2d531603f2db2882329e69b",
+    "desktopState": "MERGED",
+    "publishedSha": "ee1cfcbea8bf9b2c5ab36e8ac1922931ac24ddcf",
+    "stateOnlyMerge": "1198fcd1e8581a78d2d531603f2db2882329e69b",
+    "action": "W10 resumed after matching Git product/state evidence"
   },
   "validationOrder": [
     "C83-C85 domain/service red contract",

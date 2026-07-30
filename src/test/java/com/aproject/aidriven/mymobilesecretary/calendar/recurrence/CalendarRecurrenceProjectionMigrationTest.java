@@ -146,14 +146,42 @@ class CalendarRecurrenceProjectionMigrationTest {
     }
 
     @Test
-    void v91IsLatest() throws Exception {
+    void v92CreatesActorPrivateSingleUseExportArtifacts() throws Exception {
+        assertThat(strings(
+                        """
+                        SELECT relname || '=' || relrowsecurity::text || ':' ||
+                               relforcerowsecurity::text
+                        FROM pg_class
+                        WHERE relname = 'calendar_ics_export_artifact'
+                        """))
+                .containsExactly(
+                        "calendar_ics_export_artifact=true:true");
+        assertThat(strings(
+                        """
+                        SELECT constraint_name
+                        FROM information_schema.table_constraints
+                        WHERE table_name = 'calendar_ics_export_artifact'
+                          AND constraint_name IN (
+                            'uq_calendar_ics_export_token',
+                            'uq_calendar_ics_export_request',
+                            'chk_calendar_ics_export_lifecycle')
+                        ORDER BY constraint_name
+                        """))
+                .containsExactly(
+                        "chk_calendar_ics_export_lifecycle",
+                        "uq_calendar_ics_export_request",
+                        "uq_calendar_ics_export_token");
+    }
+
+    @Test
+    void v92IsLatest() throws Exception {
         assertThat(strings(
                         """
                         SELECT max(version::integer)::text
                         FROM flyway_schema_history
                         WHERE success
                         """))
-                .containsExactly("91");
+                .containsExactly("92");
     }
 
     private static List<String> strings(String sql) throws SQLException {

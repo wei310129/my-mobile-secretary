@@ -634,6 +634,34 @@ unknown fee 不得標成最低價。最低總價只比較 fully-known total；�
 此 gate 零 DB、migration、Spring controller、Calendar／Travel 修改、Intent、LINE、provider
 network 與外部 mutation；完成後只能宣稱 B3-Core，不得宣稱 durable progress 或完整 B3。
 
+##### B3-Core gate evidence（2026-07-30）
+
+狀態：`PASS_AWAITING_PR_REVIEW`。桌電從 dependency-closure handoff
+`6219edcc9d6da08a410ebe38160c253316977d5b`、`origin/main`
+`cbea39699d368104a60b5298af4201e417976456` 建立並更新
+`desktop/booking-b3-core`。只新增 `booking/availability/**` 純 Java core 與 tests，沒有修改
+provider SPI、B2 durable execution、Calendar、Travel、Intent、LINE、migration、shared config
+或 tooling。
+
+實作涵蓋最多兩個 source 的 bounded concurrency、單一 source failure／timeout／invalid data
+隔離、固定 `Clock` 的 stale／expired／`IMPOSSIBLE` 過濾、fully-known total 的最低總價、
+refund／change risk 的最彈性、feasibility／unknown fee／必要加購／風險／價格的最佳平衡、
+deterministic tie-break、跨 category 多 badge 去重，以及 transient progress／exactly-one
+terminal sink。不同 currency 無換匯證據時不產生虛假的 cheapest badge。
+
+正式 gate 使用 Temurin JDK 21：
+
+- Scoped Spotless：exit 0，0 tests、0 skipped。
+- B3 focused `AvailabilitySearchOrchestratorTest`：exit 0，12 tests、0 failure、0 error、
+  0 skipped。
+- Booking／security-neighbor focused：exit 0，31 tests、0 failure、0 error、0 skipped。
+- Root regression：exit 0，1,518 tests、0 failure、0 error、16 skipped，357.0 秒。
+
+External environment 為 `NONE`；provider request、sandbox／live、credential、Playwright、真實個資、
+hold／book／pay／cancel 與 external mutation 全部為 0。此 PASS 只代表 provider-neutral transient
+B3-Core；不宣稱 durable progress、可信即時庫存、完整 B3、B4 fake purchase或任何 production
+transaction lifecycle。
+
 #### B3-Durable：Booking-owned search durability
 
 Calendar Wheel 10 完成且筆電發出一次性 schema handoff 後，才新增當時實際下一版 migration。

@@ -152,10 +152,16 @@ class CalendarRecurrenceProjectionMigrationTest {
                         SELECT relname || '=' || relrowsecurity::text || ':' ||
                                relforcerowsecurity::text
                         FROM pg_class
-                        WHERE relname = 'calendar_ics_export_artifact'
+                        WHERE relname IN (
+                            'calendar_ics_export_artifact',
+                            'calendar_recurrence_adoption_rule_snapshot',
+                            'calendar_recurrence_adoption_exception_snapshot')
+                        ORDER BY relname
                         """))
                 .containsExactly(
-                        "calendar_ics_export_artifact=true:true");
+                        "calendar_ics_export_artifact=true:true",
+                        "calendar_recurrence_adoption_exception_snapshot=true:true",
+                        "calendar_recurrence_adoption_rule_snapshot=true:true");
         assertThat(strings(
                         """
                         SELECT constraint_name

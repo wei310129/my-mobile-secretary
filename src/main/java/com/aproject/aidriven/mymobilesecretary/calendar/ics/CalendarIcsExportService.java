@@ -5,12 +5,15 @@ import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContex
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
+import java.util.stream.Collectors;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -24,11 +27,15 @@ public class CalendarIcsExportService {
 
     private final JdbcTemplate jdbc;
     private final CalendarIcsExportArtifactService artifacts;
+    private final CalendarIcsRecurrenceProjectionLoader recurrences;
 
     public CalendarIcsExportService(
-            JdbcTemplate jdbc, CalendarIcsExportArtifactService artifacts) {
+            JdbcTemplate jdbc,
+            CalendarIcsExportArtifactService artifacts,
+            CalendarIcsRecurrenceProjectionLoader recurrences) {
         this.jdbc = jdbc;
         this.artifacts = artifacts;
+        this.recurrences = recurrences;
     }
 
     public CalendarIcsExportArtifact export(CalendarIcsExportCommand command) {
@@ -99,11 +106,20 @@ public class CalendarIcsExportService {
             events.addAll(adoptedEvents(command, context));
         }
         events.removeIf(event -> !withinWindow(event, command));
+        CalendarIcsRecurrenceProjection recurrence = recurrences.load(
+                command.planId(),
+                command.windowStart(),
+                command.windowEndExclusive(),
+                context);
+        events.removeIf(event ->
+                recurrence.recurrenceOwnerIds().contains(event.sourceId()));
+        events.addAll(recurrence.events());
         if (events.isEmpty()) {
             throw new SecurityException(
                     "Calendar projection is unavailable for export");
         }
-        byte[] content = CalendarIcsWriter.write(events);
+        byte[] content = CalendarIcsWriter.write(
+                events, reminderOffsets(command, context));
         return artifacts.create(new CalendarIcsExportRequest(
                 command.requestId(),
                 command.planId(),
@@ -235,5 +251,48 @@ public class CalendarIcsExportService {
                 : event.allDayEndExclusive().minusDays(1);
         return end.compareTo(command.windowStart()) >= 0
                 && start.compareTo(command.windowEndExclusive()) < 0;
+    }
+
+    private Map<UUID, List<Duration>> reminderOffsets(
+            CalendarIcsExportCommand command, WorkspaceContext context) {
+        if (command.profile() != CalendarIcsExportProfile.ROUTE_AWARE) {
+            return Map.of();
+        }
+        return jdbc.query(
+                        """
+                        SELECT projection.source_node_id, rule.offset_seconds
+                        FROM calendar_personal_projection_snapshot snapshot
+                        JOIN calendar_personal_projection_node projection
+                          ON projection.snapshot_id = snapshot.id
+                         AND projection.workspace_id = snapshot.workspace_id
+                         AND projection.created_by_user_id =
+                                snapshot.created_by_user_id
+                        JOIN calendar_reminder_rule rule
+                          ON rule.node_id = projection.source_node_id
+                         AND rule.workspace_id = snapshot.workspace_id
+                         AND rule.created_by_user_id =
+                                snapshot.created_by_user_id
+                        WHERE snapshot.plan_id = ?
+                          AND snapshot.workspace_id = ?
+                          AND snapshot.created_by_user_id = ?
+                          AND snapshot.projection_status IN (
+                            'ACTIVE', 'RETAINED_NO_SOURCE_ACCESS')
+                          AND rule.owner_kind = 'PERSONAL'
+                          AND rule.rule_kind = 'RELATIVE'
+                          AND rule.delivery_mode = 'ONCE'
+                          AND rule.status = 'ACTIVE'
+                          AND rule.offset_seconds BETWEEN -2592000 AND -1
+                        """,
+                        (row, ignored) -> Map.entry(
+                                row.getObject("source_node_id", UUID.class),
+                                Duration.ofSeconds(
+                                        -row.getLong("offset_seconds"))),
+                        command.planId(),
+                        context.workspaceId(),
+                        context.actorId())
+                .stream()
+                .collect(Collectors.groupingBy(
+                        Map.Entry::getKey,
+                        Collectors.mapping(Map.Entry::getValue, Collectors.toList())));
     }
 }

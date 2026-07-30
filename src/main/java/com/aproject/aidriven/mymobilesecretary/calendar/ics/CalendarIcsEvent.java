@@ -52,7 +52,8 @@ public record CalendarIcsEvent(
 
     public CalendarIcsEvent {
         Objects.requireNonNull(sourceId, "sourceId");
-        if (!List.of("plan", "activity", "route-node").contains(sourceType)) {
+        if (!List.of("plan", "activity", "route-node", "recurrence")
+                .contains(sourceType)) {
             throw new IllegalArgumentException("Unsupported ICS event source type");
         }
         Objects.requireNonNull(summary, "summary");

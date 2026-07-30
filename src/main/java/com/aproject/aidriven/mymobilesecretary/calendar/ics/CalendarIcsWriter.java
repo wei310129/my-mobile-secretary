@@ -1,9 +1,12 @@
 package com.aproject.aidriven.mymobilesecretary.calendar.ics;
 
 import java.nio.charset.StandardCharsets;
+import java.time.Duration;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.List;
+import java.util.Map;
+import java.util.UUID;
 
 public final class CalendarIcsWriter {
 
@@ -14,8 +17,17 @@ public final class CalendarIcsWriter {
     private CalendarIcsWriter() {}
 
     public static byte[] write(List<CalendarIcsEvent> events) {
+        return write(events, Map.of());
+    }
+
+    public static byte[] write(
+            List<CalendarIcsEvent> events,
+            Map<UUID, List<Duration>> reminderOffsets) {
         if (events == null) {
             throw new IllegalArgumentException("ICS events are required");
+        }
+        if (reminderOffsets == null) {
+            throw new IllegalArgumentException("ICS reminder offsets are required");
         }
         StringBuilder output = new StringBuilder()
                 .append("BEGIN:VCALENDAR").append(CRLF)
@@ -30,12 +42,18 @@ public final class CalendarIcsWriter {
                                                 ? event.startsAt().toString()
                                                 : event.allDayStart().toString())
                         .thenComparing(CalendarIcsEvent::sourceId))
-                .forEach(event -> append(output, event));
+                .forEach(event -> append(
+                        output,
+                        event,
+                        reminderOffsets.getOrDefault(event.sourceId(), List.of())));
         output.append("END:VCALENDAR").append(CRLF);
         return output.toString().getBytes(StandardCharsets.UTF_8);
     }
 
-    private static void append(StringBuilder output, CalendarIcsEvent event) {
+    private static void append(
+            StringBuilder output,
+            CalendarIcsEvent event,
+            List<Duration> reminderOffsets) {
         output.append("BEGIN:VEVENT").append(CRLF)
                 .append("UID:calendar-").append(event.sourceType()).append('-')
                 .append(event.sourceId()).append("@my-mobile-secretary")
@@ -57,8 +75,23 @@ public final class CalendarIcsWriter {
                     .append(CRLF);
         }
         output.append("SUMMARY:").append(escape(event.summary())).append(CRLF)
-                .append("DESCRIPTION:").append(escape(event.description())).append(CRLF)
-                .append("END:VEVENT").append(CRLF);
+                .append("DESCRIPTION:").append(escape(event.description())).append(CRLF);
+        reminderOffsets.stream().sorted().forEach(offset -> appendAlarm(output, offset));
+        output.append("END:VEVENT").append(CRLF);
+    }
+
+    private static void appendAlarm(StringBuilder output, Duration offset) {
+        if (offset == null
+                || offset.isZero()
+                || offset.isNegative()
+                || offset.compareTo(Duration.ofDays(30)) > 0) {
+            throw new IllegalArgumentException("ICS alarm offset must be within 30 days");
+        }
+        output.append("BEGIN:VALARM").append(CRLF)
+                .append("TRIGGER:-").append(offset).append(CRLF)
+                .append("ACTION:DISPLAY").append(CRLF)
+                .append("DESCRIPTION:Calendar reminder").append(CRLF)
+                .append("END:VALARM").append(CRLF);
     }
 
     private static String escape(String value) {

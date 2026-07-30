@@ -130,6 +130,98 @@ public class CalendarRecurrenceProjectionService {
                 context.workspaceId(),
                 context.actorId(),
                 source.sourceOwnerId());
+        jdbc.update(
+                """
+                INSERT INTO calendar_recurrence_adoption_rule_snapshot (
+                    recurrence_adoption_id, plan_id, activity_id,
+                    projection_title, series_id,
+                    rule_revision, frequency, recurrence_interval,
+                    weekdays, week_start, month_day, weekday_ordinal,
+                    weekday, year_month, year_day, timed_anchor,
+                    duration_seconds, zone_id, all_day_anchor,
+                    all_day_span, end_kind, occurrence_count,
+                    until_date, until_timed, effective_from_timed,
+                    effective_from_date, effective_until_timed,
+                    effective_until_date, created_at, workspace_id,
+                    created_by_user_id, source_created_by_user_id)
+                SELECT ?, ?, series.activity_id,
+                       COALESCE(activity.title, plan.title),
+                       revision.series_id, revision.revision,
+                       revision.frequency, revision.recurrence_interval,
+                       revision.weekdays, revision.week_start,
+                       revision.month_day, revision.weekday_ordinal,
+                       revision.weekday, revision.year_month,
+                       revision.year_day, revision.timed_anchor,
+                       revision.duration_seconds, revision.zone_id,
+                       revision.all_day_anchor, revision.all_day_span,
+                       revision.end_kind, revision.occurrence_count,
+                       revision.until_date, revision.until_timed,
+                       revision.effective_from_timed,
+                       revision.effective_from_date,
+                       revision.effective_until_timed,
+                       revision.effective_until_date,
+                       ?, revision.workspace_id, ?, ?
+                FROM calendar_recurrence_rule_revision revision
+                JOIN calendar_recurrence_series series
+                  ON series.id = revision.series_id
+                 AND series.workspace_id = revision.workspace_id
+                 AND series.source_created_by_user_id =
+                        revision.source_created_by_user_id
+                JOIN calendar_plan plan
+                  ON plan.id = series.plan_id
+                 AND plan.workspace_id = series.workspace_id
+                 AND plan.created_by_user_id =
+                        series.source_created_by_user_id
+                LEFT JOIN calendar_activity activity
+                  ON activity.id = series.activity_id
+                 AND activity.plan_id = series.plan_id
+                 AND activity.workspace_id = series.workspace_id
+                 AND activity.created_by_user_id =
+                        series.source_created_by_user_id
+                WHERE revision.series_id = ? AND revision.revision = ?
+                  AND revision.workspace_id = ?
+                  AND revision.source_created_by_user_id = ?
+                """,
+                id,
+                planId,
+                Timestamp.from(now),
+                context.actorId(),
+                source.sourceOwnerId(),
+                seriesId,
+                expectedRuleRevision,
+                context.workspaceId(),
+                source.sourceOwnerId());
+        jdbc.update(
+                """
+                INSERT INTO calendar_recurrence_adoption_exception_snapshot (
+                    recurrence_adoption_id, source_exception_id,
+                    series_id, rule_revision, logical_timed_start,
+                    logical_all_day_start, kind, placement_kind,
+                    timed_start, timed_end, zone_id, all_day_start,
+                    all_day_end_exclusive, workspace_id,
+                    created_by_user_id, source_created_by_user_id)
+                SELECT ?, exception.id, exception.series_id,
+                       exception.rule_revision,
+                       exception.logical_timed_start,
+                       exception.logical_all_day_start, exception.kind,
+                       exception.placement_kind, exception.timed_start,
+                       exception.timed_end, exception.zone_id,
+                       exception.all_day_start,
+                       exception.all_day_end_exclusive,
+                       exception.workspace_id, ?, ?
+                FROM calendar_recurrence_exception exception
+                WHERE exception.series_id = ?
+                  AND exception.rule_revision = ?
+                  AND exception.workspace_id = ?
+                  AND exception.source_created_by_user_id = ?
+                """,
+                id,
+                context.actorId(),
+                source.sourceOwnerId(),
+                seriesId,
+                expectedRuleRevision,
+                context.workspaceId(),
+                source.sourceOwnerId());
         return new SeriesAdoption(id, seriesId, expectedRuleRevision);
     }
 

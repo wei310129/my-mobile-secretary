@@ -2,10 +2,12 @@ package com.aproject.aidriven.mymobilesecretary.calendar.ics;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
@@ -60,5 +62,30 @@ class CalendarIcsWriterTest {
                 .contains("UID:calendar-activity-" + activityId)
                 .contains("DTSTART;VALUE=DATE:20260802\r\n")
                 .contains("DTEND;VALUE=DATE:20260804\r\n");
+    }
+
+    @Test
+    void actorOwnedOffsetReminderMapsToDisplayAlarm() {
+        UUID planId =
+                UUID.fromString("30000000-0000-0000-0000-000000000003");
+        var event = new CalendarIcsEvent(
+                planId,
+                "有提醒的行程",
+                "",
+                Instant.parse("2026-08-01T01:00:00Z"),
+                Instant.parse("2026-08-01T02:00:00Z"),
+                ZoneId.of("Asia/Taipei"));
+
+        String text = new String(
+                CalendarIcsWriter.write(
+                        List.of(event),
+                        Map.of(planId, List.of(Duration.ofMinutes(30)))),
+                java.nio.charset.StandardCharsets.UTF_8);
+
+        assertThat(text)
+                .contains("BEGIN:VALARM\r\n")
+                .contains("TRIGGER:-PT30M\r\n")
+                .contains("ACTION:DISPLAY\r\n")
+                .contains("END:VALARM\r\n");
     }
 }

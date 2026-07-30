@@ -12,6 +12,8 @@ import java.util.TreeMap;
 
 public final class CalendarRecurrenceExpander {
 
+    private static final long MAX_SCAN_DAYS = 100_000;
+
     private CalendarRecurrenceExpander() {}
 
     public static List<CalendarOccurrence> expand(
@@ -20,8 +22,12 @@ public final class CalendarRecurrenceExpander {
             CalendarRecurrenceWindow window) {
         var occurrences = new TreeMap<CalendarOccurrenceKey, CalendarOccurrence>();
         int validCount = 0;
-        LocalDate date = rule.anchorDate();
+        LocalDate date = scanStart(rule, window);
         LocalDate scanEnd = scanEnd(rule, window);
+        if (ChronoUnit.DAYS.between(date, scanEnd) > MAX_SCAN_DAYS) {
+            throw new IllegalArgumentException(
+                    "Recurrence expansion exceeds the scan budget");
+        }
 
         while (!date.isAfter(scanEnd)) {
             if (date.equals(rule.anchorDate()) || matches(rule, date)) {
@@ -41,6 +47,16 @@ public final class CalendarRecurrenceExpander {
 
         applyExceptions(rule, exceptions, window, occurrences);
         return occurrences.values().stream().limit(window.maxOccurrences()).toList();
+    }
+
+    private static LocalDate scanStart(
+            CalendarRecurrenceRule rule, CalendarRecurrenceWindow window) {
+        if (rule.end().kind() == CalendarRecurrenceEnd.Kind.COUNT) {
+            return rule.anchorDate();
+        }
+        return rule.anchorDate().isAfter(window.startInclusive())
+                ? rule.anchorDate()
+                : window.startInclusive();
     }
 
     private static LocalDate scanEnd(

@@ -61,6 +61,48 @@ class CalendarV2CutoverIntentApiTest extends IntegrationTestBase {
         assertThat(count("schedule_item", "W11 切換驗證會議")).isZero();
     }
 
+    @Test
+    void typedScheduleLookupWinsOverImplicitTaggedLifeRecordShortcut() throws Exception {
+        String title = "Port Checkin";
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE, title, null,
+                "2026-08-04T08:00:00+08:00", "2026-08-04T09:00:00+08:00",
+                null, null, null, null, null, null, null, null));
+
+        mockMvc.perform(post("/api/intent")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload("create Port Checkin at 8 AM on August 4")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.action").value("SCHEDULE_CONFIRMED"));
+
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.ASK_SCHEDULE_INFO, title,
+                null, null, null, null, null, null, null, null, null, null, null));
+
+        mockMvc.perform(post("/api/intent")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload("\u67e5\u4e00\u4e0bPort Checkin")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.action").value("SCHEDULE_INFO"))
+                .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.containsString(title)));
+
+        assertThat(count("calendar_plan", title)).isEqualTo(1);
+        assertThat(count("schedule_item", title)).isZero();
+
+        stub.clear();
+        mockMvc.perform(post("/api/intent")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload("\u67e5\u4e00\u4e0bPort Checkin")))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.action").value("TAGGED_RECORDS_INFO"));
+    }
+
+    private static String payload(String text) throws Exception {
+        return new com.fasterxml.jackson.databind.ObjectMapper()
+                .writeValueAsString(java.util.Map.of("text", text));
+    }
+
     private long count(String table, String title) {
         return jdbc.queryForObject(
                 "SELECT count(*) FROM " + table + " WHERE title = ?",

@@ -32,12 +32,22 @@ public class TaggedRecordConversationService {
     }
 
     public Optional<IntentResult> answer(String text) {
+        return answer(text, false);
+    }
+
+    /** Only explicit tag/annotation language may bypass the typed intent interpreter. */
+    public Optional<IntentResult> answerExplicit(String text) {
+        return answer(text, true);
+    }
+
+    private Optional<IntentResult> answer(String text, boolean explicitOnly) {
         if (text == null) return Optional.empty();
         var matcher = LOOKUP.matcher(text.strip());
         if (!matcher.matches()) return Optional.empty();
         String keyword = matcher.group(1).strip();
         if (keyword.isBlank()) return Optional.empty();
         int explicitTagRelevance = score(text, "註記", "標籤", "記過", "紀錄", "記得");
+        if (explicitOnly && explicitTagRelevance == 0) return Optional.empty();
         if (explicitTagRelevance == 0 && score(text,
                 "行程", "日程", "待辦", "任務", "提醒", "日曆", "會議", "活動") > 0) {
             return Optional.empty();

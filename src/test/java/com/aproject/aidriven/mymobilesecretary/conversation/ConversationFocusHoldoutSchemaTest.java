@@ -69,6 +69,24 @@ class ConversationFocusHoldoutSchemaTest {
                 .hasMessage("holdout quoted message requires LINE context");
     }
 
+    @Test
+    void rejectsASecondPersonalWorkspaceBeforeDatabaseSetup() {
+        var secondPersonal = new ConversationFocusHoldoutTest.WorkspaceInput(
+                "other-workspace", "00000000-0000-0000-0000-000000000011",
+                "owner", "PERSONAL");
+        var invalid = new ConversationFocusHoldoutTest.ScenarioInput(
+                "scenario", actors(),
+                List.of(workspaces().getFirst(), secondPersonal),
+                List.of(context("owner", "owner", "workspace", "LINE")),
+                List.of(message()), List.of(
+                        intentTurn("create", "owner", "create", null, null, "original")));
+
+        assertThatThrownBy(() -> ConversationFocusHoldoutTest.validateInput(
+                new ConversationFocusHoldoutTest.HoldoutInput(2, List.of(invalid))))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessage("holdout actor may own only one personal workspace");
+    }
+
     private static ConversationFocusHoldoutTest.ScenarioInput scenario(
             List<ConversationFocusHoldoutTest.TurnInput> turns) {
         return new ConversationFocusHoldoutTest.ScenarioInput(
@@ -88,7 +106,8 @@ class ConversationFocusHoldoutSchemaTest {
 
     private static List<ConversationFocusHoldoutTest.WorkspaceInput> workspaces() {
         return List.of(new ConversationFocusHoldoutTest.WorkspaceInput(
-                "workspace", "00000000-0000-0000-0000-000000000010", "owner"));
+                "workspace", "00000000-0000-0000-0000-000000000010",
+                "owner", "PERSONAL"));
     }
 
     private static ConversationFocusHoldoutTest.ContextInput context(

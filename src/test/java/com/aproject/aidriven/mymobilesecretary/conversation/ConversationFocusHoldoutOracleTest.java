@@ -35,6 +35,28 @@ class ConversationFocusHoldoutOracleTest {
                 .hasMessageNotContaining("目前先處理");
     }
 
+    @Test
+    void safeRejectionMayUseNoReplyFactsWhileStateAndPrivacyRemainExact() {
+        var captureTurn = new ConversationFocusHoldoutTest.TurnCapture(
+                "peer", "SAFE_REJECTION", "QUOTED_FOCUS_UNAVAILABLE",
+                "", "", "NONE", "NONE", 0L, 0L, 0L, 0L, 0L, true);
+        var oracleTurn = new ConversationFocusHoldoutTest.TurnOracle(
+                "peer", "SAFE_REJECTION", "QUOTED_FOCUS_UNAVAILABLE",
+                List.of(), List.of(), List.of(), List.of(),
+                "NONE", "NONE", 0L, 0L, 0L, 0L, 0L, true);
+        var capture = new ConversationFocusHoldoutTest.CaptureArtifact(
+                "3", "input-hash", List.of(
+                        new ConversationFocusHoldoutTest.ScenarioCapture(
+                                "scenario-1", List.of(captureTurn))));
+        var oracle = new ConversationFocusHoldoutTest.HoldoutOracle(
+                "2", "input-hash", "capture-hash", List.of(
+                        new ConversationFocusHoldoutTest.ScenarioOracle(
+                                "scenario-1", List.of(oracleTurn))));
+
+        assertThatCode(() -> ConversationFocusHoldoutTest.assertMatches(capture, oracle))
+                .doesNotThrowAnyException();
+    }
+
     private static ConversationFocusHoldoutTest.CaptureArtifact capture(
             String action, String publicReply, long taskCount) {
         var turn = new ConversationFocusHoldoutTest.TurnCapture(

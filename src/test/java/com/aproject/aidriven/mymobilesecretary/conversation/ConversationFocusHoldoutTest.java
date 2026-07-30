@@ -2,6 +2,7 @@ package com.aproject.aidriven.mymobilesecretary.conversation;
 
 import com.aproject.aidriven.mymobilesecretary.IntegrationTestBase;
 import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubIntentInterpreter;
+import com.aproject.aidriven.mymobilesecretary.account.domain.WorkspaceType;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
@@ -74,8 +75,14 @@ class ConversationFocusHoldoutTest extends IntegrationTestBase {
         HoldoutInput input = mapper().readValue(inputBytes, HoldoutInput.class);
         validate(input);
         List<ScenarioCapture> scenarios = new ArrayList<>();
-        for (ScenarioInput scenario : input.scenarios()) {
-            scenarios.add(run(scenario));
+        for (int index = 0; index < input.scenarios().size(); index++) {
+            try {
+                scenarios.add(run(input.scenarios().get(index)));
+            } catch (RuntimeException failure) {
+                throw new AssertionError(
+                        "holdout execution failed [scenarioIndex=" + (index + 1)
+                                + ", cause=" + failure.getClass().getSimpleName() + "]");
+            }
         }
         CaptureArtifact artifact = new CaptureArtifact(ARTIFACT_VERSION, sha256(inputBytes), scenarios);
         byte[] artifactBytes = mapper().writeValueAsBytes(artifact);
@@ -142,7 +149,11 @@ class ConversationFocusHoldoutTest extends IntegrationTestBase {
                 actual.focusTransitionCount(), expected.focusTransitionCount());
         equal(scenarioIndex, turnIndex, "privacySafe",
                 actual.privacySafe(), expected.privacySafe());
-        validateFacts(scenarioIndex, turnIndex, expected.requiredReplyFacts(), true);
+        boolean successful = "SUCCESS".equals(expected.executionStatus());
+        if (!successful && !"SAFE_REJECTION".equals(expected.executionStatus())) {
+            mismatch(scenarioIndex, turnIndex, "executionStatus");
+        }
+        validateFacts(scenarioIndex, turnIndex, expected.requiredReplyFacts(), successful);
         validateFacts(scenarioIndex, turnIndex, expected.forbiddenReplyFacts(), false);
         validateFacts(scenarioIndex, turnIndex, expected.requiredInterpretationFacts(), false);
         validateFacts(scenarioIndex, turnIndex, expected.forbiddenInterpretationFacts(), false);
@@ -302,11 +313,18 @@ class ConversationFocusHoldoutTest extends IntegrationTestBase {
             uuid(actor.id(), "actorId");
         });
         Map<String, WorkspaceInput> workspaces = new LinkedHashMap<>();
+        Set<String> personalOwners = new LinkedHashSet<>();
         for (WorkspaceInput workspace : scenario.workspaces()) {
             required(workspace.key(), "workspace key");
             uuid(workspace.id(), "workspaceId");
             if (!actors.contains(workspace.ownerActorKey())) {
                 throw new IllegalArgumentException("holdout workspace owner is unavailable");
+            }
+            WorkspaceType type = workspaceType(workspace.type());
+            if (type == WorkspaceType.PERSONAL
+                    && !personalOwners.add(workspace.ownerActorKey())) {
+                throw new IllegalArgumentException(
+                        "holdout actor may own only one personal workspace");
             }
             workspaces.put(workspace.key(), workspace);
         }
@@ -450,7 +468,7 @@ class ConversationFocusHoldoutTest extends IntegrationTestBase {
             UUID workspaceId = uuid(workspace.id(), "workspaceId");
             UUID ownerId = actors.get(workspace.ownerActorKey());
             workspaces.put(workspace.key(), new WorkspaceRuntime(workspaceId, ownerId));
-            seedWorkspace(workspaceId, ownerId);
+            seedWorkspace(workspaceId, ownerId, workspaceType(workspace.type()));
         }
         Map<String, ContextRuntime> contexts = new LinkedHashMap<>();
         Set<String> memberships = new LinkedHashSet<>();
@@ -572,11 +590,12 @@ class ConversationFocusHoldoutTest extends IntegrationTestBase {
                 """, actorId);
     }
 
-    private void seedWorkspace(UUID workspaceId, UUID ownerId) {
+    private void seedWorkspace(
+            UUID workspaceId, UUID ownerId, WorkspaceType type) {
         jdbcTemplate.update("""
                 INSERT INTO workspace (id, name, type, created_by_user_id, created_at, updated_at)
-                VALUES (?, 'sealed holdout workspace', 'PERSONAL', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-                """, workspaceId, ownerId);
+                VALUES (?, 'sealed holdout workspace', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                """, workspaceId, type.name(), ownerId);
     }
 
     private void seedMember(UUID actorId, UUID workspaceId, UUID ownerId) {
@@ -623,6 +642,14 @@ class ConversationFocusHoldoutTest extends IntegrationTestBase {
         }
     }
 
+    private static WorkspaceType workspaceType(String value) {
+        try {
+            return WorkspaceType.valueOf(required(value, "workspace type"));
+        } catch (IllegalArgumentException exception) {
+            throw new IllegalArgumentException("workspace type must be a WorkspaceType");
+        }
+    }
+
     private static String required(String value, String field) {
         if (value == null || value.isBlank()) {
             throw new IllegalArgumentException(field + " is required");
@@ -639,7 +666,8 @@ class ConversationFocusHoldoutTest extends IntegrationTestBase {
 
     record ActorInput(String key, String id) {}
 
-    record WorkspaceInput(String key, String id, String ownerActorKey) {}
+    record WorkspaceInput(
+            String key, String id, String ownerActorKey, String type) {}
 
     record ContextInput(
             String key, String actorKey, String workspaceKey, String channel,

@@ -494,7 +494,8 @@ public class IntentService {
             if (utilityBill.isPresent()) return utilityBill.get();
         }
         if (taggedRecordConversationService != null) {
-            Optional<IntentResult> taggedRecord = taggedRecordConversationService.answer(text);
+            Optional<IntentResult> taggedRecord =
+                    taggedRecordConversationService.answerExplicit(text);
             if (taggedRecord.isPresent()) return taggedRecord.get();
         }
         if (purchaseConversationService != null) {
@@ -1142,7 +1143,14 @@ public class IntentService {
     private IntentResult interpreterFailureFallback(String text, String why,
                                                      MutationBoundary mutationBoundary) {
         return deterministicTravelFallback(text, mutationBoundary)
+                .or(() -> taggedRecordFallback(text))
                 .orElseGet(() -> safeFallback(text, why, mutationBoundary));
+    }
+
+    private Optional<IntentResult> taggedRecordFallback(String text) {
+        return taggedRecordConversationService == null
+                ? Optional.empty()
+                : taggedRecordConversationService.answer(text);
     }
 
     private Optional<IntentResult> deterministicTravelFallback(

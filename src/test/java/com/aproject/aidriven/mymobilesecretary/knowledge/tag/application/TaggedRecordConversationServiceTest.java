@@ -80,4 +80,16 @@ class TaggedRecordConversationServiceTest {
 
         verifyNoInteractions(query);
     }
+    @Test
+    void implicitLookupDoesNotPreemptTypedRoutingWhenOnlyScheduleLifeRecordMatches() {
+        TaggedRecordQueryService query = mock(TaggedRecordQueryService.class);
+        when(query.query("Port Checkin", null, null, null)).thenReturn(List.of(
+                new TaggedRecordQueryService.TaggedRecordView(
+                        "SCHEDULE", "Port Checkin", Instant.parse("2026-08-04T00:00:00Z"),
+                        "schedule created")));
+
+        assertThat(new TaggedRecordConversationService(query)
+                .answerExplicit("\u67e5\u4e00\u4e0bPort Checkin"))
+                .isEmpty();
+    }
 }

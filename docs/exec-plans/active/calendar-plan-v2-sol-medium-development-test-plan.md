@@ -2208,7 +2208,7 @@ Gate：
 {
   "plan": "calendar-plan-v2",
   "phase": "10-C",
-  "status": "C86-C91_FOCUSED_GREEN_SECURITY_NEIGHBOR_PENDING",
+  "status": "C86-C91_PASS_LOCAL_RELEASE_PENDING",
   "baseRevision": "1198fcd1e8581a78d2d531603f2db2882329e69b",
   "uniqueTarget": "recurrence ancestry, revision-bound adoption, personal occurrence skip, and rolling reminder identity",
   "nonGoals": [
@@ -2227,8 +2227,8 @@ Gate：
     "docs/exec-plans/active/calendar-plan-v2-sol-medium-development-test-plan.md"
   ],
   "resourceClaim": {
-    "operationId": "calendar-w10c-20260730-v90-r4",
-    "ownerPid": 10060,
+    "operationId": "calendar-w10c-20260730-v90-r5",
+    "ownerPid": 513388,
     "status": "ACTIVE",
     "reservedMigration": "V90",
     "worktree": "var/worktrees/calendar-w10"
@@ -2294,8 +2294,38 @@ Gate：
       "skipped": 0,
       "durationSeconds": 121.6
     },
+    "securityNeighbor": {
+      "tests": 56,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 80.8
+    },
+    "rootRegressionFirstAttempt": {
+      "tests": 1545,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 16,
+      "durationSeconds": 419.0,
+      "diagnosis": "DatabaseAccessSafetyArchitectureTest required the new parameter-bound CalendarRecurrenceProjectionService to be explicitly registered as reviewed low-level SQL"
+    },
+    "databaseAccessArchitecture": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 37.3,
+      "change": "registered only CalendarRecurrenceProjectionService; architecture rule remains closed"
+    },
+    "rootRegressionFinal": {
+      "tests": 1545,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 16,
+      "durationSeconds": 424.3
+    },
     "pending": [
-      "security-neighbor and root regression"
+      "release r5 coordination claims"
     ]
   },
   "validationOrder": [

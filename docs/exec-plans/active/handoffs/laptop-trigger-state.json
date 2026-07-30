@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "ownerLane": "laptop",
-  "updatedOn": "2026-07-29",
+  "updatedOn": "2026-07-30",
   "humanAvailability": {
     "mode": "UNSPECIFIED",
     "timezone": "Asia/Taipei",
@@ -18,8 +18,8 @@
       "publishedSha": "6219edcc9d6da08a410ebe38160c253316977d5b"
     },
     "TR-CALENDAR-W10-MERGED": {
-      "status": "PENDING",
-      "publishedSha": null
+      "status": "READY",
+      "publishedSha": "c4ade0b88d44457f5200a6849bbc10ea1516f692"
     },
     "TR-TRAVEL-3BB-MERGED": {
       "status": "PENDING",

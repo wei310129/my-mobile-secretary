@@ -28,6 +28,7 @@ class DatabaseAccessSafetyArchitectureTest {
             "com/aproject/aidriven/mymobilesecretary/calendar/attachment/CalendarAttachmentLifecycleListener.java",
             "com/aproject/aidriven/mymobilesecretary/calendar/ics/CalendarIcsExportArtifactService.java",
             "com/aproject/aidriven/mymobilesecretary/calendar/ics/CalendarIcsExportService.java",
+            "com/aproject/aidriven/mymobilesecretary/calendar/ics/CalendarIcsImportService.java",
             "com/aproject/aidriven/mymobilesecretary/calendar/ics/CalendarIcsRecurrenceProjectionLoader.java",
             "com/aproject/aidriven/mymobilesecretary/calendar/knowledge/CalendarKnowledgeBindingReviewListener.java",
             "com/aproject/aidriven/mymobilesecretary/calendar/knowledge/CalendarKnowledgeBindingService.java",

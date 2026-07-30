@@ -190,3 +190,153 @@ CREATE POLICY rls_calendar_ics_export_actor
     WITH CHECK (
         app_workspace_matches(workspace_id)
         AND app_actor_matches(created_by_user_id));
+
+CREATE TABLE calendar_ics_import_batch (
+    id UUID PRIMARY KEY,
+    import_source VARCHAR(80) NOT NULL,
+    source_fingerprint VARCHAR(64) NOT NULL,
+    storage_key VARCHAR(80) NOT NULL,
+    content_hash VARCHAR(64) NOT NULL,
+    size_bytes BIGINT NOT NULL,
+    scheduling_method VARCHAR(20),
+    event_count INTEGER NOT NULL,
+    parse_state VARCHAR(24) NOT NULL,
+    row_revision BIGINT NOT NULL DEFAULT 1,
+    expires_at TIMESTAMPTZ NOT NULL,
+    created_at TIMESTAMPTZ NOT NULL,
+    workspace_id UUID NOT NULL,
+    created_by_user_id UUID NOT NULL,
+    CONSTRAINT uq_calendar_ics_import_batch_actor
+        UNIQUE (id, workspace_id, created_by_user_id),
+    CONSTRAINT uq_calendar_ics_import_fingerprint
+        UNIQUE (
+            workspace_id, created_by_user_id,
+            import_source, source_fingerprint),
+    CONSTRAINT chk_calendar_ics_import_batch_hashes
+        CHECK (source_fingerprint ~ '^[0-9a-f]{64}$'
+            AND content_hash ~ '^[0-9a-f]{64}$'),
+    CONSTRAINT chk_calendar_ics_import_batch_size
+        CHECK (size_bytes > 0 AND size_bytes <= 5242880),
+    CONSTRAINT chk_calendar_ics_import_batch_count
+        CHECK (event_count > 0 AND event_count <= 10000),
+    CONSTRAINT chk_calendar_ics_import_batch_state
+        CHECK (parse_state IN (
+            'PREVIEW_READY', 'CANCELED', 'EXPIRED')),
+    CONSTRAINT chk_calendar_ics_import_batch_expiry
+        CHECK (expires_at > created_at),
+    CONSTRAINT chk_calendar_ics_import_batch_revision
+        CHECK (row_revision > 0)
+);
+
+CREATE TABLE calendar_ics_import_item (
+    id UUID NOT NULL,
+    batch_id UUID NOT NULL,
+    item_ordinal INTEGER NOT NULL,
+    external_uid_hash VARCHAR(64),
+    recurrence_id_hash VARCHAR(64),
+    external_sequence INTEGER NOT NULL DEFAULT 0,
+    scheduling_method VARCHAR(20),
+    title VARCHAR(200) NOT NULL,
+    description_preview VARCHAR(1000) NOT NULL DEFAULT '',
+    location_preview VARCHAR(300) NOT NULL DEFAULT '',
+    organizer_preview VARCHAR(300) NOT NULL DEFAULT '',
+    attendee_preview VARCHAR(1000) NOT NULL DEFAULT '',
+    placement_kind VARCHAR(20) NOT NULL,
+    timed_start TIMESTAMP,
+    timed_end TIMESTAMP,
+    zone_id VARCHAR(64),
+    floating_time BOOLEAN NOT NULL DEFAULT FALSE,
+    all_day_start DATE,
+    all_day_end_exclusive DATE,
+    recurrence_summary VARCHAR(500),
+    recurrence_supported BOOLEAN NOT NULL DEFAULT FALSE,
+    reminder_offset_seconds BIGINT[] NOT NULL DEFAULT '{}',
+    warning_summary VARCHAR(2000) NOT NULL DEFAULT '',
+    proposal_state VARCHAR(30) NOT NULL,
+    row_revision BIGINT NOT NULL DEFAULT 1,
+    confirmation_hash VARCHAR(64),
+    materialized_plan_id UUID,
+    materialized_at TIMESTAMPTZ,
+    created_at TIMESTAMPTZ NOT NULL,
+    workspace_id UUID NOT NULL,
+    created_by_user_id UUID NOT NULL,
+    PRIMARY KEY (id, workspace_id, created_by_user_id),
+    CONSTRAINT fk_calendar_ics_import_item_batch
+        FOREIGN KEY (
+            batch_id, workspace_id, created_by_user_id)
+        REFERENCES calendar_ics_import_batch (
+            id, workspace_id, created_by_user_id),
+    CONSTRAINT fk_calendar_ics_import_materialized_plan
+        FOREIGN KEY (
+            materialized_plan_id, workspace_id, created_by_user_id)
+        REFERENCES calendar_plan (
+            id, workspace_id, created_by_user_id),
+    CONSTRAINT uq_calendar_ics_import_item_ordinal
+        UNIQUE (
+            batch_id, item_ordinal,
+            workspace_id, created_by_user_id),
+    CONSTRAINT chk_calendar_ics_import_item_hashes
+        CHECK (
+            (external_uid_hash IS NULL
+                OR external_uid_hash ~ '^[0-9a-f]{64}$')
+            AND (recurrence_id_hash IS NULL
+                OR recurrence_id_hash ~ '^[0-9a-f]{64}$')
+            AND (confirmation_hash IS NULL
+                OR confirmation_hash ~ '^[0-9a-f]{64}$')),
+    CONSTRAINT chk_calendar_ics_import_item_ordinal
+        CHECK (item_ordinal > 0 AND external_sequence >= 0),
+    CONSTRAINT chk_calendar_ics_import_item_placement CHECK (
+        (placement_kind = 'TIMED'
+            AND timed_start IS NOT NULL
+            AND timed_end IS NOT NULL
+            AND timed_end > timed_start
+            AND all_day_start IS NULL
+            AND all_day_end_exclusive IS NULL
+            AND ((floating_time AND zone_id IS NULL)
+                OR (NOT floating_time AND zone_id IS NOT NULL)))
+        OR (placement_kind = 'ALL_DAY'
+            AND timed_start IS NULL AND timed_end IS NULL
+            AND zone_id IS NULL AND NOT floating_time
+            AND all_day_start IS NOT NULL
+            AND all_day_end_exclusive > all_day_start)),
+    CONSTRAINT chk_calendar_ics_import_item_state
+        CHECK (proposal_state IN (
+            'PENDING_CONFIRMATION', 'UNSUPPORTED',
+            'MATERIALIZED', 'CANCELED')),
+    CONSTRAINT chk_calendar_ics_import_item_lifecycle CHECK (
+        (proposal_state IN (
+                'PENDING_CONFIRMATION', 'UNSUPPORTED', 'CANCELED')
+            AND confirmation_hash IS NULL
+            AND materialized_plan_id IS NULL
+            AND materialized_at IS NULL)
+        OR (proposal_state = 'MATERIALIZED'
+            AND confirmation_hash IS NOT NULL
+            AND materialized_plan_id IS NOT NULL
+            AND materialized_at IS NOT NULL)),
+    CONSTRAINT chk_calendar_ics_import_item_revision
+        CHECK (row_revision > 0),
+    CONSTRAINT chk_calendar_ics_import_reminder_quota
+        CHECK (cardinality(reminder_offset_seconds) <= 8)
+);
+
+ALTER TABLE calendar_ics_import_batch ENABLE ROW LEVEL SECURITY;
+ALTER TABLE calendar_ics_import_batch FORCE ROW LEVEL SECURITY;
+CREATE POLICY rls_calendar_ics_import_batch_actor
+    ON calendar_ics_import_batch FOR ALL
+    USING (
+        app_workspace_matches(workspace_id)
+        AND app_actor_matches(created_by_user_id))
+    WITH CHECK (
+        app_workspace_matches(workspace_id)
+        AND app_actor_matches(created_by_user_id));
+
+ALTER TABLE calendar_ics_import_item ENABLE ROW LEVEL SECURITY;
+ALTER TABLE calendar_ics_import_item FORCE ROW LEVEL SECURITY;
+CREATE POLICY rls_calendar_ics_import_item_actor
+    ON calendar_ics_import_item FOR ALL
+    USING (
+        app_workspace_matches(workspace_id)
+        AND app_actor_matches(created_by_user_id))
+    WITH CHECK (
+        app_workspace_matches(workspace_id)
+        AND app_actor_matches(created_by_user_id));

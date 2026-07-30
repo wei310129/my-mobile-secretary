@@ -146,7 +146,7 @@ class CalendarRecurrenceProjectionMigrationTest {
     }
 
     @Test
-    void v92CreatesActorPrivateSingleUseExportArtifacts() throws Exception {
+    void v92CreatesActorPrivateIcsExchangeState() throws Exception {
         assertThat(strings(
                         """
                         SELECT relname || '=' || relrowsecurity::text || ':' ||
@@ -154,12 +154,16 @@ class CalendarRecurrenceProjectionMigrationTest {
                         FROM pg_class
                         WHERE relname IN (
                             'calendar_ics_export_artifact',
+                            'calendar_ics_import_batch',
+                            'calendar_ics_import_item',
                             'calendar_recurrence_adoption_rule_snapshot',
                             'calendar_recurrence_adoption_exception_snapshot')
                         ORDER BY relname
                         """))
                 .containsExactly(
                         "calendar_ics_export_artifact=true:true",
+                        "calendar_ics_import_batch=true:true",
+                        "calendar_ics_import_item=true:true",
                         "calendar_recurrence_adoption_exception_snapshot=true:true",
                         "calendar_recurrence_adoption_rule_snapshot=true:true");
         assertThat(strings(
@@ -177,6 +181,25 @@ class CalendarRecurrenceProjectionMigrationTest {
                         "chk_calendar_ics_export_lifecycle",
                         "uq_calendar_ics_export_request",
                         "uq_calendar_ics_export_token");
+        assertThat(strings(
+                        """
+                        SELECT constraint_name
+                        FROM information_schema.table_constraints
+                        WHERE table_name IN (
+                            'calendar_ics_import_batch',
+                            'calendar_ics_import_item')
+                          AND constraint_name IN (
+                            'uq_calendar_ics_import_fingerprint',
+                            'uq_calendar_ics_import_item_ordinal',
+                            'chk_calendar_ics_import_item_lifecycle',
+                            'chk_calendar_ics_import_reminder_quota')
+                        ORDER BY constraint_name
+                        """))
+                .containsExactly(
+                        "chk_calendar_ics_import_item_lifecycle",
+                        "chk_calendar_ics_import_reminder_quota",
+                        "uq_calendar_ics_import_fingerprint",
+                        "uq_calendar_ics_import_item_ordinal");
     }
 
     @Test

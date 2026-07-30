@@ -2155,11 +2155,406 @@ Gate：
 }
 ```
 
+實作進度（2026-07-28，W9-E PASS／PUBLISHED）：
+
+- registration、roster、capacity、waitlist、ownership／last-access resolution 已由
+  `7ab1407ec1e30d5b470bdb9774680a5ff9cb577b` 發布；V88
+  `V88__create_calendar_registration_and_ownership.sql` 已進產品 merge
+  `58e402944f612fd0fbb11d203d93114af1cbdebd`，並可由最新 `origin/main` 祖先關係驗證。
+- focused 19/19、security-neighbor 137/137、root regression 1,550 tests／0 failure／
+  0 error／18 skipped；V88 PR blob 與 validated worktree blob 均為
+  `300c58c0dca79f44497a7d7f72c62923d68f914c`。
+- W9-E source／V88／Maven／Docker claims 均已 RELEASED；Booking Checkpoint B 隨後完成
+  product＋state-only merge，使用者已於 2026-07-29 明示桌電 Booking／ADD consumer session
+  已啟動，因此 laptop Calendar lane 可恢復 W10。
+
+```json
+{
+  "plan": "calendar-plan-v2",
+  "phase": "9-E",
+  "status": "PASS_PUBLISHED",
+  "wheelStatus": "PASS",
+  "commit": "7ab1407ec1e30d5b470bdb9774680a5ff9cb577b",
+  "productMerge": "58e402944f612fd0fbb11d203d93114af1cbdebd",
+  "migration": {
+    "reserved": "V88",
+    "file": "V88__create_calendar_registration_and_ownership.sql",
+    "actualLatestAfterGate": "V88",
+    "validatedBlob": "300c58c0dca79f44497a7d7f72c62923d68f914c"
+  },
+  "tests": {
+    "focused": {"tests": 19, "failures": 0, "errors": 0, "skipped": 0},
+    "securityNeighbor": {"tests": 137, "failures": 0, "errors": 0, "skipped": 0},
+    "rootRegression": {"tests": 1550, "failures": 0, "errors": 0, "skipped": 18}
+  },
+  "claimsReleased": [
+    "worktree/source",
+    "repo/flyway-sequence/main/V88",
+    "machine/docker-capacity/testcontainers",
+    "wrapper-owned Maven target"
+  ],
+  "remainingWork": ["Wheels 10-12"],
+  "nextAction": "start Wheel 10 recurrence and ICS anti-corruption adapter from latest origin/main"
+}
+```
+
 ### 舵輪 10：Recurrence 與 ICS anti-corruption adapter
 
 前提：核心 one-off flow 已穩定；D12、D32–D38、D49–D56 已拍板。
 
+本輪 current gate（2026-07-29，IN_PROGRESS）：
+
+```json
+{
+  "plan": "calendar-plan-v2",
+  "phase": "10-C",
+  "status": "C86-C91_PASS_LOCAL_RELEASE_PENDING",
+  "baseRevision": "1198fcd1e8581a78d2d531603f2db2882329e69b",
+  "uniqueTarget": "recurrence ancestry, revision-bound adoption, personal occurrence skip, and rolling reminder identity",
+  "nonGoals": [
+    "Travel 3B-B implementation",
+    "EventKit or native iOS access",
+    "external invitation or email delivery",
+    "legacy cutover or retirement",
+    "Booking or desktop state mutation"
+  ],
+  "candidatePaths": [
+    "src/main/java/com/aproject/aidriven/mymobilesecretary/calendar/recurrence/**",
+    "src/main/java/com/aproject/aidriven/mymobilesecretary/calendar/recurrence/persistence/**",
+    "src/main/resources/db/migration/V89__create_calendar_recurrence_series.sql",
+    "src/main/resources/db/migration/V90__integrate_calendar_recurrence_projection.sql",
+    "src/test/java/com/aproject/aidriven/mymobilesecretary/calendar/recurrence/**",
+    "docs/exec-plans/active/calendar-plan-v2-sol-medium-development-test-plan.md"
+  ],
+  "resourceClaim": {
+    "operationId": "calendar-w10c-20260730-v90-r5",
+    "ownerPid": 513388,
+    "status": "ACTIVE",
+    "reservedMigration": "V90",
+    "worktree": "var/worktrees/calendar-w10"
+  },
+  "resolvedHardYield": {
+    "eventId": "TR-B3-CORE-MERGED",
+    "observedOriginMain": "1198fcd1e8581a78d2d531603f2db2882329e69b",
+    "desktopState": "MERGED",
+    "publishedSha": "ee1cfcbea8bf9b2c5ab36e8ac1922931ac24ddcf",
+    "stateOnlyMerge": "1198fcd1e8581a78d2d531603f2db2882329e69b",
+    "action": "W10 resumed after matching Git product/state evidence"
+  },
+  "currentEvidence": {
+    "v89V90MigrationContract": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceMigrationTest,CalendarRecurrenceProjectionMigrationTest test",
+      "tests": 7,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 65.9
+    },
+    "projectionServiceFocused": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceRlsIntegrationTest test",
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 119.9,
+      "covers": [
+        "C86 single recurrence ancestry owner",
+        "C87 revision-bound actor-private series adoption and replay",
+        "C88 occurrence skip/restore remains separate from series adoption"
+      ]
+    },
+    "recurringReminderPlanner": {
+      "unit": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "durationSeconds": 105.6
+      },
+      "databaseFocused": {
+        "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceRlsIntegrationTest test",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "durationSeconds": 149.8
+      },
+      "covers": [
+        "30-day caller-bounded expansion",
+        "quota counts eight templates rather than occurrences",
+        "stable series/revision/logical-key materialization identity",
+        "replay inserts zero duplicate rows and advances a bounded cursor"
+      ]
+    },
+    "combinedRecurrenceFocused": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceRuleTest,CalendarRecurrenceSeriesTest,CalendarRecurrenceMigrationTest,CalendarRecurrenceProjectionMigrationTest,CalendarRecurrenceRlsIntegrationTest,CalendarRecurringReminderPlannerTest test",
+      "tests": 27,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 121.6
+    },
+    "securityNeighbor": {
+      "tests": 56,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 80.8
+    },
+    "rootRegressionFirstAttempt": {
+      "tests": 1545,
+      "failures": 1,
+      "errors": 0,
+      "skipped": 16,
+      "durationSeconds": 419.0,
+      "diagnosis": "DatabaseAccessSafetyArchitectureTest required the new parameter-bound CalendarRecurrenceProjectionService to be explicitly registered as reviewed low-level SQL"
+    },
+    "databaseAccessArchitecture": {
+      "tests": 3,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 37.3,
+      "change": "registered only CalendarRecurrenceProjectionService; architecture rule remains closed"
+    },
+    "rootRegressionFinal": {
+      "tests": 1545,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 16,
+      "durationSeconds": 424.3
+    },
+    "pending": [
+      "release r5 coordination claims"
+    ]
+  },
+  "validationOrder": [
+    "C83-C85 domain/service red contract",
+    "V89 migration constraints and effective-owner RLS red contract",
+    "focused recurrence mutation and migration tests",
+    "Calendar security-neighbor regression",
+    "root regression"
+  ],
+  "currentEvidence": {
+    "red": "CalendarRecurrenceSeriesTest testCompile failed only on the absent series/revision API",
+    "focused": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceRuleTest,CalendarRecurrenceSeriesTest test",
+      "tests": 14,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 40.7
+    },
+    "migrationApply": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarSharedAdoptionMigrationTest test",
+      "tests": 5,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 17.5
+    },
+    "migrationContract": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceMigrationTest test",
+      "tests": 4,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 37.0
+    },
+    "effectiveOwnerRls": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceRlsIntegrationTest test",
+      "tests": 1,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 57.5
+    },
+    "combinedFocused": {
+      "tests": 19,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 45.4
+    },
+    "securityNeighbor": {
+      "tests": 36,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 0,
+      "durationSeconds": 87.9
+    },
+    "rootRegression": {
+      "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true test",
+      "tests": 1525,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 16,
+      "durationSeconds": 396.3
+    }
+  },
+  "previousGate": {
+    "phase": "10-A",
+    "status": "PASS_LOCAL",
+    "commits": ["186bad8", "7179aaf", "0a13f6a"],
+    "focused": "10/10",
+    "securityNeighbor": "19/19",
+    "rootRegression": "1516 tests, 0 failures, 0 errors, 16 skipped",
+    "claim": "calendar-w10a-20260729-r1 RELEASED at 2026-07-29T14:51:39.2417302Z"
+  }
+}
+```
+
+W10-A 不把 ICS 的 366 天 export window／10,000 VEVENT parser limit 升格成 recurrence
+domain 的通用上限。Domain window 必須是有限半開區間並帶正 caller limit；各 application adapter
+另套自己的 policy。W10-A 只交付 typed rule／exception／logical key／wall-clock expansion，
+不宣稱 split lineage、persistence、adoption、registration、reminder materialization 或 ICS 已完成。
+
 Gate：
+
+W10-D current gate（2026-07-30，IN_PROGRESS）：
+
+```json
+{
+  "phase": "10-D",
+  "status": "C89_PASS_LOCAL_RELEASE_PENDING",
+  "uniqueTarget": "SERIES versus EACH_OCCURRENCE registration seat identity",
+  "previousGate": {
+    "phase": "10-C",
+    "status": "PASS_LOCAL",
+    "commit": "294435e8add79f91db763a48b1df0c287935a3f7",
+    "focused": 27,
+    "securityNeighbor": 56,
+    "rootRegression": {
+      "tests": 1545,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 16,
+      "durationSeconds": 424.3
+    },
+    "claimsReleased": {
+      "operationId": "calendar-w10c-20260730-v90-r5",
+      "status": "RELEASED",
+      "releasedAt": "2026-07-30T01:43:56.0193807Z"
+    }
+  },
+  "resourceClaim": {
+    "operationId": "calendar-w10d-20260730-v91-r2",
+    "ownerPid": 577880,
+    "status": "ACTIVE",
+    "reservedMigration": "V91"
+  },
+  "redFirst": {
+    "result": "testCompile failed only on absent recurring registration API"
+  },
+  "focused": {
+    "command": "mvn-safe CalendarRecurringRegistrationIntegrationTest,CalendarRecurrenceProjectionMigrationTest,DatabaseAccessSafetyArchitectureTest,CalendarRegistrationCapacityIntegrationTest,CalendarRegistrationLifecycleIntegrationTest",
+    "tests": 15,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "durationSeconds": 91.9
+  },
+  "securityNeighbor": {
+    "tests": 52,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "durationSeconds": 88.8
+  },
+  "rootRegression": {
+    "tests": 1547,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 16,
+    "durationSeconds": 455.4
+  },
+  "pending": [
+    "release V91 claims"
+  ]
+}
+```
+
+W10-E–G local release gate（2026-07-30，PASS_LOCAL_AWAITING_PRODUCT_PUBLISH）：
+
+```json
+{
+  "phase": "10-E-G",
+  "status": "PASS_LOCAL_AWAITING_PRODUCT_PUBLISH",
+  "validatedIntegrationHead": "433cd7a16ff3ac75705ab14973cf049e135eb7b4",
+  "migration": "V92__create_calendar_ics_exchange.sql",
+  "commits": {
+    "recurrenceAwareExport": "4ba486b",
+    "boundedPrivateImport": "7e55e30",
+    "truthfulExternalSyncBoundary": "de7e458"
+  },
+  "focused": {
+    "tests": 36,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "covers": [
+      "COMPACT and ROUTE_AWARE actor projection export",
+      "single-use artifact and irreversible-download acknowledgement",
+      "VALARM loss semantics",
+      "DST, exception, and split recurrence export",
+      "strict bounded private ICS parser",
+      "scoped file dedupe and revision-bound exactly-once confirmation",
+      "floating and conflicting timezone fail-closed behavior"
+    ]
+  },
+  "conversationEntry": {
+    "tests": 7,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "latencyClass": "LOW",
+    "terminalP95GateMilliseconds": 1500,
+    "mutation": "Calendar/Task/EventKit=0"
+  },
+  "securityNeighbor": {
+    "tests": 102,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "covers": [
+      "recurrence",
+      "registration",
+      "adoption",
+      "RLS",
+      "ICS",
+      "capability catalog",
+      "database access architecture"
+    ]
+  },
+  "rootRegression": {
+    "tests": 1590,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 16,
+    "durationSeconds": 396.4
+  },
+  "coordination": {
+    "previousOperation": {
+      "operationId": "calendar-w10e-20260730-v92-r1",
+      "status": "ABANDONED",
+      "reason": "owner-pid-not-running"
+    },
+    "publishOperation": {
+      "operationId": "calendar-w10-publish-20260730-v92-r1",
+      "status": "ACTIVE",
+      "reservedMigration": "V92"
+    }
+  },
+  "pending": [
+    "product PR merge and origin/main ancestry verification",
+    "matching state-only handoff PR merge",
+    "release all claims",
+    "TR-CALENDAR-W10-MERGED HARD_YIELD receipt"
+  ],
+  "blockers": [],
+  "userDecisionRequired": false
+}
+```
 
 - DAILY／WEEKLY／MONTHLY／YEARLY、interval、multi-weekday、nth/last weekday、last day、COUNT／
   inclusive UNTIL、exclude/add/override。

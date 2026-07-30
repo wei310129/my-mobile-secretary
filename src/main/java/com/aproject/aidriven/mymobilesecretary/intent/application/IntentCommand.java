@@ -223,6 +223,8 @@ public record IntentCommand(
         MANAGE_CALENDAR_ATTACHMENT,
         /** 修改本人唯一 Calendar plan 的共享 category；color 仍未交付。 */
         CHANGE_CALENDAR_CATEGORY,
+        /** 說明 ICS 有損交換與未交付的 iOS/EventKit 裝置寫入，不執行任何同步。 */
+        EXPLAIN_CALENDAR_EXTERNAL_SYNC,
         ASK_SCHEDULE_REMINDER,
         /** 建任務(待辦,無固定時段;可有期限)。 */
         CREATE_TASK,

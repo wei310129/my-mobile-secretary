@@ -11,8 +11,8 @@
   },
   "gates": {
     "TR-B3-CORE-MERGED": {
-      "status": "PASS",
-      "publishedSha": null,
+      "status": "MERGED",
+      "publishedSha": "ee1cfcbea8bf9b2c5ab36e8ac1922931ac24ddcf",
       "evidence": {
         "baseSha": "cbea39699d368104a60b5298af4201e417976456",
         "focused": {

@@ -156,8 +156,12 @@ final class FakeBookingProvider implements BookingProvider {
                 request.order().providerReference(),
                 ExternalBookingOrderStatus.CANCELLED,
                 clock.instant());
-        if (behavior == FakeMutationBehavior.UNKNOWN_AFTER_SEND) {
+        if (behavior == FakeMutationBehavior.UNKNOWN_AFTER_SEND
+                || behavior == FakeMutationBehavior.THROW_AFTER_SEND) {
             unknownEffects.put(request.operationId(), order);
+            if (behavior == FakeMutationBehavior.THROW_AFTER_SEND) {
+                throw new IllegalStateException("simulated provider crash after send");
+            }
             ProviderMutationResult unknown = ProviderMutationResult.needsReconciliation();
             replayResults.put(request.operationId(), new ReplayEntry(digest, unknown));
             return unknown;
@@ -223,8 +227,12 @@ final class FakeBookingProvider implements BookingProvider {
 
         externalMutationCount++;
         var order = orderFor(command.operationId(), successStatus);
-        if (behavior == FakeMutationBehavior.UNKNOWN_AFTER_SEND) {
+        if (behavior == FakeMutationBehavior.UNKNOWN_AFTER_SEND
+                || behavior == FakeMutationBehavior.THROW_AFTER_SEND) {
             unknownEffects.put(command.operationId(), order);
+            if (behavior == FakeMutationBehavior.THROW_AFTER_SEND) {
+                throw new IllegalStateException("simulated provider crash after send");
+            }
             var unknown = ProviderMutationResult.needsReconciliation();
             replayResults.put(command.operationId(), new ReplayEntry(digest, unknown));
             return unknown;

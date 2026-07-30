@@ -338,6 +338,27 @@ public class BookingExecutionStore {
                 || !attempt.leaseUntil().isAfter(clock.instant())) {
             throw new IllegalStateException("provider result does not own dispatched attempt");
         }
+        settleFailure(attempt, publicReason, owner);
+    }
+
+    @Transactional
+    public void reconcileFailure(UUID planId, String operationId, String publicReason) {
+        requireText(publicReason, "publicReason");
+        if (publicReason.length() > 512) {
+            throw new IllegalArgumentException("publicReason is too long");
+        }
+        WorkspaceContext owner = owner();
+        ExistingAttempt attempt = findAttemptForUpdate(owner, operationId)
+                .orElseThrow(() -> new IllegalStateException("attempt not found"));
+        if (!attempt.planId().equals(planId)
+                || !attempt.dispatchState().equals("DISPATCHED")) {
+            throw new IllegalStateException("operation is not awaiting reconciliation");
+        }
+        settleFailure(attempt, publicReason, owner);
+    }
+
+    private void settleFailure(
+            ExistingAttempt attempt, String publicReason, WorkspaceContext owner) {
         Instant now = clock.instant();
         jdbc.update(
                 """
@@ -419,12 +440,13 @@ public class BookingExecutionStore {
         WorkspaceContext owner = owner();
         List<PlanRow> plans = jdbc.query(
                 """
-                SELECT id, total_items, state
+                SELECT id, authorization_id, total_items, state
                 FROM booking_plan
                 WHERE id = ? AND workspace_id = ? AND created_by_user_id = ?
                 """,
                 (result, row) -> new PlanRow(
                         result.getObject("id", UUID.class),
+                        result.getObject("authorization_id", UUID.class),
                         result.getInt("total_items"),
                         BookingExecutionState.valueOf(result.getString("state"))),
                 planId,
@@ -464,7 +486,13 @@ public class BookingExecutionStore {
                 owner.actorId());
         PlanRow plan = plans.getFirst();
         return Optional.of(
-                new PlanView(plan.planId(), plan.totalItems(), plan.state(), attempts, orders));
+                new PlanView(
+                        plan.planId(),
+                        plan.authorizationId(),
+                        plan.totalItems(),
+                        plan.state(),
+                        attempts,
+                        orders));
     }
 
     @Transactional
@@ -694,7 +722,7 @@ public class BookingExecutionStore {
                 order.environment().name(),
                 order.providerReference(),
                 order.status().name(),
-                Timestamp.from(order.observedAt()),
+                Timestamp.from(order.observedAt().truncatedTo(ChronoUnit.MICROS)),
                 Timestamp.from(now),
                 Timestamp.from(now),
                 owner.workspaceId(),
@@ -1096,6 +1124,7 @@ public class BookingExecutionStore {
 
     public record PlanView(
             UUID planId,
+            UUID authorizationId,
             int totalItems,
             BookingExecutionState state,
             List<AttemptView> attempts,
@@ -1136,7 +1165,10 @@ public class BookingExecutionStore {
             ProviderEnvironment offerEnvironment) {}
 
     private record PlanRow(
-            UUID planId, int totalItems, BookingExecutionState state) {
+            UUID planId,
+            UUID authorizationId,
+            int totalItems,
+            BookingExecutionState state) {
     }
 
     private record PlanAuthorizationRow(String state, UUID authorizationId) {

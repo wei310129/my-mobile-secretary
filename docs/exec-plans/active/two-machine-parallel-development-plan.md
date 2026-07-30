@@ -141,11 +141,11 @@ Booking 或 execution 編譯而改上游模組；缺介面時回報筆電建立 
 ```json
 {
   "schemaHandoff": {
-    "status": "NOT_GRANTED",
-    "ownerBranch": null,
-    "baseSha": null,
-    "observedLatestMigration": null,
-    "reservedVersion": null,
+    "status": "GRANTED_ONCE",
+    "ownerBranch": "desktop/booking-b3-durable",
+    "baseSha": "280dedaa52567cc0cf09975e39cfe235435b4018",
+    "observedLatestMigration": "V92",
+    "reservedVersion": "V93",
     "allowedPath": "src/main/resources/db/migration/",
     "allowedScope": "booking search job, candidate binding, progress and terminal outbox only"
   }

@@ -26,9 +26,15 @@
       "publishedSha": null
     },
     "TR-SCHEMA-B3-DURABLE-GRANT": {
-      "status": "PENDING",
-      "publishedSha": null,
-      "reservedVersion": null
+      "status": "READY",
+      "grantStatus": "GRANTED_ONCE",
+      "publishedSha": "280dedaa52567cc0cf09975e39cfe235435b4018",
+      "ownerBranch": "desktop/booking-b3-durable",
+      "baseSha": "280dedaa52567cc0cf09975e39cfe235435b4018",
+      "observedLatestMigration": "V92",
+      "reservedVersion": "V93",
+      "allowedPath": "src/main/resources/db/migration/",
+      "allowedScope": "booking search job, candidate binding, progress and terminal outbox only"
     },
     "TR-TRAVEL-W6-W7-TYPED-MERGED": {
       "status": "PENDING",

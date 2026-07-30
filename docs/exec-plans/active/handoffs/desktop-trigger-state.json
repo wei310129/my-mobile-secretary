@@ -39,8 +39,33 @@
       }
     },
     "TR-B4-FAKE-MERGED": {
-      "status": "PENDING",
-      "publishedSha": null
+      "status": "MERGED",
+      "publishedSha": "513eb117864cedbcaa63a99027cec22f9bd45bbf",
+      "evidence": {
+        "baseSha": "1198fcd1e8581a78d2d531603f2db2882329e69b",
+        "focused": {
+          "tests": 15,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "securityNeighbor": {
+          "tests": 45,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "rootRegression": {
+          "tests": 1533,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 16,
+          "durationSeconds": 319.6
+        },
+        "externalEnvironment": "FAKE",
+        "fakeProviderMutationCountAsserted": true,
+        "externalMutationCount": 0
+      }
     },
     "TR-B3-DURABLE-MERGED": {
       "status": "PENDING",

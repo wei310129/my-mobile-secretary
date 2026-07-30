@@ -338,6 +338,27 @@ public class BookingExecutionStore {
                 || !attempt.leaseUntil().isAfter(clock.instant())) {
             throw new IllegalStateException("provider result does not own dispatched attempt");
         }
+        settleFailure(attempt, publicReason, owner);
+    }
+
+    @Transactional
+    public void reconcileFailure(UUID planId, String operationId, String publicReason) {
+        requireText(publicReason, "publicReason");
+        if (publicReason.length() > 512) {
+            throw new IllegalArgumentException("publicReason is too long");
+        }
+        WorkspaceContext owner = owner();
+        ExistingAttempt attempt = findAttemptForUpdate(owner, operationId)
+                .orElseThrow(() -> new IllegalStateException("attempt not found"));
+        if (!attempt.planId().equals(planId)
+                || !attempt.dispatchState().equals("DISPATCHED")) {
+            throw new IllegalStateException("operation is not awaiting reconciliation");
+        }
+        settleFailure(attempt, publicReason, owner);
+    }
+
+    private void settleFailure(
+            ExistingAttempt attempt, String publicReason, WorkspaceContext owner) {
         Instant now = clock.instant();
         jdbc.update(
                 """
@@ -694,7 +715,7 @@ public class BookingExecutionStore {
                 order.environment().name(),
                 order.providerReference(),
                 order.status().name(),
-                Timestamp.from(order.observedAt()),
+                Timestamp.from(order.observedAt().truncatedTo(ChronoUnit.MICROS)),
                 Timestamp.from(now),
                 Timestamp.from(now),
                 owner.workspaceId(),

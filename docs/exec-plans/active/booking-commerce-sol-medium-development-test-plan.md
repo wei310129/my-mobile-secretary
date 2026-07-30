@@ -688,6 +688,34 @@ timeout／crash after send 進 `NEEDS_RECONCILIATION`，禁止盲目重送；par
 雙機第一波外部邊界到本 gate 為止：零新 migration、零公開 API／LINE、零 Duffel／sandbox／live
 provider、零 Playwright、零 credential、零真實訂單或付款。
 
+#### B4 gate evidence（2026-07-30）
+
+狀態：`PASS_AWAITING_PR_REVIEW`。桌電從 `origin/main`
+`1198fcd1e8581a78d2d531603f2db2882329e69b` 建立 `desktop/booking-b4-fake`，只修改
+`booking/execution/**`、Booking-owned execution store、fake provider integration test 與本段
+evidence；沒有新增 migration、公開 API、LINE／Intent、Calendar／Travel、Duffel、credential、
+Playwright 或 shared config。
+
+實作涵蓋三種確認模式 × 三種替代強度、送單前 quote／authorization 重驗、durable claim、
+mark-dispatched、fake book、settle／reconcile、replay exactly-once、unknown-after-send 禁止盲目
+重送，以及 partial success 保留與 cancel／replacement proposal。價格或 inventory identity
+改變時在 claim 與 mutation 前 fail closed；既有 authorization security-neighbor 同時驗證
+currency、條款、旅客、時效、provider、environment 與 capability 邊界。Provider order 的
+`observedAt` 在 durable write 前統一為 PostgreSQL 微秒精度，保留嚴格 terminal result 比對。
+
+正式 gate 使用 Temurin JDK 21：
+
+- Scoped Spotless：exit 0，0 tests、0 skipped。
+- B4 focused `FakePurchaseOrchestratorIntegrationTest`：exit 0，13 tests、0 failure、0 error、
+  0 skipped。
+- Booking／security-neighbor focused：exit 0，43 tests、0 failure、0 error、0 skipped。
+- Root regression：exit 0，1,531 tests、0 failure、0 error、16 skipped，353.9 秒。
+
+每條 B4 integration scenario 都明確斷言 `Environment=FAKE` 與 fake provider mutation count；
+這些計數只代表 process-local 模擬效果。Sandbox／live provider、真實訂單、付款、取消與其他
+external mutation 全部為 0。此 PASS 只代表 B4 fake purchase orchestration，尚未宣稱 B3-Durable、
+B3-Upstream、B5 或任何 production transaction lifecycle。
+
 ### B5：Duffel Flights／Stays test-mode adapter
 
 使用 test token、Duffel Airways 與 Test Hotels；每筆斷言 `live_mode=false`。完成 flight offer/order、

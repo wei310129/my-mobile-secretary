@@ -2474,6 +2474,88 @@ W10-D current gate（2026-07-30，IN_PROGRESS）：
 }
 ```
 
+W10-E–G local release gate（2026-07-30，PASS_LOCAL_AWAITING_PRODUCT_PUBLISH）：
+
+```json
+{
+  "phase": "10-E-G",
+  "status": "PASS_LOCAL_AWAITING_PRODUCT_PUBLISH",
+  "head": "de7e458ca4c043b36d93e3b874fd81136e5332eb",
+  "migration": "V92__create_calendar_ics_exchange.sql",
+  "commits": {
+    "recurrenceAwareExport": "4ba486b",
+    "boundedPrivateImport": "7e55e30",
+    "truthfulExternalSyncBoundary": "de7e458"
+  },
+  "focused": {
+    "tests": 36,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "covers": [
+      "COMPACT and ROUTE_AWARE actor projection export",
+      "single-use artifact and irreversible-download acknowledgement",
+      "VALARM loss semantics",
+      "DST, exception, and split recurrence export",
+      "strict bounded private ICS parser",
+      "scoped file dedupe and revision-bound exactly-once confirmation",
+      "floating and conflicting timezone fail-closed behavior"
+    ]
+  },
+  "conversationEntry": {
+    "tests": 7,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "latencyClass": "LOW",
+    "terminalP95GateMilliseconds": 1500,
+    "mutation": "Calendar/Task/EventKit=0"
+  },
+  "securityNeighbor": {
+    "tests": 102,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "covers": [
+      "recurrence",
+      "registration",
+      "adoption",
+      "RLS",
+      "ICS",
+      "capability catalog",
+      "database access architecture"
+    ]
+  },
+  "rootRegression": {
+    "tests": 1575,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 16,
+    "durationSeconds": 410.5
+  },
+  "coordination": {
+    "previousOperation": {
+      "operationId": "calendar-w10e-20260730-v92-r1",
+      "status": "ABANDONED",
+      "reason": "owner-pid-not-running"
+    },
+    "publishOperation": {
+      "operationId": "calendar-w10-publish-20260730-v92-r1",
+      "status": "ACTIVE",
+      "reservedMigration": "V92"
+    }
+  },
+  "pending": [
+    "product PR merge and origin/main ancestry verification",
+    "matching state-only handoff PR merge",
+    "release all claims",
+    "TR-CALENDAR-W10-MERGED HARD_YIELD receipt"
+  ],
+  "blockers": [],
+  "userDecisionRequired": false
+}
+```
+
 - DAILY／WEEKLY／MONTHLY／YEARLY、interval、multi-weekday、nth/last weekday、last day、COUNT／
   inclusive UNTIL、exclude/add/override。
 - THIS_OCCURRENCE／THIS_AND_FUTURE／ENTIRE_SERIES，split lineage 與 immutable history。

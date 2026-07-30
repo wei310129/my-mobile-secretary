@@ -1,5 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application.handler;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2IntentService;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2RoutingService;
 import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusBinding;
 import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusDirective;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService;
@@ -48,6 +50,8 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
     private final PlaceAliasService placeAliasService;
     private final ConversationContextService contextService;
     private final BulkScheduleCancellationService bulkCancellationService;
+    private final CalendarV2RoutingService calendarV2Routing;
+    private final CalendarV2IntentService calendarV2;
 
     @Override
     public Set<IntentCommand.Type> supportedTypes() {
@@ -56,6 +60,10 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
 
     @Override
     public IntentResult handle(String text, IntentCommand command) {
+        if (command.type() == IntentCommand.Type.CREATE_SCHEDULE
+                && calendarV2Routing.useCalendarV2()) {
+            return calendarV2.create(command);
+        }
         return switch (command.type()) {
             case CREATE_SCHEDULE -> createSchedule(command);
             case UPDATE_SCHEDULE -> updateSchedule(command);

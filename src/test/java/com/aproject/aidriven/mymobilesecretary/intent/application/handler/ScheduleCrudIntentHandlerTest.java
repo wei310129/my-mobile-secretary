@@ -6,6 +6,8 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2IntentService;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2RoutingService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.BulkScheduleCancellationService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationContextService;
@@ -31,7 +33,9 @@ class ScheduleCrudIntentHandlerTest {
         context = mock(ConversationContextService.class);
         handler = new ScheduleMutationIntentHandler(
                 schedules, mock(PlaceAliasService.class), context,
-                mock(BulkScheduleCancellationService.class));
+                mock(BulkScheduleCancellationService.class),
+                mock(CalendarV2RoutingService.class),
+                mock(CalendarV2IntentService.class));
     }
 
     @Test

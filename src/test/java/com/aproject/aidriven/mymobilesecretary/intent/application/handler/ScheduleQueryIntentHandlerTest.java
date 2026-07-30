@@ -3,8 +3,11 @@ package com.aproject.aidriven.mymobilesecretary.intent.application.handler;
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2IntentService;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2RoutingService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationContextService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.DailyScheduleOverviewService;
@@ -28,19 +31,27 @@ class ScheduleQueryIntentHandlerTest {
 
     private ScheduleQueryIntentHandler handler;
     private ScheduleInsightService scheduleInsightService;
+    private ScheduleService legacySchedules;
+    private CalendarV2RoutingService routing;
+    private CalendarV2IntentService calendarV2;
 
     @BeforeEach
     void setUp() {
         scheduleInsightService = mock(ScheduleInsightService.class);
+        legacySchedules = mock(ScheduleService.class);
+        routing = mock(CalendarV2RoutingService.class);
+        calendarV2 = mock(CalendarV2IntentService.class);
         handler = new ScheduleQueryIntentHandler(
-                mock(ScheduleService.class),
+                legacySchedules,
                 mock(TaskService.class),
                 mock(ConversationContextService.class),
                 mock(FreeSlotService.class),
                 scheduleInsightService,
                 mock(PlaceService.class),
                 mock(DailyScheduleOverviewService.class),
-                Clock.systemUTC());
+                Clock.systemUTC(),
+                routing,
+                calendarV2);
     }
 
     @Test
@@ -69,6 +80,47 @@ class ScheduleQueryIntentHandlerTest {
         assertThat(result.action()).isEqualTo(IntentResult.Action.SCHEDULES_LISTED);
         assertThat(result.message()).isEqualTo(
                 IntentResult.schedulesListed(java.util.List.of()).message());
+    }
+
+    @Test
+    void cutoverListDelegatesOnlyToCalendarV2() {
+        IntentCommand command = command(IntentCommand.Type.LIST_SCHEDULES);
+        when(routing.useCalendarV2()).thenReturn(true);
+
+        handler.handle("列出我的行程", command);
+
+        verify(calendarV2).list(command);
+        verifyNoInteractions(legacySchedules);
+    }
+
+    @Test
+    void cutoverNamedLookupDelegatesOnlyToCalendarV2() {
+        IntentCommand command = new IntentCommand(
+                IntentCommand.Type.ASK_SCHEDULE_INFO,
+                "客戶會議",
+                null, null, null, null, null, null, null, null, null, null, null);
+        when(routing.useCalendarV2()).thenReturn(true);
+
+        handler.handle("查客戶會議", command);
+
+        verify(calendarV2).findOne(command);
+        verifyNoInteractions(legacySchedules);
+    }
+
+    @Test
+    void cutoverDailyListDelegatesOnlyToCalendarV2() {
+        IntentCommand command = new IntentCommand(
+                IntentCommand.Type.LIST_SCHEDULES_ON_DATE,
+                null,
+                null,
+                "2026-07-31T00:00:00+08:00",
+                null, null, null, null, null, null, null, null, null);
+        when(routing.useCalendarV2()).thenReturn(true);
+
+        handler.handle("明天有什麼行程", command);
+
+        verify(calendarV2).list(command);
+        verifyNoInteractions(legacySchedules);
     }
 
     @Test

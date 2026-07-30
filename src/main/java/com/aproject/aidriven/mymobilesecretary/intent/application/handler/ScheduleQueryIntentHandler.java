@@ -1,5 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application.handler;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2IntentService;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2RoutingService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationContextService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.DailyScheduleOverviewService;
@@ -57,6 +59,8 @@ public final class ScheduleQueryIntentHandler implements IntentHandler {
     private final PlaceService placeService;
     private final DailyScheduleOverviewService dailyScheduleOverviewService;
     private final Clock clock;
+    private final CalendarV2RoutingService calendarV2Routing;
+    private final CalendarV2IntentService calendarV2;
 
     @Override
     public Set<IntentCommand.Type> supportedTypes() {
@@ -67,9 +71,15 @@ public final class ScheduleQueryIntentHandler implements IntentHandler {
     public IntentResult handle(String text, IntentCommand command) {
         IntentOptions options = command.safeOptions();
         return switch (command.type()) {
-            case LIST_SCHEDULES -> listSchedules(options);
-            case ASK_SCHEDULE_INFO -> askScheduleInfo(command);
-            case LIST_SCHEDULES_ON_DATE -> listSchedulesOnDate(command);
+            case LIST_SCHEDULES -> calendarV2Routing.useCalendarV2()
+                    ? calendarV2.list(command)
+                    : listSchedules(options);
+            case ASK_SCHEDULE_INFO -> calendarV2Routing.useCalendarV2()
+                    ? calendarV2.findOne(command)
+                    : askScheduleInfo(command);
+            case LIST_SCHEDULES_ON_DATE -> calendarV2Routing.useCalendarV2()
+                    ? calendarV2.list(command)
+                    : listSchedulesOnDate(command);
             case LIST_AGENDA, ASK_AVAILABILITY, AGENDA_SUMMARY,
                     ASK_NEXT_SCHEDULE, ASK_SCHEDULE_GAP,
                     GROUP_SCHEDULES_BY_DAY, CHECK_SCHEDULE_CONFLICTS,

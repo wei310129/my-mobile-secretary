@@ -39,8 +39,8 @@
       }
     },
     "TR-B4-FAKE-MERGED": {
-      "status": "PASS",
-      "publishedSha": null,
+      "status": "MERGED",
+      "publishedSha": "513eb117864cedbcaa63a99027cec22f9bd45bbf",
       "evidence": {
         "baseSha": "1198fcd1e8581a78d2d531603f2db2882329e69b",
         "focused": {

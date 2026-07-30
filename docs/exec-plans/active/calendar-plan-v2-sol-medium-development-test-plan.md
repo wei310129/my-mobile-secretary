@@ -2416,7 +2416,7 @@ W10-D current gate（2026-07-30，IN_PROGRESS）：
 ```json
 {
   "phase": "10-D",
-  "status": "C89_FOCUSED_GREEN_NEIGHBOR_PENDING",
+  "status": "C89_PASS_LOCAL_RELEASE_PENDING",
   "uniqueTarget": "SERIES versus EACH_OCCURRENCE registration seat identity",
   "previousGate": {
     "phase": "10-C",
@@ -2454,9 +2454,21 @@ W10-D current gate（2026-07-30，IN_PROGRESS）：
     "skipped": 0,
     "durationSeconds": 91.9
   },
+  "securityNeighbor": {
+    "tests": 52,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "durationSeconds": 88.8
+  },
+  "rootRegression": {
+    "tests": 1547,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 16,
+    "durationSeconds": 455.4
+  },
   "pending": [
-    "registration/waitlist/security neighbor",
-    "root regression",
     "release V91 claims"
   ]
 }

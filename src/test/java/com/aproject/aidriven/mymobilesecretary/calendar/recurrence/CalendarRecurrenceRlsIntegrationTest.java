@@ -155,8 +155,9 @@ class CalendarRecurrenceRlsIntegrationTest extends IntegrationTestBase {
                 "recurrence projection",
                 CalendarPlacement.point(NOW, ZoneId.of("Asia/Taipei")),
                 NOW)));
+        UUID nodeId = UUID.randomUUID();
         inContext(ownerContext, () -> nodes.saveAndFlush(CalendarTimeNodeEntity.create(
-                UUID.randomUUID(),
+                nodeId,
                 planId,
                 null,
                 CalendarTimeNode.absolute("start", "start", NOW),
@@ -235,6 +236,79 @@ class CalendarRecurrenceRlsIntegrationTest extends IntegrationTestBase {
                                 "calendar_recurrence_adoption",
                                 recurrenceAdoption.id())))
                 .isEqualTo(1L);
+
+        UUID reminderRuleId = UUID.randomUUID();
+        runtime(
+                ownerContext,
+                () -> jdbc.update(
+                        """
+                        INSERT INTO calendar_reminder_rule (
+                            id, plan_id, node_id, owner_kind, rule_kind,
+                            offset_seconds, delivery_mode, status, revision,
+                            version, created_at, updated_at, workspace_id,
+                            created_by_user_id, source_created_by_user_id)
+                        VALUES (?, ?, ?, 'PERSONAL', 'RELATIVE', -300,
+                            'ONCE', 'ACTIVE', 1, 0,
+                            CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, ?, ?, ?)
+                        """,
+                        reminderRuleId,
+                        planId,
+                        nodeId,
+                        workspace,
+                        owner,
+                        owner));
+        var reminderRule = CalendarRecurrenceRule.timed(
+                java.time.LocalDateTime.of(2026, 8, 1, 19, 0),
+                Duration.ZERO,
+                ZoneId.of("Asia/Taipei"),
+                CalendarRecurrencePattern.daily(),
+                1,
+                CalendarRecurrenceEnd.count(3));
+        var planned = CalendarRecurringReminderPlanner.plan(
+                seriesId,
+                1,
+                reminderRule,
+                CalendarRecurrenceExceptions.none(),
+                CalendarRecurrenceWindow.between(
+                        java.time.LocalDate.of(2026, 8, 1),
+                        java.time.LocalDate.of(2026, 8, 5),
+                        4),
+                java.util.List.of(CalendarRecurringReminderPlanner.Template.timed(
+                        reminderRuleId,
+                        1,
+                        Duration.ofMinutes(-5),
+                        ZoneId.of("Asia/Taipei"))));
+        Instant horizon = Instant.parse("2026-08-05T00:00:00Z");
+        var materialized = inContext(
+                ownerContext,
+                () -> recurrenceProjections.persistReminderPlan(
+                        planId, seriesId, 1, horizon, planned));
+        var materializationReplay = inContext(
+                ownerContext,
+                () -> recurrenceProjections.persistReminderPlan(
+                        planId, seriesId, 1, horizon, planned));
+
+        assertThat(materialized.inserted()).isEqualTo(3);
+        assertThat(materializationReplay.inserted()).isZero();
+        assertThat(jdbc.queryForObject(
+                        """
+                        SELECT count(*)
+                        FROM calendar_recurrence_reminder_materialization
+                        WHERE series_id = ?
+                        """,
+                        Long.class,
+                        seriesId))
+                .isEqualTo(3L);
+        assertThat(jdbc.queryForObject(
+                        """
+                        SELECT cursor_revision
+                        FROM calendar_recurrence_reminder_cursor
+                        WHERE series_id = ? AND reminder_rule_id = ?
+                        """,
+                        Long.class,
+                        seriesId,
+                        reminderRuleId))
+                .isEqualTo(2L);
     }
 
     @Test

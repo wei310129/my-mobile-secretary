@@ -2208,7 +2208,7 @@ Gate：
 {
   "plan": "calendar-plan-v2",
   "phase": "10-C",
-  "status": "C86-C88_FOCUSED_GREEN_C91_PENDING",
+  "status": "C86-C91_FOCUSED_GREEN_SECURITY_NEIGHBOR_PENDING",
   "baseRevision": "1198fcd1e8581a78d2d531603f2db2882329e69b",
   "uniqueTarget": "recurrence ancestry, revision-bound adoption, personal occurrence skip, and rolling reminder identity",
   "nonGoals": [
@@ -2227,8 +2227,8 @@ Gate：
     "docs/exec-plans/active/calendar-plan-v2-sol-medium-development-test-plan.md"
   ],
   "resourceClaim": {
-    "operationId": "calendar-w10c-20260730-v90-r3",
-    "ownerPid": 12860,
+    "operationId": "calendar-w10c-20260730-v90-r4",
+    "ownerPid": 10060,
     "status": "ACTIVE",
     "reservedMigration": "V90",
     "worktree": "var/worktrees/calendar-w10"
@@ -2263,8 +2263,30 @@ Gate：
         "C88 occurrence skip/restore remains separate from series adoption"
       ]
     },
+    "recurringReminderPlanner": {
+      "unit": {
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "durationSeconds": 105.6
+      },
+      "databaseFocused": {
+        "command": "scripts/mvn-safe.ps1 -Dspotless.check.skip=true -Dtest=CalendarRecurrenceRlsIntegrationTest test",
+        "tests": 3,
+        "failures": 0,
+        "errors": 0,
+        "skipped": 0,
+        "durationSeconds": 149.8
+      },
+      "covers": [
+        "30-day caller-bounded expansion",
+        "quota counts eight templates rather than occurrences",
+        "stable series/revision/logical-key materialization identity",
+        "replay inserts zero duplicate rows and advances a bounded cursor"
+      ]
+    },
     "pending": [
-      "C91 bounded reminder materialization",
       "security-neighbor and root regression"
     ]
   },

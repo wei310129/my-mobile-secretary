@@ -249,6 +249,138 @@ public class CalendarRecurrenceProjectionService {
         return currentOccurrence(seriesId, acceptedRuleRevision, key, context);
     }
 
+    @Transactional
+    public ReminderMaterializationResult persistReminderPlan(
+            UUID planId,
+            UUID seriesId,
+            int recurrenceRuleRevision,
+            Instant horizonExclusive,
+            List<CalendarRecurringReminderPlanner.Materialization> planned) {
+        WorkspaceContext context = tenantContext();
+        Objects.requireNonNull(horizonExclusive, "horizonExclusive");
+        Objects.requireNonNull(planned, "planned");
+        if (planned.isEmpty()) {
+            return new ReminderMaterializationResult(0, 0, horizonExclusive);
+        }
+        Source source = jdbc.query(
+                        """
+                        SELECT source_created_by_user_id, active_revision
+                        FROM calendar_recurrence_series
+                        WHERE id = ? AND plan_id = ? AND workspace_id = ?
+                        """,
+                        (rows, row) -> new Source(
+                                rows.getObject("source_created_by_user_id", UUID.class),
+                                rows.getInt("active_revision")),
+                        seriesId,
+                        planId,
+                        context.workspaceId())
+                .stream()
+                .findFirst()
+                .orElseThrow(() ->
+                        new NotFoundException("Calendar recurrence series", seriesId));
+        if (source.activeRevision() != recurrenceRuleRevision) {
+            throw new BusinessException(
+                    "STALE_RECURRENCE_REVISION",
+                    "Calendar recurrence changed before reminders were materialized");
+        }
+        for (var item : planned) {
+            var key = item.key();
+            if (!seriesId.equals(key.seriesId())
+                    || recurrenceRuleRevision != key.recurrenceRuleRevision()) {
+                throw new IllegalArgumentException(
+                        "Every reminder materialization must match the requested series revision");
+            }
+        }
+        List<UUID> templateIds = planned.stream()
+                .map(value -> value.key().templateId())
+                .distinct()
+                .toList();
+        for (UUID templateId : templateIds) {
+            Long owned = jdbc.queryForObject(
+                    """
+                    SELECT count(*)
+                    FROM calendar_reminder_rule
+                    WHERE id = ? AND plan_id = ?
+                      AND workspace_id = ? AND created_by_user_id = ?
+                    """,
+                    Long.class,
+                    templateId,
+                    planId,
+                    context.workspaceId(),
+                    context.actorId());
+            if (owned == null || owned != 1) {
+                throw new NotFoundException("Calendar reminder template", templateId);
+            }
+        }
+
+        int inserted = 0;
+        Instant now = clock.instant();
+        for (var item : planned) {
+            var key = item.key();
+            inserted += jdbc.update(
+                    """
+                    INSERT INTO calendar_recurrence_reminder_materialization (
+                        id, reminder_rule_id, plan_id, series_id,
+                        recurrence_rule_revision, logical_timed_start,
+                        logical_all_day_start, reminder_rule_revision,
+                        scheduled_at, materialization_status,
+                        created_at, updated_at, workspace_id,
+                        created_by_user_id, source_created_by_user_id)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'PENDING',
+                        ?, ?, ?, ?, ?)
+                    ON CONFLICT DO NOTHING
+                    """,
+                    UUID.randomUUID(),
+                    key.templateId(),
+                    planId,
+                    seriesId,
+                    recurrenceRuleRevision,
+                    key.occurrenceKey().timed()
+                            ? Timestamp.valueOf(key.occurrenceKey().timedStart())
+                            : null,
+                    key.occurrenceKey().timed()
+                            ? null
+                            : java.sql.Date.valueOf(key.occurrenceKey().allDayStart()),
+                    key.templateRevision(),
+                    Timestamp.from(item.scheduledAt()),
+                    Timestamp.from(now),
+                    Timestamp.from(now),
+                    context.workspaceId(),
+                    context.actorId(),
+                    source.sourceOwnerId());
+        }
+        for (UUID templateId : templateIds) {
+            jdbc.update(
+                    """
+                    INSERT INTO calendar_recurrence_reminder_cursor (
+                        reminder_rule_id, series_id, recurrence_rule_revision,
+                        horizon_exclusive, cursor_revision, updated_at,
+                        workspace_id, created_by_user_id,
+                        source_created_by_user_id)
+                    VALUES (?, ?, ?, ?, 1, ?, ?, ?, ?)
+                    ON CONFLICT (
+                        reminder_rule_id, series_id, recurrence_rule_revision,
+                        workspace_id, created_by_user_id)
+                    DO UPDATE SET
+                        horizon_exclusive = GREATEST(
+                            calendar_recurrence_reminder_cursor.horizon_exclusive,
+                            EXCLUDED.horizon_exclusive),
+                        cursor_revision =
+                            calendar_recurrence_reminder_cursor.cursor_revision + 1,
+                        updated_at = EXCLUDED.updated_at
+                    """,
+                    templateId,
+                    seriesId,
+                    recurrenceRuleRevision,
+                    Timestamp.from(horizonExclusive),
+                    Timestamp.from(now),
+                    context.workspaceId(),
+                    context.actorId(),
+                    source.sourceOwnerId());
+        }
+        return new ReminderMaterializationResult(inserted, planned.size(), horizonExclusive);
+    }
+
     private OccurrenceParticipation currentOccurrence(
             UUID seriesId,
             int revision,
@@ -344,4 +476,7 @@ public class CalendarRecurrenceProjectionService {
             Objects.requireNonNull(id, "id");
         }
     }
+
+    public record ReminderMaterializationResult(
+            int inserted, int planned, Instant horizonExclusive) {}
 }

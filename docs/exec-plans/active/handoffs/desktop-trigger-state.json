@@ -68,9 +68,52 @@
       }
     },
     "TR-B3-DURABLE-MERGED": {
-      "status": "PENDING",
-      "publishedSha": null,
-      "consumedSchemaVersion": null
+      "status": "MERGED",
+      "publishedSha": "bb7d4d90d616e2c4ca08825ef6b0013b021d3deb",
+      "consumedSchemaVersion": "V93",
+      "evidence": {
+        "baseSha": "c858a78c64f4b97e826e44670d3c8abd43631986",
+        "grantBaseSha": "280dedaa52567cc0cf09975e39cfe235435b4018",
+        "integrationVerifiedSha": "bb7d4d90d616e2c4ca08825ef6b0013b021d3deb",
+        "testedTree": "520d41a4e0e7ac922f838989173665060912b7e1",
+        "closureFocused": {
+          "tests": 8,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "focused": {
+          "tests": 5,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "securityNeighbor": {
+          "tests": 28,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "rootRegression": {
+          "tests": 1614,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 16,
+          "durationSeconds": 363.8
+        },
+        "externalEnvironment": "LOCAL_DB_ONLY",
+        "externalMutationCount": 0,
+        "workspaceActorRlsAsserted": true,
+        "applicationFilterAsserted": true,
+        "injectedClockAsserted": true,
+        "idempotentReplayAsserted": true,
+        "exactlyOneTerminalAsserted": true,
+        "leaseFencingAsserted": true,
+        "unselectedRetentionCleanupAsserted": true,
+        "rawProviderPayloadStored": false,
+        "credentialsStored": false,
+        "travellerOrPaymentDataStored": false
+      }
     },
     "TR-B3-UPSTREAM-MERGED": {
       "status": "PENDING",

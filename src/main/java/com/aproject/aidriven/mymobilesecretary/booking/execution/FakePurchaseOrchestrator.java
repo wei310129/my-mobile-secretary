@@ -33,6 +33,11 @@ public class FakePurchaseOrchestrator {
             FakePurchaseCommand command, BookingProvider provider) {
         Objects.requireNonNull(command, "command");
         Objects.requireNonNull(provider, "provider");
+        var plan = store.loadPlan(command.planId())
+                .orElseThrow(() -> new IllegalStateException("plan not found"));
+        if (!plan.authorizationId().equals(command.authorizationId())) {
+            throw new SecurityException("authorization does not belong to plan");
+        }
         PurchaseAuthorization authorization = store.loadAuthorization(command.authorizationId())
                 .orElseThrow(() -> new IllegalStateException("authorization not found"));
         var storedOffer = store.loadOffer(authorization.offerId())

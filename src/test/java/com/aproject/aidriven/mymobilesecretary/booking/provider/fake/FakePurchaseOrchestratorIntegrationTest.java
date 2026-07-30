@@ -128,6 +128,47 @@ class FakePurchaseOrchestratorIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    void commandAuthorizationMustBelongToDurablePlan() {
+        Fixture fixture =
+                fixture(ConfirmationMode.PER_ITEM, SubstitutionStrength.EXACT, 1);
+        FakeBookingProvider provider = provider(fixture);
+        assertFakeEnvironment(fixture);
+        PurchaseAuthorization alternate = new PurchaseAuthorization(
+                UUID.randomUUID(),
+                fixture.workspaceId(),
+                fixture.actorId(),
+                fixture.offer().travellerIds(),
+                fixture.offer().offerId(),
+                fixture.offer().provider(),
+                ProviderEnvironment.FAKE,
+                fixture.offer().totalPrice(),
+                fixture.offer().currency(),
+                fixture.offer().termsFingerprint(),
+                false,
+                fixture.authorization().expiresAt(),
+                ConfirmationMode.PER_ITEM,
+                SubstitutionStrength.EXACT);
+        inContext(fixture, () -> {
+            store.saveAuthorization(alternate);
+            return null;
+        });
+        FakePurchaseCommand mismatched = new FakePurchaseCommand(
+                fixture.planId(),
+                alternate.authorizationId(),
+                operationId(fixture, "book-wrong-authorization"),
+                fixture.workspaceId(),
+                fixture.actorId());
+
+        assertThatThrownBy(() -> inContext(
+                        fixture, () -> orchestrator.execute(mismatched, provider)))
+                .isInstanceOf(SecurityException.class);
+
+        assertThat(provider.externalMutationCount()).isZero();
+        assertThat(inContext(fixture, () -> store.loadPlan(fixture.planId()).orElseThrow().state()))
+                .isEqualTo(BookingExecutionState.AUTHORIZED);
+    }
+
+    @Test
     void unknownAfterSendReconcilesWithoutResending() {
         Fixture fixture = fixture(ConfirmationMode.BATCH, SubstitutionStrength.EQUIVALENT, 1);
         FakeBookingProvider provider = provider(fixture);
@@ -142,6 +183,27 @@ class FakePurchaseOrchestratorIntegrationTest extends IntegrationTestBase {
         var reconciled = inContext(
                 fixture,
                 () -> orchestrator.execute(command(fixture, "book-unknown"), provider));
+
+        assertThat(first.state()).isEqualTo(BookingExecutionState.NEEDS_RECONCILIATION);
+        assertThat(reconciled.state()).isEqualTo(BookingExecutionState.COMPLETED);
+        assertThat(provider.externalMutationCount()).isEqualTo(1);
+    }
+
+    @Test
+    void thrownAfterSendReconcilesWithoutResending() {
+        Fixture fixture = fixture(ConfirmationMode.BATCH, SubstitutionStrength.EQUIVALENT, 1);
+        FakeBookingProvider provider = provider(fixture);
+        assertFakeEnvironment(fixture);
+        provider.script(
+                operationId(fixture, "book-crash"),
+                FakeMutationBehavior.THROW_AFTER_SEND);
+
+        var first = inContext(
+                fixture,
+                () -> orchestrator.execute(command(fixture, "book-crash"), provider));
+        var reconciled = inContext(
+                fixture,
+                () -> orchestrator.execute(command(fixture, "book-crash"), provider));
 
         assertThat(first.state()).isEqualTo(BookingExecutionState.NEEDS_RECONCILIATION);
         assertThat(reconciled.state()).isEqualTo(BookingExecutionState.COMPLETED);

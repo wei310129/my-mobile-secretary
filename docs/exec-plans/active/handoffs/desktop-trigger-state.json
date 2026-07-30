@@ -44,23 +44,23 @@
       "evidence": {
         "baseSha": "1198fcd1e8581a78d2d531603f2db2882329e69b",
         "focused": {
-          "tests": 13,
+          "tests": 15,
           "failures": 0,
           "errors": 0,
           "skipped": 0
         },
         "securityNeighbor": {
-          "tests": 43,
+          "tests": 45,
           "failures": 0,
           "errors": 0,
           "skipped": 0
         },
         "rootRegression": {
-          "tests": 1531,
+          "tests": 1533,
           "failures": 0,
           "errors": 0,
           "skipped": 16,
-          "durationSeconds": 353.9
+          "durationSeconds": 319.6
         },
         "externalEnvironment": "FAKE",
         "fakeProviderMutationCountAsserted": true,

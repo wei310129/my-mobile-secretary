@@ -698,23 +698,27 @@ Playwright 或 shared config。
 
 實作涵蓋三種確認模式 × 三種替代強度、送單前 quote／authorization 重驗、durable claim、
 mark-dispatched、fake book、settle／reconcile、replay exactly-once、unknown-after-send 禁止盲目
-重送，以及 partial success 保留與 cancel／replacement proposal。價格或 inventory identity
-改變時在 claim 與 mutation 前 fail closed；既有 authorization security-neighbor 同時驗證
-currency、條款、旅客、時效、provider、environment 與 capability 邊界。Provider order 的
-`observedAt` 在 durable write 前統一為 PostgreSQL 微秒精度，保留嚴格 terminal result 比對。
+重送，以及 partial success 保留與 cancel／replacement proposal。Completion audit 另補強
+command authorization 必須等於 durable plan 綁定的 authorization；錯配時在 quote refresh、
+claim 與 mutation 前 fail closed。價格或 inventory identity 改變同樣在 claim 與 mutation 前拒絕；
+既有 authorization security-neighbor 同時驗證 currency、條款、旅客、時效、provider、
+environment 與 capability 邊界。Provider order 的 `observedAt` 在 durable write 前統一為
+PostgreSQL 微秒精度，保留嚴格 terminal result 比對。
 
 正式 gate 使用 Temurin JDK 21：
 
 - Scoped Spotless：exit 0，0 tests、0 skipped。
-- B4 focused `FakePurchaseOrchestratorIntegrationTest`：exit 0，13 tests、0 failure、0 error、
+- B4 focused `FakePurchaseOrchestratorIntegrationTest`：exit 0，15 tests、0 failure、0 error、
   0 skipped。
-- Booking／security-neighbor focused：exit 0，43 tests、0 failure、0 error、0 skipped。
-- Root regression：exit 0，1,531 tests、0 failure、0 error、16 skipped，353.9 秒。
+- Booking／security-neighbor focused：exit 0，45 tests、0 failure、0 error、0 skipped。
+- Root regression：exit 0，1,533 tests、0 failure、0 error、16 skipped，319.6 秒。
 
 每條 B4 integration scenario 都明確斷言 `Environment=FAKE` 與 fake provider mutation count；
-這些計數只代表 process-local 模擬效果。Sandbox／live provider、真實訂單、付款、取消與其他
-external mutation 全部為 0。此 PASS 只代表 B4 fake purchase orchestration，尚未宣稱 B3-Durable、
-B3-Upstream、B5 或任何 production transaction lifecycle。
+其中包含 provider 在送出後直接丟出例外，下一次只 reconcile 且 mutation count 維持 1，
+以及 plan／authorization 錯配時 mutation count 維持 0。這些計數只代表 process-local 模擬效果。
+Sandbox／live provider、真實訂單、付款、取消與其他 external mutation 全部為 0。此 PASS
+只代表 B4 fake purchase orchestration，尚未宣稱 B3-Durable、B3-Upstream、B5 或任何 production
+transaction lifecycle。
 
 ### B5：Duffel Flights／Stays test-mode adapter
 

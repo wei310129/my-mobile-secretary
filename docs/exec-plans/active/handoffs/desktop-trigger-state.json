@@ -77,8 +77,35 @@
       "publishedSha": null
     },
     "TR-ADD-CORE-MERGED": {
-      "status": "PENDING",
-      "publishedSha": null
+      "status": "PASS",
+      "publishedSha": null,
+      "evidence": {
+        "baseSha": "0cf4fda1fe9ae96d0f4adec3abd0ed46de38bd0f",
+        "focused": {
+          "tests": 19,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "securityNeighbor": {
+          "tests": 29,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 0
+        },
+        "rootRegression": {
+          "tests": 1552,
+          "failures": 0,
+          "errors": 0,
+          "skipped": 16,
+          "durationSeconds": 295.0
+        },
+        "externalEnvironment": "NONE",
+        "externalMutationCount": 0,
+        "injectedClockAsserted": true,
+        "deterministicReplayAsserted": true,
+        "executionSourceIsolationAsserted": true
+      }
     }
   }
 }

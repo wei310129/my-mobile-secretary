@@ -2411,6 +2411,57 @@ domain 的通用上限。Domain window 必須是有限半開區間並帶正 call
 
 Gate：
 
+W10-D current gate（2026-07-30，IN_PROGRESS）：
+
+```json
+{
+  "phase": "10-D",
+  "status": "C89_FOCUSED_GREEN_NEIGHBOR_PENDING",
+  "uniqueTarget": "SERIES versus EACH_OCCURRENCE registration seat identity",
+  "previousGate": {
+    "phase": "10-C",
+    "status": "PASS_LOCAL",
+    "commit": "294435e8add79f91db763a48b1df0c287935a3f7",
+    "focused": 27,
+    "securityNeighbor": 56,
+    "rootRegression": {
+      "tests": 1545,
+      "failures": 0,
+      "errors": 0,
+      "skipped": 16,
+      "durationSeconds": 424.3
+    },
+    "claimsReleased": {
+      "operationId": "calendar-w10c-20260730-v90-r5",
+      "status": "RELEASED",
+      "releasedAt": "2026-07-30T01:43:56.0193807Z"
+    }
+  },
+  "resourceClaim": {
+    "operationId": "calendar-w10d-20260730-v91-r2",
+    "ownerPid": 577880,
+    "status": "ACTIVE",
+    "reservedMigration": "V91"
+  },
+  "redFirst": {
+    "result": "testCompile failed only on absent recurring registration API"
+  },
+  "focused": {
+    "command": "mvn-safe CalendarRecurringRegistrationIntegrationTest,CalendarRecurrenceProjectionMigrationTest,DatabaseAccessSafetyArchitectureTest,CalendarRegistrationCapacityIntegrationTest,CalendarRegistrationLifecycleIntegrationTest",
+    "tests": 15,
+    "failures": 0,
+    "errors": 0,
+    "skipped": 0,
+    "durationSeconds": 91.9
+  },
+  "pending": [
+    "registration/waitlist/security neighbor",
+    "root regression",
+    "release V91 claims"
+  ]
+}
+```
+
 - DAILY／WEEKLY／MONTHLY／YEARLY、interval、multi-weekday、nth/last weekday、last day、COUNT／
   inclusive UNTIL、exclude/add/override。
 - THIS_OCCURRENCE／THIS_AND_FUTURE／ENTIRE_SERIES，split lineage 與 immutable history。

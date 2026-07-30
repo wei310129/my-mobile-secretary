@@ -47,6 +47,7 @@ class DatabaseAccessSafetyArchitectureTest {
             "com/aproject/aidriven/mymobilesecretary/calendar/participation/CalendarRegistrationNotificationProcessor.java",
             "com/aproject/aidriven/mymobilesecretary/calendar/participation/CalendarRegistrationPolicyService.java",
             "com/aproject/aidriven/mymobilesecretary/calendar/participation/CalendarRegistrationService.java",
+            "com/aproject/aidriven/mymobilesecretary/calendar/participation/CalendarRecurringRegistrationService.java",
             "com/aproject/aidriven/mymobilesecretary/calendar/participation/CalendarRosterService.java",
             "com/aproject/aidriven/mymobilesecretary/calendar/participation/CalendarSkipService.java",
             "com/aproject/aidriven/mymobilesecretary/calendar/participation/CalendarWaitlistService.java",

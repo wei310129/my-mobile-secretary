@@ -121,14 +121,39 @@ class CalendarRecurrenceProjectionMigrationTest {
     }
 
     @Test
-    void v90IsLatest() throws Exception {
+    void v91AddsRecurringRegistrationScopeAndActorPrivateState() throws Exception {
+        assertThat(strings(
+                        """
+                        SELECT relname || '=' || relrowsecurity::text || ':' ||
+                               relforcerowsecurity::text
+                        FROM pg_class
+                        WHERE relname IN (
+                            'calendar_recurring_registration_policy',
+                            'calendar_recurring_capacity_bucket',
+                            'calendar_recurring_registration')
+                        ORDER BY relname
+                        """))
+                .allSatisfy(value -> assertThat(value).endsWith("=true:true"))
+                .hasSize(3);
+        assertThat(strings(
+                        """
+                        SELECT indexname
+                        FROM pg_indexes
+                        WHERE schemaname = 'public'
+                          AND indexname = 'uq_calendar_recurring_bucket_key'
+                        """))
+                .containsExactly("uq_calendar_recurring_bucket_key");
+    }
+
+    @Test
+    void v91IsLatest() throws Exception {
         assertThat(strings(
                         """
                         SELECT max(version::integer)::text
                         FROM flyway_schema_history
                         WHERE success
                         """))
-                .containsExactly("90");
+                .containsExactly("91");
     }
 
     private static List<String> strings(String sql) throws SQLException {

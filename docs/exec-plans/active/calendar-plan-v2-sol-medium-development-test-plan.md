@@ -2637,6 +2637,14 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "compoundScheduleAnalysisFocused": "40 tests, 0 failures, 0 errors, 0 skipped; completeness, type-routing, API and signed LINE; zero schedule mutation",
     "compoundScheduleAnalysisNeighbor": "102 tests, 0 failures, 0 errors, 0 skipped; interpreter, safety, schedule query and sealed holdout neighbors",
     "compoundScheduleAnalysisLive": "case 107 required facets 1/1 PASS; model latency 10471 ms; terminal budget still FAIL",
+    "latencyDiagnostics": {
+      "fullSchemaTwentyCaseBaseline": "16/20 current-contract matches; model median 6860 ms, P95 9322 ms, max 10387 ms; 0/20 <= 4000 ms",
+      "sparseWireExperiment": "provider-enum 14/20, median 3967 ms, P95 5185 ms; free-string type 14/20, P95 7434 ms; correctness and latency both failed, production changes fully reverted",
+      "exactRouteProbe": "10/10 correctness; every sample 1 HTTP attempt; cacheReadInputTokens=15375, cacheCreateInputTokens=0; response body drain 0-1 ms; output 739-1155 tokens; total P95 10390 ms",
+      "typedCandidateSonnet": "test-only candidate-specific direction reached semantic correctness but model median 3833 ms and P95 6126 ms before Java/DB/LINE",
+      "typedCandidateHaiku": "minimal two-field DTO reached 10/10 correctness and 37-40 output tokens; median 999 ms but P95/max 24291 ms; terminal reliability gate failed",
+      "conclusion": "retry, prompt-cache, Maven and local response-body handling are not the full-schema bottleneck; no tested Anthropic path satisfies the unchanged 4-second terminal P95"
+    },
     "rootRegression": "1745 tests, 0 failures, 0 errors, 16 opt-in skipped; duration 438.5 seconds",
     "spotless": "spotless:check PASS",
     "officialLineWebhookE2E": "scripts/dev-start.ps1 -SkipDocker -SkipDispatcher exit 0; subsequent dev-status.ps1 -ExternalLineProbe confirms main=UP, Postgres/Redis healthy and LINE=connected"
@@ -2680,14 +2688,18 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "simulatedTestTurnsCountTowardMonitoring": false
   },
   "remainingWork": [
-    "start the repaired runtime and record a new metadata-only baseline",
+    "obtain the explicit model-route decision required to resolve the 4-second terminal P95 blocker",
+    "only after a qualifying route passes actual signed-LINE warm/cold latency, start the repaired runtime and record a new metadata-only baseline",
     "complete a fresh approved 24-hour and at-least-20-turn personal-use monitoring window",
     "final product PR, state-only handoff and HARD_YIELD receipt"
   ],
   "releaseBlockers": [
+    "No tested Anthropic full-schema, sparse-wire or typed-candidate route satisfies the unchanged Medium terminal P95 <= 4 seconds",
     "GitHub CLI authentication is required before the product PR can be created; gh auth status at 2026-07-31 13:51 +08:00 reports no authenticated host"
   ],
-  "userDecisionRequired": []
+  "userDecisionRequired": [
+    "Authorize an independently configured low-latency model/provider evaluation for read-only typed candidates while preserving the 4-second terminal gate and all Java safety checks"
+  ]
 }
 ```
 
@@ -2768,6 +2780,12 @@ Configured-model latency／reliability 試驗（同日、不得重複踩坑）�
 - sparse native schema 因 Anthropic optional parameter 24 項上限被 400 拒絕，平衡 required 後又造成
   grammar compilation／HTTP 長時間等待，已撤回；compact prompt 雖有 2–3s 案例，仍多筆不可解析，
   亦已撤回。後續 latency 修復應改由 typed DTO／能力分層設計與完整 E2/E3 oracle，不再微調 prompt。
+- 20 案公平 baseline 顯示 full schema correctness 16/20、model P95 9.322s；稀疏 argument-list wire
+  雖把 P95 降到 5.185s，correctness 只有 14/20，已完整撤回，不得重試相同 encoding。
+- exact-route metadata probe 的 10 筆皆為一次 HTTP attempt、prompt cache read 15,375 tokens、response
+  body drain 0–1ms，correctness 10/10 但 total P95 10.390s；因此不是 retry、cache miss 或本機 body
+  讀取造成。test-only Sonnet typed candidate 仍為 model P95 6.126s；Haiku 最小兩欄 DTO 雖 10/10、
+  median 0.999s，仍有 24.291s P95 長尾。未取得新的 model/provider authority 前不得開始新 monitoring。
 
 使用者已核准的「全域對話測試架構重整」屬 W11 closure 後、machine lane role swap 完成後的桌電
 Upstream／Integration T0–T4 工作；W11 closure 必須把該計畫與 active index 一併發布並 handoff，

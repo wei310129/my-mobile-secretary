@@ -2621,6 +2621,11 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
       "phase": "W11-LATENCY-PROVIDER-PREFLIGHT",
       "commit": "3500a5217a17ab1dcc333f78854876d8cfc66d11",
       "result": "user-authorized, test-only OpenAI typed-candidate evaluator; no production routing/config change and no external provider call"
+    },
+    {
+      "phase": "W11-LATENCY-PROVIDER-EVALUATOR-HARDENING",
+      "commit": "5b69a10708a4681eae16c8bd430cc5ebaaae047d",
+      "result": "native user-role input plus colloquial typo and prompt-injection coverage; focused and full regression green with production routing unchanged"
     }
   ],
   "tests": {
@@ -2657,14 +2662,16 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
       "transport": "Spring AI 1.1.5 Chat Completions; test-scope dependency and manually constructed model; no second production ChatModel bean",
       "redFirst": "testCompile exit 1 because org.springframework.ai.openai was absent before the test-scope dependency",
       "testCompile": "PASS after adding BOM-managed spring-ai-openai test dependency",
-      "deterministicMatrix": "2 tests, 0 failures, 0 errors, 1 live opt-in skipped; 20 unique positive/subset/mixed/neighbor scenarios",
+      "deterministicMatrix": "2 tests, 0 failures, 0 errors, 1 live opt-in skipped; 20 unique positive/subset/mixed/neighbor scenarios including colloquial typo and prompt-injection cases",
+      "inputBoundary": "untrusted text is sent as the native ChatClient user role; no handcrafted XML delimiter or provider-visible private context",
       "scopedSpotless": "PASS",
+      "rootRegressionAfterHardening": "1749 tests, 0 failures, 0 errors, 19 opt-in skipped; duration 573.0 seconds",
       "liveStatus": "BLOCKED_MISSING_LOCAL_CREDENTIAL",
       "externalProviderCalls": 0,
       "externalMutationCount": 0,
       "productionFilesChanged": false
     },
-    "rootRegression": "1745 tests, 0 failures, 0 errors, 16 opt-in skipped; duration 438.5 seconds",
+    "rootRegression": "1749 tests, 0 failures, 0 errors, 19 opt-in skipped; duration 573.0 seconds",
     "spotless": "spotless:check PASS",
     "officialLineWebhookE2E": "scripts/dev-start.ps1 -SkipDocker -SkipDispatcher exit 0; subsequent dev-status.ps1 -ExternalLineProbe confirms main=UP, Postgres/Redis healthy and LINE=connected"
   },

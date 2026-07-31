@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import java.util.ArrayList;
@@ -16,12 +17,15 @@ public class ConversationReferenceService {
     private final ConversationContextService context;
     private final ScheduleService schedules;
     private final TaskService tasks;
+    private final PlaceService places;
 
     public ConversationReferenceService(
-            ConversationContextService context, ScheduleService schedules, TaskService tasks) {
+            ConversationContextService context, ScheduleService schedules, TaskService tasks,
+            PlaceService places) {
         this.context = context;
         this.schedules = schedules;
         this.tasks = tasks;
+        this.places = places;
     }
 
     /** Stable wire format: KIND:id:displayOrdinal. */
@@ -57,6 +61,10 @@ public class ConversationReferenceService {
             var item = tasks.getTask(snapshot.lastTaskId());
             addIfRendered(candidates, Kind.TASK, item.getId(), item.getTitle(), result.message());
         }
+        if (snapshot.lastPlaceId() != null) {
+            var place = places.getPlace(snapshot.lastPlaceId());
+            addIfRendered(candidates, Kind.PLACE, place.getId(), place.getName(), result.message());
+        }
         ReferenceScope scope = ReferenceScope.forAction(result.action());
         List<Candidate> rendered = candidates.stream()
                 .filter(candidate -> scope.accepts(candidate, candidates))
@@ -88,7 +96,11 @@ public class ConversationReferenceService {
             String name = action == null ? "" : action.name();
             boolean scheduleAction = name.contains("SCHEDULE");
             boolean taskAction = name.contains("TASK");
-            if (scheduleAction != taskAction) {
+            boolean placeAction = name.contains("PLACE");
+            if (placeAction && !scheduleAction && !taskAction) {
+                return new ReferenceScope(Kind.PLACE);
+            }
+            if (scheduleAction != taskAction && !placeAction) {
                 return new ReferenceScope(scheduleAction ? Kind.SCHEDULE : Kind.TASK);
             }
             return new ReferenceScope(null);

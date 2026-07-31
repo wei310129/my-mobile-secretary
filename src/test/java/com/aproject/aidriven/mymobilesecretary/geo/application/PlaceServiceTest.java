@@ -81,20 +81,37 @@ class PlaceServiceTest {
         assertThat(place.getType()).isEqualTo("超市");
     }
 
-    /** 使用者有給地址/類型 → 不被 Google 蓋掉,只補座標。 */
+    /** 使用者有給地址/類型 → 驗證同址後不被 Google 蓋掉,只補座標。 */
     @Test
     void userProvidedFieldsWinOverGoogle() {
         saveReturnsInput();
         when(googlePlacesClient.usable()).thenReturn(true);
         when(googlePlacesClient.searchFirst(anyString())).thenReturn(Optional.of(
                 new GooglePlacesClient.PlaceCandidate(
-                        "全聯", "Google的地址", 24.9676, 121.5407, "超市")));
+                        "全聯", "231新北市新店區民權路42號", 24.9676, 121.5407, "超市")));
 
-        Place place = service.createPlace("全聯", "我習慣叫的地址", null, null, "常去的店");
+        Place place = service.createPlace(
+                "全聯", "新北市新店區民權路42號一樓", null, null, "常去的店");
 
-        assertThat(place.getAddress()).isEqualTo("我習慣叫的地址");
+        assertThat(place.getAddress()).isEqualTo("新北市新店區民權路42號一樓");
         assertThat(place.getType()).isEqualTo("常去的店");
         assertThat(place.getLatitude()).isEqualTo(24.9676);
+    }
+
+    @Test
+    void createRejectsProviderCandidateThatConflictsWithExplicitAddress() {
+        when(googlePlacesClient.usable()).thenReturn(true);
+        when(googlePlacesClient.searchFirst(anyString())).thenReturn(Optional.of(
+                new GooglePlacesClient.PlaceCandidate(
+                        "測試門市另一分店", "新北市測試區另一街99號",
+                        24.95, 121.55, "商店")));
+
+        assertThatThrownBy(() -> service.createPlace(
+                "測試門市", "新北市測試區安全路88號", null, null, null))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "PLACE_ADDRESS_MISMATCH");
+
+        verify(placeRepository, never()).save(any(Place.class));
     }
 
     @Test

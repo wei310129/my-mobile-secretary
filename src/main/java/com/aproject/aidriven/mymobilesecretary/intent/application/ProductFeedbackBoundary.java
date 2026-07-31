@@ -74,7 +74,8 @@ final class ProductFeedbackBoundary {
         }
         if (CORRECTION_MESSAGES.contains(compact) || isResponseCorrection(compact)) {
             return Optional.of(IntentResult.message(IntentResult.Action.FEEDBACK_RECEIVED,
-                    "🛠️ 收到，是我理解錯了。原本的主題與訊息仍會保留；"
+                    "🛠️ 收到，是我理解錯了。這則回饋不會建立或修改資料；"
+                            + "原本的主題與訊息仍會保留；"
                             + "請直接指出要更正的內容，我會從原操作續接。"));
         }
         if (containsAny(compact, EXPLICIT_PRODUCT_MARKERS)
@@ -102,10 +103,17 @@ final class ProductFeedbackBoundary {
                 || compact.startsWith("首先你的格式不對")
                 || compact.startsWith("你把你的邏輯")
                 || compact.startsWith("為什麼你明明");
-        return beginsAsCorrection && containsAny(compact, List.of(
+        boolean structuredCorrection = beginsAsCorrection && containsAny(compact, List.of(
                 "你再跟我講", "你卻", "你的回應", "我在回應你", "答成", "草稿",
                 "回給使用者", "直接回", "還在問", "再問", "已經確認", "空行", "項次",
                 "回答方式", "回覆方式", "答覆方式"));
+        boolean referencesResponse = containsAny(compact, List.of(
+                "上一則回答", "上一個回答", "剛才的回答", "剛剛的回答",
+                "你的回答", "你的回覆", "你的回應", "你又回", "和上一則"));
+        boolean reportsResponseFailure = containsAny(compact, List.of(
+                "有錯", "錯了", "答錯", "無關", "不相關", "不對",
+                "不應該", "不是要", "不要建立", "不該"));
+        return structuredCorrection || (referencesResponse && reportsResponseFailure);
     }
 
     private static boolean isGeneralizedProductRule(String text, String compact) {

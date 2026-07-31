@@ -42,15 +42,16 @@ public class CalendarV2IntentService {
         if (start == null) {
             throw new IllegalArgumentException("schedule missing startAt");
         }
-        Instant end = parse(command.endAt());
-        if (end == null) {
+        if ((command.sourceText() == null || command.sourceText().isBlank())
+                && parse(command.endAt()) == null) {
             return IntentResult.clarificationNeeded(
                     "請告訴我行程的結束時間或預計多久，我會接著建立。");
         }
+        CalendarPlacement placement = CalendarIntentPlacementResolver.resolve(command);
         CalendarPlanView created = calendar.createPlan(new CreateCalendarPlanCommand(
                 "intent-create:" + RequestCorrelationContext.currentId(),
                 command.title(),
-                CalendarPlacement.interval(start, end, TAIPEI),
+                placement,
                 command.safeOptions().category(),
                 null,
                 null,
@@ -58,12 +59,10 @@ public class CalendarV2IntentService {
                 List.of()));
         return IntentResult.message(
                 IntentResult.Action.SCHEDULE_CONFIRMED,
-                "已建立行程「%s」，時間是 %s–%s%s。"
+                "已建立行程「%s」，時間是 %s%s。"
                         .formatted(
                                 created.title(),
-                                format(start),
-                                ZonedDateTime.ofInstant(end, TAIPEI)
-                                        .format(DateTimeFormatter.ofPattern("HH:mm")),
+                                format(placement),
                                 created.category() == null
                                         ? ""
                                         : "，分類為「" + created.category() + "」"));

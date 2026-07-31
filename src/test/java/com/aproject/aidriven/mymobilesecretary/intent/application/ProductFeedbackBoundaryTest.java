@@ -119,4 +119,21 @@ class ProductFeedbackBoundaryTest {
                 .contains("並不是在說重複建立", "不會建立或修改", "不會說成已經修好")
                 .doesNotContain("你提醒得對，不應該重複建立");
     }
+
+    @Test
+    void genericCorrectionAboutThePreviousReplyIsFeedback() {
+        IntentResult result = ProductFeedbackBoundary.answer(
+                "我是在指出你上一則回答有錯，不是要建立任何資料").orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+        assertThat(result.message()).contains("理解錯了", "不會建立");
+    }
+
+    @Test
+    void unrelatedRepeatedReplyComplaintIsFeedback() {
+        IntentResult result = ProductFeedbackBoundary.answer(
+                "為什麼你又回了和上一則無關的內容？").orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+    }
 }

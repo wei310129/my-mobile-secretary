@@ -83,6 +83,7 @@ public class IntentService {
             draftRetentionService;
     private com.aproject.aidriven.mymobilesecretary.shared.time.TimeDisplayPreferenceService
             timeDisplayPreferenceService;
+    private QuotedPlaceCorrectionConversationService quotedPlaceCorrectionService;
     private com.aproject.aidriven.mymobilesecretary.utility.application.UtilityBillService
             utilityBillService;
     private com.aproject.aidriven.mymobilesecretary.knowledge.tag.application
@@ -291,6 +292,11 @@ public class IntentService {
     }
 
     @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setQuotedPlaceCorrectionService(QuotedPlaceCorrectionConversationService service) {
+        this.quotedPlaceCorrectionService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setUniversalLifeRecordService(
             com.aproject.aidriven.mymobilesecretary.knowledge.tag.application.UniversalLifeRecordService service) {
         this.universalLifeRecordService = service;
@@ -455,6 +461,11 @@ public class IntentService {
             Optional<IntentResult> schoolTransport = schoolTransportConversationService.answer(
                     text, mutationBoundary::beforeMutation);
             if (schoolTransport.isPresent()) return schoolTransport.get();
+        }
+        if (quotedPlaceCorrectionService != null) {
+            Optional<IntentResult> placeCorrection = quotedPlaceCorrectionService.answer(
+                    text, interpretationText, mutationBoundary::beforeMutation);
+            if (placeCorrection.isPresent()) return placeCorrection.get();
         }
         // 產品更正必須先於所有 pending draft，否則「你沒聽懂這個草稿」會被草稿狀態機消耗。
         Optional<IntentResult> productFeedback = ProductFeedbackBoundary.answer(text);
@@ -725,6 +736,14 @@ public class IntentService {
             script = applySchoolPickupSafeguard(script, schoolPickupQuestion.orElseThrow());
         }
         script = IntentScriptCompletenessPolicy.apply(text, script);
+        Optional<IntentResult> feedbackOnly = collapseFeedbackOnlyScript(script);
+        if (feedbackOnly.isPresent()) {
+            flowTrace.select(new IntentCommand(
+                    IntentCommand.Type.FEEDBACK, null, null, null, null, null,
+                    null, null, null, null, null, null, null));
+            flowTrace.validationPassed();
+            return feedbackOnly.get();
+        }
 
         // 單一操作:維持原語意(驗證失敗 → 整句保底)
         if (script.commands().size() == 1) {
@@ -783,6 +802,21 @@ public class IntentService {
             return safeFallback(text, "多項操作都解析失敗", mutationBoundary);
         }
         return IntentResult.batchExecuted(lines);
+    }
+
+    private static Optional<IntentResult> collapseFeedbackOnlyScript(IntentScript script) {
+        boolean hasFeedback = script.commands().stream()
+                .filter(java.util.Objects::nonNull)
+                .map(IntentCommand::type)
+                .anyMatch(IntentCommand.Type.FEEDBACK::equals);
+        boolean onlyFeedbackOrUnknown = script.commands().stream()
+                .filter(java.util.Objects::nonNull)
+                .map(IntentCommand::type)
+                .allMatch(type -> type == IntentCommand.Type.FEEDBACK
+                        || type == IntentCommand.Type.UNKNOWN);
+        return hasFeedback && onlyFeedbackOrUnknown
+                ? Optional.of(IntentResult.feedbackReceived())
+                : Optional.empty();
     }
 
     private IntentResult executeExplicitFocusControl(

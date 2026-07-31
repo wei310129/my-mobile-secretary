@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
+import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
@@ -18,6 +20,7 @@ class ConversationReferenceServiceTest {
         ConversationContextService context = mock(ConversationContextService.class);
         ScheduleService schedules = mock(ScheduleService.class);
         TaskService tasks = mock(TaskService.class);
+        PlaceService places = mock(PlaceService.class);
         ScheduleItem first = schedule(14L, "送女兒到夏恩英語上課");
         ScheduleItem second = schedule(16L, "女兒上夏恩英語");
         when(context.snapshot()).thenReturn(new ConversationSnapshot(
@@ -25,7 +28,7 @@ class ConversationReferenceServiceTest {
         when(schedules.getSchedule(14L)).thenReturn(first);
         when(schedules.getSchedule(16L)).thenReturn(second);
         ConversationReferenceService service = new ConversationReferenceService(
-                context, schedules, tasks);
+                context, schedules, tasks, places);
 
         String payload = service.capture(IntentResult.message(IntentResult.Action.SCHEDULE_INFO,
                 "找到：行程（待確認）「女兒上夏恩英語」"));
@@ -38,9 +41,10 @@ class ConversationReferenceServiceTest {
         ConversationContextService context = mock(ConversationContextService.class);
         ScheduleService schedules = mock(ScheduleService.class);
         TaskService tasks = mock(TaskService.class);
+        PlaceService places = mock(PlaceService.class);
         when(context.snapshot()).thenThrow(new IllegalStateException("stale context"));
         ConversationReferenceService service = new ConversationReferenceService(
-                context, schedules, tasks);
+                context, schedules, tasks, places);
         IntentResult result = IntentResult.message(
                 IntentResult.Action.SCHEDULE_INFO, "行程已建立");
 
@@ -56,6 +60,7 @@ class ConversationReferenceServiceTest {
         ConversationContextService context = mock(ConversationContextService.class);
         ScheduleService schedules = mock(ScheduleService.class);
         TaskService tasks = mock(TaskService.class);
+        PlaceService places = mock(PlaceService.class);
         ScheduleItem schedule = schedule(16L, "女兒上夏恩英語");
         Task task = mock(Task.class);
         when(task.getTitle()).thenReturn("女兒上夏恩英語");
@@ -64,7 +69,7 @@ class ConversationReferenceServiceTest {
         when(schedules.getSchedule(16L)).thenReturn(schedule);
         when(tasks.getTask(21L)).thenReturn(task);
         ConversationReferenceService service = new ConversationReferenceService(
-                context, schedules, tasks);
+                context, schedules, tasks, places);
 
         String payload = service.capture(IntentResult.message(IntentResult.Action.SCHEDULE_INFO,
                 "找到行程「女兒上夏恩英語」"));
@@ -77,6 +82,7 @@ class ConversationReferenceServiceTest {
         ConversationContextService context = mock(ConversationContextService.class);
         ScheduleService schedules = mock(ScheduleService.class);
         TaskService tasks = mock(TaskService.class);
+        PlaceService places = mock(PlaceService.class);
         ScheduleItem schedule = schedule(16L, "女兒上夏恩英語");
         Task task = mock(Task.class);
         when(task.getTitle()).thenReturn("女兒上夏恩英語");
@@ -85,7 +91,7 @@ class ConversationReferenceServiceTest {
         when(schedules.getSchedule(16L)).thenReturn(schedule);
         when(tasks.getTask(21L)).thenReturn(task);
         ConversationReferenceService service = new ConversationReferenceService(
-                context, schedules, tasks);
+                context, schedules, tasks, places);
 
         String payload = service.capture(IntentResult.message(
                 IntentResult.Action.TASK_INFO, "找到待辦「女兒上夏恩英語」"));
@@ -98,6 +104,7 @@ class ConversationReferenceServiceTest {
         ConversationContextService context = mock(ConversationContextService.class);
         ScheduleService schedules = mock(ScheduleService.class);
         TaskService tasks = mock(TaskService.class);
+        PlaceService places = mock(PlaceService.class);
         ScheduleItem schedule = schedule(16L, "女兒上夏恩英語");
         Task task = mock(Task.class);
         when(task.getTitle()).thenReturn("繳英文課學費");
@@ -106,7 +113,7 @@ class ConversationReferenceServiceTest {
         when(schedules.getSchedule(16L)).thenReturn(schedule);
         when(tasks.getTask(21L)).thenReturn(task);
         ConversationReferenceService service = new ConversationReferenceService(
-                context, schedules, tasks);
+                context, schedules, tasks, places);
 
         String payload = service.capture(IntentResult.message(IntentResult.Action.AGENDA_LISTED,
                 "1. 待辦「繳英文課學費」\n2. 行程「女兒上夏恩英語」"));
@@ -119,6 +126,7 @@ class ConversationReferenceServiceTest {
         ConversationContextService context = mock(ConversationContextService.class);
         ScheduleService schedules = mock(ScheduleService.class);
         TaskService tasks = mock(TaskService.class);
+        PlaceService places = mock(PlaceService.class);
         ScheduleItem schedule = schedule(16L, "女兒上夏恩英語");
         Task task = mock(Task.class);
         when(task.getTitle()).thenReturn("繳英文課學費");
@@ -127,12 +135,33 @@ class ConversationReferenceServiceTest {
         when(schedules.getSchedule(16L)).thenReturn(schedule);
         when(tasks.getTask(21L)).thenReturn(task);
         ConversationReferenceService service = new ConversationReferenceService(
-                context, schedules, tasks);
+                context, schedules, tasks, places);
 
         String payload = service.capture(IntentResult.message(IntentResult.Action.TASK_INFO,
                 "待辦「繳英文課學費」與行程「女兒上夏恩英語」時間衝突"));
 
         assertThat(payload).isEqualTo("TASK:21:1;SCHEDULE:16:2");
+    }
+
+    @Test
+    void placeReplyCarriesTenantScopedTypedReference() {
+        ConversationContextService context = mock(ConversationContextService.class);
+        ScheduleService schedules = mock(ScheduleService.class);
+        TaskService tasks = mock(TaskService.class);
+        PlaceService places = mock(PlaceService.class);
+        Place place = mock(Place.class);
+        when(place.getId()).thenReturn(31L);
+        when(place.getName()).thenReturn("測試門市");
+        when(context.snapshot()).thenReturn(new ConversationSnapshot(
+                null, null, 31L, List.of(), List.of(), null, null, null));
+        when(places.getPlace(31L)).thenReturn(place);
+        ConversationReferenceService service = new ConversationReferenceService(
+                context, schedules, tasks, places);
+
+        String payload = service.capture(IntentResult.message(
+                IntentResult.Action.PLACE_INFO, "地點「測試門市」目前地址需要更正"));
+
+        assertThat(payload).isEqualTo("PLACE:31:1");
     }
 
     private static ScheduleItem schedule(long id, String title) {

@@ -1,7 +1,9 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application.handler;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarIntentPlacementResolver;
 import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2IntentService;
 import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2RoutingService;
+import com.aproject.aidriven.mymobilesecretary.calendar.domain.CalendarPlacement;
 import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusBinding;
 import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationFocusDirective;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService;
@@ -86,15 +88,18 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
 
     private IntentResult createSchedule(IntentCommand command) {
         require(command.title(), "title");
-        Instant startAt = parse(command.startAt());
-        Instant endAt = parse(command.endAt());
-        if (startAt == null) {
-            throw new IllegalArgumentException("schedule missing startAt");
-        }
-        if (endAt == null) {
+        if ((command.sourceText() == null || command.sourceText().isBlank())
+                && parse(command.endAt()) == null) {
             return IntentResult.clarificationNeeded(
                     "請告訴我行程的結束時間或預計多久，我會接著建立。");
         }
+        CalendarPlacement resolved = CalendarIntentPlacementResolver.resolve(command);
+        if (!(resolved instanceof CalendarPlacement.TimedInterval interval)) {
+            return IntentResult.clarificationNeeded(
+                    "你提供的是單一時點；請補上結束時間或預計多久，我才會建立舊版行程。");
+        }
+        Instant startAt = interval.start();
+        Instant endAt = interval.end();
         Long placeId = placeAliasService.resolve(command.placeName()).map(Place::getId).orElse(null);
         ScheduleDecision decision = scheduleService.createSchedule(
                 command.title(), startAt, endAt, placeId,

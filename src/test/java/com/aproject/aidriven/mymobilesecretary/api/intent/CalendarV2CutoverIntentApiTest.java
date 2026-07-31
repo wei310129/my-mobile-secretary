@@ -98,6 +98,34 @@ class CalendarV2CutoverIntentApiTest extends IntegrationTestBase {
                 .andExpect(jsonPath("$.action").value("TAGGED_RECORDS_INFO"));
     }
 
+    @Test
+    void startOnlyEvidencePersistsTimedPointInsteadOfModelInventedDuration() throws Exception {
+        String title = "W11 單一時點驗證";
+        String source = "8月5日上午十一點進行 W11 單一時點驗證";
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                title,
+                null,
+                "2026-08-05T11:00:00+08:00",
+                "2026-08-05T12:00:00+08:00",
+                null, null, null, null, null, null, null, false, null, source));
+
+        mockMvc.perform(post("/api/intent")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload(source)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.action").value("SCHEDULE_CONFIRMED"))
+                .andExpect(jsonPath("$.message").value(
+                        org.hamcrest.Matchers.not(
+                                org.hamcrest.Matchers.containsString("12:00"))));
+
+        assertThat(jdbc.queryForObject(
+                "SELECT placement_kind FROM calendar_plan WHERE title = ?",
+                String.class,
+                title)).isEqualTo("TIMED_POINT");
+        assertThat(count("schedule_item", title)).isZero();
+    }
+
     private static String payload(String text) throws Exception {
         return new com.fasterxml.jackson.databind.ObjectMapper()
                 .writeValueAsString(java.util.Map.of("text", text));

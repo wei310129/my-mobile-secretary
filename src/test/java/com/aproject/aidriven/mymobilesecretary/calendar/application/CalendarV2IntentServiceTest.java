@@ -90,6 +90,76 @@ class CalendarV2IntentServiceTest {
     }
 
     @Test
+    void startOnlyUserEvidenceCannotBecomeAModelInventedInterval() {
+        UUID requestId = UUID.randomUUID();
+        IntentCommand command = new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                "領取包裹",
+                null,
+                "2026-07-25T11:00:00+08:00",
+                "2026-07-25T12:00:00+08:00",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                false,
+                IntentOptions.empty(),
+                "週六上午十一點領取包裹");
+        when(calendar.createPlan(any())).thenReturn(
+                new CalendarPlanView("領取包裹", null, null, 1));
+
+        IntentResult result =
+                RequestCorrelationContext.run(requestId, () -> service.create(command));
+
+        ArgumentCaptor<CreateCalendarPlanCommand> captured =
+                ArgumentCaptor.forClass(CreateCalendarPlanCommand.class);
+        verify(calendar).createPlan(captured.capture());
+        assertThat(captured.getValue().placement())
+                .isEqualTo(CalendarPlacement.point(
+                        Instant.parse("2026-07-25T03:00:00Z"), TAIPEI));
+        assertThat(result.action()).isEqualTo(IntentResult.Action.SCHEDULE_CONFIRMED);
+        assertThat(result.message()).contains("領取包裹", "07/25 11:00")
+                .doesNotContain("12:00");
+    }
+
+    @Test
+    void explicitDurationWinsOverADifferentModelEnd() {
+        UUID requestId = UUID.randomUUID();
+        IntentCommand command = new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                "專案討論",
+                null,
+                "2026-07-25T14:00:00+08:00",
+                "2026-07-25T15:00:00+08:00",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                false,
+                IntentOptions.empty(),
+                "週六下午兩點進行四十五分鐘的專案討論");
+        when(calendar.createPlan(any())).thenReturn(
+                new CalendarPlanView("專案討論", null, null, 1));
+
+        RequestCorrelationContext.run(requestId, () -> service.create(command));
+
+        ArgumentCaptor<CreateCalendarPlanCommand> captured =
+                ArgumentCaptor.forClass(CreateCalendarPlanCommand.class);
+        verify(calendar).createPlan(captured.capture());
+        assertThat(captured.getValue().placement())
+                .isEqualTo(CalendarPlacement.interval(
+                        Instant.parse("2026-07-25T06:00:00Z"),
+                        Instant.parse("2026-07-25T06:45:00Z"),
+                        TAIPEI));
+    }
+
+    @Test
     void dailyListBuildsTaipeiHalfOpenDayRange() {
         when(queries.query(any())).thenReturn(new CalendarQueryPage(List.of(), null));
         IntentCommand command = command(

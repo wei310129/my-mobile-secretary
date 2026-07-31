@@ -56,6 +56,10 @@ public class PlaceService {
             longitude = candidate.longitude();
             if (address == null || address.isBlank()) {
                 address = candidate.address();
+            } else if (!sameStreetNumber(address, candidate.address())) {
+                throw new BusinessException("PLACE_ADDRESS_MISMATCH",
+                        "查到的候選地址與你提供的街路門牌不一致，因此沒有建立。"
+                                + "請確認分店、地址或提供 Google Maps 連結。");
             }
             if (type == null || type.isBlank()) {
                 type = candidate.type();

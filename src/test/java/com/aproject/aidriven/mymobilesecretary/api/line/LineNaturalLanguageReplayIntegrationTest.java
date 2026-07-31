@@ -38,6 +38,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
+import org.springframework.jdbc.core.JdbcTemplate;
 
 /**
  * 去識別化 LINE 多輪重播：只保留歷史風險形狀，不複製任何實際使用者原話或識別資訊。
@@ -64,6 +65,8 @@ class LineNaturalLanguageReplayIntegrationTest extends IntegrationTestBase {
     private IntentIssueRepository issues;
     @Autowired
     private Clock clock;
+    @Autowired
+    private JdbcTemplate jdbc;
 
     @Test
     void signedLineHelpConversationStaysDeterministicAcrossThreeTurns() throws Exception {
@@ -137,6 +140,39 @@ class LineNaturalLanguageReplayIntegrationTest extends IntegrationTestBase {
                     .extracting(IntentIssue::getCategory)
                     .contains(IntentIssue.Category.FEEDBACK);
         }
+    }
+
+    @Test
+    void correctionStillBypassesTheModelAndLifeRecordWhenTheInterpreterWouldFail()
+            throws Exception {
+        interpreter.clear();
+
+        sendText("我是在指出你上一則回答有錯，不是要建立任何資料");
+
+        assertThat(latestReply()).contains("理解錯了", "不會建立")
+                .doesNotContain("AI", "暫時無法", "UUID");
+        assertThat(countLifeRecords("USER_UTTERANCE")).isZero();
+        assertThat(tasks.findAll()).isEmpty();
+        try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(lineContext())) {
+            assertThat(issues.findAllByOrderByCreatedAtDesc())
+                    .extracting(IntentIssue::getCategory)
+                    .containsExactly(IntentIssue.Category.FEEDBACK);
+        }
+    }
+
+    @Test
+    void feedbackBatchCannotBecomeAUserLifeRecordOrUnrelatedClarification()
+            throws Exception {
+        String text = "你上一則回答錯了，而且不應該再補上無關內容";
+        interpreter.nextCommands(
+                command(IntentCommand.Type.FEEDBACK, null, text, null),
+                command(IntentCommand.Type.UNKNOWN, null, "不應該再補上無關內容", null));
+
+        send(text, "event-" + UUID.randomUUID(), null);
+
+        assertThat(latestReply()).contains("收到").doesNotContain("有一項", "接送", "UUID");
+        assertThat(countLifeRecords("USER_UTTERANCE")).isZero();
+        assertThat(tasks.findAll()).isEmpty();
     }
 
     @Test
@@ -268,5 +304,12 @@ class LineNaturalLanguageReplayIntegrationTest extends IntegrationTestBase {
 
     private static Instant at(LocalDate date, LocalTime time) {
         return ZonedDateTime.of(date, time, TAIPEI).toInstant();
+    }
+
+    private long countLifeRecords(String recordType) {
+        return jdbc.queryForObject(
+                "SELECT count(*) FROM tagged_life_record WHERE record_type = ?",
+                Long.class,
+                recordType);
     }
 }

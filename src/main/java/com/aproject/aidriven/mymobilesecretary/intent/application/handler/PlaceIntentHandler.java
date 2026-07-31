@@ -23,6 +23,12 @@ import org.springframework.stereotype.Component;
 @Component
 public final class PlaceIntentHandler implements IntentHandler {
 
+    private static final java.util.regex.Pattern EXPLICIT_ADDRESS = java.util.regex.Pattern.compile(
+            "(?:正確地址|地址)(?:是|為)?\\s*[:：]?\\s*"
+                    + "(?<address>[^，。！？!?；;\\r\\n]{4,120})");
+    private static final java.util.regex.Pattern STREET_NUMBER = java.util.regex.Pattern.compile(
+            "(?:路|街|大道|巷|弄).{0,24}(?:號|[0-9])");
+
     private static final Set<IntentCommand.Type> SUPPORTED_TYPES = Set.of(
             IntentCommand.Type.ASK_PLACE,
             IntentCommand.Type.CREATE_PLACE,
@@ -75,7 +81,7 @@ public final class PlaceIntentHandler implements IntentHandler {
         IntentOptions options = command.safeOptions();
         return switch (command.type()) {
             case ASK_PLACE -> askPlace(command);
-            case CREATE_PLACE -> createPlace(command);
+            case CREATE_PLACE -> createPlace(text, command);
             case UPDATE_PLACE -> updatePlace(command);
             case BIND_TASK_PLACE -> bindTaskPlace(command, options);
             case ASK_TASK_PLACE -> askTaskPlace(command);
@@ -108,17 +114,60 @@ public final class PlaceIntentHandler implements IntentHandler {
     private IntentResult askPlace(IntentCommand command) {
         require(command.placeName(), "placeName");
         return resolvePlace(command.placeName())
-                .map(this::placeInfo)
+                .map(place -> {
+                    contextService.rememberPlace(place.getId());
+                    return placeInfo(place);
+                })
                 .orElseGet(() -> IntentResult.clarificationNeeded(
                         "我沒有叫「%s」的地點紀錄,說「建立地點:%s」我就去 Google 查來存。"
                                 .formatted(command.placeName(), command.placeName())));
     }
 
-    private IntentResult createPlace(IntentCommand command) {
+    private IntentResult createPlace(String text, IntentCommand command) {
         require(command.placeName(), "placeName");
+        String address = groundedAddress(text, command.safeOptions().description());
         Optional<Place> existing = resolvePlace(command.placeName());
-        return existing.map(this::placeInfo).orElseGet(() -> IntentResult.placeCreated(
-                placeService.createPlace(command.placeName(), null, null, null, null)));
+        if (existing.isPresent()) {
+            contextService.rememberPlace(existing.orElseThrow().getId());
+            return placeInfo(existing.orElseThrow());
+        }
+        Place created = placeService.createPlace(command.placeName(), address, null, null, null);
+        contextService.rememberPlace(created.getId());
+        return IntentResult.placeCreated(created);
+    }
+
+    private static String groundedAddress(String text, String address) {
+        if (address == null || address.isBlank()) {
+            return explicitAddress(text);
+        }
+        String normalizedText = normalizeEvidence(text);
+        String normalizedAddress = normalizeEvidence(address);
+        if (!normalizedText.contains(normalizedAddress)) {
+            throw new IllegalArgumentException("place address is not grounded in current input");
+        }
+        return address.strip();
+    }
+
+    private static String explicitAddress(String text) {
+        if (text == null || text.isBlank()) {
+            return null;
+        }
+        java.util.regex.Matcher matcher = EXPLICIT_ADDRESS.matcher(text);
+        if (!matcher.find()) {
+            return null;
+        }
+        String candidate = matcher.group("address").strip();
+        if (!STREET_NUMBER.matcher(candidate).find()) {
+            throw new IllegalArgumentException("explicit place address is incomplete");
+        }
+        return candidate;
+    }
+
+    private static String normalizeEvidence(String value) {
+        return value == null ? "" : java.text.Normalizer
+                .normalize(value, java.text.Normalizer.Form.NFKC)
+                .replaceAll("[\\s，。！？!?、；;：:]+", "")
+                .toLowerCase(java.util.Locale.ROOT);
     }
 
     private IntentResult updatePlace(IntentCommand command) {

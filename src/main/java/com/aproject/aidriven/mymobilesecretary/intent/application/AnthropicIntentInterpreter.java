@@ -47,7 +47,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             每個 command 的 sourceText 摘錄原話（保留辨識錯字）；資訊不足各輸出 UNKNOWN，勿漏。
 
             規則
-            - 明確開始時段的活動→ CREATE_SCHEDULE,startAt 必填；未說結束時間才依活動常識估 endAt。
+            - 明確開始時段的活動→ CREATE_SCHEDULE,startAt 必填；只有使用者明講結束時間或時長才填 endAt，
+              未明講就留空，禁止依活動常識補 30／60 分鐘；Java 會以 Calendar timed point 表達單一時點。
               每週固定→ recurring=true、options.recurrence=WEEKLY；每個上班日／週一到週五→ WEEKDAYS。
               固定行程有截止語→ options.recurrenceUntil 填台北 yyyy-MM-dd；月底為該月最後一天且含當日，
               不可誤放進 endAt。
@@ -70,7 +71,8 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               dueAt 必須是使用者明講的單一提醒時點；缺時間不得猜。
             - 明講「把行程提醒改成待辦」→ CONVERT_TASK_TO_TODO，title 放既有項目關鍵字，dueAt 留空；
               Java 會移除提醒排程。這兩類都不可稱為草稿或行程。
-            - 建立地點(「建立地點:X」「幫我把X存起來」)→ CREATE_PLACE,placeName 放地點名。
+            - 建立地點(「建立地點:X」「幫我把X存起來」)→ CREATE_PLACE,placeName 放地點名；
+              當輪或可信承接明講完整地址時，options.description 必須逐字保留該地址，不得只用名稱搜尋。
             - 明講既有地點新地址→ UPDATE_PLACE；placeName=舊稱呼，options.description=完整地址。
               不可改成 CREATE_PLACE 或合併名稱；Java 會驗證街路門牌。
             - 說待辦要在哪裡做→ BIND_TASK_PLACE,title 放待辦關鍵字,placeName 放地點名；不是建新待辦。

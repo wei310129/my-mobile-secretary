@@ -2616,6 +2616,11 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
       "phase": "W11-F",
       "commit": "1576d26ae89ad7d35e9a638fb6b3d19375044ab8",
       "result": "post-reset natural-language repair: strict source grounding, quoted-reference non-execution, deterministic help/feedback/weekend routes, stale ordinal expiry and evidence-bound feedback"
+    },
+    {
+      "phase": "W11-LATENCY-PROVIDER-PREFLIGHT",
+      "commit": "3500a5217a17ab1dcc333f78854876d8cfc66d11",
+      "result": "user-authorized, test-only OpenAI typed-candidate evaluator; no production routing/config change and no external provider call"
     }
   ],
   "tests": {
@@ -2644,6 +2649,20 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
       "typedCandidateSonnet": "test-only candidate-specific direction reached semantic correctness but model median 3833 ms and P95 6126 ms before Java/DB/LINE",
       "typedCandidateHaiku": "minimal two-field DTO reached 10/10 correctness and 37-40 output tokens; median 999 ms but P95/max 24291 ms; terminal reliability gate failed",
       "conclusion": "retry, prompt-cache, Maven and local response-body handling are not the full-schema bottleneck; no tested Anthropic path satisfies the unchanged 4-second terminal P95"
+    },
+    "openAiTypedCandidatePreflight": {
+      "authorizedByUser": true,
+      "scope": "bounded paid evaluation for read-only typed candidates; no private corpus and zero business mutation",
+      "officialCandidateOrder": ["gpt-5.4-nano", "gpt-5.6-luna", "gpt-4.1-mini"],
+      "transport": "Spring AI 1.1.5 Chat Completions; test-scope dependency and manually constructed model; no second production ChatModel bean",
+      "redFirst": "testCompile exit 1 because org.springframework.ai.openai was absent before the test-scope dependency",
+      "testCompile": "PASS after adding BOM-managed spring-ai-openai test dependency",
+      "deterministicMatrix": "2 tests, 0 failures, 0 errors, 1 live opt-in skipped; 20 unique positive/subset/mixed/neighbor scenarios",
+      "scopedSpotless": "PASS",
+      "liveStatus": "BLOCKED_MISSING_LOCAL_CREDENTIAL",
+      "externalProviderCalls": 0,
+      "externalMutationCount": 0,
+      "productionFilesChanged": false
     },
     "rootRegression": "1745 tests, 0 failures, 0 errors, 16 opt-in skipped; duration 438.5 seconds",
     "spotless": "spotless:check PASS",
@@ -2688,17 +2707,19 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "simulatedTestTurnsCountTowardMonitoring": false
   },
   "remainingWork": [
-    "obtain the explicit model-route decision required to resolve the 4-second terminal P95 blocker",
+    "configure an OpenAI API credential outside version control, then run the prepared 20-scenario typed-candidate live A/B beginning with gpt-5.4-nano",
+    "only after a provider achieves full correctness and model P95 <= 3000 ms, implement the provider-neutral read-only production route with no legacy double-call",
     "only after a qualifying route passes actual signed-LINE warm/cold latency, start the repaired runtime and record a new metadata-only baseline",
     "complete a fresh approved 24-hour and at-least-20-turn personal-use monitoring window",
     "final product PR, state-only handoff and HARD_YIELD receipt"
   ],
   "releaseBlockers": [
     "No tested Anthropic full-schema, sparse-wire or typed-candidate route satisfies the unchanged Medium terminal P95 <= 4 seconds",
+    "The approved OpenAI live evaluator is ready but neither SPRING_AI_OPENAI_API_KEY nor OPENAI_API_KEY is configured locally",
     "GitHub CLI authentication is required before the product PR can be created; gh auth status at 2026-07-31 13:51 +08:00 reports no authenticated host"
   ],
   "userDecisionRequired": [
-    "Authorize an independently configured low-latency model/provider evaluation for read-only typed candidates while preserving the 4-second terminal gate and all Java safety checks"
+    "Configure SPRING_AI_OPENAI_API_KEY or OPENAI_API_KEY outside version control without pasting it into chat, then tell this session that the credential is available"
   ]
 }
 ```

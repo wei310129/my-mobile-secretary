@@ -106,15 +106,13 @@ public class SchoolTransportConversationService {
 
     private Payload initialPayload(String text) {
         String compact = text.replaceAll("\\s+", "");
-        if (!containsAny(compact, "女兒", "兒子", "孩子", "小孩")
-                || !containsAny(compact, "上課", "英語", "補習", "安親", "才藝")
-                || !compact.contains("每")
+        String child = dependentPersonReference(compact);
+        if (child == null || !compact.contains("每")
                 || !requestsWholeTransportFlow(compact)) return null;
         Matcher weekday = WEEKDAY.matcher(compact);
         Matcher range = RANGE.matcher(compact);
         if (!weekday.find() || !range.find()) return null;
 
-        String child = firstContained(compact, "大女兒", "小女兒", "女兒", "大兒子", "小兒子", "兒子", "孩子", "小孩");
         String course = course(text);
         if (course == null) return null;
         LocalTime start = time(range.group("sh"), range.group("sm"));
@@ -160,8 +158,8 @@ public class SchoolTransportConversationService {
                 || source.getStatus() == com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus.COMPLETED) {
             return null;
         }
-        String child = firstContained(source.getTitle(),
-                "大女兒", "小女兒", "女兒", "大兒子", "小兒子", "兒子", "孩子", "小孩");
+        String child = dependentPersonFromScheduleTitle(source.getTitle());
+        if (child == null) return null;
         String course = courseFromSchedule(source.getTitle(), child);
         if (course == null) return null;
         var start = source.getStartAt().atZone(TAIPEI);
@@ -286,7 +284,7 @@ public class SchoolTransportConversationService {
         for (int i = 0; i < missing.size(); i++) {
             message.append("\n").append(i + 1).append(". ").append(missing.get(i));
         }
-        message.append("\n\n可以一次回覆，例如：「9:30 從我家出發，我在夏恩英語接，12:30 結束」。");
+        message.append("\n\n可以一次回覆，例如：「9:30 從家裡出發，我在課程地點接，12:30 結束」。");
         return message.toString();
     }
 
@@ -321,9 +319,10 @@ public class SchoolTransportConversationService {
     private static boolean looksLikeFollowUp(String text) {
         String compact = text.replaceAll("\\s+", "");
         return containsAny(compact, "出發", "我送", "由我送", "我接", "我去接", "由我接",
-                "有我去接", "結束", "忙到", "接回", "在夏恩", "夏恩英語接",
+                "有我去接", "結束", "忙到", "接回",
                 "接送", "我會送", "也會去接", "送跟接", "送和接", "送、接",
-                "誰送", "誰接", "哪一個行程", "哪個行程", "指哪一個");
+                "誰送", "誰接", "哪一個行程", "哪個行程", "指哪一個")
+                || Pattern.compile("(?:在|到|從)[^，,。；;]{1,40}接").matcher(compact).find();
     }
 
     private static boolean looksLikeTransportContinuation(String text) {
@@ -341,7 +340,7 @@ public class SchoolTransportConversationService {
         return containsAny(text, "我送", "由我送", "我負責送")
                 || containsAny(text, "我負責來回接送", "我來回接送", "送跟接都是我", "送和接都是我",
                         "送、接都是我")
-                || Pattern.compile("我[^，,。；;]{0,30}送(?:她|他|女兒|兒子|孩子|小孩)")
+                || Pattern.compile("我[^，,。；;]{0,40}送(?!修|出|達)")
                         .matcher(text).find()
                 || (text.contains("我會負責") && text.contains("出發") && text.contains("到"));
     }
@@ -369,9 +368,12 @@ public class SchoolTransportConversationService {
                 Pattern.compile("接(?:人|她|他)?的?(?:地點|地方)(?:也)?是?(?:在)?([^，,。；;]{2,40})(?:$|[，,。；;])"), 1);
         if (value == null) value = match(compact, Pattern.compile("從([^，,。；;]{2,40})接回"), 1);
         if (value == null) value = match(compact, Pattern.compile("(?:我)?(?:去|到)([^，,。；;]{2,40}?)(?:去)?接(?:回)?"), 1);
-        if (value == null) value = match(compact,
-                Pattern.compile("(夏恩英語(?:[（(][^）)]{1,30}[）)])?)接"), 1);
-        return clean(value);
+        if (value == null) value = match(compact, Pattern.compile(
+                "(?:下課)?[零一二三四五六七八九十兩\\d:點半分]{1,8}"
+                        + "([^，,。；;]{2,40}?)接(?:回)?(?:$|[，,。；;])"), 1);
+        String location = clean(value);
+        return location != null && containsAny(location, "負責", "也要", "誰", "尚未", "還沒")
+                ? null : location;
     }
 
     private static LocalTime timeNear(String text, String marker) {
@@ -452,7 +454,31 @@ public class SchoolTransportConversationService {
     }
 
     private static String clean(String value) {
-        return value == null ? null : value.strip().replaceAll("[（(]?\u65b0\u5e97\u4e03\u5f35\u5206\u6821[）)]?$", "（新店七張分校）");
+        return value == null ? null : value.strip();
+    }
+
+    private static String dependentPersonReference(String text) {
+        String value = match(text,
+                Pattern.compile("送(?<person>[^，,。；;]{1,12}?)(?:去|到)"), 1);
+        if (value == null) {
+            value = match(text, Pattern.compile(
+                    "^(?<person>[^，,。；;]{1,16}?)(?:到\\d{1,2}月底(?:以前|之前)?的?)?"
+                            + "(?:每個?)?(?:週|周|星期|禮拜)[一二三四五六日天]"), 1);
+        }
+        if (value == null) return null;
+        String normalized = clean(value).replaceFirst("^我(?=.{1,})", "");
+        return normalized.isBlank() || isSelfReference(normalized) ? null : normalized;
+    }
+
+    private static String dependentPersonFromScheduleTitle(String title) {
+        String compact = title == null ? "" : title.replaceAll("\\s+", "");
+        String value = match(compact, Pattern.compile("^送(.+?)到"), 1);
+        if (value == null) value = match(compact, Pattern.compile("^(.+?)上"), 1);
+        return value == null || isSelfReference(value) ? null : clean(value);
+    }
+
+    private static boolean isSelfReference(String value) {
+        return containsAny(value, "本人", "自己") || "我".equals(value);
     }
 
     private static String courseFromSchedule(String title, String child) {
@@ -462,11 +488,6 @@ public class SchoolTransportConversationService {
             value = match(compact, Pattern.compile(Pattern.quote(child) + "上(.+)$"), 1);
         }
         return clean(value);
-    }
-
-    private static String firstContained(String text, String... values) {
-        for (String value : values) if (text.contains(value)) return value;
-        return "孩子";
     }
 
     private static String value(Object value) { return value == null ? "待補" : value.toString(); }

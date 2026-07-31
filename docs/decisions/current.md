@@ -8,6 +8,7 @@ This is the concise current-decision entry point. `docs/development-plan.md` rem
 | Product priority | Reminder reliability is more important than reminder cleverness |
 | Architecture | Thin clients and a modular-monolith backend; controllers are protocol-only and domain does not depend on Web/API packages |
 | AI boundary | LLM performs structured language understanding and expression only; Java validates and executes time, geography, state, authorization, and mutation rules |
+| Natural-language semantic rules | Raw phrase lists and regex may recognize bounded grammar, presentation or fail-closed evidence, but may not decide domain identity, participant role, time shape, recurrence, place, mutation target or fallback. Those decisions require typed evidence and Java validation; every change must include noun/person/place substitutions, neighboring counterexamples, ambiguity with zero mutation, holdout and actual entry-path tests. Configured-model evaluation scores the Java-sanitized executable script separately from raw model output |
 | Time | Inject `Clock`; do not bind business logic to system time |
 | Schema | PostgreSQL/PostGIS with Flyway-only schema changes; keep `spring.jpa.open-in-view=false` |
 | Workspace isolation | New owned tables use `workspace_id` and the established PostgreSQL RLS pattern; the former “do not pre-add user_id” rule is obsolete |

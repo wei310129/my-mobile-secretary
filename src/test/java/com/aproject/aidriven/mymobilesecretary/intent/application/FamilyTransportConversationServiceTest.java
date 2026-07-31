@@ -52,6 +52,40 @@ class FamilyTransportConversationServiceTest {
     }
 
     @Test
+    void namedCaregiversAndNamedPassengerUseSemanticRolesWithoutKinshipDictionary() {
+        IntentResult result = service().answer(
+                "禮拜六九點陳阿姨送小明去安親班，四點林叔叔接回板橋家",
+                () -> { }).orElseThrow();
+
+        assertThat(result.message()).contains("陳阿姨送小明到安親班", "林叔叔接小明回板橋家");
+        verify(scheduleService).createFamilyPointSchedule(
+                "陳阿姨送小明到安親班", Instant.parse("2026-07-18T01:00:00Z"), null, "陳阿姨");
+        verify(scheduleService).createFamilyPointSchedule(
+                "林叔叔接小明回板橋家", Instant.parse("2026-07-18T08:00:00Z"), null, "林叔叔");
+    }
+
+    @Test
+    void actorAsDriverOrPassengerDoesNotEnterNonActorFamilyPath() {
+        assertThat(service().answer(
+                "禮拜六九點我送小明去安親班，四點林叔叔接回板橋家",
+                () -> { })).isEmpty();
+        assertThat(service().answer(
+                "禮拜六九點陳阿姨送我去英文課，四點林叔叔接回板橋家",
+                () -> { })).isEmpty();
+
+        verifyNoInteractions(scheduleService);
+    }
+
+    @Test
+    void applianceDeliveryDoesNotBecomeDependentTransport() {
+        assertThat(service().answer(
+                "禮拜六九點陳先生送洗衣機去維修，四點林先生接回板橋家",
+                () -> { })).isEmpty();
+
+        verifyNoInteractions(scheduleService);
+    }
+
+    @Test
     void pastSameWeekdayTimeMovesToNextWeekInsteadOfCreatingInPast() {
         Clock late = Clock.fixed(
                 Instant.parse("2026-07-18T04:00:00Z"), ZoneId.of("Asia/Taipei"));

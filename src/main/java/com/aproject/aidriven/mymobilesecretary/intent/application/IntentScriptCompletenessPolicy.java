@@ -73,7 +73,8 @@ final class IntentScriptCompletenessPolicy {
 
     private static boolean isActionable(String clause) {
         String compact = clause.replaceAll("\\s+", "");
-        if (isReportedTeacherNotice(compact) || isPreparationInstruction(compact)) {
+        if (ReportedEventNoticePolicy.isReportedNotice(compact)
+                || isPreparationInstruction(compact)) {
             return false;
         }
         if (containsAny(compact,
@@ -86,11 +87,6 @@ final class IntentScriptCompletenessPolicy {
         return CLOCK.matcher(compact).find() && containsAny(compact,
                 "會議", "開會", "上課", "英文課", "活動", "看診", "回診", "聚餐", "運動",
                 "剪頭髮", "接送", "行程");
-    }
-
-    private static boolean isReportedTeacherNotice(String text) {
-        return text.contains("老師") && containsAny(text, "提醒", "通知", "老師說", "報到", "到校")
-                && !text.contains("提醒我");
     }
 
     private static boolean isPreparationInstruction(String text) {

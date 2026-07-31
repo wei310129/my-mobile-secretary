@@ -22,6 +22,22 @@ class IntentScriptSafetyPolicyTest {
     }
 
     @Test
+    void anyReportedOrganizerNoticeWithoutEndTimeCannotBecomeInventedSchedule() {
+        IntentScript raw = new IntentScript(java.util.List.of(new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE, "游泳集合", "2026-08-01T10:00:00+08:00",
+                "2026-08-01T11:00:00+08:00", null, "游泳池", null, null,
+                null, null, null, null, null, null, "教練通知明天十點集合")));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "教練通知明天十點集合，沒有說幾點結束", raw);
+
+        assertThat(safe.commands()).singleElement().satisfies(command -> {
+            assertThat(command.type()).isEqualTo(IntentCommand.Type.UNKNOWN);
+            assertThat(command.reason()).contains("缺活動結束時間", "不會自行補一小時");
+        });
+    }
+
+    @Test
     void caregivingTransportBecomesPointRemindersInsteadOfClassIntervals() {
         IntentScript raw = script(
                 command(IntentCommand.Type.CREATE_SCHEDULE, "送女兒上課",

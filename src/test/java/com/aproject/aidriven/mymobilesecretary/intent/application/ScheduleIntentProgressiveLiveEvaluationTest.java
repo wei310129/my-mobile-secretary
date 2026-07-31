@@ -6,7 +6,9 @@ import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneId;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.List;
@@ -28,6 +30,7 @@ import org.springframework.test.context.ActiveProfiles;
 class ScheduleIntentProgressiveLiveEvaluationTest {
 
     private static final Instant NOW = Instant.parse("2026-07-17T05:30:00Z");
+    private static final Clock EVALUATION_CLOCK = Clock.fixed(NOW, ZoneId.of("Asia/Taipei"));
     private static final Path REPORT = Path.of(
             "target", "schedule-intent-live-evaluation-101-150.md");
 
@@ -51,7 +54,9 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
 
                 Fixed interpretation time: 2026-07-17 13:30 Asia/Taipei
 
-                Evaluation includes the deterministic school-pickup clarification guard before the model.
+                Evaluation applies the same deterministic Java safety policy as the real intent path
+                after structured model interpretation. Raw model output is not treated as an executable
+                business decision.
 
                 | # | Chars | Message | Expected primary type | Actual interpretation | Result |
                 |---:|---:|---|---|---|---|
@@ -79,16 +84,12 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
     }
 
     private Evaluation evaluate(Scenario scenario) {
-        var pickupQuestion = IntentService.schoolPickupClarification(scenario.message());
-        if (pickupQuestion.isPresent()) {
-            boolean pass = scenario.expectedCommandCount() == 1
-                    && scenario.acceptedTypes().contains(IntentCommand.Type.UNKNOWN);
-            return new Evaluation("SERVICE_GUARD UNKNOWN{reason=" + pickupQuestion.get() + "}", pass);
-        }
         try {
-            IntentScript script = interpreter.interpret(
+            IntentScript interpreted = interpreter.interpret(
                     scenario.message(), NOW, ConversationSnapshot.empty());
-            return new Evaluation(summarize(script), matches(scenario, script));
+            IntentScript safe = IntentScriptSafetyPolicy.applyStrict(
+                    scenario.message(), interpreted, EVALUATION_CLOCK);
+            return new Evaluation(summarize(safe), matches(scenario, safe));
         } catch (RuntimeException exception) {
             return new Evaluation("ERROR: " + exception.getClass().getSimpleName() + ": "
                     + exception.getMessage(), false);
@@ -101,7 +102,8 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
             return false;
         }
         IntentCommand first = script.commands().getFirst();
-        return first != null && scenario.acceptedTypes().contains(first.type());
+        return first != null && first.type() != null
+                && scenario.acceptedTypes().contains(first.type());
     }
 
     private static String summarize(IntentScript script) {
@@ -139,11 +141,11 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
                 s("明天早上九點我送女兒去英文課，老師說中午十二點下課，但目前還不知道要由誰去接她回家", 1,
                         IntentCommand.Type.UNKNOWN),
                 s("明天早上九點我送女兒去英文課，中午十二點由老婆接回家，兩段都幫我放進行程並標清楚是誰接送", 2,
-                        IntentCommand.Type.CREATE_SCHEDULE),
+                        IntentCommand.Type.CREATE_TASK),
                 s("週六早上爸爸送兒子去安親班，下午外婆會接他回新店家裡，可是老師還沒通知確切的上下課時間", 1,
                         IntentCommand.Type.UNKNOWN),
                 s("下週一早上八點半媽媽送女兒到學校，下午四點前夫接她去外婆家，請分開建立兩筆接送行程", 2,
-                        IntentCommand.Type.CREATE_SCHEDULE),
+                        IntentCommand.Type.CREATE_TASK),
                 s("明天九點校車會到家裡接兒子去上課，放學不是校車送回來，但我還沒確定是老婆還是外婆去接", 1,
                         IntentCommand.Type.UNKNOWN),
                 s("明天下午兩點到三點在公司開產品會議，四點半到台大醫院回診，兩筆都建立並幫我檢查中間交通是否來得及", 3,
@@ -217,13 +219,13 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
                 s("從下週開始每隔一週的星期四晚上七點上瑜伽課，總共六次；如果只能設定每週固定就不要用錯的週期建立", 1,
                         IntentCommand.Type.CREATE_SCHEDULE, IntentCommand.Type.UNKNOWN),
                 s("週六早上九點我送女兒到夏恩英語，中午十二點由老婆接她回新店家裡，請各建一筆並保留接送人姓名", 2,
-                        IntentCommand.Type.CREATE_SCHEDULE),
+                        IntentCommand.Type.CREATE_TASK),
                 s("週六早上九點我要送女兒到夏恩英語上課，中午十二點下課，但到底是我、老婆還是外婆接目前還沒決定", 1,
                         IntentCommand.Type.UNKNOWN),
                 s("明天下午四點可能由外婆去學校接兒子，也可能臨時改成老婆去，現在請先記錄待確認，不要把任何人當成確定接送人", 1,
                         IntentCommand.Type.UNKNOWN),
                 s("明天早上八點半校車到家接女兒去學校，下午四點校車送她回家，家長都不用接送，請建立兩段校車行程", 2,
-                        IntentCommand.Type.CREATE_SCHEDULE),
+                        IntentCommand.Type.CREATE_TASK),
                 s("這是一個功能回饋：送孩子上課應該是送達時點的提醒，不要占用整段課程，也不要無端追問誰接", 1,
                         IntentCommand.Type.FEEDBACK),
                 s("明天下午兩點到三點開會，但請不要假設會議一定一小時以外的任何緩衝，也不要替我新增沒有說過的交通行程", 1,

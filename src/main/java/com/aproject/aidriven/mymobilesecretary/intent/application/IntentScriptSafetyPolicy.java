@@ -46,7 +46,7 @@ final class IntentScriptSafetyPolicy {
             return result;
         }
         result = normalizeCaregivingReminders(text, result);
-        result = guardTeacherNoticeWithoutEnd(text, result);
+        result = guardReportedNoticeWithoutEnd(text, result);
         Optional<String> pickupQuestion = IntentService.schoolPickupClarification(text);
         if (pickupQuestion.isPresent()) {
             result = IntentService.applySchoolPickupSafeguard(result, pickupQuestion.get());
@@ -171,11 +171,9 @@ final class IntentScriptSafetyPolicy {
                 || text.contains("'" + source + "'");
     }
 
-    private static IntentScript guardTeacherNoticeWithoutEnd(String text, IntentScript script) {
+    private static IntentScript guardReportedNoticeWithoutEnd(String text, IntentScript script) {
         String compact = compact(text);
-        boolean teacherNotice = compact.contains("老師")
-                && containsAny(compact, "通知", "提醒", "老師說", "報到", "到校");
-        if (!teacherNotice || hasExplicitEnd(compact)) {
+        if (!ReportedEventNoticePolicy.isReportedNotice(compact) || hasExplicitEnd(compact)) {
             return script;
         }
 
@@ -183,14 +181,15 @@ final class IntentScriptSafetyPolicy {
         boolean removed = false;
         for (IntentCommand command : script.commands()) {
             if (command != null && command.type() == IntentCommand.Type.CREATE_SCHEDULE
-                    && belongsToTeacherNotice(command)) {
+                    && belongsToReportedNotice(command)) {
                 removed = true;
                 continue;
             }
             safe.add(command);
         }
         if (removed) {
-            safe.add(unknown("老師通知尚缺活動結束時間；確認前不會建立行程，也不會自行補一小時。"));
+            safe.add(unknown("轉述的活動通知缺活動結束時間；確認前不會建立行程，"
+                    + "也不會自行補一小時或其他時長。"));
         }
         return new IntentScript(List.copyOf(safe));
     }
@@ -199,13 +198,12 @@ final class IntentScriptSafetyPolicy {
      * 舊版 command 沒有來源片段時維持 fail-closed；新版輸出可只阻擋老師通知那一項，
      * 讓同句其他已具備明確時間的行程不會被連帶丟棄。
      */
-    private static boolean belongsToTeacherNotice(IntentCommand command) {
+    private static boolean belongsToReportedNotice(IntentCommand command) {
         String source = compact(command.sourceText());
         if (source.isBlank()) {
             return true;
         }
-        return source.contains("老師")
-                && containsAny(source, "通知", "提醒", "老師說", "報到", "到校");
+        return ReportedEventNoticePolicy.isReportedNotice(source);
     }
 
     private static boolean hasExplicitEnd(String compact) {

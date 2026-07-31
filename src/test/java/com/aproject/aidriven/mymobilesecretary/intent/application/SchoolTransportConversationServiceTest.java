@@ -120,6 +120,22 @@ class SchoolTransportConversationServiceTest {
     }
 
     @Test
+    void namedDependentAndArbitraryCourseCompleteFlowWithoutKinshipOrBrandDictionary() {
+        IntentResult result = answer(
+                "到9月底以前，每週六我9:30從家裡出發送小明去上星星畫室，10-12點上課，"
+                        + "12點我在星星畫室接，12:30結束",
+                new AtomicInteger()).orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.BATCH_EXECUTED);
+        assertThat(result.message())
+                .contains("小明上星星畫室", "送小明到星星畫室", "從星星畫室接小明")
+                .doesNotContain("女兒", "夏恩", "待補");
+        verify(scheduleService).createFamilySchedule(
+                anyString(), any(), any(), isNull(), eq("小明"),
+                eq(ScheduleItem.Recurrence.WEEKLY), eq(java.time.LocalDate.of(2026, 9, 30)));
+    }
+
+    @Test
     void simpleDropOffReminderDoesNotOpenAWholeCourseAndPickupDraft() {
         Optional<IntentResult> result = answer(
                 "每週六10-12點送女兒去上英語課",

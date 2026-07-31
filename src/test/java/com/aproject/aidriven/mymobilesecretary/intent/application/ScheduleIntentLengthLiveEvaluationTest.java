@@ -90,7 +90,8 @@ class ScheduleIntentLengthLiveEvaluationTest {
             return false;
         }
         IntentCommand first = script.commands().getFirst();
-        return first != null && scenario.acceptedTypes().contains(first.type());
+        return first != null && first.type() != null
+                && scenario.acceptedTypes().contains(first.type());
     }
 
     private static String summarize(IntentScript script) {

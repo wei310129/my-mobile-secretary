@@ -105,6 +105,8 @@ class IntentScriptSafetyPolicyTest {
                 "把洗衣機送修後送文件去英文課教室")).isFalse();
         assertThat(TransportSemanticPolicy.isTransportToDependentActivity(
                 "我明天去上英文課")).isFalse();
+        assertThat(TransportSemanticPolicy.isTransportToDependentActivity(
+                "每週三早上十點固定意圖測試送課")).isFalse();
     }
 
     @Test

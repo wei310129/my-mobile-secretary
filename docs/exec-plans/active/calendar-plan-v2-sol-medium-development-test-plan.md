@@ -1002,7 +1002,7 @@ stack trace、provider error 或 router reason。
 | 8 | COMPLETED | V72–V82；精準功能／隔離／RLS／neighbor／latency gate 全通過；sealed holdout 16 cases／19 turns；root regression 1417 tests、0 failure、0 error、18 skipped | — |
 | 9 | COMPLETED | W9-A–E PASS_PUBLISHED；latest V88；產品 merge `58e4029` | — |
 | 10 | COMPLETED | V89–V92 recurrence／ICS gates PASS_PUBLISHED；產品 merge `c4ade0b`、state merge `b657970`；`TR-CALENDAR-W10-MERGED=READY` | — |
-| 11 | IN_PROGRESS | W11-A/B/C/E 已通過；W11-F 語意泛化前一批 root 1721 tests／0 failure／0 error／16 opt-in skipped；本批具名人物／任意課程／轉述通知 application + API + signed LINE focused 124/124 綠，完整 regression 待重跑；真實 LINE 稽核揭露產品紅燈後舊 monitoring baseline 已失效 | 完成 evaluator 契約校正與本批 root gate、啟動修正版 runtime 並建立全新 24h／20-turn baseline；產品 PR 與 state-only handoff |
+| 11 | IN_PROGRESS | W11-A/B/C/E 已通過；W11-F 本批具名人物／任意課程／轉述通知 application + API + signed LINE focused 124/124、root 1726 tests／0 failure／0 error／16 opt-in skipped；真實 LINE 稽核揭露產品紅燈後舊 monitoring baseline 已失效 | 完成 configured-model current-contract evaluator、啟動修正版 runtime 並建立全新 24h／20-turn baseline；產品 PR 與 state-only handoff |
 | 12 | REQUIRES_DESTRUCTIVE_APPROVAL | — | 舵輪 11＋精確刪除清單／備份／復原演練＋使用者當輪批准 |
 
 ### 舵輪 0：決策 freeze 與 scenario manifest
@@ -2738,9 +2738,9 @@ identity 與 destructive target 必須由 Java 以來源證據驗證。以下規
 | P0 | 條件場地把 title 固定成「運動」，只提到單一場地也可能被當作選定 | FIXED_ROOT_PASS；明確 activity title／choice action、query-only zero mutation 3/3 與前一批 root 綠 |
 | P0 | live evaluator 把 raw model output 當最終業務決策，且 null type 使 oracle 自己 NPE | FIXED_FOCUSED_PENDING_LIVE_RERUN；progressive evaluator 已套相同 Java strict safety，三組 evaluator 都先拒絕 null type；舊 50-case oracle 依產品 invariant 重審中，不得拿 raw 32/50 冒充產品分數 |
 | P1 | 上班日 routine 追問固定出現小孩、特定公司與固定下班窗 | FIXED_ROOT_PASS；問題由實際接送 evidence 分支，無來源的公司／時間／天氣不再加入，前一批 root 綠 |
-| P1 | school/family transport 以親屬詞作 identity，含特定補習品牌／分店 grammar | FIXED_FOCUSED_PENDING_ROOT；改以駕駛／乘客／接送動作位置解析，具名 `小明`、非親屬照顧者、任意課程地點、本人駕駛／乘客與送修反例納入 application + API + signed LINE 124/124 focused；place identity 仍由下一列獨立 gate 管理 |
+| P1 | school/family transport 以親屬詞作 identity，含特定補習品牌／分店 grammar | FIXED_ROOT_PASS；改以駕駛／乘客／接送動作位置解析，具名 `小明`、非親屬照顧者、任意課程地點、本人駕駛／乘客與送修反例納入 application + API + signed LINE 124/124 focused、root 1726/0/0/16；place identity 仍由下一列獨立 gate 管理 |
 | P1 | school pickup safeguard 可能把同句「送修／配送／送文件」一併擋掉 | FIXED_ROOT_PASS；共用 transport-role policy，只阻擋 dependent-activity transport semantic group；具名人物與送修反例及前一批 root 綠 |
-| P1 | 「老師通知」角色詞可能把 point 當 interval，教練／主管卻繞過 | FIXED_FOCUSED_PENDING_ROOT；改以 reported speech-act + temporal end evidence，任意通知者缺 end 都 clarification／零 mutation，application + API + signed LINE 124/124 focused 綠 |
+| P1 | 「老師通知」角色詞可能把 point 當 interval，教練／主管卻繞過 | FIXED_ROOT_PASS；改以 reported speech-act + temporal end evidence，任意通知者缺 end 都 clarification／零 mutation，application + API + signed LINE 124/124 focused、root 1726/0/0/16 |
 | P1 | place identity 使用 substring 與單一健身品牌特例 | OPEN；brand/branch/place reference 多候選時回問 |
 | P1 | Calendar V2 固定 `Asia/Taipei` 且 create contract 無 participant role | OPEN；保存 IANA zone 與 typed participant reference，缺失／歧義回問 |
 | P1 | legacy 明示地點解析失敗會存 null；relative/reminder 非法值會套 60/10 分鐘 | OPEN；與 V2 共用 required-place／numeric validation policy |

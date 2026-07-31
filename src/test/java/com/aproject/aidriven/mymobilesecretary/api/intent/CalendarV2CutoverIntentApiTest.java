@@ -126,6 +126,58 @@ class CalendarV2CutoverIntentApiTest extends IntegrationTestBase {
         assertThat(count("schedule_item", title)).isZero();
     }
 
+    @Test
+    void recurringCreatePersistsOneCalendarSeriesWithoutLegacyDualWrite() throws Exception {
+        String title = "W11 每週課程";
+        String source = "每週六下午兩點到四點上 W11 陶藝課";
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                title,
+                null,
+                "2026-08-01T14:00:00+08:00",
+                "2026-08-01T16:00:00+08:00",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                true,
+                null,
+                source));
+
+        mockMvc.perform(post("/api/intent")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(payload(source)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.action").value("SCHEDULE_CONFIRMED"));
+
+        assertThat(jdbc.queryForObject(
+                        """
+                        SELECT count(*)
+                        FROM calendar_recurrence_series series
+                        JOIN calendar_plan plan ON plan.id = series.plan_id
+                        WHERE plan.title = ?
+                        """,
+                        Long.class,
+                        title))
+                .isEqualTo(1L);
+        assertThat(jdbc.queryForObject(
+                        """
+                        SELECT count(*)
+                        FROM calendar_recurrence_rule_revision revision
+                        JOIN calendar_recurrence_series series
+                          ON series.id = revision.series_id
+                        JOIN calendar_plan plan ON plan.id = series.plan_id
+                        WHERE plan.title = ? AND revision.frequency = 'WEEKLY'
+                        """,
+                        Long.class,
+                        title))
+                .isEqualTo(1L);
+        assertThat(count("schedule_item", title)).isZero();
+    }
+
     private static String payload(String text) throws Exception {
         return new com.fasterxml.jackson.databind.ObjectMapper()
                 .writeValueAsString(java.util.Map.of("text", text));

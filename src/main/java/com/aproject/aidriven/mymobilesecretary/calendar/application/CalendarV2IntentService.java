@@ -1,10 +1,15 @@
 package com.aproject.aidriven.mymobilesecretary.calendar.application;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.adoption.CalendarLocation;
 import com.aproject.aidriven.mymobilesecretary.calendar.domain.CalendarPlacement;
+import com.aproject.aidriven.mymobilesecretary.calendar.domain.CalendarTimeNode;
 import com.aproject.aidriven.mymobilesecretary.calendar.query.CalendarQueryFilter;
 import com.aproject.aidriven.mymobilesecretary.calendar.query.CalendarQueryItem;
 import com.aproject.aidriven.mymobilesecretary.calendar.query.CalendarQueryPage;
 import com.aproject.aidriven.mymobilesecretary.calendar.query.CalendarQueryService;
+import com.aproject.aidriven.mymobilesecretary.calendar.recurrence.CalendarRecurrenceRegistrationService;
+import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService;
+import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
 import com.aproject.aidriven.mymobilesecretary.shared.observability.RequestCorrelationContext;
@@ -27,15 +32,24 @@ public class CalendarV2IntentService {
 
     private final CalendarApplicationService calendar;
     private final CalendarQueryService queries;
+    private final PlaceAliasService places;
+    private final CalendarRecurrenceRegistrationService recurrences;
     private final Clock clock;
 
     public CalendarV2IntentService(
-            CalendarApplicationService calendar, CalendarQueryService queries, Clock clock) {
+            CalendarApplicationService calendar,
+            CalendarQueryService queries,
+            PlaceAliasService places,
+            CalendarRecurrenceRegistrationService recurrences,
+            Clock clock) {
         this.calendar = calendar;
         this.queries = queries;
+        this.places = places;
+        this.recurrences = recurrences;
         this.clock = clock;
     }
 
+    @org.springframework.transaction.annotation.Transactional
     public IntentResult create(IntentCommand command) {
         require(command.title(), "title");
         Instant start = parse(command.startAt());
@@ -48,15 +62,39 @@ public class CalendarV2IntentService {
                     "請告訴我行程的結束時間或預計多久，我會接著建立。");
         }
         CalendarPlacement placement = CalendarIntentPlacementResolver.resolve(command);
-        CalendarPlanView created = calendar.createPlan(new CreateCalendarPlanCommand(
-                "intent-create:" + RequestCorrelationContext.currentId(),
+        CalendarLocation location = resolveLocation(command);
+        if (command.placeName() != null
+                && !command.placeName().isBlank()
+                && location == null) {
+            return IntentResult.clarificationNeeded(
+                    "找不到已確認的地點「%s」；請先建立或確認地點，再建立行程。"
+                            .formatted(command.placeName()));
+        }
+        CalendarNodeDraft startNode = location == null
+                ? CalendarNodeDraft.of(
+                        CalendarTimeNode.absolute("start", command.title(), start))
+                : CalendarNodeDraft.at(
+                        CalendarTimeNode.absolute("start", command.title(), start),
+                        location);
+        String requestKey = "intent-create:" + RequestCorrelationContext.currentId();
+        CalendarPlanIdentityView created = calendar.createPlanWithIdentity(
+                new CreateCalendarPlanCommand(
+                requestKey,
                 command.title(),
                 placement,
                 command.safeOptions().category(),
                 null,
                 null,
                 List.of(),
-                List.of()));
+                List.of(startNode)));
+        if (recurring(command)) {
+            recurrences.registerPlan(
+                    created.planId(),
+                    placement,
+                    recurrence(command),
+                    recurrenceUntil(command),
+                    requestKey + ":recurrence");
+        }
         return IntentResult.message(
                 IntentResult.Action.SCHEDULE_CONFIRMED,
                 "已建立行程「%s」，時間是 %s%s。"
@@ -66,6 +104,39 @@ public class CalendarV2IntentService {
                                 created.category() == null
                                         ? ""
                                         : "，分類為「" + created.category() + "」"));
+    }
+
+    private static boolean recurring(IntentCommand command) {
+        return Boolean.TRUE.equals(command.recurring())
+                || (command.safeOptions().recurrence() != null
+                        && !command.safeOptions().recurrence().isBlank());
+    }
+
+    private static String recurrence(IntentCommand command) {
+        String value = command.safeOptions().recurrence();
+        return value == null || value.isBlank() ? "WEEKLY" : value;
+    }
+
+    private static LocalDate recurrenceUntil(IntentCommand command) {
+        String value = command.safeOptions().recurrenceUntil();
+        if (value == null || value.isBlank()) {
+            return null;
+        }
+        return LocalDate.parse(value);
+    }
+
+    private CalendarLocation resolveLocation(IntentCommand command) {
+        if (command.placeName() == null || command.placeName().isBlank()) {
+            return null;
+        }
+        return places.resolve(command.placeName())
+                .map(CalendarV2IntentService::location)
+                .orElse(null);
+    }
+
+    private static CalendarLocation location(Place place) {
+        return new CalendarLocation(
+                place.getName(), place.getLatitude(), place.getLongitude());
     }
 
     public IntentResult list(IntentCommand command) {

@@ -163,6 +163,45 @@ class ScheduleSelectionConversationServiceTest {
         verify(schedules, never()).discardSchedule(14L);
     }
 
+    @Test
+    void typedQuoteRejectsOnlyTheExactProposedScheduleForAContainmentCorrection() {
+        when(context.snapshot()).thenReturn(snapshot(null));
+        AtomicInteger mutations = new AtomicInteger();
+        String interpretation = "【LINE 明確引用】行程（待確認）「女兒上夏恩英語」｜07/25 10:00–12:00\n"
+                + "【LINE 引用參考】SCHEDULE:16:1\n【使用者目前訊息】這不是子項目，不要併入";
+
+        IntentResult result = service.answer(
+                "這不是子項目，不要併入",
+                interpretation,
+                mutations::incrementAndGet)
+                .orElseThrow();
+
+        assertThat(result.message()).contains("已放棄", "女兒上夏恩英語")
+                .doesNotContain("送女兒到夏恩英語上課");
+        assertThat(mutations).hasValue(1);
+        verify(schedules).discardSchedule(16L);
+        verify(schedules, never()).discardSchedule(14L);
+    }
+
+    @Test
+    void containmentCorrectionNeverCancelsAConfirmedQuotedSchedule() {
+        when(context.snapshot()).thenReturn(snapshot(null));
+        AtomicInteger mutations = new AtomicInteger();
+        String interpretation = "【LINE 明確引用】行程（已確認）「送女兒到夏恩英語上課」｜07/25 10:00–12:00\n"
+                + "【LINE 引用參考】SCHEDULE:14:1\n【使用者目前訊息】不要把這筆併入";
+
+        IntentResult result = service.answer(
+                "不要把這筆併入",
+                interpretation,
+                mutations::incrementAndGet)
+                .orElseThrow();
+
+        assertThat(result.message()).contains("不合併", "沒有取消", "送女兒到夏恩英語上課");
+        assertThat(mutations).hasValue(0);
+        verify(schedules, never()).discardSchedule(14L);
+        verify(schedules, never()).discardSchedule(16L);
+    }
+
     private ConversationSnapshot snapshot(String lastAssistant) {
         return new ConversationSnapshot(null, 16L, null, List.of(),
                 List.of(14L, 16L), null, null, lastAssistant);

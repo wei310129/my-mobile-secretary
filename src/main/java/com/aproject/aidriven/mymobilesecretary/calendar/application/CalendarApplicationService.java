@@ -421,6 +421,7 @@ public class CalendarApplicationService {
                     activityId,
                     draft.node(),
                     resolved.get(draft.node().id()),
+                    draft.location(),
                     now));
         }
     }

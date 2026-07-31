@@ -7,6 +7,7 @@ import com.aproject.aidriven.mymobilesecretary.IntegrationTestBase;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
+import com.aproject.aidriven.mymobilesecretary.calendar.adoption.CalendarLocation;
 import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarActivityDraft;
 import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarApplicationService;
 import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarNodeDraft;
@@ -79,6 +80,42 @@ class CalendarApplicationServiceTest extends IntegrationTestBase {
                         Long.class,
                         workspace))
                 .isEqualTo(1L);
+    }
+
+    @Test
+    void persistsAnInitialNodeLocationInTheSameCalendarGraphTransaction() {
+        UUID actor = UUID.randomUUID();
+        UUID workspace = UUID.randomUUID();
+        seed(actor, workspace, "location owner");
+        WorkspaceContext context = context(actor, workspace);
+        CalendarLocation location = new CalendarLocation("社區教室", 24.95, 121.54);
+        CreateCalendarPlanCommand command = new CreateCalendarPlanCommand(
+                "calendar-location-1",
+                "陶藝課",
+                CalendarPlacement.interval(
+                        START,
+                        START.plus(Duration.ofHours(2)),
+                        ZoneId.of("Asia/Taipei")),
+                "學習",
+                null,
+                null,
+                List.of(),
+                List.of(CalendarNodeDraft.at(
+                        CalendarTimeNode.absolute("start", "陶藝課", START),
+                        location)));
+
+        inContext(context, () -> service.createPlan(command));
+
+        assertThat(jdbc.queryForMap(
+                        """
+                        SELECT location_label, latitude, longitude
+                        FROM calendar_time_node
+                        WHERE workspace_id = ? AND node_key = 'start'
+                        """,
+                        workspace))
+                .containsEntry("location_label", "社區教室")
+                .containsEntry("latitude", 24.95)
+                .containsEntry("longitude", 121.54);
     }
 
     @Test

@@ -21,7 +21,7 @@ public class ScheduleSelectionConversationService {
             "(?:刪除|刪掉|移除|取消)(?:第)?(\\d{1,2})(?:[.、．])?(?:所指的?)?行程");
     private static final Pattern QUOTED_TITLE = Pattern.compile("[「『]([^」』]{2,160})[」』]");
     private static final Pattern QUOTED_SCHEDULE_REFERENCE = Pattern.compile(
-            "(?:^|;)SCHEDULE:(\\d+):(\\d+)(?:;|$)");
+            "(?:^|[;\\s】])SCHEDULE:(\\d+):(\\d+)(?=[;\\s]|$)");
 
     private final ScheduleService schedules;
     private final ConversationContextService context;
@@ -47,11 +47,32 @@ public class ScheduleSelectionConversationService {
         if (deleteOrdinal != null) {
             return Optional.of(discardByOrdinal(snapshot, deleteOrdinal, beforeMutation));
         }
+        if (isQuotedContainmentCorrection(normalized, interpretationText)) {
+            return Optional.of(resolveQuotedContainmentCorrection(
+                    interpretationText, beforeMutation));
+        }
         if (isQuotedScheduleDiscard(normalized, interpretationText)) {
             return Optional.of(discardQuotedSchedule(
                     snapshot, interpretationText, beforeMutation));
         }
         return Optional.empty();
+    }
+
+    private IntentResult resolveQuotedContainmentCorrection(
+            String interpretationText, Runnable beforeMutation) {
+        ScheduleItem target = typedQuotedTarget(interpretationText).orElse(null);
+        if (target == null) {
+            return IntentResult.clarificationNeeded(
+                    "這則引用沒有唯一指到一筆行程；確認前不會合併、取消或修改。");
+        }
+        if (target.getStatus() == ScheduleStatus.PROPOSED
+                || target.getStatus() == ScheduleStatus.PENDING) {
+            return discard(target, beforeMutation);
+        }
+        return IntentResult.message(
+                IntentResult.Action.CONTEXT_UPDATED,
+                "已記下行程「%s」不合併；原行程沒有取消或修改。"
+                        .formatted(target.getTitle()));
     }
 
     private IntentResult mergeOrRecommend(ConversationSnapshot snapshot, Runnable beforeMutation) {
@@ -167,6 +188,17 @@ public class ScheduleSelectionConversationService {
         return Optional.empty();
     }
 
+    private Optional<ScheduleItem> typedQuotedTarget(String interpretationText) {
+        if (interpretationText == null
+                || !interpretationText.contains("【LINE 明確引用】")) {
+            return Optional.empty();
+        }
+        Matcher typed = QUOTED_SCHEDULE_REFERENCE.matcher(interpretationText);
+        return typed.find()
+                ? Optional.of(schedules.getSchedule(Long.parseLong(typed.group(1))))
+                : Optional.empty();
+    }
+
     private static boolean isMergeRequest(String text, ConversationSnapshot snapshot) {
         boolean refersToTwo = containsAny(text, "前兩個", "前兩筆", "這兩個", "這兩筆")
                 || orderedPair(text, "第一", "第二")
@@ -227,6 +259,18 @@ public class ScheduleSelectionConversationService {
         return deleting && interpretationText != null
                 && interpretationText.contains("【LINE 明確引用】")
                 && interpretationText.contains("行程");
+    }
+
+    private static boolean isQuotedContainmentCorrection(
+            String text, String interpretationText) {
+        if (interpretationText == null
+                || !interpretationText.contains("【LINE 明確引用】")
+                || !QUOTED_SCHEDULE_REFERENCE.matcher(interpretationText).find()) {
+            return false;
+        }
+        return text.matches(".*不是.{0,8}(?:子項目|子行程|一部分).*")
+                || text.matches(".*不(?:要|該|能).{0,8}(?:併入|合併).*")
+                || containsAny(text, "不屬於這個", "別併入", "不要算在裡面");
     }
 
     private static boolean isTerminal(ScheduleItem item) {

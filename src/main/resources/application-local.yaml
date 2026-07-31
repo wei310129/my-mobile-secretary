@@ -1,5 +1,8 @@
 # 本機開發:連 compose.yaml 起的 PostGIS 與 Redis
 app:
+  calendar-v2:
+    # W11 本機 personal-use monitoring 走唯一 Calendar V2 store；可用環境變數 fail closed 關閉。
+    cutover-enabled: ${CALENDAR_V2_CUTOVER_ENABLED:true}
   workspace:
     # Compatibility while local HTTP/LINE/background entry points are being context-enabled.
     legacy-fallback-enabled: true

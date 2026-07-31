@@ -141,6 +141,25 @@ public class CalendarTimeNodeEntity extends WorkspaceOwnedEntity {
                 id, planId, activityId, node, resolvedTime, createdAt);
     }
 
+    public static CalendarTimeNodeEntity create(
+            UUID id,
+            UUID planId,
+            UUID activityId,
+            CalendarTimeNode node,
+            Instant resolvedTime,
+            CalendarLocation location,
+            Instant createdAt) {
+        CalendarTimeNodeEntity entity =
+                new CalendarTimeNodeEntity(
+                        id, planId, activityId, node, resolvedTime, createdAt);
+        if (location != null) {
+            entity.locationLabel = location.label();
+            entity.latitude = location.latitude();
+            entity.longitude = location.longitude();
+        }
+        return entity;
+    }
+
     private void applyExpression(TimeExpression expression) {
         switch (expression) {
             case TimeExpression.Absolute absolute -> {

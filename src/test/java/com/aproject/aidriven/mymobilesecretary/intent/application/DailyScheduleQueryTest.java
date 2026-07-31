@@ -116,6 +116,8 @@ class DailyScheduleQueryTest {
         assertThat(IntentService.schoolPickupClarification(
                 "明天九點我送女兒上課，十二點接的人還沒決定")).isPresent();
         assertThat(IntentService.schoolPickupClarification(
+                "明天九點送小明去上課，十二點接的人還沒決定")).isPresent();
+        assertThat(IntentService.schoolPickupClarification(
                 "明天九點校車接孩子上課，下午可能校車送回")).isPresent();
 
         assertThat(IntentService.schoolPickupClarification(
@@ -130,15 +132,17 @@ class DailyScheduleQueryTest {
     void pickupSafeguardKeepsIndependentCommandsAndRemovesUnsafeSchoolMutation() {
         IntentCommand unsafeSchool = command(IntentCommand.Type.CREATE_SCHEDULE, "送女兒上課");
         IntentCommand meeting = command(IntentCommand.Type.CREATE_SCHEDULE, "產品會議");
+        IntentCommand repair = command(IntentCommand.Type.CREATE_SCHEDULE, "送修洗衣機");
 
         IntentScript safe = IntentService.applySchoolPickupSafeguard(
-                new IntentScript(java.util.List.of(unsafeSchool, meeting)),
+                new IntentScript(java.util.List.of(unsafeSchool, meeting, repair)),
                 "請問下課後由誰接？");
 
         assertThat(safe.commands()).extracting(IntentCommand::title)
-                .containsExactly("產品會議", null);
+                .containsExactly("產品會議", "送修洗衣機", null);
         assertThat(safe.commands()).extracting(IntentCommand::type)
-                .containsExactly(IntentCommand.Type.CREATE_SCHEDULE, IntentCommand.Type.UNKNOWN);
+                .containsExactly(IntentCommand.Type.CREATE_SCHEDULE,
+                        IntentCommand.Type.CREATE_SCHEDULE, IntentCommand.Type.UNKNOWN);
         assertThat(safe.commands().getLast().reason()).contains("由誰接");
         assertThat(IntentService.hasIndependentIntentBesidesSchoolDropOff(
                 "明天九點送女兒上課，下午兩點有產品會議")).isTrue();

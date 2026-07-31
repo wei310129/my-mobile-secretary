@@ -58,6 +58,48 @@ class CalendarIntentPlacementResolverTest {
     }
 
     @Test
+    void reminderLeadTimeDoesNotBecomeTheEventDuration() {
+        assertThat(CalendarIntentPlacementResolver.resolve(command(
+                        "2026-08-03T09:00:00+08:00",
+                        "2026-08-03T09:10:00+08:00",
+                        "2026-08-03 上午九點開會，提前十分鐘提醒我")))
+                .isEqualTo(CalendarPlacement.point(
+                        Instant.parse("2026-08-03T01:00:00Z"), TAIPEI));
+    }
+
+    @Test
+    void travelTimeDoesNotBecomeTheEventDuration() {
+        assertThat(CalendarIntentPlacementResolver.resolve(command(
+                        "2026-08-03T10:00:00+08:00",
+                        "2026-08-03T10:30:00+08:00",
+                        "車程三十分鐘，2026-08-03 上午十點開會")))
+                .isEqualTo(CalendarPlacement.point(
+                        Instant.parse("2026-08-03T02:00:00Z"), TAIPEI));
+    }
+
+    @Test
+    void isoDateHyphensDoNotBecomeATimeRange() {
+        assertThat(CalendarIntentPlacementResolver.resolve(command(
+                        "2026-08-03T09:00:00+08:00",
+                        "2026-08-03T10:00:00+08:00",
+                        "2026-08-03 上午九點開會")))
+                .isEqualTo(CalendarPlacement.point(
+                        Instant.parse("2026-08-03T01:00:00Z"), TAIPEI));
+    }
+
+    @Test
+    void compactHourRangeStillCountsAsAnExplicitInterval() {
+        assertThat(CalendarIntentPlacementResolver.resolve(command(
+                        "2026-08-03T10:00:00+08:00",
+                        "2026-08-03T12:00:00+08:00",
+                        "2026-08-03 10-12點上課")))
+                .isEqualTo(CalendarPlacement.interval(
+                        Instant.parse("2026-08-03T02:00:00Z"),
+                        Instant.parse("2026-08-03T04:00:00Z"),
+                        TAIPEI));
+    }
+
+    @Test
     void legacyTypedIntervalWithoutSourceRemainsCompatible() {
         assertThat(CalendarIntentPlacementResolver.resolve(command(
                         "2026-08-01T10:00:00+08:00",

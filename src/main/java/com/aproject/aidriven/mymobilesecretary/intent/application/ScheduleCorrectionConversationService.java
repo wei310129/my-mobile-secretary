@@ -14,6 +14,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
 import java.util.Optional;
+import java.util.Set;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -74,21 +75,34 @@ public class ScheduleCorrectionConversationService {
         Instant originalStart = date.atTime(originalTime).atZone(TAIPEI).toInstant();
         List<ScheduleItem> matches = scheduleService.findReschedulableSchedulesStartingBetween(
                 originalStart, originalStart.plusSeconds(60));
-        if (matches.isEmpty()) {
-            return Optional.of(IntentResult.clarificationNeeded(
-                    "找不到明天 %s 開始的既有會議；我沒有新增行程，也沒有套用前一個或最後一個時間。"
-                            .formatted(originalTime)));
+        String subject = source.group("subject").strip();
+        if (hasSpecificSubject(subject)) {
+            Set<Long> titleMatchIds = scheduleService.findReschedulableSchedulesMatching(subject)
+                    .stream()
+                    .map(ScheduleItem::getId)
+                    .collect(Collectors.toSet());
+            matches = matches.stream()
+                    .filter(item -> titleMatchIds.contains(item.getId()))
+                    .toList();
         }
-        if (matches.size() > 1) {
-            String choices = matches.stream()
-                    .map(item -> "#%s %s".formatted(item.getId(), item.getTitle()))
+        List<ScheduleItem> candidates = matches;
+        if (candidates.isEmpty()) {
+            return Optional.of(IntentResult.clarificationNeeded(
+                    "找不到明天 %s 開始且名稱符合「%s」的既有行程；"
+                            .formatted(originalTime, hasSpecificSubject(subject) ? subject : "會議")
+                            + "我沒有新增行程，也沒有修改其他同時段行程。"));
+        }
+        if (candidates.size() > 1) {
+            String choices = java.util.stream.IntStream.range(0, candidates.size())
+                    .mapToObj(index -> "%d. %s".formatted(
+                            index + 1, candidates.get(index).getTitle()))
                     .collect(Collectors.joining("、"));
             return Optional.of(IntentResult.clarificationNeeded(
-                    "明天 %s 有多個可改期行程（%s），請指定名稱或編號；目前都沒有修改。"
+                    "明天 %s 有多個可改期行程（%s），請指定完整名稱；目前都沒有修改。"
                             .formatted(originalTime, choices)));
         }
 
-        ScheduleItem item = matches.getFirst();
+        ScheduleItem item = candidates.getFirst();
         if (item.getRecurrence() != ScheduleItem.Recurrence.NONE) {
             return Optional.of(IntentResult.clarificationNeeded(
                     "「%s」是固定行程；請確認只改明天這一次，還是修改整個系列。目前沒有修改。"
@@ -115,6 +129,17 @@ public class ScheduleCorrectionConversationService {
 
     private static boolean looksLikeMeeting(String subject) {
         return subject != null && (subject.contains("會") || subject.contains("會議"));
+    }
+
+    private static boolean hasSpecificSubject(String subject) {
+        if (subject == null) {
+            return false;
+        }
+        String normalized = subject.replaceAll("\\s+", "")
+                .replaceFirst("^(?:這個|那個)", "");
+        return !normalized.isBlank()
+                && !normalized.equals("會")
+                && !normalized.equals("會議");
     }
 
     private static String periodOf(String raw) {

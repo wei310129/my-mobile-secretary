@@ -22,12 +22,15 @@ public final class CalendarIntentPlacementResolver {
     private static final Pattern DURATION = Pattern.compile(
             "(?<amount>半|[零〇一二三四五六七八九十兩\\d]{1,4})\\s*"
                     + "(?<unit>小時|鐘頭|分鐘|分)(?!制)");
+    private static final String HOUR =
+            "(?:\\d{1,2}|[零〇一二三四五六七八九十兩]{1,3})";
+    private static final String CLOCK_TIME =
+            HOUR + "(?:[:：]\\d{1,2}|點(?:半|\\d{1,2}分?)?)";
     private static final Pattern TIME_RANGE = Pattern.compile(
-            "(?:\\d{1,2}|[零〇一二三四五六七八九十兩]{1,3})"
-                    + "(?:[:：]\\d{1,2}|點(?:半|\\d{1,2}分?)?)?"
-                    + ".{0,10}(?:到|至|~|～|－|—|-).{0,10}"
-                    + "(?:\\d{1,2}|[零〇一二三四五六七八九十兩]{1,3})"
-                    + "(?:[:：]\\d{1,2}|點(?:半|\\d{1,2}分?)?)?");
+            "(?:" + CLOCK_TIME + ").{0,10}(?:到|至|~|～|－|—|-).{0,10}(?:"
+                    + CLOCK_TIME + ")"
+                    + "|(?<![\\d-])" + HOUR
+                    + "\\s*(?:到|至|~|～|－|—|-)\\s*(?:" + CLOCK_TIME + ")");
     private static final Pattern EXPLICIT_END = Pattern.compile(
             "(?:結束|下課|離開|到家).{0,8}"
                     + "(?:\\d{1,2}|[零〇一二三四五六七八九十兩]{1,3})"
@@ -71,6 +74,9 @@ public final class CalendarIntentPlacementResolver {
     private static Duration explicitDuration(String source) {
         Matcher matcher = DURATION.matcher(source);
         while (matcher.find()) {
+            if (belongsToAnotherTemporalRole(source, matcher.start(), matcher.end())) {
+                continue;
+            }
             String amount = matcher.group("amount");
             String unit = matcher.group("unit");
             int value = "半".equals(amount) ? 30 : number(amount);
@@ -84,6 +90,24 @@ public final class CalendarIntentPlacementResolver {
             return Duration.ofMinutes(minutes);
         }
         return null;
+    }
+
+    private static boolean belongsToAnotherTemporalRole(
+            String source, int start, int end) {
+        String before = source.substring(Math.max(0, start - 12), start)
+                .replaceAll("\\s+", "");
+        String after = source.substring(end, Math.min(source.length(), end + 8))
+                .replaceAll("\\s+", "");
+        return before.endsWith("前")
+                || before.contains("提前")
+                || before.contains("車程")
+                || before.contains("路程")
+                || before.contains("交通")
+                || before.contains("通勤")
+                || before.contains("準備")
+                || before.contains("等待")
+                || before.contains("等候")
+                || after.startsWith("提醒");
     }
 
     private static int number(String raw) {

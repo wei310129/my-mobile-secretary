@@ -136,9 +136,10 @@ public class CalendarRecurrenceRegistrationService {
             throw new IllegalArgumentException(
                     "Intent recurrence currently requires a timed Calendar placement");
         }
-        String normalized = recurrence == null
-                ? "WEEKLY"
-                : recurrence.strip().toUpperCase(Locale.ROOT);
+        if (recurrence == null || recurrence.isBlank()) {
+            throw new IllegalArgumentException("Calendar recurrence rule is required");
+        }
+        String normalized = recurrence.strip().toUpperCase(Locale.ROOT);
         String frequency;
         String weekdays = "{}";
         Integer weekStart = null;

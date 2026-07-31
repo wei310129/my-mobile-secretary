@@ -1002,7 +1002,7 @@ stack trace、provider error 或 router reason。
 | 8 | COMPLETED | V72–V82；精準功能／隔離／RLS／neighbor／latency gate 全通過；sealed holdout 16 cases／19 turns；root regression 1417 tests、0 failure、0 error、18 skipped | — |
 | 9 | COMPLETED | W9-A–E PASS_PUBLISHED；latest V88；產品 merge `58e4029` | — |
 | 10 | COMPLETED | V89–V92 recurrence／ICS gates PASS_PUBLISHED；產品 merge `c4ade0b`、state merge `b657970`；`TR-CALENDAR-W10-MERGED=READY` | — |
-| 11 | IN_PROGRESS | W11-A/B/C/E 已通過；W11-F post-reset conversation repair focused 107/107、neighbor 94/94、holdout 21/21、root 1675 tests／0 failure／0 error／16 opt-in skipped；approved reset 後 24h／20-turn monitoring 已於 2026-07-31 13:50 +08:00 重新啟動 | 完成新監控；產品 PR 與 state-only handoff |
+| 11 | IN_PROGRESS | W11-A/B/C/E 已通過；W11-F post-reset conversation repair focused 107/107、neighbor 94/94、holdout 21/21、root 1675 tests／0 failure／0 error／16 opt-in skipped；真實 LINE 稽核揭露產品紅燈後已進入語意泛化修正，舊 monitoring baseline 失效 | 完成泛化 gate、啟動修正版 runtime 並建立全新 24h／20-turn baseline；產品 PR 與 state-only handoff |
 | 12 | REQUIRES_DESTRUCTIVE_APPROVAL | — | 舵輪 11＋精確刪除清單／備份／復原演練＋使用者當輪批准 |
 
 ### 舵輪 0：決策 freeze 與 scenario manifest
@@ -2633,6 +2633,7 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "conversationRepairNeighbor": "94 tests, 0 failures, 0 errors, 0 skipped",
     "conversationRepairSealedHoldout": "21 invocations; initial 16 pass/5 generalized blockers, unchanged oracle rerun 21/21 PASS",
     "signedLineSimulation": "25+ isolated signed webhook turns across help, feedback, weekend, quote, ordinal and idempotency paths; deterministic warm P95 461 ms",
+    "semanticGeneralizationFocused": "153 tests, 0 failures, 0 errors, 0 skipped; duration roles, ISO range, recurrence grounding, target intersection, conditional venue, transport role and signed LINE",
     "rootRegression": "1675 tests, 0 failures, 0 errors, 16 opt-in skipped; duration 475.2 seconds",
     "spotless": "spotless:check PASS",
     "officialLineWebhookE2E": "scripts/dev-start.ps1 -SkipDocker -SkipDispatcher exit 0; subsequent dev-status.ps1 -ExternalLineProbe confirms main=UP, Postgres/Redis healthy and LINE=connected"
@@ -2658,11 +2659,12 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "replayCorpus": "910 sanitized text records retained only in ignored private backup; 41 historical image turns not replayed"
   },
   "monitoring": {
-    "status": "IN_PROGRESS",
+    "status": "INVALIDATED_BY_ACTIVE_PRODUCT_REPAIR",
     "approvedByUser": true,
     "previousBaselineInvalidatedByApprovedReset": true,
-    "startedAt": "2026-07-31T13:50:47+08:00",
-    "notBefore": "2026-08-01T13:50:47+08:00",
+    "secondBaselineInvalidatedByObservedProductFailures": true,
+    "startedAt": null,
+    "notBefore": null,
     "minimumNaturalLanguageTurns": 20,
     "officialLineProbe": "PASS",
     "baseline": {
@@ -2675,7 +2677,9 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "simulatedTestTurnsCountTowardMonitoring": false
   },
   "remainingWork": [
-    "complete the approved 24-hour and at-least-20-turn personal-use monitoring window",
+    "complete the semantic-generalization and root gates",
+    "start the repaired runtime and record a new metadata-only baseline",
+    "complete a fresh approved 24-hour and at-least-20-turn personal-use monitoring window",
     "final product PR, state-only handoff and HARD_YIELD receipt"
   ],
   "releaseBlockers": [
@@ -2684,6 +2688,56 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
   "userDecisionRequired": []
 }
 ```
+
+#### W11-F 語意泛化不變量與硬編碼稽核（2026-07-31）
+
+使用者已明確要求：自然語言功能不得把單一人名、親屬稱謂、品牌、分店、地點、例句或某個
+中文字當成業務真相。LLM 可抽取 typed evidence，但 mutation、時間形狀、參與角色、週期、地點
+identity 與 destructive target 必須由 Java 以來源證據驗證。以下規則是 W11 release gate，不是建議：
+
+1. `contains`／regex／詞表只可用於 bounded grammar、呈現、明確 protocol marker 或 fail-closed
+   safety evidence；不得單獨決定被修改的 domain object、活動參與者、行程時長、週期、地點
+   identity 或 mutation scope。
+2. 人物判斷以 typed `participant/person reference + role` 為目標；「女兒」案例必須至少有「兒子」、
+   具名人物、非親屬人物、本人活動與否定／連接詞 counterexample。不得以性別或封閉親屬詞表
+   決定「本人行程」或「代辦責任」。
+3. 時間判斷必須保存 evidence role：event start/end、event duration、reminder lead、travel、buffer、
+   deadline 與 wait 不得互相挪用。ISO date、URL、電話與編號不得被時間 range regex 接受。
+4. `recurrence`、time、place、participant、authorization 與 destructive target 無法辨識時一律
+   clarification／fail closed 且零 mutation；不得 `catch` 後變 `NONE`、`WEEKLY`、60 分鐘、10 分鐘
+   或 `null place`。只有已拍板且在回覆中明示的產品 default 才可使用。
+5. target resolution 必須使用 typed reference 或「來源標題／時間／actor scope」的唯一交集；0 或
+   多筆都回問。不得因同時段只有一筆就忽略使用者說的名稱，也不得把 raw DB id 顯示給使用者。
+6. 新增或修改 raw-text fast path 時，至少提供：正例、同義改寫、人物／地點替換、鄰近反例、
+   否定／引用反例、缺欄位零 mutation、跨 actor/RLS、idempotent replay 與 signed LINE entry-path
+   測試。只測原始例句不算完成。
+7. review 時必須逐一回答：這條規則依賴的是「語意證據」還是「剛好出現在測試裡的字」；替換
+   人名、親屬、品牌、城市、活動種類或句型後是否仍保持同一 domain outcome。無證據不得放行。
+
+本輪唯讀掃描限定 `intent/conversation`、`calendar`、`reminder` 三個直接相關範圍；結果如下。
+`OPEN` 不得在 W11 receipt 中冒稱解決，必須在 final monitoring baseline 前完成 typed contract 或
+加入明確零 mutation boundary 與 counterexample gate：
+
+| 風險 | 發現 | 狀態／必要證據 |
+| --- | --- | --- |
+| P0 | 接送責任依封閉親屬詞表；`WEEKDAYS` 靜默降成單次 | `4e28cc4` 已改為接送角色語意；兒子／具名人物／`接著上課`／signed LINE／週五跳週一測試通過 |
+| P0 | reminder lead／車程可能被當成 event duration；ISO date 連字號可能被當時間 range | FIXED_PENDING_ROOT；resolver negative cases 與真正 `10-12點` counterexample 11/11 綠 |
+| P0 | recurrence 空白／未知值可能變 `WEEKLY` | FIXED_PENDING_ROOT；只有來源明示每天／平日／每週／每月第 N 週才可註冊，其他零 mutation |
+| P0 | 行程更正只用原時間，不核對使用者說的標題 | FIXED_PENDING_ROOT；time/title 唯一交集與 no-DB-id 6/6 綠 |
+| P0 | 條件場地把 title 固定成「運動」，只提到單一場地也可能被當作選定 | FIXED_PENDING_ROOT；明確 activity title／choice action 與 query-only zero mutation 3/3 綠 |
+| P1 | 上班日 routine 追問固定出現小孩、特定公司與固定下班窗 | FIXED_PENDING_ROOT；問題由實際接送 evidence 分支，無來源的公司／時間／天氣不再加入 |
+| P1 | school/family transport 以親屬詞作 identity，含特定補習品牌／分店 grammar | OPEN；改 stable person/place reference，具名人物、多名孩子與任意品牌不得錯綁 |
+| P1 | school pickup safeguard 可能把同句「送修／配送／送文件」一併擋掉 | FIXED_PENDING_ROOT；共用 transport-role policy，只阻擋 school transport semantic group；具名人物與送修反例綠 |
+| P1 | 「老師通知」角色詞可能把 point 當 interval，教練／主管卻繞過 | OPEN；改 typed speech-act、temporal-shape、end evidence |
+| P1 | place identity 使用 substring 與單一健身品牌特例 | OPEN；brand/branch/place reference 多候選時回問 |
+| P1 | Calendar V2 固定 `Asia/Taipei` 且 create contract 無 participant role | OPEN；保存 IANA zone 與 typed participant reference，缺失／歧義回問 |
+| P1 | legacy 明示地點解析失敗會存 null；relative/reminder 非法值會套 60/10 分鐘 | OPEN；與 V2 共用 required-place／numeric validation policy |
+| P1 | ICS timed point export 被捏成 60 秒 busy interval | OPEN；point round-trip 必須仍是 point，busy interval 增量為零 |
+
+合理而可保留的固定集合包括：受 schema constraint 保護且未知值 fail-loud 的 persistence enum、
+日期／時間 token grammar、只影響 icon／文案的 presentation mapping，以及需要控制動詞加明確 target
+才生效的 conversation focus protocol。這些仍須有否定、引用與未知值 counterexample；「固定」本身
+不代表安全。
 
 Gate：
 

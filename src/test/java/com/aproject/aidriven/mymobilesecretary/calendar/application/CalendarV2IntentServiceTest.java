@@ -211,6 +211,25 @@ class CalendarV2IntentServiceTest {
     }
 
     @Test
+    void recurringFlagWithoutARecognizableRuleFailsBeforeMutation() {
+        IntentCommand command = new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                "不明週期課程",
+                null,
+                "2026-07-25T14:00:00+08:00",
+                "2026-07-25T16:00:00+08:00",
+                null, null, null, null, null, null, null, true,
+                IntentOptions.empty(),
+                "固定安排這堂課，但週期還沒說清楚");
+
+        IntentResult result = service.create(command);
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.CLARIFICATION_NEEDED);
+        assertThat(result.message()).contains("週期");
+        verifyNoInteractions(calendar, recurrences);
+    }
+
+    @Test
     void knownPlaceIsPersistedOnTheStartNodeWithoutNameOnlyLookup() {
         Place place = Place.create(
                 "社區教室",

@@ -414,14 +414,20 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
     private static ScheduleItem.Recurrence parseScheduleRecurrence(IntentCommand command) {
         String value = command.safeOptions().recurrence();
         if (value != null && !value.isBlank()) {
-            try {
-                return ScheduleItem.Recurrence.valueOf(value.toUpperCase());
-            } catch (IllegalArgumentException ignored) {
-                // Keep the prior boolean fallback when the model emits an unknown spelling.
-            }
+            return ScheduleItem.Recurrence.valueOf(value.toUpperCase());
         }
-        return Boolean.TRUE.equals(command.recurring())
-                ? ScheduleItem.Recurrence.WEEKLY : ScheduleItem.Recurrence.NONE;
+        if (!Boolean.TRUE.equals(command.recurring())) {
+            return ScheduleItem.Recurrence.NONE;
+        }
+        if (command.sourceText() == null || command.sourceText().isBlank()) {
+            return ScheduleItem.Recurrence.WEEKLY;
+        }
+        String compact = command.sourceText().replaceAll("\\s+", "");
+        if (compact.contains("每週") || compact.contains("每周")
+                || compact.contains("每星期") || compact.contains("每個禮拜")) {
+            return ScheduleItem.Recurrence.WEEKLY;
+        }
+        throw new IllegalArgumentException("recurrence rule is not grounded in source text");
     }
 
     private static java.time.LocalDate parseRecurrenceUntil(IntentCommand command) {

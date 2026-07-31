@@ -1128,15 +1128,19 @@ public class IntentService {
                 && (normalized.contains("日常行程") || normalized.contains("日常安排"))
                 && (normalized.contains("上班") || normalized.contains("通勤"));
         if (!routine) return Optional.empty();
+        boolean hasDependentTransport = TransportSemanticPolicy
+                .isTransportToDependentActivity(normalized);
         return Optional.of("""
                 我知道你要記的是「上班日固定生活時段」，而且親自到場的事情不能排進通勤與上班區間；我不會把這段當成一般回饋，也不會先猜時間建立。
                 建立前請一次確認這 4 點：
                 1. 上班日固定是週一到週五嗎？國定假日是否略過？
-                2. 送完小孩後，最晚幾點要到富邦內湖大樓？
-                3. 「18:10–20 下班」是每天可在這段時間任選，還是不同星期有固定下班時間？
-                4. 要封鎖的是 07:00 起床到抵達公司、上班到回家全程，還是只封鎖搭車／騎車區段？
-                你回答後，我再拆成固定時段；下雨與未下雨路線會保留為條件資訊，不會同時占兩份時間。
-                """.strip());
+                2. %s
+                3. 通常幾點離開工作地點？若不同星期不同，請分別說明。
+                4. 哪些是你本人被占用的時間段，哪些只是出發、抵達或接送的定點提醒？
+                你回答後，我再依參與角色拆成固定時間段與定點提醒；沒有明講的地點、接送或天氣條件都不會自行加入。
+                """.formatted(hasDependentTransport
+                        ? "接送完成後，工作地點在哪裡，最晚幾點要到？"
+                        : "工作地點在哪裡，最晚幾點要到？").strip());
     }
 
     /**
@@ -1145,11 +1149,8 @@ public class IntentService {
      */
     static Optional<String> schoolPickupClarification(String text) {
         String normalized = text == null ? "" : text.replaceAll("\\s+", "");
-        boolean child = normalized.contains("女兒") || normalized.contains("兒子")
-                || normalized.contains("小孩") || normalized.contains("孩子");
-        boolean classTrip = normalized.contains("送") && child
-                && (normalized.contains("課") || normalized.contains("補習")
-                || normalized.contains("安親班"));
+        boolean classTrip = TransportSemanticPolicy
+                .isTransportToDependentActivity(normalized);
         boolean scheduling = normalized.matches(".*(?:今天|明天|明日|後天|每週|每周|週[一二三四五六日天]|"
                 + "星期[一二三四五六日天]|禮拜[一二三四五六日天]|\\d{1,2}(?::\\d{2}|點)).*");
         boolean pickupUncertain = containsAny(normalized,
@@ -1203,8 +1204,8 @@ public class IntentService {
         };
         if (!scheduleMutation) return false;
         String title = command.title() == null ? "" : command.title().replaceAll("\\s+", "");
-        return containsAny(title, "女兒", "兒子", "孩子", "小孩", "送", "上課", "英文課",
-                "安親班", "才藝課", "補習");
+        String source = command.sourceText() == null ? "" : command.sourceText();
+        return TransportSemanticPolicy.isTransportToDependentActivity(title + source);
     }
 
     private static boolean containsAny(String text, String... values) {

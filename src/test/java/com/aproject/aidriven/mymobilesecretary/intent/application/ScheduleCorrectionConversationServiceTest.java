@@ -67,9 +67,7 @@ class ScheduleCorrectionConversationServiceTest {
     @Test
     void multipleOriginalCandidatesAreListedAndNothingIsChanged() {
         ScheduleItem another = org.mockito.Mockito.mock(ScheduleItem.class);
-        when(meeting.getId()).thenReturn(7L);
         when(meeting.getTitle()).thenReturn("產品會議");
-        when(another.getId()).thenReturn(8L);
         when(another.getTitle()).thenReturn("部門會議");
         when(scheduleService.findReschedulableSchedulesStartingBetween(
                 ORIGINAL_START, ORIGINAL_START.plusSeconds(60)))
@@ -79,9 +77,63 @@ class ScheduleCorrectionConversationServiceTest {
                 "明天下午兩點的會改三點，不是，改到三點半", () -> { }).orElseThrow();
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.CLARIFICATION_NEEDED);
-        assertThat(result.message()).contains("#7 產品會議", "#8 部門會議", "都沒有修改");
+        assertThat(result.message()).contains("1. 產品會議", "2. 部門會議", "都沒有修改")
+                .doesNotContain("#7", "#8");
         verify(scheduleService, never()).reschedule(
                 org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void explicitTitleMismatchNeverFallsBackToTheOnlyScheduleAtThatTime() {
+        AtomicInteger mutations = new AtomicInteger();
+        when(scheduleService.findReschedulableSchedulesStartingBetween(
+                ORIGINAL_START, ORIGINAL_START.plusSeconds(60))).thenReturn(List.of(meeting));
+        when(scheduleService.findReschedulableSchedulesMatching("董事會"))
+                .thenReturn(List.of());
+
+        IntentResult result = service().answer(
+                "明天下午兩點的董事會改三點，不是，改到三點半",
+                mutations::incrementAndGet).orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.CLARIFICATION_NEEDED);
+        assertThat(result.message()).contains("董事會", "沒有修改").doesNotContain("牙醫已改");
+        assertThat(mutations).hasValue(0);
+        verify(scheduleService, never()).reschedule(
+                org.mockito.ArgumentMatchers.anyLong(),
+                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+    }
+
+    @Test
+    void explicitTitleCanSelectOneOfSeveralSchedulesAtTheSameTime() {
+        ScheduleItem dentist = org.mockito.Mockito.mock(ScheduleItem.class);
+        when(meeting.getId()).thenReturn(7L);
+        when(meeting.getTitle()).thenReturn("董事會");
+        when(meeting.getStartAt()).thenReturn(ORIGINAL_START);
+        when(meeting.getEndAt()).thenReturn(ORIGINAL_END);
+        when(meeting.getRecurrence()).thenReturn(ScheduleItem.Recurrence.NONE);
+        when(dentist.getId()).thenReturn(8L);
+        when(scheduleService.findReschedulableSchedulesStartingBetween(
+                ORIGINAL_START, ORIGINAL_START.plusSeconds(60)))
+                .thenReturn(List.of(meeting, dentist));
+        when(scheduleService.findReschedulableSchedulesMatching("董事會"))
+                .thenReturn(List.of(meeting));
+        when(feasibility.feasible()).thenReturn(true);
+        when(scheduleService.reschedule(7L,
+                Instant.parse("2026-07-19T07:30:00Z"),
+                Instant.parse("2026-07-19T08:30:00Z")))
+                .thenReturn(new ScheduleDecision(meeting, feasibility));
+
+        IntentResult result = service().answer(
+                "明天下午兩點的董事會改三點，不是，改到三點半", () -> { })
+                .orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.SCHEDULE_RESCHEDULED);
+        verify(scheduleService).reschedule(7L,
+                Instant.parse("2026-07-19T07:30:00Z"),
+                Instant.parse("2026-07-19T08:30:00Z"));
+        verify(scheduleService, never()).reschedule(
+                org.mockito.ArgumentMatchers.eq(8L),
                 org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
     }
 

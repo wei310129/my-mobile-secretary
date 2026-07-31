@@ -20,6 +20,8 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Locale;
+import java.util.Set;
 import org.springframework.stereotype.Service;
 
 @Service
@@ -61,6 +63,12 @@ public class CalendarV2IntentService {
             return IntentResult.clarificationNeeded(
                     "請告訴我行程的結束時間或預計多久，我會接著建立。");
         }
+        String recurrenceRule = recurring(command) ? recurrence(command) : null;
+        if (recurring(command) && recurrenceRule == null) {
+            return IntentResult.clarificationNeeded(
+                    "請明確告訴我週期是每天、每個平日、每週，或每月第幾個星期幾；"
+                            + "確認前不會建立行程。");
+        }
         CalendarPlacement placement = CalendarIntentPlacementResolver.resolve(command);
         CalendarLocation location = resolveLocation(command);
         if (command.placeName() != null
@@ -87,11 +95,11 @@ public class CalendarV2IntentService {
                 null,
                 List.of(),
                 List.of(startNode)));
-        if (recurring(command)) {
+        if (recurrenceRule != null) {
             recurrences.registerPlan(
                     created.planId(),
                     placement,
-                    recurrence(command),
+                    recurrenceRule,
                     recurrenceUntil(command),
                     requestKey + ":recurrence");
         }
@@ -114,7 +122,38 @@ public class CalendarV2IntentService {
 
     private static String recurrence(IntentCommand command) {
         String value = command.safeOptions().recurrence();
-        return value == null || value.isBlank() ? "WEEKLY" : value;
+        String grounded = recurrenceFromSource(command.sourceText());
+        if (value == null || value.isBlank()) {
+            return grounded;
+        }
+        String normalized = value.strip().toUpperCase(Locale.ROOT);
+        if (!Set.of("DAILY", "WEEKDAYS", "WEEKLY", "MONTHLY_NTH_WEEKDAY")
+                .contains(normalized)) {
+            return null;
+        }
+        return grounded != null && !grounded.equals(normalized) ? null : normalized;
+    }
+
+    private static String recurrenceFromSource(String source) {
+        String compact = source == null ? "" : source.replaceAll("\\s+", "");
+        if (compact.contains("每個平日") || compact.contains("每平日")
+                || compact.contains("每個上班日") || compact.contains("每上班日")) {
+            return "WEEKDAYS";
+        }
+        if (compact.contains("每天") || compact.contains("每日")) {
+            return "DAILY";
+        }
+        if (compact.contains("每週") || compact.contains("每周")
+                || compact.contains("每星期") || compact.contains("每個禮拜")) {
+            return "WEEKLY";
+        }
+        if ((compact.contains("每月") || compact.contains("每個月"))
+                && (compact.contains("第一個") || compact.contains("第二個")
+                        || compact.contains("第三個") || compact.contains("第四個")
+                        || compact.contains("第五個") || compact.contains("最後一個"))) {
+            return "MONTHLY_NTH_WEEKDAY";
+        }
+        return null;
     }
 
     private static LocalDate recurrenceUntil(IntentCommand command) {

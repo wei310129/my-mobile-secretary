@@ -32,6 +32,10 @@ public class ConditionalVenueConversationService {
     private static final Pattern PRIMARY = Pattern.compile("(?:明天|明晚|今晚)?[^，,]{0,20}?去([^，,。]{1,80})");
     private static final Pattern FALLBACK = Pattern.compile(
             "(?:就|則)(?:改)?(?:在|去)([^，,。]{1,40}?)(?:運動|活動|$)");
+    private static final Pattern ACTIVITY_TITLE = Pattern.compile(
+            "(?:活動|行程)名稱(?:是|為|叫)(?<named>[^，,。；;]{1,30})"
+                    + "|每次(?<repeated>[^，,。；;]{1,20}?)(?="
+                    + "(?:半|[零一二三四五六七八九十兩\\d]{1,3})(?:小時|鐘頭|分鐘))");
 
     private final ConditionalVenueService venueService;
     private final Clock clock;
@@ -76,6 +80,9 @@ public class ConditionalVenueConversationService {
         if (parsed.primaryPlace() == null || parsed.fallbackPlace() == null) {
             missing.add("原定與備用場地");
         }
+        if (parsed.activityTitle() == null) {
+            missing.add("活動名稱");
+        }
         if (!missing.isEmpty()) {
             return Optional.of(IntentResult.clarificationNeeded(
                     "我已辨識這是二選一的條件場地，只會建立一個最終行程，不會先建兩份。"
@@ -89,7 +96,7 @@ public class ConditionalVenueConversationService {
 
         beforeMutation.run();
         ConditionalVenueDraft draft = venueService.createDraft(
-                "運動", parsed.eventAt(), parsed.duration(), parsed.primaryPlace(),
+                parsed.activityTitle(), parsed.eventAt(), parsed.duration(), parsed.primaryPlace(),
                 parsed.fallbackPlace(), parsed.decisionAt());
         return Optional.of(IntentResult.message(IntentResult.Action.PLANNING_PREFERENCE_SET,
                 "已保存條件場地草稿 #%d，尚未建立行程：\n"
@@ -128,6 +135,7 @@ public class ConditionalVenueConversationService {
         Matcher fallback = FALLBACK.matcher(expanded);
         return new Parsed(
                 eventAt == null ? null : eventAt.toInstant(), duration(expanded),
+                activityTitle(expanded),
                 primary.find() ? cleanPlace(primary.group(1)) : null,
                 fallback.find() ? cleanPlace(fallback.group(1)) : null,
                 decisionAt == null ? null : decisionAt.toInstant(),
@@ -143,12 +151,25 @@ public class ConditionalVenueConversationService {
         if (containsAny(text, "有開", "正常營業", "照原定") && primary) {
             return Optional.of(draft.getPrimaryPlaceName());
         }
-        if (fallback && containsAny(text, "改在", "改去", "選", "就在")) {
+        if (fallback && containsAny(text, "改在", "改去", "選", "就在", "決定去")) {
             return Optional.of(draft.getFallbackPlaceName());
         }
-        if (primary ^ fallback) return Optional.of(
-                primary ? draft.getPrimaryPlaceName() : draft.getFallbackPlaceName());
+        if (primary && containsAny(text, "選", "就去", "照原定", "決定去")) {
+            return Optional.of(draft.getPrimaryPlaceName());
+        }
         return Optional.empty();
+    }
+
+    private static String activityTitle(String text) {
+        Matcher matcher = ACTIVITY_TITLE.matcher(text);
+        if (!matcher.find()) {
+            return null;
+        }
+        String title = matcher.group("named") != null
+                ? matcher.group("named") : matcher.group("repeated");
+        String normalized = title == null ? "" : title.strip()
+                .replaceFirst("^(?:做|進行|安排)", "");
+        return normalized.isBlank() ? null : normalized;
     }
 
     private static Duration duration(String text) {
@@ -226,7 +247,8 @@ public class ConditionalVenueConversationService {
     }
 
     private record Parsed(
-            Instant eventAt, Duration duration, String primaryPlace, String fallbackPlace,
+            Instant eventAt, Duration duration, String activityTitle,
+            String primaryPlace, String fallbackPlace,
             Instant decisionAt, boolean decisionPeriodExplicit) {
     }
 

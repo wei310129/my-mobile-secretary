@@ -45,6 +45,8 @@ final class IntentScriptSafetyPolicy {
                         && CalendarDatePolicy.clarification(text, clock).isPresent())) {
             return result;
         }
+        result = guardExplicitDraftOnly(text, result);
+        result = guardUnsupportedConditionalRecurrence(text, result);
         result = normalizeCaregivingReminders(text, result);
         result = guardReportedNoticeWithoutEnd(text, result);
         Optional<String> pickupQuestion = IntentService.schoolPickupClarification(text);
@@ -52,6 +54,60 @@ final class IntentScriptSafetyPolicy {
             result = IntentService.applySchoolPickupSafeguard(result, pickupQuestion.get());
         }
         return normalizeScheduleReminder(text, result);
+    }
+
+    private static IntentScript guardExplicitDraftOnly(String text, IntentScript script) {
+        String compact = compact(text);
+        boolean draftOnly = containsAny(compact, "保留草稿", "先留草稿", "先幫我留草稿", "只留草稿")
+                || containsAny(compact, "不要直接建立", "不要建立正式", "先不要建立正式");
+        if (!draftOnly) return script;
+        return rejectMatching(script, IntentScriptSafetyPolicy::isDirectCreation,
+                "你要求只保留草稿；目前沒有可安全執行的 typed 草稿操作，確認前不會建立正式資料。");
+    }
+
+    private static IntentScript guardUnsupportedConditionalRecurrence(
+            String text, IntentScript script) {
+        String compact = compact(text);
+        boolean recurring = containsAny(compact, "每週", "每周", "每星期", "每個禮拜", "固定");
+        boolean conditional = containsAny(compact, "如果", "若", "遇到", "逢")
+                && containsAny(compact, "假日", "國定假日", "颱風", "停班", "停課", "提前", "順延", "跳過");
+        if (!recurring || !conditional) return script;
+        return rejectMatching(script, IntentScriptSafetyPolicy::isScheduleCreationOrRecurrence,
+                "這個固定行程包含條件式改期或跳過規則；無法完整保存規則時不會降格成普通每週行程。");
+    }
+
+    private static IntentScript rejectMatching(
+            IntentScript script,
+            java.util.function.Predicate<IntentCommand> rejected,
+            String reason) {
+        List<IntentCommand> safe = new ArrayList<>();
+        boolean removed = false;
+        for (IntentCommand command : script.commands()) {
+            if (command != null && rejected.test(command)) {
+                removed = true;
+            } else if (command != null) {
+                safe.add(command);
+            }
+        }
+        if (removed) safe.add(unknown(reason));
+        return new IntentScript(List.copyOf(safe));
+    }
+
+    private static boolean isDirectCreation(IntentCommand command) {
+        if (command.type() == null) return false;
+        return switch (command.type()) {
+            case CREATE_SCHEDULE, CREATE_RELATIVE_SCHEDULE, CREATE_TASK,
+                    CREATE_FLEXIBLE_DAY_TASK -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isScheduleCreationOrRecurrence(IntentCommand command) {
+        if (command.type() == null) return false;
+        return switch (command.type()) {
+            case CREATE_SCHEDULE, CREATE_RELATIVE_SCHEDULE, SET_SCHEDULE_RECURRING -> true;
+            default -> false;
+        };
     }
 
     private static IntentScript normalizeCaregivingReminders(

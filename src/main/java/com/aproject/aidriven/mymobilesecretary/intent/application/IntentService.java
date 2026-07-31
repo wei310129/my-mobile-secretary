@@ -1197,15 +1197,19 @@ public class IntentService {
 
     private static boolean isUnsafeSchoolPickupMutation(IntentCommand command) {
         if (command == null || command.type() == null) return false;
-        boolean scheduleMutation = switch (command.type()) {
+        boolean intervalMutation = switch (command.type()) {
             case CREATE_SCHEDULE, CREATE_RELATIVE_SCHEDULE, RESCHEDULE_SCHEDULE,
                     SET_SCHEDULE_RECURRING -> true;
             default -> false;
         };
-        if (!scheduleMutation) return false;
         String title = command.title() == null ? "" : command.title().replaceAll("\\s+", "");
         String source = command.sourceText() == null ? "" : command.sourceText();
-        return TransportSemanticPolicy.isTransportToDependentActivity(title + source);
+        boolean dependentTransport = TransportSemanticPolicy
+                .isTransportToDependentActivity(title + source);
+        if (intervalMutation) return dependentTransport;
+        if (command.type() != IntentCommand.Type.CREATE_TASK) return false;
+        boolean pickupAction = title.matches(".*(?:接回|接(?!著|受|續)|送回).*");
+        return pickupAction && dependentTransport;
     }
 
     private static boolean containsAny(String text, String... values) {

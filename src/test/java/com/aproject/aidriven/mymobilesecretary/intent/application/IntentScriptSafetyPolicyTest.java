@@ -224,6 +224,59 @@ class IntentScriptSafetyPolicyTest {
         assertThat(safe.commands()).containsExactlyElementsOf(raw.commands());
     }
 
+    @Test
+    void conditionalRecurrenceCannotSilentlyDegradeToOrdinaryWeekly() {
+        IntentScript raw = script(command(
+                IntentCommand.Type.CREATE_SCHEDULE, "週會",
+                "2026-07-24T10:00:00+08:00", null, null));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "每週五上午十點固定開週會，如果遇到國定假日就提前到週四，"
+                        + "遇到颱風停班則順延到下一個上班日",
+                raw);
+
+        assertThat(safe.commands()).singleElement().satisfies(command -> {
+            assertThat(command.type()).isEqualTo(IntentCommand.Type.UNKNOWN);
+            assertThat(command.reason()).contains("不會降格成普通每週行程");
+        });
+    }
+
+    @Test
+    void explicitDraftOnlyRequestCannotCreateFormalSchedule() {
+        IntentScript raw = script(command(
+                IntentCommand.Type.CREATE_SCHEDULE, "跟朋友吃飯",
+                "2026-07-18T19:00:00+08:00", "2026-07-18T21:00:00+08:00", null));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "明天晚上七點左右跟朋友吃飯，先幫我保留草稿，不要直接建立正式行程", raw);
+
+        assertThat(safe.commands()).singleElement().satisfies(command -> {
+            assertThat(command.type()).isEqualTo(IntentCommand.Type.UNKNOWN);
+            assertThat(command.reason()).contains("只保留草稿", "不會建立正式資料");
+        });
+    }
+
+    @Test
+    void uncertainPickupRemovesPickupMutationButKeepsGroundedDropOffReminder() {
+        IntentScript raw = script(new IntentCommand(
+                        IntentCommand.Type.CREATE_SCHEDULE, "送小明去上課", null,
+                        "2026-07-18T09:00:00+08:00", "2026-07-18T10:00:00+08:00",
+                        null, null, null, null, null, null, null, null, null,
+                        "明天九點送小明去上課"),
+                new IntentCommand(IntentCommand.Type.CREATE_TASK, "接小明",
+                        "2026-07-18T16:00:00+08:00", null, null, null, null, null,
+                        null, null, null, null, null, null,
+                        "下午四點可能由阿姨去學校接小明，也可能改成叔叔去"));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "明天九點送小明去上課；下午四點可能由阿姨去學校接小明，也可能改成叔叔去，接的人待確認",
+                raw);
+
+        assertThat(safe.commands()).extracting(IntentCommand::type).containsExactly(
+                IntentCommand.Type.CREATE_TASK, IntentCommand.Type.UNKNOWN);
+        assertThat(safe.commands().getLast().reason()).contains("請確認誰送、誰接");
+    }
+
     private static IntentScript script(IntentCommand... commands) {
         return new IntentScript(List.of(commands));
     }

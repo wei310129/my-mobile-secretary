@@ -1002,7 +1002,7 @@ stack trace、provider error 或 router reason。
 | 8 | COMPLETED | V72–V82；精準功能／隔離／RLS／neighbor／latency gate 全通過；sealed holdout 16 cases／19 turns；root regression 1417 tests、0 failure、0 error、18 skipped | — |
 | 9 | COMPLETED | W9-A–E PASS_PUBLISHED；latest V88；產品 merge `58e4029` | — |
 | 10 | COMPLETED | V89–V92 recurrence／ICS gates PASS_PUBLISHED；產品 merge `c4ade0b`、state merge `b657970`；`TR-CALENDAR-W10-MERGED=READY` | — |
-| 11 | IN_PROGRESS | W11-A/B/C/E 已通過；W11-F 語意泛化與 reminder update fail-closed 最新 deterministic/application/holdout/API/signed LINE focused 79/79；前一批 root 1726/0/0/16；configured-model 舊完整基線 43/50、753.3s，native structured candidate 已消除 selected parse error但實測 6.3–9.5s且仍有 typed capability gap | 完成最新 root regression；解決 configured-model P95≤4s 與 107 typed gap後，才可啟動修正版 runtime／新 24h／20-turn baseline；產品 PR 與 state-only handoff |
+| 11 | IN_PROGRESS | W11-A/B/C/E 已通過；W11-F 語意泛化與 reminder update fail-closed deterministic/application/holdout/API/signed LINE focused 79/79、root 1735/0/0/16（427.2s）；configured-model 舊完整基線 43/50、753.3s，native structured candidate 已消除 selected parse error但實測 6.3–9.5s且仍有 typed capability gap | 解決 configured-model P95≤4s 與 107 typed gap後，才可啟動修正版 runtime／新 24h／20-turn baseline；產品 PR 與 state-only handoff |
 | 12 | REQUIRES_DESTRUCTIVE_APPROVAL | — | 舵輪 11＋精確刪除清單／備份／復原演練＋使用者當輪批准 |
 
 ### 舵輪 0：決策 freeze 與 scenario manifest
@@ -2738,10 +2738,10 @@ identity 與 destructive target 必須由 Java 以來源證據驗證。以下規
 | P0 | 條件場地把 title 固定成「運動」，只提到單一場地也可能被當作選定 | FIXED_ROOT_PASS；明確 activity title／choice action、query-only zero mutation 3/3 與前一批 root 綠 |
 | P0 | live evaluator 把 raw model output 當最終業務決策，且 null type 使 oracle 自己 NPE | FIXED_FOCUSED_LIVE_BLOCKED；progressive evaluator 已套相同 Java strict safety、null type 正規化與每案 model/total latency + token telemetry；舊完整 current-contract baseline 43/50、753.3s。selected native structured output 已可解析，但 101/104 約 8.4–8.9s、101/107 約 6.3–9.5s，仍超過 4s且 107 的空檔需求缺 typed closure，不得標 PASS |
 | P1 | 上班日 routine 追問固定出現小孩、特定公司與固定下班窗 | FIXED_ROOT_PASS；問題由實際接送 evidence 分支，無來源的公司／時間／天氣不再加入，前一批 root 綠 |
-| P1 | school/family transport 以親屬詞作 identity，含特定補習品牌／分店 grammar | FIXED_FOCUSED_ROOT_PENDING；改以駕駛／乘客／接送動作位置解析，具名 `小明`、非親屬照顧者與任意 `法文課`／`陶藝課`／`英文課` 均走 point Task；物流配送、送文件、送修與本人上課為反例。latest focused 79/79，前一批 root 1726/0/0/16；place identity 仍由下一列獨立 gate 管理 |
+| P1 | school/family transport 以親屬詞作 identity，含特定補習品牌／分店 grammar | FIXED_ROOT_PASS；改以駕駛／乘客槽／接送動作與去／到／往目的活動解析，具名 `小明`、非親屬照顧者與任意 `法文課`／`陶藝課`／`英文課` 均走 point Task；物流配送、送文件、送修、本人上課及無乘客的「固定意圖測試送課」為反例。focused 79/79；第一次 root 找出 neighbor 1/1735 後 red-green 修正，final root 1735/0/0/16、427.2s；place identity 仍由下一列獨立 gate 管理 |
 | P1 | school pickup safeguard 可能把同句「送修／配送／送文件」一併擋掉 | FIXED_ROOT_PASS；共用 transport-role policy，只阻擋 dependent-activity transport semantic group；具名人物與送修反例及前一批 root 綠 |
 | P1 | 「老師通知」角色詞可能把 point 當 interval，教練／主管卻繞過 | FIXED_ROOT_PASS；改以 reported speech-act + temporal end evidence，任意通知者缺 end 都 clarification／零 mutation，application + API + signed LINE 124/124 focused、root 1726/0/0/16 |
-| P1 | 修改既有提醒被 evaluator 接受成 `ADD_SCHEDULE_REMINDER`，可能建立重複提醒 | FIXED_FOCUSED_ROOT_PENDING；提醒物件 + 修改語意會拒絕 ADD／CREATE／UPDATE／RESCHEDULE 錯誤 mutation，產品尚無 typed reminder update 時只回安全不支援且零異動；不同標題、1h→2h variant 與普通新增提醒 counterexample 已納入，latest focused 79/79 |
+| P1 | 修改既有提醒被 evaluator 接受成 `ADD_SCHEDULE_REMINDER`，可能建立重複提醒 | FIXED_ROOT_PASS；提醒物件 + 修改語意會拒絕 ADD／CREATE／UPDATE／RESCHEDULE 錯誤 mutation，產品尚無 typed reminder update 時只回安全不支援且零異動；不同標題、1h→2h variant 與普通新增提醒 counterexample 已納入，focused 79/79、root 1735/0/0/16 |
 | P1 | place identity 使用 substring 與單一健身品牌特例 | OPEN；brand/branch/place reference 多候選時回問 |
 | P1 | Calendar V2 固定 `Asia/Taipei` 且 create contract 無 participant role | OPEN；保存 IANA zone 與 typed participant reference，缺失／歧義回問 |
 | P1 | legacy 明示地點解析失敗會存 null；relative/reminder 非法值會套 60/10 分鐘 | OPEN；與 V2 共用 required-place／numeric validation policy |

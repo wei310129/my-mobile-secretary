@@ -224,7 +224,7 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
                         IntentCommand.Type.UNKNOWN),
                 s("明天早上八點半校車到家接女兒去學校，下午四點校車送她回家，家長都不用接送，請建立兩段校車行程", 2,
                         IntentCommand.Type.CREATE_SCHEDULE),
-                s("這是一個功能回饋：看到送孩子上課時，系統一定要追問下課由誰接，不能因為我送就假設也是我接回家", 1,
+                s("這是一個功能回饋：送孩子上課應該是送達時點的提醒，不要占用整段課程，也不要無端追問誰接", 1,
                         IntentCommand.Type.FEEDBACK),
                 s("明天下午兩點到三點開會，但請不要假設會議一定一小時以外的任何緩衝，也不要替我新增沒有說過的交通行程", 1,
                         IntentCommand.Type.CREATE_SCHEDULE),

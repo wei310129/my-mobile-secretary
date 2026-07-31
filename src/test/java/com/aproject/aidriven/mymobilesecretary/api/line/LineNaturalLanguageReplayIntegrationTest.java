@@ -176,6 +176,48 @@ class LineNaturalLanguageReplayIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    void signedLineCaregivingTransportCreatesAPointReminderNotAClassInterval()
+            throws Exception {
+        LocalDate tomorrow = LocalDate.now(clock.withZone(TAIPEI)).plusDays(1);
+        String source = "明天上午九點送孩子去課後班";
+        interpreter.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                "送孩子去課後班",
+                null,
+                ZonedDateTime.of(tomorrow, LocalTime.of(9, 0), TAIPEI)
+                        .toOffsetDateTime()
+                        .toString(),
+                ZonedDateTime.of(tomorrow, LocalTime.of(10, 0), TAIPEI)
+                        .toOffsetDateTime()
+                        .toString(),
+                null,
+                "NORMAL",
+                null,
+                null,
+                null,
+                null,
+                null,
+                false,
+                IntentOptions.empty(),
+                source));
+
+        send(source, "event-" + UUID.randomUUID(), null);
+
+        assertThat(latestReply()).contains("送孩子去課後班").doesNotContain("10:00");
+        assertThat(tasks.findAll()).singleElement()
+                .satisfies(task -> assertThat(task.getDueAt())
+                        .isEqualTo(at(tomorrow, LocalTime.of(9, 0))));
+        try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(lineContext())) {
+            assertThat(schedules.listSchedules(null)).isEmpty();
+            assertThat(jdbc.queryForObject(
+                            "SELECT count(*) FROM calendar_plan WHERE workspace_id = ?",
+                            Long.class,
+                            WORKSPACE_ID))
+                    .isZero();
+        }
+    }
+
+    @Test
     void weekendOverviewUsesOneSignedLineTurnAndKeepsDaysSeparate() throws Exception {
         LocalDate today = LocalDate.now(clock.withZone(TAIPEI));
         LocalDate monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));

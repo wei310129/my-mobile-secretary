@@ -108,7 +108,8 @@ public class SchoolTransportConversationService {
         String compact = text.replaceAll("\\s+", "");
         if (!containsAny(compact, "女兒", "兒子", "孩子", "小孩")
                 || !containsAny(compact, "上課", "英語", "補習", "安親", "才藝")
-                || !compact.contains("每")) return null;
+                || !compact.contains("每")
+                || !requestsWholeTransportFlow(compact)) return null;
         Matcher weekday = WEEKDAY.matcher(compact);
         Matcher range = RANGE.matcher(compact);
         if (!weekday.find() || !range.find()) return null;
@@ -128,6 +129,25 @@ public class SchoolTransportConversationService {
         return new Payload(child, course, weekday(weekday.group(1)), start, end, until,
                 dropPerson, dropOrigin, dropStart, pickupPerson, pickupLocation, pickupEnd,
                 null, null);
+    }
+
+    private static boolean requestsWholeTransportFlow(String text) {
+        return containsAny(
+                text,
+                "接回",
+                "去接",
+                "誰接",
+                "負責接",
+                "也接",
+                "接送",
+                "接女兒",
+                "接兒子",
+                "接孩子",
+                "接小孩",
+                "校車送回")
+                || Pattern.compile("接(?:回|她|他|女兒|兒子|孩子|小孩|$|[，,。；;])")
+                        .matcher(text)
+                        .find();
     }
 
     private Payload existingSchedulePayload(String text) {

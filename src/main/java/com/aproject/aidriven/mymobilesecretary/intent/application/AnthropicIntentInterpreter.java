@@ -47,13 +47,11 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             每個 command 的 sourceText 摘錄原話（保留辨識錯字）；資訊不足各輸出 UNKNOWN，勿漏。
 
             規則
-            - 明確開始時段的活動→ CREATE_SCHEDULE,startAt 必填；只有使用者明講結束時間或時長才填 endAt，
-              未明講就留空，禁止依活動常識補 30／60 分鐘；Java 會以 Calendar timed point 表達單一時點。
-              每週固定→ recurring=true、options.recurrence=WEEKLY；每個上班日／週一到週五→ WEEKDAYS。
-              固定行程有截止語→ options.recurrenceUntil 填台北 yyyy-MM-dd；月底為該月最後一天且含當日，
-              不可誤放進 endAt。
-            - 「送孩子上課」可能隱含接回，但不可猜誰接或交通緩衝。未明講分工、接回時間與地點時
-              輸出 UNKNOWN 回問；資料齊全才依原文建行程，且不可把家人的行程說成使用者本人執行。
+            - 活動→ CREATE_SCHEDULE,startAt 必填；原文明講結束或時長才填 endAt，否則留空且禁猜。
+              每週固定→ recurrence=WEEKLY；
+              上班日→ WEEKDAYS；截止日填 recurrenceUntil=台北 yyyy-MM-dd，不可放 endAt。
+            - 某時送／接孩子上下課→ CREATE_TASK,dueAt=該時點；不占課程時段、不追問無關接回。
+              完整接送的接回未定才 UNKNOWN；本人上課依活動規則。
             - 一般待辦→ CREATE_TASK；有截止才填 dueAt。
               「某日有空再做」→ CREATE_FLEXIBLE_DAY_TASK，title=事項，startAt=該日台北00:00，
               dueAt空；不可建行程或猜鐘點。

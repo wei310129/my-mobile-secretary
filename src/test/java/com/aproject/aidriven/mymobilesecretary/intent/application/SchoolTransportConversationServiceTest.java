@@ -5,8 +5,10 @@ import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.ArgumentMatchers.isNull;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
@@ -66,7 +68,7 @@ class SchoolTransportConversationServiceTest {
                 any(), any(), eq(SchoolTransportDraft.Status.PENDING), any()))
                 .thenAnswer(call -> Optional.ofNullable(pending.get())
                         .filter(draft -> draft.getStatus() == SchoolTransportDraft.Status.PENDING));
-        when(repository.save(any())).thenAnswer(call -> {
+        org.mockito.Mockito.lenient().when(repository.save(any())).thenAnswer(call -> {
             SchoolTransportDraft draft = call.getArgument(0);
             pending.set(draft);
             return draft;
@@ -115,6 +117,17 @@ class SchoolTransportConversationServiceTest {
                 new AtomicInteger()).orElseThrow();
 
         assertCompleted(result);
+    }
+
+    @Test
+    void simpleDropOffReminderDoesNotOpenAWholeCourseAndPickupDraft() {
+        Optional<IntentResult> result = answer(
+                "每週六10-12點送女兒去上英語課",
+                new AtomicInteger());
+
+        assertThat(result).isEmpty();
+        verify(repository, never()).save(any());
+        verifyNoInteractions(scheduleService);
     }
 
     @Test

@@ -22,7 +22,7 @@ class IntentScriptSafetyPolicyTest {
     }
 
     @Test
-    void schoolClassRangeCannotInventDropOffPickupDurations() {
+    void caregivingTransportBecomesPointRemindersInsteadOfClassIntervals() {
         IntentScript raw = script(
                 command(IntentCommand.Type.CREATE_SCHEDULE, "送女兒上課",
                         "2026-07-19T09:40:00+08:00", "2026-07-19T10:00:00+08:00", null),
@@ -30,11 +30,53 @@ class IntentScriptSafetyPolicyTest {
                         "2026-07-19T12:00:00+08:00", "2026-07-19T12:20:00+08:00", null));
 
         IntentScript safe = IntentScriptSafetyPolicy.apply(
-                "明天送女兒上英文課十點到十二點", raw);
+                "明天九點四十分送女兒上英文課，十二點接女兒下課", raw);
+
+        assertThat(safe.commands()).extracting(IntentCommand::type)
+                .containsExactly(IntentCommand.Type.CREATE_TASK, IntentCommand.Type.CREATE_TASK);
+        assertThat(safe.commands()).extracting(IntentCommand::dueAt)
+                .containsExactly(
+                        "2026-07-19T09:40:00+08:00",
+                        "2026-07-19T12:00:00+08:00");
+        assertThat(safe.commands()).extracting(IntentCommand::startAt)
+                .containsOnlyNulls();
+    }
+
+    @Test
+    void personalClassWithExplicitRangeRemainsACalendarInterval() {
+        IntentScript raw = script(command(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                "上日文課",
+                "2026-07-19T10:00:00+08:00",
+                "2026-07-19T12:00:00+08:00",
+                null));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "明天我要上日文課，十點到十二點", raw);
+
+        assertThat(safe.commands()).extracting(IntentCommand::type)
+                .containsExactly(IntentCommand.Type.CREATE_SCHEDULE);
+        assertThat(safe.commands().getFirst().startAt())
+                .isEqualTo("2026-07-19T10:00:00+08:00");
+        assertThat(safe.commands().getFirst().endAt())
+                .isEqualTo("2026-07-19T12:00:00+08:00");
+    }
+
+    @Test
+    void caregivingReminderWithoutATimeFailsClosed() {
+        IntentScript raw = script(command(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                "送兒子去安親班",
+                null,
+                null,
+                null));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "幫我記得送兒子去安親班", raw);
 
         assertThat(safe.commands()).extracting(IntentCommand::type)
                 .containsExactly(IntentCommand.Type.UNKNOWN);
-        assertThat(safe.commands().getFirst().reason()).contains("誰送", "誰接", "不會建立行程");
+        assertThat(safe.commands().getFirst().reason()).contains("幾點提醒");
     }
 
     @Test

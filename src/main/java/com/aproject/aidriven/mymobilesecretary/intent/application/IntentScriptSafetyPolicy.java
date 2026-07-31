@@ -45,12 +45,88 @@ final class IntentScriptSafetyPolicy {
                         && CalendarDatePolicy.clarification(text, clock).isPresent())) {
             return result;
         }
+        result = normalizeCaregivingReminders(text, result);
         result = guardTeacherNoticeWithoutEnd(text, result);
         Optional<String> pickupQuestion = IntentService.schoolPickupClarification(text);
         if (pickupQuestion.isPresent()) {
             result = IntentService.applySchoolPickupSafeguard(result, pickupQuestion.get());
         }
         return normalizeScheduleReminder(text, result);
+    }
+
+    private static IntentScript normalizeCaregivingReminders(
+            String text, IntentScript script) {
+        List<IntentCommand> normalized = new ArrayList<>();
+        for (IntentCommand command : script.commands()) {
+            if (!isCaregivingTransportSchedule(text, command)) {
+                normalized.add(command);
+                continue;
+            }
+            if (command.startAt() == null || command.startAt().isBlank()) {
+                normalized.add(new IntentCommand(
+                        IntentCommand.Type.UNKNOWN,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        "請告訴我要在幾點提醒你接送；確認前不會建立時段。",
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        null,
+                        command.sourceText()));
+                continue;
+            }
+            normalized.add(new IntentCommand(
+                    IntentCommand.Type.CREATE_TASK,
+                    command.title(),
+                    command.startAt(),
+                    null,
+                    null,
+                    command.placeName(),
+                    command.priority(),
+                    null,
+                    null,
+                    null,
+                    null,
+                    null,
+                    command.recurring(),
+                    command.safeOptions(),
+                    command.sourceText()));
+        }
+        return new IntentScript(List.copyOf(normalized));
+    }
+
+    private static boolean isCaregivingTransportSchedule(
+            String text, IntentCommand command) {
+        if (command == null || command.type() != IntentCommand.Type.CREATE_SCHEDULE) {
+            return false;
+        }
+        String source = command.sourceText() == null || command.sourceText().isBlank()
+                ? text
+                : command.sourceText();
+        String evidence = compact((command.title() == null ? "" : command.title())
+                + " " + (source == null ? "" : source));
+        boolean familyMember = containsAny(
+                evidence,
+                "女兒",
+                "兒子",
+                "孩子",
+                "小孩",
+                "孫子",
+                "孫女",
+                "弟弟",
+                "妹妹",
+                "哥哥",
+                "姐姐");
+        boolean transport = containsAny(evidence, "送", "接", "接回", "接送");
+        boolean school = containsAny(
+                evidence, "上課", "下課", "放學", "學校", "補習", "安親", "才藝", "課後班");
+        return familyMember && transport && school;
     }
 
     private static IntentScript guardSourceGrounding(String text, IntentScript script,

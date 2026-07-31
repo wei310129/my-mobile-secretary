@@ -1131,8 +1131,8 @@ public class IntentService {
     }
 
     /**
-     * 「送孩子上課」通常還隱含下課接回，但接的人不一定是使用者。沒有交代接回分工時，
-     * 必須先確認，不能把整段課程當成使用者被占用，也不能自行發明接送緩衝時間。
+     * 單純送／接孩子是時間點提醒，不要求補齊另一段。只有原文明講要規劃完整接送，
+     * 同時表示接回分工未定時才追問；仍不可把課程時段算成使用者忙碌或發明緩衝。
      */
     static Optional<String> schoolPickupClarification(String text) {
         String normalized = text == null ? "" : text.replaceAll("\\s+", "");
@@ -1153,7 +1153,7 @@ public class IntentService {
                 || normalized.contains("自行回") || normalized.contains("自己搭")
                 || normalized.contains("自行搭") || normalized.contains("不用接")
                 || normalized.contains("不必接"));
-        if (!classTrip || !scheduling || pickupSpecified) {
+        if (!classTrip || !scheduling || pickupSpecified || !pickupUncertain) {
             return Optional.empty();
         }
         return Optional.of("我理解送孩子去上課後通常還有下課接回，但接的人不一定是你。"

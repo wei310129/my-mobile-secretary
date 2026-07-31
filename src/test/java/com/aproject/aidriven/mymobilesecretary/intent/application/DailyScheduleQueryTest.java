@@ -108,11 +108,11 @@ class DailyScheduleQueryTest {
     }
 
     @Test
-    void schoolDropOffRequiresPickupAssignmentBeforeScheduling() {
+    void schoolDropOffOnlyRequiresPickupAssignmentForAnExplicitUnresolvedFlow() {
         assertThat(IntentService.schoolPickupClarification(
-                "每週六早上十點到十二點送女兒上英文課")).isPresent();
+                "每週六早上十點到十二點送女兒上英文課")).isEmpty();
         assertThat(IntentService.schoolPickupClarification(
-                "明天九點送兒子去安親班")).isPresent();
+                "明天九點送兒子去安親班")).isEmpty();
         assertThat(IntentService.schoolPickupClarification(
                 "明天九點我送女兒上課，十二點接的人還沒決定")).isPresent();
         assertThat(IntentService.schoolPickupClarification(

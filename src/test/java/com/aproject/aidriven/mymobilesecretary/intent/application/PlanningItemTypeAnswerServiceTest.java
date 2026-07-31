@@ -50,4 +50,25 @@ class PlanningItemTypeAnswerServiceTest {
 
         assertThat(result.message()).contains("不會拿目前未完成的草稿代答", "LINE 回覆原清單");
     }
+
+    @Test
+    void rankingAndAnalysisQuestionsAreNotMistakenForTypeQuestions() {
+        assertThat(PlanningItemTypeAnswerService.asksForType(
+                "告訴我下週哪一天最忙、最長的一筆是哪一筆，"
+                        + "並列出那筆行程前後還各剩多少空檔"))
+                .isFalse();
+        assertThat(PlanningItemTypeAnswerService.asksForType(
+                "這週最長的行程是哪一筆"))
+                .isFalse();
+        assertThat(PlanningItemTypeAnswerService.asksForType(
+                "哪一天行程最多"))
+                .isFalse();
+    }
+
+    @Test
+    void explicitTypeVocabularyStillRoutesToTheTypeAnswer() {
+        assertThat(PlanningItemTypeAnswerService.asksForType(
+                "這筆資料是哪一類，是待辦還是行程提醒"))
+                .isTrue();
+    }
 }

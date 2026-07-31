@@ -92,6 +92,28 @@ class LifestyleIntentApiTest extends IntegrationTestBase {
     }
 
     @Test
+    void compoundScheduleAnalysisSurfacesUnsupportedFacetWithoutMutation() throws Exception {
+        long schedulesBefore = scheduleItemRepository.count();
+        stub.nextCommands(
+                command(IntentCommand.Type.ASK_BUSY_SCHEDULE_DAY, null,
+                        null, "2030-08-05T00:00:00+08:00",
+                        "2030-08-12T00:00:00+08:00", null, IntentOptions.empty()),
+                command(IntentCommand.Type.ASK_LONGEST_SCHEDULE, null,
+                        null, "2030-08-05T00:00:00+08:00",
+                        "2030-08-12T00:00:00+08:00", null, IntentOptions.empty()));
+
+        say("告訴我下週哪一天最忙、最長的一筆是哪一筆，"
+                        + "並列出那筆行程前後還各剩多少空檔",
+                jsonPath("$.action").value("BATCH_EXECUTED"),
+                jsonPath("$.message").value(containsString("目前還不能完整處理")),
+                jsonPath("$.message").value(containsString("指定行程前後的相鄰空檔")),
+                jsonPath("$.message").value(containsString("不會建立或修改資料")),
+                jsonPath("$.message").value(not(containsString("ASK_"))));
+        org.assertj.core.api.Assertions.assertThat(scheduleItemRepository.count())
+                .isEqualTo(schedulesBefore);
+    }
+
+    @Test
     void recurringScheduleCutoffFlowsFromIntentToConfirmation() throws Exception {
         IntentOptions options = new IntentOptions(
                 null, null, null, null, null, null, "WEEKLY", null,

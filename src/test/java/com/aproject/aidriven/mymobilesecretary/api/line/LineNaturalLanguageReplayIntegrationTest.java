@@ -144,6 +144,26 @@ class LineNaturalLanguageReplayIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    void signedLineCompoundScheduleAnalysisIsTruthfulAndReadOnly() throws Exception {
+        long schedulesBefore = jdbc.queryForObject(
+                "SELECT count(*) FROM schedule_item", Long.class);
+        interpreter.nextCommands(
+                command(IntentCommand.Type.ASK_BUSY_SCHEDULE_DAY,
+                        null, "排得最滿的日子", IntentOptions.empty()),
+                command(IntentCommand.Type.ASK_LONGEST_SCHEDULE,
+                        null, "耗時最久的活動", IntentOptions.empty()));
+
+        sendText("請找出下週排得最滿的日子和耗時最久的活動，"
+                + "還要說明該活動之前與之後各空多久");
+
+        assertThat(latestReply())
+                .contains("目前還不能完整處理", "指定行程前後的相鄰空檔", "不會建立或修改資料")
+                .doesNotContain("ASK_", "Intent", ACTOR_ID.toString(), WORKSPACE_ID.toString());
+        assertThat(jdbc.queryForObject("SELECT count(*) FROM schedule_item", Long.class))
+                .isEqualTo(schedulesBefore);
+    }
+
+    @Test
     void correctionStillBypassesTheModelAndLifeRecordWhenTheInterpreterWouldFail()
             throws Exception {
         interpreter.clear();

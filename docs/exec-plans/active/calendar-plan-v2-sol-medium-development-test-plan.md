@@ -1002,7 +1002,7 @@ stack trace、provider error 或 router reason。
 | 8 | COMPLETED | V72–V82；精準功能／隔離／RLS／neighbor／latency gate 全通過；sealed holdout 16 cases／19 turns；root regression 1417 tests、0 failure、0 error、18 skipped | — |
 | 9 | COMPLETED | W9-A–E PASS_PUBLISHED；latest V88；產品 merge `58e4029` | — |
 | 10 | COMPLETED | V89–V92 recurrence／ICS gates PASS_PUBLISHED；產品 merge `c4ade0b`、state merge `b657970`；`TR-CALENDAR-W10-MERGED=READY` | — |
-| 11 | IN_PROGRESS | W11-A/B/C/E 已通過；W11-F 語意泛化與 reminder update fail-closed deterministic/application/holdout/API/signed LINE focused 79/79、root 1735/0/0/16（427.2s）；configured-model 舊完整基線 43/50、753.3s，native structured candidate 已消除 selected parse error但實測 6.3–9.5s且仍有 typed capability gap | 解決 configured-model P95≤4s 與 107 typed gap後，才可啟動修正版 runtime／新 24h／20-turn baseline；產品 PR 與 state-only handoff |
+| 11 | IN_PROGRESS | W11-A/B/C/E 已通過；W11-F 語意泛化、reminder update 與複合行程分析 fail-closed 已通過 API／signed LINE，neighbor 102/102、root 1745/0/0/16（438.5s）；live 107 required-facet oracle 1/1 PASS，但 model latency 10.471s | 解決 configured-model P95≤4s 後，才可啟動修正版 runtime／新 24h／20-turn baseline；產品 PR 與 state-only handoff |
 | 12 | REQUIRES_DESTRUCTIVE_APPROVAL | — | 舵輪 11＋精確刪除清單／備份／復原演練＋使用者當輪批准 |
 
 ### 舵輪 0：決策 freeze 與 scenario manifest
@@ -2634,7 +2634,10 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "conversationRepairSealedHoldout": "21 invocations; initial 16 pass/5 generalized blockers, unchanged oracle rerun 21/21 PASS",
     "signedLineSimulation": "25+ isolated signed webhook turns across help, feedback, weekend, quote, ordinal and idempotency paths; deterministic warm P95 461 ms",
     "semanticGeneralizationFocused": "153 tests, 0 failures, 0 errors, 0 skipped; duration roles, ISO range, recurrence grounding, target intersection, conditional venue, transport role and signed LINE",
-    "rootRegression": "1675 tests, 0 failures, 0 errors, 16 opt-in skipped; duration 475.2 seconds",
+    "compoundScheduleAnalysisFocused": "40 tests, 0 failures, 0 errors, 0 skipped; completeness, type-routing, API and signed LINE; zero schedule mutation",
+    "compoundScheduleAnalysisNeighbor": "102 tests, 0 failures, 0 errors, 0 skipped; interpreter, safety, schedule query and sealed holdout neighbors",
+    "compoundScheduleAnalysisLive": "case 107 required facets 1/1 PASS; model latency 10471 ms; terminal budget still FAIL",
+    "rootRegression": "1745 tests, 0 failures, 0 errors, 16 opt-in skipped; duration 438.5 seconds",
     "spotless": "spotless:check PASS",
     "officialLineWebhookE2E": "scripts/dev-start.ps1 -SkipDocker -SkipDispatcher exit 0; subsequent dev-status.ps1 -ExternalLineProbe confirms main=UP, Postgres/Redis healthy and LINE=connected"
   },
@@ -2677,7 +2680,6 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "simulatedTestTurnsCountTowardMonitoring": false
   },
   "remainingWork": [
-    "complete the semantic-generalization and root gates",
     "start the repaired runtime and record a new metadata-only baseline",
     "complete a fresh approved 24-hour and at-least-20-turn personal-use monitoring window",
     "final product PR, state-only handoff and HARD_YIELD receipt"
@@ -2736,12 +2738,13 @@ identity 與 destructive target 必須由 Java 以來源證據驗證。以下規
 | P0 | recurrence 空白／未知值可能變 `WEEKLY` | FIXED_ROOT_PASS；只有來源明示每天／平日／每週／每月第 N 週才可註冊，其他零 mutation，前一批 root 綠 |
 | P0 | 行程更正只用原時間，不核對使用者說的標題 | FIXED_ROOT_PASS；time/title 唯一交集、no-DB-id 6/6 與前一批 root 綠 |
 | P0 | 條件場地把 title 固定成「運動」，只提到單一場地也可能被當作選定 | FIXED_ROOT_PASS；明確 activity title／choice action、query-only zero mutation 3/3 與前一批 root 綠 |
-| P0 | live evaluator 把 raw model output 當最終業務決策，且 null type 使 oracle 自己 NPE | FIXED_FOCUSED_LIVE_BLOCKED；progressive evaluator 已套相同 Java strict safety、null type 正規化與每案 model/total latency + token telemetry；舊完整 current-contract baseline 43/50、753.3s。selected native structured output 已可解析，但 101/104 約 8.4–8.9s、101/107 約 6.3–9.5s，仍超過 4s且 107 的空檔需求缺 typed closure，不得標 PASS |
+| P0 | live evaluator 把 raw model output 當最終業務決策，且 null type 使 oracle 自己 NPE | CORRECTNESS_PASS_LATENCY_BLOCKED；progressive evaluator 已套與實際入口相同的 strict safety＋completeness、null type 正規化、required-facet oracle 與每案 latency/token telemetry。舊完整基線 43/50、753.3s；live 107 現要求最忙日＋最長行程＋相鄰空檔安全澄清，1/1 PASS，但 model latency 10.471s，仍未達 4s |
 | P1 | 上班日 routine 追問固定出現小孩、特定公司與固定下班窗 | FIXED_ROOT_PASS；問題由實際接送 evidence 分支，無來源的公司／時間／天氣不再加入，前一批 root 綠 |
 | P1 | school/family transport 以親屬詞作 identity，含特定補習品牌／分店 grammar | FIXED_ROOT_PASS；改以駕駛／乘客槽／接送動作與去／到／往目的活動解析，具名 `小明`、非親屬照顧者與任意 `法文課`／`陶藝課`／`英文課` 均走 point Task；物流配送、送文件、送修、本人上課及無乘客的「固定意圖測試送課」為反例。focused 79/79；第一次 root 找出 neighbor 1/1735 後 red-green 修正，final root 1735/0/0/16、427.2s；place identity 仍由下一列獨立 gate 管理 |
 | P1 | school pickup safeguard 可能把同句「送修／配送／送文件」一併擋掉 | FIXED_ROOT_PASS；共用 transport-role policy，只阻擋 dependent-activity transport semantic group；具名人物與送修反例及前一批 root 綠 |
 | P1 | 「老師通知」角色詞可能把 point 當 interval，教練／主管卻繞過 | FIXED_ROOT_PASS；改以 reported speech-act + temporal end evidence，任意通知者缺 end 都 clarification／零 mutation，application + API + signed LINE 124/124 focused、root 1726/0/0/16 |
 | P1 | 修改既有提醒被 evaluator 接受成 `ADD_SCHEDULE_REMINDER`，可能建立重複提醒 | FIXED_ROOT_PASS；提醒物件 + 修改語意會拒絕 ADD／CREATE／UPDATE／RESCHEDULE 錯誤 mutation，產品尚無 typed reminder update 時只回安全不支援且零異動；不同標題、1h→2h variant 與普通新增提醒 counterexample 已納入，focused 79/79、root 1735/0/0/16 |
+| P1 | 規劃項目類型服務以 `是哪一` substring 攔截「最長的是哪一筆」等 ranking／analysis 問題 | FIXED_ROOT_PASS；只接受明確類型詞與類別比較，`哪一筆`／`哪一天行程最多` 不再攔截；複合分析 completeness 以 typed facet 驗證，不完整時保留可靠唯讀結果並明示缺口。API／signed LINE schedule 增量 0，neighbor 102/102、root 1745/0/0/16 |
 | P1 | place identity 使用 substring 與單一健身品牌特例 | OPEN；brand/branch/place reference 多候選時回問 |
 | P1 | Calendar V2 固定 `Asia/Taipei` 且 create contract 無 participant role | OPEN；保存 IANA zone 與 typed participant reference，缺失／歧義回問 |
 | P1 | legacy 明示地點解析失敗會存 null；relative/reminder 非法值會套 60/10 分鐘 | OPEN；與 V2 共用 required-place／numeric validation policy |
@@ -2757,8 +2760,9 @@ Configured-model latency／reliability 試驗（同日、不得重複踩坑）�
 - `claude-sonnet-5` 預設 adaptive thinking + prompt schema：完整 50 cases 為 43/50、753.3s，包含
   6 筆不可解析 structured output；correctness 與 latency 均未達 release gate。
 - 僅 Intent request 關閉 thinking、使用 native full JSON schema 並快取固定 system prompt：selected
-  parse reliability 改善，送達 Task／提醒 fail-closed 可通過；model latency 仍約 6.3–9.5s，保留為目前
-  correctness candidate，但未達 medium P95 4s。
+  parse reliability 改善，送達 Task／提醒 fail-closed 可通過；最新 live 107 correctness 1/1 PASS、
+  model latency 10.471s，其他 selected 約 6.3–9.5s；保留為目前 correctness candidate，但未達
+  medium P95 4s。
 - Haiku 4.5 A/B 為 3/6，曾臆測 17:00 下班與 DAILY recurrence，已撤回；不得以 median 約 5.2s
   犧牲語意品質。
 - sparse native schema 因 Anthropic optional parameter 24 項上限被 400 拒絕，平衡 required 後又造成

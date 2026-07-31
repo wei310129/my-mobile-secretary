@@ -130,6 +130,7 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
                         scenario.message(), NOW, ConversationSnapshot.empty());
                 IntentScript safe = IntentScriptSafetyPolicy.applyStrict(
                         scenario.message(), interpreted, EVALUATION_CLOCK);
+                safe = IntentScriptCompletenessPolicy.apply(scenario.message(), safe);
                 return evaluation(summarize(safe), matches(scenario, safe),
                         scope, started);
             } catch (RuntimeException exception) {
@@ -169,8 +170,14 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
             return false;
         }
         IntentCommand first = script.commands().getFirst();
+        Set<IntentCommand.Type> actualTypes = script.commands().stream()
+                .filter(java.util.Objects::nonNull)
+                .map(IntentCommand::type)
+                .filter(java.util.Objects::nonNull)
+                .collect(Collectors.toSet());
         return first != null && first.type() != null
                 && scenario.acceptedTypes().contains(first.type())
+                && actualTypes.containsAll(scenario.requiredTypes())
                 && script.commands().stream().allMatch(command -> command != null
                         && command.type() != null
                         && scenario.allowedTypes().contains(command.type()));
@@ -203,7 +210,7 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
         String expected = accepted.stream().map(Enum::name).sorted()
                 .collect(Collectors.joining(" / "));
         if (count != 1) expected += " (" + count + " commands)";
-        return new Scenario(message, accepted, accepted, count, count, expected);
+        return new Scenario(message, accepted, accepted, Set.of(), count, count, expected);
     }
 
     private static Scenario sWithSupporting(
@@ -216,7 +223,8 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
         allowed.addAll(Arrays.asList(supporting));
         String expected = primary.name();
         if (count != 1) expected += " (" + count + " commands)";
-        return new Scenario(message, Set.of(primary), Set.copyOf(allowed), count, count, expected);
+        return new Scenario(message, Set.of(primary), Set.copyOf(allowed), Set.of(),
+                count, count, expected);
     }
 
     private static Scenario sRange(
@@ -228,8 +236,22 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
         String expected = accepted.stream().map(Enum::name).sorted()
                 .collect(Collectors.joining(" / "))
                 + " (" + minimumCount + "–" + maximumCount + " commands)";
-        return new Scenario(message, accepted, accepted,
+        return new Scenario(message, accepted, accepted, Set.of(),
                 minimumCount, maximumCount, expected);
+    }
+
+    private static Scenario sRequiring(
+            String message,
+            int count,
+            IntentCommand.Type... requiredTypes) {
+        Set<IntentCommand.Type> required = Set.copyOf(Arrays.asList(requiredTypes));
+        Set<IntentCommand.Type> acceptedPrimary = required.stream()
+                .filter(type -> type != IntentCommand.Type.UNKNOWN)
+                .collect(Collectors.toUnmodifiableSet());
+        String expected = required.stream().map(Enum::name).sorted()
+                .collect(Collectors.joining(" / ")) + " (all required)";
+        return new Scenario(message, acceptedPrimary, required, required,
+                count, count, expected);
     }
 
     private static List<Scenario> scenarios() {
@@ -287,8 +309,10 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
                         IntentCommand.Type.SUGGEST_FREE_SLOT),
                 s("幫我檢查明天下午兩點到三點的產品會議，是否和既有行程、前後交通以及我設定的準備緩衝時間互相衝突", 1,
                         IntentCommand.Type.CHECK_FEASIBILITY, IntentCommand.Type.CHECK_SCHEDULE_CONFLICTS),
-                s("告訴我下週所有行程裡哪一天最忙、最長的一筆是哪一筆，並列出那筆行程前後還各剩多少空檔", 2,
-                        IntentCommand.Type.ASK_BUSY_SCHEDULE_DAY, IntentCommand.Type.ASK_LONGEST_SCHEDULE),
+                sRequiring("告訴我下週所有行程裡哪一天最忙、最長的一筆是哪一筆，並列出那筆行程前後還各剩多少空檔", 3,
+                        IntentCommand.Type.ASK_BUSY_SCHEDULE_DAY,
+                        IntentCommand.Type.ASK_LONGEST_SCHEDULE,
+                        IntentCommand.Type.UNKNOWN),
                 s("把這個月的行程按照地點分組列給我看，公司、家裡和沒有設定地點的行程都要顯示，固定行程也不要漏掉", 1,
                         IntentCommand.Type.GROUP_SCHEDULES_BY_PLACE),
                 s("我想在週末安排兩小時親子活動，週六下午或週日上午都可以，請避開既有行程後提供三個可選時段", 1,
@@ -341,6 +365,7 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
 
     private record Scenario(String message, Set<IntentCommand.Type> acceptedTypes,
                             Set<IntentCommand.Type> allowedTypes,
+                            Set<IntentCommand.Type> requiredTypes,
                             int minimumCommandCount, int maximumCommandCount,
                             String expectedLabel) {
     }

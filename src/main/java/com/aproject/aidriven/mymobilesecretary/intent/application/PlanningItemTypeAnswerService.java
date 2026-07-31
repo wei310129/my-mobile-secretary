@@ -80,7 +80,7 @@ public class PlanningItemTypeAnswerService {
         String value = normalize(text);
         boolean hasType = containsAny(value, "草稿", "待辦", "提醒事項", "提醒紀錄",
                 "行程提醒", "知識紀錄", "行程");
-        boolean compares = containsAny(value, "是什麼", "是哪一", "是草稿嗎", "還是",
+        boolean compares = containsAny(value, "是什麼", "哪一類", "是草稿嗎", "還是",
                 "類別", "分類", "沒講清楚", "不同類別");
         return hasType && compares;
     }

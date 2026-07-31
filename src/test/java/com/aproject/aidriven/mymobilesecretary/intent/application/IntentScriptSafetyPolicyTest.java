@@ -77,6 +77,23 @@ class IntentScriptSafetyPolicyTest {
     }
 
     @Test
+    void arbitraryCourseNameAndSchoolBusReturnRemainPointResponsibilities() {
+        IntentScript raw = script(
+                command(IntentCommand.Type.CREATE_SCHEDULE, "送小明到星星畫室",
+                        "2026-07-19T09:00:00+08:00", null, null),
+                command(IntentCommand.Type.CREATE_SCHEDULE, "校車送小明回家",
+                        "2026-07-19T16:00:00+08:00", null, null));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "明天九點送小明到星星畫室，下午四點校車送小明回家", raw);
+
+        assertThat(safe.commands()).extracting(IntentCommand::type)
+                .containsExactly(IntentCommand.Type.CREATE_TASK, IntentCommand.Type.CREATE_TASK);
+        assertThat(safe.commands()).extracting(IntentCommand::dueAt)
+                .containsExactly("2026-07-19T09:00:00+08:00", "2026-07-19T16:00:00+08:00");
+    }
+
+    @Test
     void connectiveJieZheDoesNotBecomeAPickupResponsibility() {
         IntentScript raw = script(command(
                 IntentCommand.Type.CREATE_SCHEDULE,
@@ -160,6 +177,26 @@ class IntentScriptSafetyPolicyTest {
     }
 
     @Test
+    void existingReminderUpdateCannotDegradeIntoAnotherReminderOrScheduleMutation() {
+        IntentScript raw = script(
+                command(IntentCommand.Type.ADD_SCHEDULE_REMINDER,
+                        "牙醫", null, null, null),
+                command(IntentCommand.Type.UPDATE_SCHEDULE,
+                        "牙醫", null, null, null));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "把牙醫原本提前一小時的提醒調整為兩小時，只修改既有提醒，不要新增",
+                raw);
+
+        assertThat(safe.commands()).extracting(IntentCommand::type)
+                .containsExactly(IntentCommand.Type.UNKNOWN);
+        assertThat(safe.commands().getFirst().reason())
+                .contains("修改既有提醒")
+                .contains("不會新增提醒")
+                .doesNotContain("typed");
+    }
+
+    @Test
     void newScheduleKeepsCreationBeforeItsReminder() {
         IntentScript raw = script(command(IntentCommand.Type.CREATE_SCHEDULE,
                 "產品會議", "2026-07-19T14:00:00+08:00",
@@ -186,6 +223,22 @@ class IntentScriptSafetyPolicyTest {
         assertThat(safe.commands().getFirst().reason())
                 .contains("無法對應到你這次的原話")
                 .doesNotContain("孩子", "下課");
+    }
+
+    @Test
+    void missingStructuredCommandTypeBecomesExplicitUnknownBeforeExecution() {
+        IntentScript raw = script(new IntentCommand(
+                null, null, null, null, null, null, null,
+                "下課時間尚未確定，需先回問", null, null, null, null, null, null,
+                "下午接回時間還不知道"));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "下午接回時間還不知道", raw);
+
+        assertThat(safe.commands()).singleElement().satisfies(command -> {
+            assertThat(command.type()).isEqualTo(IntentCommand.Type.UNKNOWN);
+            assertThat(command.reason()).isEqualTo("下課時間尚未確定，需先回問");
+        });
     }
 
     @Test
@@ -253,6 +306,21 @@ class IntentScriptSafetyPolicyTest {
         assertThat(safe.commands()).singleElement().satisfies(command -> {
             assertThat(command.type()).isEqualTo(IntentCommand.Type.UNKNOWN);
             assertThat(command.reason()).contains("只保留草稿", "不會建立正式資料");
+        });
+    }
+
+    @Test
+    void explicitDraftOnlyRequestAlsoBlocksRestaurantBookingInterpretation() {
+        IntentScript raw = script(command(
+                IntentCommand.Type.BOOK_RESTAURANT, "跟朋友吃飯",
+                "2026-07-18T19:00:00+08:00", null, null));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "明天晚上七點左右跟朋友吃飯，先幫我保留草稿，不要直接建立正式行程", raw);
+
+        assertThat(safe.commands()).singleElement().satisfies(command -> {
+            assertThat(command.type()).isEqualTo(IntentCommand.Type.UNKNOWN);
+            assertThat(command.reason()).contains("不會建立正式資料");
         });
     }
 

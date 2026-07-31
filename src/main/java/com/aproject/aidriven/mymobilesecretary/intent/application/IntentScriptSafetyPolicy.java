@@ -17,6 +17,11 @@ final class IntentScriptSafetyPolicy {
     private static final Pattern SCHEDULE_REMINDER = Pattern.compile(
             "(?<target>[^，。；;]{1,80}?)前(?<amount>\\d{1,3}|[一二三四五六七八九十兩]{1,3}|半)"
                     + "(?<unit>分鐘|分|小時)提醒(?:我|一下)?");
+    private static final Pattern REMINDER_UPDATE = Pattern.compile(
+            "(?:提醒|預先通知|提前通知)[^，。；;]{0,30}"
+                    + "(?:改成|改為|調整成|調整為|修改成|修改為|變更成|變更為)"
+                    + "|(?:修改|調整|變更)[^，。；;]{0,16}(?:既有|原本|原先|目前)?"
+                    + "(?:提醒|預先通知|提前通知)");
 
     private IntentScriptSafetyPolicy() {
     }
@@ -39,6 +44,7 @@ final class IntentScriptSafetyPolicy {
             return script;
         }
         IntentScript result = guardSourceGrounding(text, script, requireSourceText);
+        result = normalizeMissingCommandTypes(result);
         result = CalendarDatePolicy.guard(text, result, clock);
         if (result.commands().stream().anyMatch(command ->
                 command != null && command.type() == IntentCommand.Type.UNKNOWN
@@ -46,6 +52,7 @@ final class IntentScriptSafetyPolicy {
             return result;
         }
         result = guardExplicitDraftOnly(text, result);
+        result = guardUnsupportedReminderUpdate(text, result);
         result = guardUnsupportedConditionalRecurrence(text, result);
         result = normalizeCaregivingReminders(text, result);
         result = guardReportedNoticeWithoutEnd(text, result);
@@ -56,6 +63,24 @@ final class IntentScriptSafetyPolicy {
         return normalizeScheduleReminder(text, result);
     }
 
+    private static IntentScript normalizeMissingCommandTypes(IntentScript script) {
+        List<IntentCommand> normalized = new ArrayList<>();
+        for (IntentCommand command : script.commands()) {
+            if (command == null) continue;
+            if (command.type() != null) {
+                normalized.add(command);
+                continue;
+            }
+            String reason = command.reason() == null || command.reason().isBlank()
+                    ? "我還無法安全判斷要執行哪一種操作；確認前不會修改資料。"
+                    : command.reason();
+            normalized.add(new IntentCommand(IntentCommand.Type.UNKNOWN,
+                    command.title(), null, null, null, command.placeName(), null, reason,
+                    null, null, null, null, null, null, command.sourceText()));
+        }
+        return new IntentScript(List.copyOf(normalized));
+    }
+
     private static IntentScript guardExplicitDraftOnly(String text, IntentScript script) {
         String compact = compact(text);
         boolean draftOnly = containsAny(compact, "保留草稿", "先留草稿", "先幫我留草稿", "只留草稿")
@@ -63,6 +88,13 @@ final class IntentScriptSafetyPolicy {
         if (!draftOnly) return script;
         return rejectMatching(script, IntentScriptSafetyPolicy::isDirectCreation,
                 "你要求只保留草稿；目前沒有可安全執行的 typed 草稿操作，確認前不會建立正式資料。");
+    }
+
+    private static IntentScript guardUnsupportedReminderUpdate(String text, IntentScript script) {
+        if (!REMINDER_UPDATE.matcher(compact(text)).find()) return script;
+        return rejectMatching(script, IntentScriptSafetyPolicy::isReminderUpdateMutation,
+                "你要修改既有提醒；目前還不能安全修改既有提醒，"
+                        + "確認前不會新增提醒或更動原行程。");
     }
 
     private static IntentScript guardUnsupportedConditionalRecurrence(
@@ -97,7 +129,7 @@ final class IntentScriptSafetyPolicy {
         if (command.type() == null) return false;
         return switch (command.type()) {
             case CREATE_SCHEDULE, CREATE_RELATIVE_SCHEDULE, CREATE_TASK,
-                    CREATE_FLEXIBLE_DAY_TASK -> true;
+                    CREATE_FLEXIBLE_DAY_TASK, BOOK_RESTAURANT -> true;
             default -> false;
         };
     }
@@ -106,6 +138,15 @@ final class IntentScriptSafetyPolicy {
         if (command.type() == null) return false;
         return switch (command.type()) {
             case CREATE_SCHEDULE, CREATE_RELATIVE_SCHEDULE, SET_SCHEDULE_RECURRING -> true;
+            default -> false;
+        };
+    }
+
+    private static boolean isReminderUpdateMutation(IntentCommand command) {
+        if (command.type() == null) return false;
+        return switch (command.type()) {
+            case ADD_SCHEDULE_REMINDER, CREATE_SCHEDULE, CREATE_RELATIVE_SCHEDULE,
+                    UPDATE_SCHEDULE, RESCHEDULE_SCHEDULE -> true;
             default -> false;
         };
     }

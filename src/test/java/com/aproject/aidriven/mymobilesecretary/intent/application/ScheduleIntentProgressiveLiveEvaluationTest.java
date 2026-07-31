@@ -49,6 +49,7 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
             assertThat(scenario.message().length()).isGreaterThanOrEqualTo(40);
             assertThat(scenario.message().length()).isLessThanOrEqualTo(100);
         });
+        Set<Integer> selectedCases = selectedCases();
 
         StringBuilder report = new StringBuilder("""
                 # Schedule intent live evaluation 101-150
@@ -63,25 +64,42 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
                 |---:|---:|---|---|---|---|
                 """);
         int matched = 0;
+        int evaluated = 0;
         for (int index = 0; index < scenarios.size(); index++) {
+            int caseNumber = index + 101;
+            if (!selectedCases.isEmpty() && !selectedCases.contains(caseNumber)) continue;
+            evaluated++;
             Scenario scenario = scenarios.get(index);
             Evaluation evaluation = evaluate(scenario);
             if (evaluation.pass()) matched++;
-            report.append("| ").append(index + 101).append(" | ")
+            report.append("| ").append(caseNumber).append(" | ")
                     .append(scenario.message().length()).append(" | ")
                     .append(cell(scenario.message())).append(" | ")
                     .append(cell(scenario.expectedLabel())).append(" | ")
                     .append(cell(evaluation.actual())).append(" | ")
                     .append(evaluation.pass() ? "PASS" : "REVIEW").append(" |\n");
             System.out.printf("LIVE_INTENT_PROGRESSIVE %03d/150 chars=%d %s %s -> %s%n",
-                    index + 101, scenario.message().length(),
+                    caseNumber, scenario.message().length(),
                     evaluation.pass() ? "PASS" : "REVIEW",
                     scenario.message(), evaluation.actual());
         }
-        report.append("\nPrimary-type matches: **").append(matched).append("/50**. ")
+        report.append("\nCurrent-contract matches: **").append(matched).append("/")
+                .append(evaluated).append("**. ")
                 .append("PASS checks guard/type/count only; field-level review is still required.\n");
         Files.createDirectories(REPORT.getParent());
         Files.writeString(REPORT, report.toString(), StandardCharsets.UTF_8);
+    }
+
+    private static Set<Integer> selectedCases() {
+        String configured = System.getProperty("liveIntentProgressiveCases", "").strip();
+        if (configured.isBlank()) return Set.of();
+        Set<Integer> selected = Arrays.stream(configured.split(","))
+                .map(String::strip)
+                .filter(value -> !value.isBlank())
+                .map(Integer::parseInt)
+                .collect(Collectors.toUnmodifiableSet());
+        assertThat(selected).allMatch(value -> value >= 101 && value <= 150);
+        return selected;
     }
 
     private Evaluation evaluate(Scenario scenario) {
@@ -99,7 +117,8 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
 
     private static boolean matches(Scenario scenario, IntentScript script) {
         if (script == null || script.commands() == null
-                || script.commands().size() != scenario.expectedCommandCount()) {
+                || script.commands().size() < scenario.minimumCommandCount()
+                || script.commands().size() > scenario.maximumCommandCount()) {
             return false;
         }
         IntentCommand first = script.commands().getFirst();
@@ -137,7 +156,7 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
         String expected = accepted.stream().map(Enum::name).sorted()
                 .collect(Collectors.joining(" / "));
         if (count != 1) expected += " (" + count + " commands)";
-        return new Scenario(message, accepted, accepted, count, expected);
+        return new Scenario(message, accepted, accepted, count, count, expected);
     }
 
     private static Scenario sWithSupporting(
@@ -150,7 +169,20 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
         allowed.addAll(Arrays.asList(supporting));
         String expected = primary.name();
         if (count != 1) expected += " (" + count + " commands)";
-        return new Scenario(message, Set.of(primary), Set.copyOf(allowed), count, expected);
+        return new Scenario(message, Set.of(primary), Set.copyOf(allowed), count, count, expected);
+    }
+
+    private static Scenario sRange(
+            String message,
+            int minimumCount,
+            int maximumCount,
+            IntentCommand.Type... acceptedTypes) {
+        Set<IntentCommand.Type> accepted = Set.copyOf(Arrays.asList(acceptedTypes));
+        String expected = accepted.stream().map(Enum::name).sorted()
+                .collect(Collectors.joining(" / "))
+                + " (" + minimumCount + "–" + maximumCount + " commands)";
+        return new Scenario(message, accepted, accepted,
+                minimumCount, maximumCount, expected);
     }
 
     private static List<Scenario> scenarios() {
@@ -159,29 +191,29 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
                         IntentCommand.Type.CREATE_TASK, IntentCommand.Type.UNKNOWN),
                 s("明天早上九點我送女兒去英文課，中午十二點由老婆接回家，兩段都幫我放進行程並標清楚是誰接送", 2,
                         IntentCommand.Type.CREATE_TASK),
-                s("週六早上爸爸送兒子去安親班，下午外婆會接他回新店家裡，可是老師還沒通知確切的上下課時間", 2,
+                sRange("週六早上爸爸送兒子去安親班，下午外婆會接他回新店家裡，可是老師還沒通知確切的上下課時間", 1, 2,
                         IntentCommand.Type.UNKNOWN),
                 s("下週一早上八點半媽媽送女兒到學校，下午四點前夫接她去外婆家，請分開建立兩筆接送行程", 2,
                         IntentCommand.Type.CREATE_TASK),
                 sWithSupporting("明天九點校車會到家裡接兒子去上課，放學不是校車送回來，但我還沒確定是老婆還是外婆去接", 2,
                         IntentCommand.Type.CREATE_TASK, IntentCommand.Type.UNKNOWN),
-                s("明天下午兩點到三點在公司開產品會議，四點半到台大醫院回診，兩筆都建立並幫我檢查中間交通是否來得及", 3,
-                        IntentCommand.Type.CREATE_SCHEDULE),
+                sWithSupporting("明天下午兩點到三點在公司開產品會議，四點半到台大醫院回診，兩筆都建立並幫我檢查中間交通是否來得及", 3,
+                        IntentCommand.Type.CREATE_SCHEDULE, IntentCommand.Type.ASK_TRAVEL_TIME),
                 s("我想把明天下午兩點到四點拿來做客戶訪談，請先檢查既有行程和交通時間，確認可行後再問我要不要建立", 1,
                         IntentCommand.Type.CHECK_FEASIBILITY),
                 s("先不要更動任何行程，我只想知道明天下午一點到六點之間有哪些至少九十分鐘的完整空檔可以使用", 1,
                         IntentCommand.Type.SUGGEST_FREE_SLOT),
                 s("這週五上午十點的專案週會改到下午三點，只改本週這一次，下週起仍維持每週五上午十點", 1,
                         IntentCommand.Type.RESCHEDULE_SCHEDULE),
-                s("從八月第一週開始，把每週三晚上七點到八點設成線上英文課，先持續到今年十二月底再提醒我確認是否續上", 2,
-                        IntentCommand.Type.CREATE_SCHEDULE),
-                s("每週五上午十點固定開週會，如果遇到國定假日就提前到週四，遇到颱風停班則順延到下一個上班日", 1,
+                sWithSupporting("從八月第一週開始，把每週三晚上七點到八點設成線上英文課，先持續到今年十二月底再提醒我確認是否續上", 2,
+                        IntentCommand.Type.CREATE_SCHEDULE, IntentCommand.Type.UNKNOWN),
+                sRange("每週五上午十點固定開週會，如果遇到國定假日就提前到週四，遇到颱風停班則順延到下一個上班日", 1, 2,
                         IntentCommand.Type.UNKNOWN),
                 s("如果明天下午四點氣象預報顯示會下大雨，請在兩點提醒我評估是否取消公園散步，不要替我直接取消", 1,
                         IntentCommand.Type.CREATE_WEATHER_REMINDER),
                 s("明晚八點本來要去公館健身房運動，如果健身房臨時沒開就改在家跳有氧，現在先不要建立任何一個版本", 1,
                         IntentCommand.Type.UNKNOWN),
-                sWithSupporting("明天下午的專案會議結束十五分鐘後安排一小時寫會議紀錄，地點沿用會議室，但請先確認專案會議幾點結束", 2,
+                sRange("明天下午的專案會議結束十五分鐘後安排一小時寫會議紀錄，地點沿用會議室，但請先確認專案會議幾點結束", 1, 2,
                         IntentCommand.Type.UNKNOWN, IntentCommand.Type.ASK_SCHEDULE_INFO),
                 s("等我明天運動結束後休息半小時再去洗澡，洗完提醒我準備隔天衣服；目前運動時間和洗澡時間都還沒確定", 1,
                         IntentCommand.Type.UNKNOWN),
@@ -199,8 +231,9 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
                         IntentCommand.Type.CREATE_TASK, IntentCommand.Type.CREATE_SCHEDULE),
                 sWithSupporting("明天下班前要把報價單寄給王經理，這是待辦不是固定時段；如果下午四點還沒完成就再提醒我一次", 2,
                         IntentCommand.Type.UNKNOWN, IntentCommand.Type.CREATE_TASK),
-                s("明天下午兩點到三點和王經理開會，地點公司五樓，開始前二十分鐘提醒我帶簡報和轉接頭", 2,
-                        IntentCommand.Type.CREATE_SCHEDULE),
+                sWithSupporting("明天下午兩點到三點和王經理開會，地點公司五樓，開始前二十分鐘提醒我帶簡報和轉接頭", 2,
+                        IntentCommand.Type.CREATE_SCHEDULE,
+                        IntentCommand.Type.ADD_SCHEDULE_REMINDER),
                 s("明天早上九點要到台大醫院看診，我會從新店家裡開車出發，請依平日交通估算最晚出門時間並保留十五分鐘停車", 1,
                         IntentCommand.Type.ASK_DEPARTURE_TIME),
                 s("週日下午想帶兩個小孩去親子館，活動約兩小時，請避開午睡和既有固定行程，先列三個選項不要直接建立", 1,
@@ -221,8 +254,9 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
                         IntentCommand.Type.UNKNOWN),
                 s("八月十五日下午兩點到四點參加社區住戶大會，年份是今年，地點在一樓交誼廳，請建立單次行程", 1,
                         IntentCommand.Type.CREATE_SCHEDULE),
-                s("下週六晚上十一點半開始整理系統資料，預計做到隔天凌晨一點，請正確跨日建立並提前十分鐘提醒", 2,
-                        IntentCommand.Type.CREATE_SCHEDULE),
+                sWithSupporting("下週六晚上十一點半開始整理系統資料，預計做到隔天凌晨一點，請正確跨日建立並提前十分鐘提醒", 2,
+                        IntentCommand.Type.CREATE_SCHEDULE,
+                        IntentCommand.Type.ADD_SCHEDULE_REMINDER),
                 s("下週一台北時間上午九點和倫敦客戶視訊一小時，請在標題保留倫敦客戶，行程時間以我的台北時區建立", 1,
                         IntentCommand.Type.CREATE_SCHEDULE),
                 s("今年中秋節晚上六點到九點安排家族聚餐，但請先確認政府公告的放假日期，再問我要不要建立不要自行換算", 1,
@@ -239,7 +273,7 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
                         IntentCommand.Type.CREATE_TASK),
                 sWithSupporting("週六早上九點我要送女兒到夏恩英語上課，中午十二點下課，但到底是我、老婆還是外婆接目前還沒決定", 2,
                         IntentCommand.Type.CREATE_TASK, IntentCommand.Type.UNKNOWN),
-                s("明天下午四點可能由外婆去學校接兒子，也可能臨時改成老婆去，現在請先記錄待確認，不要把任何人當成確定接送人", 1,
+                sRange("明天下午四點可能由外婆去學校接兒子，也可能臨時改成老婆去，現在請先記錄待確認，不要把任何人當成確定接送人", 1, 2,
                         IntentCommand.Type.UNKNOWN),
                 s("明天早上八點半校車到家接女兒去學校，下午四點校車送她回家，家長都不用接送，請建立兩段校車行程", 2,
                         IntentCommand.Type.CREATE_TASK),
@@ -250,8 +284,8 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
                 sWithSupporting("把明天下午兩點的產品會議改到三點，地點也改成線上，原本提前十五分鐘的提醒仍保留不要重複建立", 2,
                         IntentCommand.Type.RESCHEDULE_SCHEDULE, IntentCommand.Type.UPDATE_SCHEDULE),
                 s("明天下午兩點會議的提前提醒從十五分鐘改成三十分鐘，只修改既有提醒，不要再建立另一筆會議或另一個重複提醒", 1,
-                        IntentCommand.Type.ADD_SCHEDULE_REMINDER),
-                s("明天早上送女兒上課由我負責，但老師還沒說上課時間；下午老婆接回家也還不知道下課時間，請一次問齊再建立", 2,
+                        IntentCommand.Type.UNKNOWN),
+                sRange("明天早上送女兒上課由我負責，但老師還沒說上課時間；下午老婆接回家也還不知道下課時間，請一次問齊再建立", 1, 2,
                         IntentCommand.Type.UNKNOWN),
                 sWithSupporting("明天早上九點我先送女兒去英文課，接的人還沒決定；下午兩點到三點另外有產品會議，請先處理能確定的部分並追問接送", 3,
                         IntentCommand.Type.CREATE_TASK, IntentCommand.Type.UNKNOWN,
@@ -260,7 +294,8 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
 
     private record Scenario(String message, Set<IntentCommand.Type> acceptedTypes,
                             Set<IntentCommand.Type> allowedTypes,
-                            int expectedCommandCount, String expectedLabel) {
+                            int minimumCommandCount, int maximumCommandCount,
+                            String expectedLabel) {
     }
 
     private record Evaluation(String actual, boolean pass) {

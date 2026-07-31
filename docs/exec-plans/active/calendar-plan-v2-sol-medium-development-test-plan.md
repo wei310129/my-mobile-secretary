@@ -1002,7 +1002,7 @@ stack trace、provider error 或 router reason。
 | 8 | COMPLETED | V72–V82；精準功能／隔離／RLS／neighbor／latency gate 全通過；sealed holdout 16 cases／19 turns；root regression 1417 tests、0 failure、0 error、18 skipped | — |
 | 9 | COMPLETED | W9-A–E PASS_PUBLISHED；latest V88；產品 merge `58e4029` | — |
 | 10 | COMPLETED | V89–V92 recurrence／ICS gates PASS_PUBLISHED；產品 merge `c4ade0b`、state merge `b657970`；`TR-CALENDAR-W10-MERGED=READY` | — |
-| 11 | IN_PROGRESS | W11-A/B/C/E 已通過；W11-F 本批具名人物／任意課程／轉述通知 application + API + signed LINE focused 124/124、root 1726 tests／0 failure／0 error／16 opt-in skipped；真實 LINE 稽核揭露產品紅燈後舊 monitoring baseline 已失效 | 完成 configured-model current-contract evaluator、啟動修正版 runtime 並建立全新 24h／20-turn baseline；產品 PR 與 state-only handoff |
+| 11 | IN_PROGRESS | W11-A/B/C/E 已通過；W11-F 語意泛化與 reminder update fail-closed 最新 deterministic/application/holdout/API/signed LINE focused 79/79；前一批 root 1726/0/0/16；configured-model 舊完整基線 43/50、753.3s，native structured candidate 已消除 selected parse error但實測 6.3–9.5s且仍有 typed capability gap | 完成最新 root regression；解決 configured-model P95≤4s 與 107 typed gap後，才可啟動修正版 runtime／新 24h／20-turn baseline；產品 PR 與 state-only handoff |
 | 12 | REQUIRES_DESTRUCTIVE_APPROVAL | — | 舵輪 11＋精確刪除清單／備份／復原演練＋使用者當輪批准 |
 
 ### 舵輪 0：決策 freeze 與 scenario manifest
@@ -2736,11 +2736,12 @@ identity 與 destructive target 必須由 Java 以來源證據驗證。以下規
 | P0 | recurrence 空白／未知值可能變 `WEEKLY` | FIXED_ROOT_PASS；只有來源明示每天／平日／每週／每月第 N 週才可註冊，其他零 mutation，前一批 root 綠 |
 | P0 | 行程更正只用原時間，不核對使用者說的標題 | FIXED_ROOT_PASS；time/title 唯一交集、no-DB-id 6/6 與前一批 root 綠 |
 | P0 | 條件場地把 title 固定成「運動」，只提到單一場地也可能被當作選定 | FIXED_ROOT_PASS；明確 activity title／choice action、query-only zero mutation 3/3 與前一批 root 綠 |
-| P0 | live evaluator 把 raw model output 當最終業務決策，且 null type 使 oracle 自己 NPE | FIXED_FOCUSED_PENDING_LIVE_RERUN；progressive evaluator 已套相同 Java strict safety，三組 evaluator 都先拒絕 null type；舊 50-case oracle 依產品 invariant 重審中，不得拿 raw 32/50 冒充產品分數 |
+| P0 | live evaluator 把 raw model output 當最終業務決策，且 null type 使 oracle 自己 NPE | FIXED_FOCUSED_LIVE_BLOCKED；progressive evaluator 已套相同 Java strict safety、null type 正規化與每案 model/total latency + token telemetry；舊完整 current-contract baseline 43/50、753.3s。selected native structured output 已可解析，但 101/104 約 8.4–8.9s、101/107 約 6.3–9.5s，仍超過 4s且 107 的空檔需求缺 typed closure，不得標 PASS |
 | P1 | 上班日 routine 追問固定出現小孩、特定公司與固定下班窗 | FIXED_ROOT_PASS；問題由實際接送 evidence 分支，無來源的公司／時間／天氣不再加入，前一批 root 綠 |
-| P1 | school/family transport 以親屬詞作 identity，含特定補習品牌／分店 grammar | FIXED_ROOT_PASS；改以駕駛／乘客／接送動作位置解析，具名 `小明`、非親屬照顧者、任意課程地點、本人駕駛／乘客與送修反例納入 application + API + signed LINE 124/124 focused、root 1726/0/0/16；place identity 仍由下一列獨立 gate 管理 |
+| P1 | school/family transport 以親屬詞作 identity，含特定補習品牌／分店 grammar | FIXED_FOCUSED_ROOT_PENDING；改以駕駛／乘客／接送動作位置解析，具名 `小明`、非親屬照顧者與任意 `法文課`／`陶藝課`／`英文課` 均走 point Task；物流配送、送文件、送修與本人上課為反例。latest focused 79/79，前一批 root 1726/0/0/16；place identity 仍由下一列獨立 gate 管理 |
 | P1 | school pickup safeguard 可能把同句「送修／配送／送文件」一併擋掉 | FIXED_ROOT_PASS；共用 transport-role policy，只阻擋 dependent-activity transport semantic group；具名人物與送修反例及前一批 root 綠 |
 | P1 | 「老師通知」角色詞可能把 point 當 interval，教練／主管卻繞過 | FIXED_ROOT_PASS；改以 reported speech-act + temporal end evidence，任意通知者缺 end 都 clarification／零 mutation，application + API + signed LINE 124/124 focused、root 1726/0/0/16 |
+| P1 | 修改既有提醒被 evaluator 接受成 `ADD_SCHEDULE_REMINDER`，可能建立重複提醒 | FIXED_FOCUSED_ROOT_PENDING；提醒物件 + 修改語意會拒絕 ADD／CREATE／UPDATE／RESCHEDULE 錯誤 mutation，產品尚無 typed reminder update 時只回安全不支援且零異動；不同標題、1h→2h variant 與普通新增提醒 counterexample 已納入，latest focused 79/79 |
 | P1 | place identity 使用 substring 與單一健身品牌特例 | OPEN；brand/branch/place reference 多候選時回問 |
 | P1 | Calendar V2 固定 `Asia/Taipei` 且 create contract 無 participant role | OPEN；保存 IANA zone 與 typed participant reference，缺失／歧義回問 |
 | P1 | legacy 明示地點解析失敗會存 null；relative/reminder 非法值會套 60/10 分鐘 | OPEN；與 V2 共用 required-place／numeric validation policy |
@@ -2750,6 +2751,23 @@ identity 與 destructive target 必須由 Java 以來源證據驗證。以下規
 日期／時間 token grammar、只影響 icon／文案的 presentation mapping，以及需要控制動詞加明確 target
 才生效的 conversation focus protocol。這些仍須有否定、引用與未知值 counterexample；「固定」本身
 不代表安全。
+
+Configured-model latency／reliability 試驗（同日、不得重複踩坑）：
+
+- `claude-sonnet-5` 預設 adaptive thinking + prompt schema：完整 50 cases 為 43/50、753.3s，包含
+  6 筆不可解析 structured output；correctness 與 latency 均未達 release gate。
+- 僅 Intent request 關閉 thinking、使用 native full JSON schema 並快取固定 system prompt：selected
+  parse reliability 改善，送達 Task／提醒 fail-closed 可通過；model latency 仍約 6.3–9.5s，保留為目前
+  correctness candidate，但未達 medium P95 4s。
+- Haiku 4.5 A/B 為 3/6，曾臆測 17:00 下班與 DAILY recurrence，已撤回；不得以 median 約 5.2s
+  犧牲語意品質。
+- sparse native schema 因 Anthropic optional parameter 24 項上限被 400 拒絕，平衡 required 後又造成
+  grammar compilation／HTTP 長時間等待，已撤回；compact prompt 雖有 2–3s 案例，仍多筆不可解析，
+  亦已撤回。後續 latency 修復應改由 typed DTO／能力分層設計與完整 E2/E3 oracle，不再微調 prompt。
+
+使用者已核准的「全域對話測試架構重整」屬 W11 closure 後、machine lane role swap 完成後的桌電
+Upstream／Integration T0–T4 工作；W11 closure 必須把該計畫與 active index 一併發布並 handoff，
+但本輪不得提前實作 T0 或進入 W12。
 
 每輪開發開始前的防復發檢查：先讀本表所有 `OPEN`／`PENDING`；若候選改動新增 raw phrase、
 default 或 fallback，先寫替換人物／地點／活動的 repair case，再保留至少一個未揭露 holdout；確認

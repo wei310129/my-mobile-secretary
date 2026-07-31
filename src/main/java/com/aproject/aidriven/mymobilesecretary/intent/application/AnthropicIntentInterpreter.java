@@ -4,6 +4,10 @@ import java.time.Instant;
 
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
+import org.springframework.ai.anthropic.AnthropicChatOptions;
+import org.springframework.ai.anthropic.api.AnthropicApi;
+import org.springframework.ai.anthropic.api.AnthropicCacheOptions;
+import org.springframework.ai.anthropic.api.AnthropicCacheStrategy;
 import org.springframework.ai.chat.client.ChatClient;
 import org.springframework.ai.chat.model.ChatModel;
 import org.springframework.ai.chat.model.ChatResponse;
@@ -26,6 +30,15 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
     private static final Logger log = LoggerFactory.getLogger(AnthropicIntentInterpreter.class);
     private static final BeanOutputConverter<IntentScript> OUTPUT_CONVERTER =
             new BeanOutputConverter<>(IntentScript.class);
+    private static final AnthropicChatOptions INTENT_CHAT_OPTIONS =
+            AnthropicChatOptions.builder()
+                    .thinking(AnthropicApi.ThinkingType.DISABLED, null)
+                    .cacheOptions(AnthropicCacheOptions.builder()
+                            .strategy(AnthropicCacheStrategy.SYSTEM_ONLY)
+                            .build())
+                    .outputFormat(new AnthropicApi.ChatCompletionRequest.OutputFormat(
+                            OUTPUT_CONVERTER.getJsonSchema()))
+                    .build();
 
     private static final String TRUST_BOUNDARY_RULES = """
 
@@ -291,9 +304,10 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
         try {
             response = chatClient.prompt()
                     .system(systemPrompt())
-                    // ChatClient.entity() 只讀第一個 generation。Sonnet 5 可能把 thinking block 放在
-                    // 第一個、JSON text 放在後面，因此改為保留原始 ChatResponse 並挑出結構化文字。
-                    .user(userPrompt + System.lineSeparator() + OUTPUT_CONVERTER.getFormat())
+                    // Intent 是 latency-sensitive structured classification；只在這條路徑關閉
+                    // Sonnet 5 預設 adaptive thinking，並由 provider JSON schema 約束輸出。
+                    .options(INTENT_CHAT_OPTIONS)
+                    .user(userPrompt)
                     .call()
                     .chatResponse();
         } catch (RuntimeException exception) {
@@ -371,6 +385,10 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
 
     static String systemPrompt() {
         return SYSTEM_PROMPT + TRUST_BOUNDARY_RULES + LIFESTYLE_RULES;
+    }
+
+    static AnthropicChatOptions intentChatOptions() {
+        return INTENT_CHAT_OPTIONS;
     }
 
 }

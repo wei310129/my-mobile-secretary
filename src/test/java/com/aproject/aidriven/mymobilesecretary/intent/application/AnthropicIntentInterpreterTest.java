@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 
 import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.springframework.ai.anthropic.api.AnthropicApi;
+import org.springframework.ai.anthropic.api.AnthropicCacheStrategy;
 import org.springframework.ai.chat.messages.AssistantMessage;
 import org.springframework.ai.chat.model.ChatResponse;
 import org.springframework.ai.chat.model.Generation;
@@ -37,5 +39,19 @@ class AnthropicIntentInterpreterTest {
         assertThat(script.commands()).hasSize(1);
         assertThat(script.commands().getFirst().type()).isEqualTo(IntentCommand.Type.LIST_TASKS);
         assertThat(script.commands().getFirst().sourceText()).isEqualTo("列出待辦");
+    }
+
+    @Test
+    void intentRequestUsesFastNativeStructuredOutputWithoutChangingGlobalModelOptions() {
+        var options = AnthropicIntentInterpreter.intentChatOptions();
+
+        assertThat(options.getThinking().type())
+                .isEqualTo(AnthropicApi.ThinkingType.DISABLED);
+        assertThat(options.getOutputFormat()).isNotNull();
+        assertThat(options.getOutputFormat().type()).isEqualTo("json_schema");
+        assertThat(options.getOutputFormat().schema()).containsKey("properties");
+        assertThat(options.getCacheOptions().getStrategy())
+                .isEqualTo(AnthropicCacheStrategy.SYSTEM_ONLY);
+        assertThat(options.getModel()).isNull();
     }
 }

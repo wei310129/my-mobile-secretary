@@ -94,6 +94,20 @@ class IntentScriptSafetyPolicyTest {
     }
 
     @Test
+    void courseTransportUsesActionAndPassengerSemanticsInsteadOfCourseNameAllowlist() {
+        assertThat(TransportSemanticPolicy.isTransportToDependentActivity(
+                "我送小宇去法文課")).isTrue();
+        assertThat(TransportSemanticPolicy.isTransportToDependentActivity(
+                "林先生載安安到陶藝課")).isTrue();
+        assertThat(TransportSemanticPolicy.isTransportToDependentActivity(
+                "物流配送教材到英文課教室")).isFalse();
+        assertThat(TransportSemanticPolicy.isTransportToDependentActivity(
+                "把洗衣機送修後送文件去英文課教室")).isFalse();
+        assertThat(TransportSemanticPolicy.isTransportToDependentActivity(
+                "我明天去上英文課")).isFalse();
+    }
+
+    @Test
     void connectiveJieZheDoesNotBecomeAPickupResponsibility() {
         IntentScript raw = script(command(
                 IntentCommand.Type.CREATE_SCHEDULE,

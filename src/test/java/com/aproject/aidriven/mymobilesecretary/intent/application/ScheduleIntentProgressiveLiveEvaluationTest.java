@@ -9,6 +9,7 @@ import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneId;
+import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
 import java.util.HashSet;
@@ -60,11 +61,12 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
                 after structured model interpretation. Raw model output is not treated as an executable
                 business decision.
 
-                | # | Chars | Message | Expected primary type | Actual interpretation | Result |
-                |---:|---:|---|---|---|---|
+                | # | Chars | Input tok | Output tok | Model ms | Total ms | Message | Expected primary type | Actual interpretation | Result |
+                |---:|---:|---:|---:|---:|---:|---|---|---|---|
                 """);
         int matched = 0;
         int evaluated = 0;
+        List<Long> modelLatencies = new ArrayList<>();
         for (int index = 0; index < scenarios.size(); index++) {
             int caseNumber = index + 101;
             if (!selectedCases.isEmpty() && !selectedCases.contains(caseNumber)) continue;
@@ -72,8 +74,18 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
             Scenario scenario = scenarios.get(index);
             Evaluation evaluation = evaluate(scenario);
             if (evaluation.pass()) matched++;
+            if (evaluation.modelLatencyMs() != null) {
+                modelLatencies.add(evaluation.modelLatencyMs());
+            }
             report.append("| ").append(caseNumber).append(" | ")
                     .append(scenario.message().length()).append(" | ")
+                    .append(evaluation.inputTokens() == null ? "" : evaluation.inputTokens())
+                    .append(" | ")
+                    .append(evaluation.outputTokens() == null ? "" : evaluation.outputTokens())
+                    .append(" | ")
+                    .append(evaluation.modelLatencyMs() == null ? "" : evaluation.modelLatencyMs())
+                    .append(" | ")
+                    .append(evaluation.totalLatencyMs()).append(" | ")
                     .append(cell(scenario.message())).append(" | ")
                     .append(cell(scenario.expectedLabel())).append(" | ")
                     .append(cell(evaluation.actual())).append(" | ")
@@ -86,6 +98,13 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
         report.append("\nCurrent-contract matches: **").append(matched).append("/")
                 .append(evaluated).append("**. ")
                 .append("PASS checks guard/type/count only; field-level review is still required.\n");
+        if (!modelLatencies.isEmpty()) {
+            report.append("\nModel latency: median **")
+                    .append(percentile(modelLatencies, 0.50)).append(" ms**, P95 **")
+                    .append(percentile(modelLatencies, 0.95)).append(" ms**, max **")
+                    .append(percentile(modelLatencies, 1.0)).append(" ms** across ")
+                    .append(modelLatencies.size()).append(" measured calls.\n");
+        }
         Files.createDirectories(REPORT.getParent());
         Files.writeString(REPORT, report.toString(), StandardCharsets.UTF_8);
     }
@@ -103,16 +122,44 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
     }
 
     private Evaluation evaluate(Scenario scenario) {
-        try {
-            IntentScript interpreted = interpreter.interpret(
-                    scenario.message(), NOW, ConversationSnapshot.empty());
-            IntentScript safe = IntentScriptSafetyPolicy.applyStrict(
-                    scenario.message(), interpreted, EVALUATION_CLOCK);
-            return new Evaluation(summarize(safe), matches(scenario, safe));
-        } catch (RuntimeException exception) {
-            return new Evaluation("ERROR: " + exception.getClass().getSimpleName() + ": "
-                    + exception.getMessage(), false);
+        long started = System.nanoTime();
+        try (IntentInterpreterTelemetryContext.Scope scope =
+                     IntentInterpreterTelemetryContext.open()) {
+            try {
+                IntentScript interpreted = interpreter.interpret(
+                        scenario.message(), NOW, ConversationSnapshot.empty());
+                IntentScript safe = IntentScriptSafetyPolicy.applyStrict(
+                        scenario.message(), interpreted, EVALUATION_CLOCK);
+                return evaluation(summarize(safe), matches(scenario, safe),
+                        scope, started);
+            } catch (RuntimeException exception) {
+                return evaluation("ERROR: " + exception.getClass().getSimpleName() + ": "
+                        + exception.getMessage(), false, scope, started);
+            }
         }
+    }
+
+    private static Evaluation evaluation(
+            String actual,
+            boolean pass,
+            IntentInterpreterTelemetryContext.Scope scope,
+            long startedNanos) {
+        var telemetry = scope.snapshot();
+        return new Evaluation(actual, pass,
+                telemetry == null ? null : telemetry.inputTokens(),
+                telemetry == null ? null : telemetry.outputTokens(),
+                telemetry == null ? null : telemetry.modelLatencyMs(),
+                elapsedMillis(startedNanos));
+    }
+
+    private static long elapsedMillis(long startedNanos) {
+        return Math.max(0L, (System.nanoTime() - startedNanos) / 1_000_000L);
+    }
+
+    private static long percentile(List<Long> values, double quantile) {
+        List<Long> sorted = values.stream().sorted().toList();
+        int index = Math.max(0, (int) Math.ceil(quantile * sorted.size()) - 1);
+        return sorted.get(index);
     }
 
     private static boolean matches(Scenario scenario, IntentScript script) {
@@ -298,6 +345,7 @@ class ScheduleIntentProgressiveLiveEvaluationTest {
                             String expectedLabel) {
     }
 
-    private record Evaluation(String actual, boolean pass) {
+    private record Evaluation(String actual, boolean pass, Integer inputTokens,
+                              Integer outputTokens, Long modelLatencyMs, long totalLatencyMs) {
     }
 }

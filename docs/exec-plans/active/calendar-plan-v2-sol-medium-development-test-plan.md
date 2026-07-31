@@ -1002,7 +1002,7 @@ stack trace、provider error 或 router reason。
 | 8 | COMPLETED | V72–V82；精準功能／隔離／RLS／neighbor／latency gate 全通過；sealed holdout 16 cases／19 turns；root regression 1417 tests、0 failure、0 error、18 skipped | — |
 | 9 | COMPLETED | W9-A–E PASS_PUBLISHED；latest V88；產品 merge `58e4029` | — |
 | 10 | COMPLETED | V89–V92 recurrence／ICS gates PASS_PUBLISHED；產品 merge `c4ade0b`、state merge `b657970`；`TR-CALENDAR-W10-MERGED=READY` | — |
-| 11 | IN_PROGRESS | W11-A routing、W11-B flag-off/on actual entry、W11-C latency、W11-E fresh sealed holdout 與 root regression 1632 tests／0 failure／0 error／16 opt-in skipped；24h／20-turn monitoring 已於 2026-07-31 09:09 +08:00 啟動 | 完成監控；產品 PR 與 state-only handoff |
+| 11 | IN_PROGRESS | W11-A/B/C/E 已通過；W11-F post-reset conversation repair focused 107/107、neighbor 94/94、holdout 21/21、root 1675 tests／0 failure／0 error／16 opt-in skipped；approved reset 後 24h／20-turn monitoring 已於 2026-07-31 13:50 +08:00 重新啟動 | 完成新監控；產品 PR 與 state-only handoff |
 | 12 | REQUIRES_DESTRUCTIVE_APPROVAL | — | 舵輪 11＋精確刪除清單／備份／復原演練＋使用者當輪批准 |
 
 ### 舵輪 0：決策 freeze 與 scenario manifest
@@ -2590,6 +2590,7 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
 {
   "branch": "codex/calendar-w11-cutover",
   "baseSha": "132308e42d8a4c5dcd4929372a885fe1db66fd8a",
+  "repairCheckpoint": "1576d26ae89ad7d35e9a638fb6b3d19375044ab8",
   "checkpoints": [
     {
       "phase": "W11-A",
@@ -2610,6 +2611,11 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
       "phase": "W11-E",
       "commit": "2cc19b922ab0fcfb6aed3c7b092a6842aa0c96bf",
       "result": "sealed runner v3/oracle v2; quoted message fail-closed; typed schedule lookup wins over implicit tagged-record shortcut"
+    },
+    {
+      "phase": "W11-F",
+      "commit": "1576d26ae89ad7d35e9a638fb6b3d19375044ab8",
+      "result": "post-reset natural-language repair: strict source grounding, quoted-reference non-execution, deterministic help/feedback/weekend routes, stale ordinal expiry and evidence-bound feedback"
     }
   ],
   "tests": {
@@ -2623,36 +2629,57 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "conversationFocusLatencyAll": "6 tests, 0 failures, 0 errors, 0 skipped; core and project warm/cold thresholds asserted",
     "neighborFocused": "57 tests, 0 failures, 0 errors, 0 skipped",
     "sealedHoldout": "fresh 20 scenarios/63 turns; capture SHA a893bbccb55662ac9dfa67816f15beef8308ca6d228e409018c4627f91e79aa2; assert 1/1 PASS with phase=assert and no input property",
-    "rootRegression": "operation 100c42f6-fcf5-444c-9bfb-26f16c8cfb34 READY; 1632 tests, 0 failures, 0 errors, 16 opt-in skipped",
-    "officialLineWebhookE2E": "scripts/dev-start.ps1 -SkipDocker -SkipDispatcher exit 0; LINE -> ngrok -> W11 Spring Boot"
+    "conversationRepairFocused": "107 tests, 0 failures, 0 errors, 0 skipped",
+    "conversationRepairNeighbor": "94 tests, 0 failures, 0 errors, 0 skipped",
+    "conversationRepairSealedHoldout": "21 invocations; initial 16 pass/5 generalized blockers, unchanged oracle rerun 21/21 PASS",
+    "signedLineSimulation": "25+ isolated signed webhook turns across help, feedback, weekend, quote, ordinal and idempotency paths; deterministic warm P95 461 ms",
+    "rootRegression": "1675 tests, 0 failures, 0 errors, 16 opt-in skipped; duration 475.2 seconds",
+    "spotless": "spotless:check PASS",
+    "officialLineWebhookE2E": "scripts/dev-start.ps1 -SkipDocker -SkipDispatcher exit 0; subsequent dev-status.ps1 -ExternalLineProbe confirms main=UP, Postgres/Redis healthy and LINE=connected"
   },
   "security": {
     "legacyFlagOffPreserved": true,
     "cutoverZeroDualWrite": true,
     "secretCopiedOrCommitted": false,
-    "externalChatMessageSent": false
+    "externalChatMessageSent": false,
+    "rawConversationCorpusCommitted": false,
+    "backupKeyCommitted": false
+  },
+  "dataReset": {
+    "operation": "calendar-w11-user-data-reset-20260731T033430Z",
+    "status": "RELEASED",
+    "encryptedBackupRoundTrip": "PASS",
+    "scratchDatabaseRestore": "PASS",
+    "flywayLatestPreserved": "V93",
+    "anchorsPreserved": "app_user/workspace/workspace_member = 1/1/1",
+    "businessTablesCleared": true,
+    "redisUserKeysCleared": 2,
+    "mediaFilesCleared": 17,
+    "replayCorpus": "910 sanitized text records retained only in ignored private backup; 41 historical image turns not replayed"
   },
   "monitoring": {
     "status": "IN_PROGRESS",
     "approvedByUser": true,
-    "startedAt": "2026-07-31T09:09:12+08:00",
-    "notBefore": "2026-08-01T09:09:12+08:00",
+    "previousBaselineInvalidatedByApprovedReset": true,
+    "startedAt": "2026-07-31T13:50:47+08:00",
+    "notBefore": "2026-08-01T13:50:47+08:00",
     "minimumNaturalLanguageTurns": 20,
     "officialLineProbe": "PASS",
     "baseline": {
-      "lineInboundMessages": 463,
-      "lineDecisionTraces": 310,
-      "legacyScheduleItems": 20,
+      "lineInboundMessages": 0,
+      "lineDecisionTraces": 0,
+      "legacyScheduleItems": 0,
       "calendarPlans": 0,
-      "intentIssues": 214
-    }
+      "intentIssues": 0
+    },
+    "simulatedTestTurnsCountTowardMonitoring": false
   },
   "remainingWork": [
     "complete the approved 24-hour and at-least-20-turn personal-use monitoring window",
     "final product PR, state-only handoff and HARD_YIELD receipt"
   ],
   "releaseBlockers": [
-    "GitHub CLI authentication is required before the product PR can be created"
+    "GitHub CLI authentication is required before the product PR can be created; gh auth status at 2026-07-31 13:51 +08:00 reports no authenticated host"
   ],
   "userDecisionRequired": []
 }

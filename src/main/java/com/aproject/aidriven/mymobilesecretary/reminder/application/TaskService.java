@@ -273,6 +273,7 @@ public class TaskService {
                 task.getDueAt() == null ? now : task.getDueAt(), TAIPEI);
         ZonedDateTime next = switch (task.getRecurrence()) {
             case DAILY -> base.plusDays(1);
+            case WEEKDAYS -> nextWeekday(base);
             case WEEKLY -> base.plusWeeks(1);
             case MONTHLY -> base.plusMonths(1);
             case NONE -> base;
@@ -280,6 +281,7 @@ public class TaskService {
         while (!next.toInstant().isAfter(now)) {
             next = switch (task.getRecurrence()) {
                 case DAILY -> next.plusDays(1);
+                case WEEKDAYS -> nextWeekday(next);
                 case WEEKLY -> next.plusWeeks(1);
                 case MONTHLY -> next.plusMonths(1);
                 case NONE -> next;
@@ -289,6 +291,15 @@ public class TaskService {
             }
         }
         return next.toInstant();
+    }
+
+    private static ZonedDateTime nextWeekday(ZonedDateTime current) {
+        ZonedDateTime candidate = current.plusDays(1);
+        while (candidate.getDayOfWeek() == java.time.DayOfWeek.SATURDAY
+                || candidate.getDayOfWeek() == java.time.DayOfWeek.SUNDAY) {
+            candidate = candidate.plusDays(1);
+        }
+        return candidate;
     }
 
     private static UUID currentActorId() {

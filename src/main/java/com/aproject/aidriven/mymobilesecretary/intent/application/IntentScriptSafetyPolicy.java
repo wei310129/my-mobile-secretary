@@ -17,6 +17,10 @@ final class IntentScriptSafetyPolicy {
     private static final Pattern SCHEDULE_REMINDER = Pattern.compile(
             "(?<target>[^，。；;]{1,80}?)前(?<amount>\\d{1,3}|[一二三四五六七八九十兩]{1,3}|半)"
                     + "(?<unit>分鐘|分|小時)提醒(?:我|一下)?");
+    private static final Pattern TRANSPORT_TO_ANOTHER_PERSONS_ACTIVITY = Pattern.compile(
+            "(?:送|接送|載|接回|接(?!著|受|續))[^，。；;]{0,36}"
+                    + "(?:上課|下課|放學|學校|補習|安親|才藝|課後班)"
+                    + "|(?:下課|放學)[^，。；;]{0,24}(?:送|接送|載|接回|接(?!著|受|續))");
 
     private IntentScriptSafetyPolicy() {
     }
@@ -111,22 +115,7 @@ final class IntentScriptSafetyPolicy {
                 : command.sourceText();
         String evidence = compact((command.title() == null ? "" : command.title())
                 + " " + (source == null ? "" : source));
-        boolean familyMember = containsAny(
-                evidence,
-                "女兒",
-                "兒子",
-                "孩子",
-                "小孩",
-                "孫子",
-                "孫女",
-                "弟弟",
-                "妹妹",
-                "哥哥",
-                "姐姐");
-        boolean transport = containsAny(evidence, "送", "接", "接回", "接送");
-        boolean school = containsAny(
-                evidence, "上課", "下課", "放學", "學校", "補習", "安親", "才藝", "課後班");
-        return familyMember && transport && school;
+        return TRANSPORT_TO_ANOTHER_PERSONS_ACTIVITY.matcher(evidence).find();
     }
 
     private static IntentScript guardSourceGrounding(String text, IntentScript script,

@@ -208,7 +208,7 @@ class ConversationFocusActualEntryPathTest extends IntegrationTestBase {
             assertThat(activeFocusRoot(workspaceId)).isEqualTo("KNOWLEDGE");
             assertThat(focusRevision(workspaceId)).isEqualTo(1L);
 
-            String scheduleText = "十月九日下午兩點排昆蟲館參觀";
+            String scheduleText = "十月九日下午兩點到三點排昆蟲館參觀";
             IntentResult scheduled = handle(scheduleText, command(
                     IntentCommand.Type.CREATE_SCHEDULE, "昆蟲館參觀",
                     "2026-10-09T14:00:00+08:00", "2026-10-09T15:00:00+08:00",

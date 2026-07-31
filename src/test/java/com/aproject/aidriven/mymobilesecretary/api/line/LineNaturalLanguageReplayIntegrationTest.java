@@ -15,6 +15,7 @@ import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentOptions;
 import com.aproject.aidriven.mymobilesecretary.intent.domain.IntentIssue;
 import com.aproject.aidriven.mymobilesecretary.intent.persistence.IntentIssueRepository;
+import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskStatus;
 import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskRepository;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
@@ -218,6 +219,36 @@ class LineNaturalLanguageReplayIntegrationTest extends IntegrationTestBase {
     }
 
     @Test
+    void signedLineWeekdayTransportKeepsARecurringPointReminder() throws Exception {
+        LocalDate firstMonday = LocalDate.now(clock.withZone(TAIPEI))
+                .with(TemporalAdjusters.next(DayOfWeek.MONDAY));
+        String source = "每個平日上午九點送小明去上課";
+        interpreter.nextCommand(new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                "送小明去上課",
+                null,
+                ZonedDateTime.of(firstMonday, LocalTime.of(9, 0), TAIPEI)
+                        .toOffsetDateTime().toString(),
+                ZonedDateTime.of(firstMonday, LocalTime.of(10, 0), TAIPEI)
+                        .toOffsetDateTime().toString(),
+                null, "NORMAL", null, null, null, null, null, true,
+                recurrenceOptions("WEEKDAYS"), source));
+
+        send(source, "event-" + UUID.randomUUID(), null);
+
+        assertThat(tasks.findAll()).singleElement().satisfies(task -> {
+            assertThat(task.getDueAt()).isEqualTo(at(firstMonday, LocalTime.of(9, 0)));
+            assertThat(task.getRecurrence()).isEqualTo(Task.Recurrence.WEEKDAYS);
+        });
+        try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(lineContext())) {
+            assertThat(schedules.listSchedules(null)).isEmpty();
+            assertThat(jdbc.queryForObject(
+                    "SELECT count(*) FROM calendar_plan WHERE workspace_id = ?",
+                    Long.class, WORKSPACE_ID)).isZero();
+        }
+    }
+
+    @Test
     void weekendOverviewUsesOneSignedLineTurnAndKeepsDaysSeparate() throws Exception {
         LocalDate today = LocalDate.now(clock.withZone(TAIPEI));
         LocalDate monday = today.with(TemporalAdjusters.previousOrSame(DayOfWeek.MONDAY));
@@ -335,6 +366,12 @@ class LineNaturalLanguageReplayIntegrationTest extends IntegrationTestBase {
 
     private static IntentOptions ordinalOptions(int ordinal) {
         return new IntentOptions(null, ordinal, null, null, null, null, null, null,
+                null, null, null, null, null, null, null, null, null, null, null, null,
+                null, null);
+    }
+
+    private static IntentOptions recurrenceOptions(String recurrence) {
+        return new IntentOptions(null, null, null, null, null, null, recurrence, null,
                 null, null, null, null, null, null, null, null, null, null, null, null,
                 null, null);
     }

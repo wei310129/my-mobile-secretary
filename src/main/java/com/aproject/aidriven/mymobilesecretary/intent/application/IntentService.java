@@ -805,16 +805,25 @@ public class IntentService {
     }
 
     private static Optional<IntentResult> collapseFeedbackOnlyScript(IntentScript script) {
-        boolean hasFeedback = script.commands().stream()
+        java.util.List<IntentCommand> commands = script.commands().stream()
                 .filter(java.util.Objects::nonNull)
+                .toList();
+        boolean hasFeedback = commands.stream()
                 .map(IntentCommand::type)
                 .anyMatch(IntentCommand.Type.FEEDBACK::equals);
-        boolean onlyFeedbackOrUnknown = script.commands().stream()
-                .filter(java.util.Objects::nonNull)
+        boolean hasUnknown = commands.stream()
+                .map(IntentCommand::type)
+                .anyMatch(IntentCommand.Type.UNKNOWN::equals);
+        boolean onlyFeedbackOrUnknown = commands.stream()
                 .map(IntentCommand::type)
                 .allMatch(type -> type == IntentCommand.Type.FEEDBACK
                         || type == IntentCommand.Type.UNKNOWN);
-        return hasFeedback && onlyFeedbackOrUnknown
+        // A single typed FEEDBACK command may carry a server-recognized continuation reason
+        // (for example MISSING_PLACE or DUPLICATE). It must reach ActivityIntentHandler so the
+        // handler can inspect current actor-scoped context without mutating domain data. Only a
+        // mixed feedback/unknown script is collapsed to prevent an LLM-added UNKNOWN command from
+        // turning product feedback into a clarification or fallback mutation path.
+        return hasFeedback && hasUnknown && onlyFeedbackOrUnknown
                 ? Optional.of(IntentResult.feedbackReceived())
                 : Optional.empty();
     }

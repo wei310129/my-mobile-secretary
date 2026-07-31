@@ -43,6 +43,40 @@ class IntentScriptSafetyPolicyTest {
     }
 
     @Test
+    void transportResponsibilityUsesTheActionRoleInsteadOfAKinshipWordList() {
+        IntentScript raw = script(command(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                "送小明上課",
+                "2026-07-19T09:00:00+08:00",
+                "2026-07-19T10:00:00+08:00",
+                null));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "明天九點送小明去上課", raw);
+
+        assertThat(safe.commands()).extracting(IntentCommand::type)
+                .containsExactly(IntentCommand.Type.CREATE_TASK);
+        assertThat(safe.commands().getFirst().dueAt())
+                .isEqualTo("2026-07-19T09:00:00+08:00");
+    }
+
+    @Test
+    void connectiveJieZheDoesNotBecomeAPickupResponsibility() {
+        IntentScript raw = script(command(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                "上日文課",
+                "2026-07-19T10:00:00+08:00",
+                "2026-07-19T12:00:00+08:00",
+                null));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "明天我接著上日文課，十點到十二點", raw);
+
+        assertThat(safe.commands()).extracting(IntentCommand::type)
+                .containsExactly(IntentCommand.Type.CREATE_SCHEDULE);
+    }
+
+    @Test
     void personalClassWithExplicitRangeRemainsACalendarInterval() {
         IntentScript raw = script(command(
                 IntentCommand.Type.CREATE_SCHEDULE,

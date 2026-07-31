@@ -123,6 +123,7 @@ public class Task extends WorkspaceOwnedEntity {
     public enum Recurrence {
         NONE,
         DAILY,
+        WEEKDAYS,
         WEEKLY,
         MONTHLY
     }

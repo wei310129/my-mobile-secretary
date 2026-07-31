@@ -134,6 +134,7 @@ public class TaskDetailAnswerService {
         return switch (task.getRecurrence()) {
             case NONE -> "單次";
             case DAILY -> "每天";
+            case WEEKDAYS -> "每個平日";
             case WEEKLY -> "每週";
             case MONTHLY -> "每月";
         };

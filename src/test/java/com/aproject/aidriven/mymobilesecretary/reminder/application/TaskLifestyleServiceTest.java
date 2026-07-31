@@ -96,9 +96,25 @@ class TaskLifestyleServiceTest {
         verify(reminderSchedule).scheduleDueReminder(7L, task.getDueAt());
     }
 
+    @Test
+    void weekdayOccurrenceSkipsTheWeekend() {
+        Instant fridayMorning = Instant.parse("2030-08-02T01:00:00Z");
+        Task task = recurringTask(fridayMorning, Task.Recurrence.WEEKDAYS);
+        when(repository.findByIdAndCreatedByUserId(7L, ACTOR_ID)).thenReturn(Optional.of(task));
+
+        service.skipRecurringOccurrence(7L);
+
+        assertThat(task.getDueAt()).isEqualTo(Instant.parse("2030-08-05T01:00:00Z"));
+        verify(reminderSchedule).scheduleDueReminder(7L, task.getDueAt());
+    }
+
     private static Task recurringTask(Instant due) {
+        return recurringTask(due, Task.Recurrence.WEEKLY);
+    }
+
+    private static Task recurringTask(Instant due, Task.Recurrence recurrence) {
         Task task = Task.create("週報", null, TaskPriority.NORMAL, due,
-                Task.Category.WORK, Task.Recurrence.WEEKLY,
+                Task.Category.WORK, recurrence,
                 Task.ConditionType.NONE, null, NOW);
         ReflectionTestUtils.setField(task, "id", 7L);
         return task;

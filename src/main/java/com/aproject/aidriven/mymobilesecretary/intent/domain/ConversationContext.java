@@ -13,6 +13,7 @@ import jakarta.persistence.GeneratedValue;
 import jakarta.persistence.GenerationType;
 import jakarta.persistence.Id;
 import jakarta.persistence.Table;
+import jakarta.persistence.Transient;
 import jakarta.persistence.UniqueConstraint;
 
 /**
@@ -71,6 +72,15 @@ public class ConversationContext extends WorkspaceOwnedEntity {
     @Column(nullable = false)
     private Instant updatedAt;
 
+    @Transient
+    private boolean taskListTouched;
+
+    @Transient
+    private boolean scheduleListTouched;
+
+    @Transient
+    private boolean objectAnnotationStateTouched;
+
     protected ConversationContext() {
     }
 
@@ -106,10 +116,31 @@ public class ConversationContext extends WorkspaceOwnedEntity {
     }
 
     public void rememberExchange(String action, String userText, String assistantText, Instant now) {
+        rememberExchange(action, userText, assistantText, now,
+                taskListTouched, scheduleListTouched, objectAnnotationStateTouched);
+    }
+
+    public void rememberExchange(
+            String action, String userText, String assistantText, Instant now,
+            boolean retainTaskList, boolean retainScheduleList,
+            boolean retainObjectAnnotationState) {
+        if (!retainTaskList && !taskListTouched) {
+            this.lastTaskListIds = null;
+        }
+        if (!retainScheduleList && !scheduleListTouched) {
+            this.lastScheduleListIds = null;
+        }
+        if (!retainObjectAnnotationState && !objectAnnotationStateTouched) {
+            this.lastObjectAnnotationListIds = null;
+            this.pendingObjectAnnotationDeleteId = null;
+        }
         this.lastAction = action;
         this.lastUserText = truncate(userText, 500);
         this.lastAssistantText = truncate(assistantText, 2000);
         this.updatedAt = now;
+        this.taskListTouched = false;
+        this.scheduleListTouched = false;
+        this.objectAnnotationStateTouched = false;
     }
 
     public void rememberTask(Long taskId, Instant now) {
@@ -129,27 +160,32 @@ public class ConversationContext extends WorkspaceOwnedEntity {
 
     public void rememberTaskList(String ids, Instant now) {
         this.lastTaskListIds = ids;
+        this.taskListTouched = true;
         this.updatedAt = now;
     }
 
     public void rememberScheduleList(String ids, Instant now) {
         this.lastScheduleListIds = ids;
+        this.scheduleListTouched = true;
         this.updatedAt = now;
     }
 
     public void rememberObjectAnnotationList(String ids, Instant now) {
         this.lastObjectAnnotationListIds = ids;
         this.pendingObjectAnnotationDeleteId = null;
+        this.objectAnnotationStateTouched = true;
         this.updatedAt = now;
     }
 
     public void prepareObjectAnnotationDelete(Long annotationId, Instant now) {
         this.pendingObjectAnnotationDeleteId = annotationId;
+        this.objectAnnotationStateTouched = true;
         this.updatedAt = now;
     }
 
     public void clearObjectAnnotationDelete(Instant now) {
         this.pendingObjectAnnotationDeleteId = null;
+        this.objectAnnotationStateTouched = true;
         this.updatedAt = now;
     }
 

@@ -114,6 +114,22 @@ class DailyScheduleOverviewServiceTest {
     }
 
     @Test
+    void weekendOverviewSeparatesBothDaysAndRemembersOneCombinedCandidateList() {
+        ScheduleItem saturday = proposed("週六游泳",
+                "2026-07-18T10:00:00+08:00", "2026-07-18T11:00:00+08:00");
+        saturday.confirm(NOW);
+        when(scheduleService.listSchedules(null)).thenReturn(List.of(saturday));
+
+        IntentResult result = service.overview(List.of(
+                LocalDate.of(2026, 7, 18), LocalDate.of(2026, 7, 19)));
+
+        assertThat(result.message())
+                .contains("2026/07/18", "週六游泳")
+                .contains("2026/07/19", "目前沒有固定或當日行程");
+        verify(contextService).rememberScheduleList(List.of(saturday));
+    }
+
+    @Test
     void mergeConfirmationConfirmsTheProposedRecurringSchedule() {
         ScheduleItem workday = proposed("上班日通勤與上班",
                 "2026-07-17T07:00:00+08:00", "2026-07-17T19:15:00+08:00");

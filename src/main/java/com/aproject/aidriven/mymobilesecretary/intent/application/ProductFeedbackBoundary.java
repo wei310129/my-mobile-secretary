@@ -66,6 +66,12 @@ final class ProductFeedbackBoundary {
         }
         String compact = text.replaceAll("\\s+", "")
                 .replaceAll("[，。！？!?]+$", "");
+        if (deniesDuplicateDiagnosis(compact) && complainsAboutAnswer(compact)) {
+            return Optional.of(IntentResult.message(IntentResult.Action.FEEDBACK_RECEIVED,
+                    "🛠️ 收到，是我理解錯了；你並不是在說重複建立，而是在指出我不應該亂回答。"
+                            + "這則回饋本身不會建立或修改待辦或行程，我會保留問題供後續修正，"
+                            + "不會說成已經修好。"));
+        }
         if (CORRECTION_MESSAGES.contains(compact) || isResponseCorrection(compact)) {
             return Optional.of(IntentResult.message(IntentResult.Action.FEEDBACK_RECEIVED,
                     "🛠️ 收到，是我理解錯了。原本的主題與訊息仍會保留；"
@@ -78,6 +84,18 @@ final class ProductFeedbackBoundary {
         return Optional.empty();
     }
 
+    private static boolean deniesDuplicateDiagnosis(String compact) {
+        return containsAny(compact, List.of(
+                "不是重複", "並不是重複", "不是在說重複", "並非重複",
+                "不是在說你重複", "並非在說重複", "並非重複項目"));
+    }
+
+    private static boolean complainsAboutAnswer(String compact) {
+        return containsAny(compact, List.of(
+                "亂回答", "亂回", "答錯", "理解錯", "誤解", "答非所問",
+                "憑空回覆", "憑空回答", "不該回覆", "不應該回覆"));
+    }
+
     private static boolean isResponseCorrection(String compact) {
         boolean beginsAsCorrection = CORRECTION_MESSAGES.stream().anyMatch(compact::startsWith)
                 || compact.startsWith("你完全都沒聽懂")
@@ -86,7 +104,8 @@ final class ProductFeedbackBoundary {
                 || compact.startsWith("為什麼你明明");
         return beginsAsCorrection && containsAny(compact, List.of(
                 "你再跟我講", "你卻", "你的回應", "我在回應你", "答成", "草稿",
-                "回給使用者", "直接回", "還在問", "再問", "已經確認", "空行", "項次"));
+                "回給使用者", "直接回", "還在問", "再問", "已經確認", "空行", "項次",
+                "回答方式", "回覆方式", "答覆方式"));
     }
 
     private static boolean isGeneralizedProductRule(String text, String compact) {

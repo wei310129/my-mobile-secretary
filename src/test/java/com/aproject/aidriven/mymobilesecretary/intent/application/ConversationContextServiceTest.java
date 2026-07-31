@@ -164,6 +164,63 @@ class ConversationContextServiceTest {
         assertThat(saved.getValue().getUpdatedAt()).isEqualTo(NOW);
     }
 
+    @Test
+    void unrelatedExchangeClearsPreviouslyAdvertisedTaskAndScheduleOrdinals() {
+        ConversationContext context = context(FIRST_ACTOR, WorkspaceChannel.LINE, 11L);
+        context.rememberTaskList("11,22", NOW);
+        context.rememberScheduleList("31,32", NOW);
+        context.rememberExchange("AGENDA_LISTED", "列出今天行程", "1. A 2. B", NOW);
+        stubContext(FIRST_ACTOR, WorkspaceChannel.LINE, context);
+
+        inScope(FIRST_ACTOR, WorkspaceChannel.LINE, () -> {
+            service.rememberExchange("你現在能做到什麼？",
+                    IntentResult.message(IntentResult.Action.SOCIAL_REPLIED, "請選一類功能"));
+            return null;
+        });
+
+        assertThat(inScope(FIRST_ACTOR, WorkspaceChannel.LINE, () -> service.taskIdAt(2))).isNull();
+        assertThat(inScope(FIRST_ACTOR, WorkspaceChannel.LINE, () -> service.scheduleIdAt(2))).isNull();
+    }
+
+    @Test
+    void listsRefreshedInTheCurrentExchangeRemainSelectable() {
+        ConversationContext context = context(FIRST_ACTOR, WorkspaceChannel.LINE, 11L);
+        context.rememberTaskList("41,42", NOW);
+        context.rememberScheduleList("51,52", NOW);
+        stubContext(FIRST_ACTOR, WorkspaceChannel.LINE, context);
+
+        inScope(FIRST_ACTOR, WorkspaceChannel.LINE, () -> {
+            service.rememberExchange("列出今天的事項",
+                    IntentResult.message(IntentResult.Action.AGENDA_LISTED, "1. 任務 2. 行程"));
+            return null;
+        });
+
+        assertThat(inScope(FIRST_ACTOR, WorkspaceChannel.LINE, () -> service.taskIdAt(2)))
+                .isEqualTo(42L);
+        assertThat(inScope(FIRST_ACTOR, WorkspaceChannel.LINE, () -> service.scheduleIdAt(2)))
+                .isEqualTo(52L);
+    }
+
+    @Test
+    void objectAnnotationCandidatesAndPendingDeleteExpireOnAnUnrelatedExchange() {
+        ConversationContext context = context(FIRST_ACTOR, WorkspaceChannel.LINE, 11L);
+        context.rememberObjectAnnotationList("61,62", NOW);
+        context.prepareObjectAnnotationDelete(62L, NOW);
+        context.rememberExchange("ANNOTATIONS_LISTED", "列出標記", "1. A 2. B", NOW);
+        stubContext(FIRST_ACTOR, WorkspaceChannel.LINE, context);
+
+        inScope(FIRST_ACTOR, WorkspaceChannel.LINE, () -> {
+            service.rememberExchange("謝謝",
+                    IntentResult.message(IntentResult.Action.SOCIAL_REPLIED, "不客氣"));
+            return null;
+        });
+
+        assertThat(inScope(FIRST_ACTOR, WorkspaceChannel.LINE,
+                () -> service.objectAnnotationIdAt(2))).isNull();
+        assertThat(inScope(FIRST_ACTOR, WorkspaceChannel.LINE,
+                service::pendingObjectAnnotationDeleteId)).isNull();
+    }
+
     private ConversationContext context(UUID actorId, WorkspaceChannel channel, long taskId) {
         ConversationContext context = ConversationContext.create(channel,
                 scopeResolver.current(contextOf(actorId, channel)), NOW);

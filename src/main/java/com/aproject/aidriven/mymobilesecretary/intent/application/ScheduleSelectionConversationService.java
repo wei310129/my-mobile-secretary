@@ -70,6 +70,10 @@ public class ScheduleSelectionConversationService {
         String recommendation = firstScore == secondScore ? ""
                 : "\n\n建議保留第%s筆，因為它的資料較完整。你也可以回覆「照建議合併」。"
                         .formatted(firstScore > secondScore ? "一" : "二");
+        // The next user turn must still be able to resolve "保留第一個／第二個".
+        // Re-mark the exact pair as current-turn context so the general stale-list cleanup
+        // does not discard a list that this clarification intentionally continues.
+        context.rememberScheduleList(List.of(first, second));
         return IntentResult.clarificationNeeded((
                 "可以，前兩筆是：\n"
                         + "1. %s\n\n2. %s\n\n"

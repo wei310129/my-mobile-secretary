@@ -29,6 +29,7 @@ public class ConversationContextService {
     private final Clock clock;
     private final ConversationScopeResolver scopeResolver;
     private final ConversationFocusRepository focusRepository;
+    private final ThreadLocal<ExchangeTouches> exchangeTouches = new ThreadLocal<>();
 
     public ConversationContextService(ConversationContextRepository repository, Clock clock,
                                       ConversationScopeResolver scopeResolver) {
@@ -56,15 +57,35 @@ public class ConversationContextService {
                 .orElseGet(ConversationSnapshot::empty);
     }
 
+    /**
+     * Starts one inbound turn. List retention is request-local rather than entity-transient because
+     * handlers and the final exchange recorder may run in separate Spring transactions.
+     */
+    public void beginExchange() {
+        exchangeTouches.set(new ExchangeTouches());
+    }
+
+    public void abandonExchange() {
+        exchangeTouches.remove();
+    }
+
     public void rememberExchange(String userText, IntentResult result) {
-        ConversationContext context = current();
-        Instant now = Instant.now(clock);
-        context.rememberExchange(result.action().name(), userText, result.message(), now);
-        if (result.task() != null) {
-            context.rememberTask(result.task().getId(), now);
-        }
-        if (result.decision() != null && result.decision().item() != null) {
-            context.rememberSchedule(result.decision().item().getId(), now);
+        ExchangeTouches touches = exchangeTouches.get();
+        try {
+            ConversationContext context = current();
+            Instant now = Instant.now(clock);
+            context.rememberExchange(result.action().name(), userText, result.message(), now,
+                    touches != null && touches.taskList,
+                    touches != null && touches.scheduleList,
+                    touches != null && touches.objectAnnotationState);
+            if (result.task() != null) {
+                context.rememberTask(result.task().getId(), now);
+            }
+            if (result.decision() != null && result.decision().item() != null) {
+                context.rememberSchedule(result.decision().item().getId(), now);
+            }
+        } finally {
+            exchangeTouches.remove();
         }
     }
 
@@ -81,14 +102,17 @@ public class ConversationContextService {
     }
 
     public void rememberTaskList(List<Task> tasks) {
+        touches().taskList = true;
         current().rememberTaskList(joinIds(tasks.stream().map(Task::getId).toList()), Instant.now(clock));
     }
 
     public void rememberScheduleList(List<ScheduleItem> items) {
+        touches().scheduleList = true;
         current().rememberScheduleList(joinIds(items.stream().map(ScheduleItem::getId).toList()), Instant.now(clock));
     }
 
     public void rememberObjectAnnotationList(List<Long> ids) {
+        touches().objectAnnotationState = true;
         current().rememberObjectAnnotationList(joinIds(ids), Instant.now(clock));
     }
 
@@ -98,6 +122,7 @@ public class ConversationContextService {
     }
 
     public void prepareObjectAnnotationDelete(Long annotationId) {
+        touches().objectAnnotationState = true;
         current().prepareObjectAnnotationDelete(annotationId, Instant.now(clock));
     }
 
@@ -106,7 +131,17 @@ public class ConversationContextService {
     }
 
     public void clearObjectAnnotationDelete() {
+        touches().objectAnnotationState = true;
         current().clearObjectAnnotationDelete(Instant.now(clock));
+    }
+
+    private ExchangeTouches touches() {
+        ExchangeTouches current = exchangeTouches.get();
+        if (current == null) {
+            current = new ExchangeTouches();
+            exchangeTouches.set(current);
+        }
+        return current;
     }
 
     public Long taskIdAt(Integer oneBasedOrdinal) {
@@ -191,5 +226,11 @@ public class ConversationContextService {
         }
         return Arrays.stream(value.split(","))
                 .map(String::strip).filter(s -> !s.isBlank()).map(Long::valueOf).toList();
+    }
+
+    private static final class ExchangeTouches {
+        private boolean taskList;
+        private boolean scheduleList;
+        private boolean objectAnnotationState;
     }
 }

@@ -15,6 +15,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.slf4j.Logger;
@@ -398,6 +399,7 @@ public class IntentService {
                     flowTrace.complete(result);
                     return result;
                 }
+                conversationContextService.beginExchange();
                 // 場合祝賀在記錄之前套用:意圖問題與上下文都要記使用者實際看到的回覆
                 result = OccasionGreeting.decorate(userText,
                         doHandle(userText, effectiveText, flowTrace, mutationBoundary));
@@ -414,6 +416,7 @@ public class IntentService {
                 conversationContextService.rememberExchange(userText, result);
                 return result;
             } catch (RuntimeException exception) {
+                conversationContextService.abandonExchange();
                 replayAttempt.failBeforeExecution();
                 flowTrace.unexpectedFailure();
                 throw exception;
@@ -670,9 +673,9 @@ public class IntentService {
         if (taskDetail.isPresent()) {
             return taskDetail.get();
         }
-        Optional<LocalDate> overviewDate = dailyScheduleDate(text, clock);
-        if (overviewDate.isPresent()) {
-            return dailyScheduleOverviewService.overview(overviewDate.get());
+        Optional<List<LocalDate>> overviewDates = dailyScheduleDates(text, clock);
+        if (overviewDates.isPresent()) {
+            return dailyScheduleOverviewService.overview(overviewDates.get());
         }
         // 「你自己看著辦」=授權低風險安排並回報(使用者裁決 #48)
         if (isDecisionDelegation(text)) {
@@ -689,9 +692,9 @@ public class IntentService {
         if (schoolPickupQuestion.isPresent() && !deferPickupClarification) {
             return IntentResult.clarificationNeeded(schoolPickupQuestion.get());
         }
-        Optional<String> help = capabilityHelp(text);
+        Optional<IntentResult> help = capabilityHelp(text, conversationContextService.snapshot());
         if (help.isPresent()) {
-            return IntentResult.message(IntentResult.Action.SOCIAL_REPLIED, help.get());
+            return help.get();
         }
         Optional<IntentResult> knownPlace = answerKnownPlaceQuestion(text);
         if (knownPlace.isPresent()) {
@@ -821,6 +824,34 @@ public class IntentService {
         return targetDate;
     }
 
+    static Optional<List<LocalDate>> dailyScheduleDates(String text, Clock clock) {
+        String normalized = text == null ? "" : text.replaceAll("\\s+", "");
+        boolean weekend = normalized.contains("週末") || normalized.contains("周末");
+        if (!weekend) {
+            return dailyScheduleDate(text, clock).map(List::of);
+        }
+        String withoutEndingPunctuation = normalized.replaceFirst("[?？。!！]+$", "");
+        boolean hasSchedule = normalized.contains("行程");
+        boolean modifying = containsAny(normalized,
+                "建立", "新增", "安排一個", "排一個", "幫我排", "取消", "刪除", "刪掉",
+                "改期", "改到", "改成", "移到", "延後", "提前");
+        boolean asking = containsAny(normalized,
+                "總整", "總覽", "列出", "有什麼行程", "行程有哪些", "查看行程", "看看行程",
+                "排了哪些", "排了什麼", "安排了哪些", "給我")
+                || withoutEndingPunctuation.endsWith("的行程")
+                || withoutEndingPunctuation.endsWith("行程");
+        if (!hasSchedule || modifying || !asking) {
+            return Optional.empty();
+        }
+        LocalDate today = LocalDate.now(clock.withZone(ZoneId.of("Asia/Taipei")));
+        LocalDate monday = today.with(
+                java.time.temporal.TemporalAdjusters.previousOrSame(java.time.DayOfWeek.MONDAY));
+        boolean nextWeekend = normalized.contains("下週末") || normalized.contains("下周末")
+                || normalized.contains("下個週末") || normalized.contains("下个周末");
+        LocalDate saturday = monday.plusDays(nextWeekend ? 12 : 5);
+        return Optional.of(List.of(saturday, saturday.plusDays(1)));
+    }
+
     static Optional<LocalDate> relativeScheduleDate(String normalizedText, Clock clock) {
         String normalized = normalizedText == null ? "" : normalizedText.replaceAll("\\s+", "");
         LocalDate today = LocalDate.now(clock.withZone(ZoneId.of("Asia/Taipei")));
@@ -904,22 +935,148 @@ public class IntentService {
     }
 
     static Optional<String> capabilityHelp(String text) {
+        return capabilityHelp(text, ConversationSnapshot.empty()).map(IntentResult::message);
+    }
+
+    static Optional<IntentResult> capabilityHelp(String text, ConversationSnapshot snapshot) {
         String normalized = text == null ? "" : text.replaceAll("\\s+", "");
         boolean asking = normalized.contains("能力範圍")
                 || normalized.contains("功能介紹")
                 || normalized.contains("你會什麼")
                 || normalized.contains("你能做什麼")
-                || normalized.contains("你可以做什麼");
-        if (!asking) return Optional.empty();
-        return Optional.of("""
-                我目前可以直接幫你：
-                1. 建立、修改、完成與查詢待辦，包含期限、優先級、分類、固定提醒。
-                2. 建立與調整行程，檢查撞期、交通可行性、空檔、提醒與每週固定行程。
-                3. 管理地點與到達／離開提醒，整理順路事項。
-                4. 管理購物清單、已盤點庫存、品項店家與歷史單價。
-                5. 設定勿擾、天氣條件提醒與交通監看。
-                你也可以直接描述生活安排；資訊不足時我會先問，不會自行確認有衝突的行程。
-                """.strip());
+                || normalized.contains("你可以做什麼")
+                || normalized.contains("你現在能做到什麼")
+                || normalized.contains("你能做到什麼")
+                || normalized.contains("你現在能協助哪些事情")
+                || normalized.contains("你能協助哪些事情")
+                || normalized.contains("你可以協助哪些事情")
+                || normalized.contains("你能幫哪些忙")
+                || normalized.contains("你可以幫哪些忙")
+                || normalized.contains("你支援哪些事情")
+                || normalized.contains("你可以幫我做什麼")
+                || normalized.contains("有哪些功能")
+                || normalized.equals("怎麼用")
+                || normalized.equals("要怎麼用");
+        if (asking) {
+            return Optional.of(IntentResult.message(IntentResult.Action.CAPABILITY_HELP_MENU, """
+                    我可以從這 5 類開始幫你：
+                    1. 待辦與任務
+                    2. 行程與空檔
+                    3. 地點與順路事項
+                    4. 購物、庫存與價格
+                    5. 提醒、勿擾與條件監看
+                    請選一類；你可以回覆數字或類別名稱。
+                    """.strip()));
+        }
+        String previousAction = snapshot == null ? null : snapshot.lastAction();
+        if (IntentResult.Action.CAPABILITY_HELP_MENU.name().equals(previousAction)) {
+            IntentResult.Action topic = capabilityTopic(normalized);
+            if (topic != null) {
+                return Optional.of(capabilityTopicReply(topic, "建立"));
+            }
+        }
+        IntentResult.Action previousTopic = capabilityTopicAction(previousAction);
+        String operation = capabilityOperation(normalized);
+        if (previousTopic != null && operation != null) {
+            return Optional.of(capabilityTopicReply(previousTopic, operation));
+        }
+        return Optional.empty();
+    }
+
+    private static IntentResult.Action capabilityTopic(String text) {
+        if (text.matches("(?:第)?(?:1|一)(?:類|個)?") || containsAny(text, "待辦", "任務")) {
+            return IntentResult.Action.CAPABILITY_HELP_TASK;
+        }
+        if (text.matches("(?:第)?(?:2|二)(?:類|個)?") || containsAny(text, "行程", "空檔")) {
+            return IntentResult.Action.CAPABILITY_HELP_CALENDAR;
+        }
+        if (text.matches("(?:第)?(?:3|三)(?:類|個)?") || containsAny(text, "地點", "順路")) {
+            return IntentResult.Action.CAPABILITY_HELP_PLACE;
+        }
+        if (text.matches("(?:第)?(?:4|四)(?:類|個)?") || containsAny(text, "購物", "庫存", "價格")) {
+            return IntentResult.Action.CAPABILITY_HELP_SHOPPING;
+        }
+        if (text.matches("(?:第)?(?:5|五)(?:類|個)?") || containsAny(text, "提醒", "勿擾", "監看")) {
+            return IntentResult.Action.CAPABILITY_HELP_REMINDER;
+        }
+        return null;
+    }
+
+    private static IntentResult.Action capabilityTopicAction(String action) {
+        if (action == null) return null;
+        try {
+            IntentResult.Action candidate = IntentResult.Action.valueOf(action);
+            return switch (candidate) {
+                case CAPABILITY_HELP_TASK, CAPABILITY_HELP_CALENDAR, CAPABILITY_HELP_PLACE,
+                        CAPABILITY_HELP_SHOPPING, CAPABILITY_HELP_REMINDER -> candidate;
+                default -> null;
+            };
+        } catch (IllegalArgumentException ignored) {
+            return null;
+        }
+    }
+
+    private static String capabilityOperation(String text) {
+        if (containsAny(text, "建立", "新增")) return "建立";
+        if (containsAny(text, "修改", "調整", "改動")) return "修改";
+        if (containsAny(text, "刪除", "取消", "移除")) return "刪除";
+        if (containsAny(text, "查詢", "查看", "列出", "怎麼查")) return "查詢";
+        return null;
+    }
+
+    private static IntentResult capabilityTopicReply(IntentResult.Action topic, String operation) {
+        String label;
+        String example;
+        switch (topic) {
+            case CAPABILITY_HELP_TASK -> {
+                label = "待辦";
+                example = switch (operation) {
+                    case "修改" -> "「把買牛奶的期限改成明天晚上八點」";
+                    case "刪除" -> "「取消買牛奶」";
+                    case "查詢" -> "「還有什麼待辦？」";
+                    default -> "「提醒我明天下午六點買牛奶」";
+                };
+            }
+            case CAPABILITY_HELP_CALENDAR -> {
+                label = "行程";
+                example = switch (operation) {
+                    case "修改" -> "「把產品會議改到明天下午四點」";
+                    case "刪除" -> "「取消明天的產品會議」";
+                    case "查詢" -> "「這週末有什麼行程？」";
+                    default -> "「幫我建立明天下午三點到四點的產品會議行程」";
+                };
+            }
+            case CAPABILITY_HELP_PLACE -> {
+                label = "地點";
+                example = switch (operation) {
+                    case "修改" -> "「把公司地址更新成……」";
+                    case "刪除" -> "地點目前不會直接刪除；可說「把拿包裹的地點移除」解除待辦綁定。";
+                    case "查詢" -> "「公司是指哪一個地點？」";
+                    default -> "「建立地點：公司，地址是……」";
+                };
+            }
+            case CAPABILITY_HELP_SHOPPING -> {
+                label = "購物";
+                example = switch (operation) {
+                    case "修改" -> "「把牛奶庫存改成 2 瓶」";
+                    case "刪除" -> "「把牛奶從購物清單移除」";
+                    case "查詢" -> "「購物清單還有什麼？」";
+                    default -> "「把牛奶和雞蛋加到購物清單」";
+                };
+            }
+            case CAPABILITY_HELP_REMINDER -> {
+                label = "提醒";
+                example = switch (operation) {
+                    case "修改" -> "「把勿擾時間改成晚上十點到早上七點」";
+                    case "刪除" -> "「取消勿擾時間」";
+                    case "查詢" -> "「現在的提醒偏好是什麼？」";
+                    default -> "「明天產品會議前二十分鐘提醒我」";
+                };
+            }
+            default -> throw new IllegalArgumentException("unsupported capability topic");
+        }
+        return IntentResult.message(topic, "%s%s範例：%s\n想再看修改、刪除或查詢哪一種？"
+                .formatted(label, operation, example));
     }
 
     static Optional<String> recurringRoutineClarification(String text) {

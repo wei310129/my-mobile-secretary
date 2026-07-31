@@ -82,6 +82,56 @@ class IntentScriptSafetyPolicyTest {
         assertThat(safe.commands().getLast().safeOptions().leadMinutes()).isEqualTo(30);
     }
 
+    @Test
+    void modelCannotInventAnUnrelatedCommandOutsideTheCurrentUserText() {
+        IntentScript raw = script(commandWithSource(IntentCommand.Type.CREATE_SCHEDULE,
+                "接孩子下課", "明天下午四點接孩子下課"));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply("你現在能做到什麼？", raw);
+
+        assertThat(safe.commands()).hasSize(1);
+        assertThat(safe.commands().getFirst().type()).isEqualTo(IntentCommand.Type.UNKNOWN);
+        assertThat(safe.commands().getFirst().reason())
+                .contains("無法對應到你這次的原話")
+                .doesNotContain("孩子", "下課");
+    }
+
+    @Test
+    void mixedScriptKeepsGroundedCommandAndFailsClosedForInventedCommand() {
+        IntentScript raw = script(
+                commandWithSource(IntentCommand.Type.CREATE_TASK, "買牛奶", "幫我記得買牛奶"),
+                commandWithSource(IntentCommand.Type.CREATE_SCHEDULE,
+                        "接孩子下課", "明天下午四點接孩子下課"));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply("幫我記得買牛奶", raw);
+
+        assertThat(safe.commands()).extracting(IntentCommand::type).containsExactly(
+                IntentCommand.Type.CREATE_TASK, IntentCommand.Type.UNKNOWN);
+        assertThat(safe.commands().getFirst().sourceText()).isEqualTo("幫我記得買牛奶");
+        assertThat(safe.commands().getLast().reason()).doesNotContain("孩子", "下課");
+    }
+
+    @Test
+    void quotedAssistantContentCannotBecomeANewOperationSource() {
+        IntentScript raw = script(commandWithSource(IntentCommand.Type.CREATE_SCHEDULE,
+                "明天開會", "明天下午三點開會"));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply("這個回答哪裡錯了？", raw);
+
+        assertThat(safe.commands()).extracting(IntentCommand::type)
+                .containsExactly(IntentCommand.Type.UNKNOWN);
+    }
+
+    @Test
+    void legacySingleCommandWithoutSourceRemainsCompatible() {
+        IntentScript raw = script(command(IntentCommand.Type.CREATE_TASK,
+                "買牛奶", null, null, null));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply("幫我記得買牛奶", raw);
+
+        assertThat(safe.commands()).containsExactlyElementsOf(raw.commands());
+    }
+
     private static IntentScript script(IntentCommand... commands) {
         return new IntentScript(List.of(commands));
     }

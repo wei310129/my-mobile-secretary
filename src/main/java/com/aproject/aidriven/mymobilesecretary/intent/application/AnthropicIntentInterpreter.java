@@ -308,7 +308,7 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
         var usage = metadata == null ? null : metadata.getUsage();
         long parsingStarted = System.nanoTime();
         try {
-            IntentScript safe = IntentScriptSafetyPolicy.apply(
+            IntentScript safe = IntentScriptSafetyPolicy.applyStrict(
                     text, convertStructuredResponse(response),
                     java.time.Clock.fixed(now, java.time.ZoneId.of("Asia/Taipei")));
             return IntentScriptDateRangePolicy.apply(text, safe, now);

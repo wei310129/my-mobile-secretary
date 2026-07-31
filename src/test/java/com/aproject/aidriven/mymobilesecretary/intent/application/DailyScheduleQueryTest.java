@@ -6,6 +6,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
+import java.util.List;
 import org.junit.jupiter.api.Test;
 
 class DailyScheduleQueryTest {
@@ -55,6 +56,28 @@ class DailyScheduleQueryTest {
         assertThat(IntentService.dailyScheduleDate("明天上午十點安排一個行程", CLOCK)).isEmpty();
         assertThat(IntentService.dailyScheduleDate("取消昨天的行程", CLOCK)).isEmpty();
         assertThat(IntentService.dailyScheduleDate("把上禮拜五的行程刪掉", CLOCK)).isEmpty();
+    }
+
+    @Test
+    void weekendQueriesResolveToSaturdayAndSundayWithoutUsingTheModel() {
+        assertThat(IntentService.dailyScheduleDates("這週末有什麼行程？", CLOCK))
+                .contains(List.of(LocalDate.of(2026, 7, 18), LocalDate.of(2026, 7, 19)));
+        assertThat(IntentService.dailyScheduleDates("下週末的行程", CLOCK))
+                .contains(List.of(LocalDate.of(2026, 7, 25), LocalDate.of(2026, 7, 26)));
+        assertThat(IntentService.dailyScheduleDates("週末行程", CLOCK))
+                .contains(List.of(LocalDate.of(2026, 7, 18), LocalDate.of(2026, 7, 19)));
+        assertThat(IntentService.dailyScheduleDates("取消這週末的行程", CLOCK)).isEmpty();
+    }
+
+    @Test
+    void bareWeekendOnSundayKeepsTheCurrentWeekendAndHandlesYearBoundary() {
+        Clock sunday = Clock.fixed(Instant.parse("2026-07-19T02:00:00Z"), ZoneOffset.UTC);
+        Clock yearEnd = Clock.fixed(Instant.parse("2026-12-31T02:00:00Z"), ZoneOffset.UTC);
+
+        assertThat(IntentService.dailyScheduleDates("週末有哪些行程？", sunday))
+                .contains(List.of(LocalDate.of(2026, 7, 18), LocalDate.of(2026, 7, 19)));
+        assertThat(IntentService.dailyScheduleDates("下週末有哪些行程？", yearEnd))
+                .contains(List.of(LocalDate.of(2027, 1, 9), LocalDate.of(2027, 1, 10)));
     }
 
     @Test

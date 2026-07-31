@@ -26,10 +26,20 @@ final class IntentScriptSafetyPolicy {
     }
 
     static IntentScript apply(String text, IntentScript script, Clock clock) {
+        return apply(text, script, clock, false);
+    }
+
+    static IntentScript applyStrict(String text, IntentScript script, Clock clock) {
+        return apply(text, script, clock, true);
+    }
+
+    private static IntentScript apply(String text, IntentScript script, Clock clock,
+                                      boolean requireSourceText) {
         if (script == null || script.commands() == null) {
             return script;
         }
-        IntentScript result = CalendarDatePolicy.guard(text, script, clock);
+        IntentScript result = guardSourceGrounding(text, script, requireSourceText);
+        result = CalendarDatePolicy.guard(text, result, clock);
         if (result.commands().stream().anyMatch(command ->
                 command != null && command.type() == IntentCommand.Type.UNKNOWN
                         && CalendarDatePolicy.clarification(text, clock).isPresent())) {
@@ -41,6 +51,63 @@ final class IntentScriptSafetyPolicy {
             result = IntentService.applySchoolPickupSafeguard(result, pickupQuestion.get());
         }
         return normalizeScheduleReminder(text, result);
+    }
+
+    private static IntentScript guardSourceGrounding(String text, IntentScript script,
+                                                     boolean requireSourceText) {
+        String normalizedText = normalizeSource(text);
+        List<IntentCommand> grounded = new ArrayList<>();
+        boolean rejected = false;
+        for (IntentCommand command : script.commands()) {
+            if (command == null) {
+                continue;
+            }
+            String normalizedSource = normalizeSource(command.sourceText());
+            if (normalizedSource.isBlank()) {
+                if (requireSourceText) {
+                    rejected = true;
+                } else {
+                    grounded.add(command);
+                }
+                continue;
+            }
+            if (!normalizedText.contains(normalizedSource)) {
+                rejected = true;
+                continue;
+            }
+            if (isQuotedReferenceOnly(text, command.sourceText())) {
+                rejected = true;
+                continue;
+            }
+            grounded.add(command);
+        }
+        if (rejected) {
+            grounded.add(new IntentCommand(IntentCommand.Type.UNKNOWN,
+                    null, null, null, null, null, null,
+                    "有一個操作無法對應到你這次的原話；確認前不會執行。",
+                    null, null, null, null, null, null, text));
+        }
+        return new IntentScript(List.copyOf(grounded));
+    }
+
+    private static boolean isQuotedReferenceOnly(String text, String sourceText) {
+        String current = text == null ? "" : text;
+        String source = sourceText == null ? "" : sourceText.strip();
+        if (source.isBlank() || !isExplicitlyQuoted(current, source)) {
+            return false;
+        }
+        String compact = compact(current);
+        return containsAny(compact,
+                "只是引用", "僅是引用", "只是前一則", "只是上一則", "只是例子",
+                "只是範例", "用來說明", "拿來說明", "不是新指令", "不是新的指令",
+                "請勿執行", "不要執行", "不需執行", "不用執行", "別執行");
+    }
+
+    private static boolean isExplicitlyQuoted(String text, String source) {
+        return text.contains("「" + source + "」")
+                || text.contains("『" + source + "』")
+                || text.contains("\"" + source + "\"")
+                || text.contains("'" + source + "'");
     }
 
     private static IntentScript guardTeacherNoticeWithoutEnd(String text, IntentScript script) {
@@ -191,6 +258,11 @@ final class IntentScriptSafetyPolicy {
 
     private static String compact(String text) {
         return text == null ? "" : text.replaceAll("\\s+", "");
+    }
+
+    private static String normalizeSource(String text) {
+        return text == null ? "" : text.replaceAll("\\s+", "")
+                .replaceAll("[，,;；。！？!?：:「」『』\"'（）()\\[\\]]", "");
     }
 
     private static boolean containsAny(String text, String... values) {

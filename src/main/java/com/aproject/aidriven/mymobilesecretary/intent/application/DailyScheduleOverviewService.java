@@ -12,6 +12,7 @@ import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.Comparator;
 import java.util.EnumSet;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Stream;
@@ -100,6 +101,55 @@ public class DailyScheduleOverviewService {
                     message.append("\n\n❓ 請確認是否把當日單次行程%s併入固定行程「%s」；我不會自行確認。"
                             .formatted(children, item.getTitle()));
                 });
+        return IntentResult.message(IntentResult.Action.SCHEDULES_LISTED, message.toString());
+    }
+
+    public IntentResult overview(List<LocalDate> dates) {
+        if (dates == null || dates.isEmpty()) {
+            throw new IllegalArgumentException("at least one overview date is required");
+        }
+        List<LocalDate> orderedDates = dates.stream().distinct().sorted().toList();
+        if (orderedDates.size() == 1) {
+            return overview(orderedDates.getFirst());
+        }
+        if (orderedDates.size() > 31) {
+            throw new IllegalArgumentException("overview date range is too large");
+        }
+        List<ScheduleItem> visible = scheduleService.listSchedules(null).stream()
+                .filter(item -> VISIBLE_STATUSES.contains(item.getStatus()))
+                .toList();
+        LinkedHashSet<ScheduleItem> combinedSources = new LinkedHashSet<>();
+        StringBuilder message = new StringBuilder();
+        for (LocalDate date : orderedDates) {
+            List<Occurrence> fixed = visible.stream()
+                    .filter(item -> item.getRecurrence() != ScheduleItem.Recurrence.NONE)
+                    .filter(item -> occursOn(item, date))
+                    .map(item -> project(item, date))
+                    .sorted(Comparator.comparing(Occurrence::startAt))
+                    .toList();
+            List<Occurrence> oneTime = visible.stream()
+                    .filter(item -> item.getRecurrence() == ScheduleItem.Recurrence.NONE)
+                    .filter(item -> LocalDate.ofInstant(item.getStartAt(), TAIPEI).equals(date))
+                    .map(item -> new Occurrence(item, item.getStartAt(), item.getEndAt()))
+                    .sorted(Comparator.comparing(Occurrence::startAt))
+                    .toList();
+            Stream.concat(fixed.stream(), oneTime.stream())
+                    .map(Occurrence::source).forEach(combinedSources::add);
+
+            if (!message.isEmpty()) {
+                message.append("\n\n");
+            }
+            message.append("📅 %s行程總覽：".formatted(date.format(DAY)));
+            List<Occurrence> complete = Stream.concat(fixed.stream(), oneTime.stream())
+                    .sorted(Comparator.comparing(Occurrence::startAt))
+                    .toList();
+            if (complete.isEmpty()) {
+                message.append("\n- 目前沒有固定或當日行程。");
+            } else {
+                appendCompleteOverview(message, complete);
+            }
+        }
+        contextService.rememberScheduleList(List.copyOf(combinedSources));
         return IntentResult.message(IntentResult.Action.SCHEDULES_LISTED, message.toString());
     }
 

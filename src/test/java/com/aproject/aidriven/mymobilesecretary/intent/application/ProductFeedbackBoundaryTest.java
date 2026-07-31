@@ -108,4 +108,15 @@ class ProductFeedbackBoundaryTest {
         assertThat(result.message()).contains("理解錯了", "原本的主題")
                 .doesNotContain("使用者說", "無法判斷意圖");
     }
+
+    @Test
+    void negatedDuplicateDiagnosisIsCapturedAsWrongAnswerFeedback() {
+        IntentResult result = ProductFeedbackBoundary.answer(
+                "不是重複建立，而是不應該亂回答").orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+        assertThat(result.message())
+                .contains("並不是在說重複建立", "不會建立或修改", "不會說成已經修好")
+                .doesNotContain("你提醒得對，不應該重複建立");
+    }
 }

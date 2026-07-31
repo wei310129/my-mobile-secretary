@@ -52,6 +52,7 @@ class ScheduleSelectionConversationServiceTest {
                         "保留第一個", "保留第二個")
                 .doesNotContain("系統沒有", "接的人不一定是你");
         assertThat(mutations).hasValue(0);
+        verify(context).rememberScheduleList(List.of(first, second));
 
         IntentResult completed = service.answer(
                 "1.對，保留第一個", "1.對，保留第一個",

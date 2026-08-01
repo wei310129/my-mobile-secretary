@@ -2631,6 +2631,16 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
       "phase": "W11-LATENCY-PROVIDER-TRANSPORT-CONTRACT",
       "commit": "31a661d65a50a25130340974399722320cb45384",
       "result": "offline Spring AI Chat Completions contract proves two-message isolation, structured output, bounded options and one HTTP attempt without an external call"
+    },
+    {
+      "phase": "W11-LATENCY-PRODUCTION-ROUTE",
+      "commit": "c2f5d3199c7b7bbf109a38f71b83c8b78f5a1ca9",
+      "result": "provider-neutral single-call route selects gpt-5.6-luna only for bounded read-only schedule analysis; Java maps typed facets, rejects mixed/unsupported work without mutation and applies exact date ranges"
+    },
+    {
+      "phase": "W11-LATENCY-SIGNED-LINE",
+      "commit": "71fc2e33ba5916a0d74387aaebbf28088c17214f",
+      "result": "raw current-user utterance is separated from bounded interpretation context; real Luna plus signed LINE/Testcontainers gate is correct, read-only and within unchanged four-second terminal budget"
     }
   ],
   "tests": {
@@ -2744,9 +2754,34 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
       "externalMutationCount": 0,
       "productionFilesChanged": false
     },
-    "rootRegression": "1750 tests, 0 failures, 0 errors, 19 opt-in skipped; duration 584.2 seconds",
+    "openAiProductionRoute": {
+      "selectedModel": "gpt-5.6-luna",
+      "providerBoundary": "provider-neutral ScheduleAnalysisUnderstandingClient; OpenAI adapter is manually constructed and does not register a second ChatModel bean",
+      "singleCallInvariant": "Java chooses the provider before the first model call; after specialized selection any failure reaches IntentService safe fallback and never calls Anthropic",
+      "privacyBoundary": "specialized route receives only the exact current user utterance; bounded prior/quoted context remains available only to the legacy interpreter",
+      "executionBoundary": "model returns BUSIEST_DAY/LONGEST_ITEM/ADJACENT_GAPS plus containsOtherRequest; Java validates dependencies, maps only read-only commands and owns date range/business execution",
+      "redFirst": "first real signed-LINE run rejected a supported command because contextualized interpretation text was used as source grounding; the oracle remained unchanged and the interface was repaired to separate userText from interpretationText",
+      "productionAdapterLive": "4/4 typed scripts; one warm-up; median 1430 ms; P95/max 2203 ms; one provider attempt per scenario; zero business mutation",
+      "signedLineLive": "5/5 signed synthetic turns; cold terminal 3311 ms; warm median 1423 ms; warm P95/max 1840 ms; LINE outbound adapter mocked to zero external messages; legacy schedule and Calendar V2 plan deltas both zero",
+      "focused": "provider/transport/semantic/security batch 63 tests with 2 opt-in skips; Testcontainers context/API/signed-LINE/cutover/security batch 34/34; raw/current-message and source-grounding batch 30/30",
+      "spotless": "full spotless:check PASS in an independent verification target while the healthy runtime retained the W11 worktree Maven mutex",
+      "rootRegression": "1765 tests, 0 failures, 0 errors, 21 opt-in skipped; duration 502.6 seconds",
+      "externalProviderCallsCumulative": 162,
+      "successfulCompletionsCumulative": 138,
+      "externalMutationCount": 0,
+      "lineOutboundProviderCalls": 0,
+      "claimsReleased": [
+        "calendar-w11-provider-route-docker-20260801-r1",
+        "calendar-w11-runtime-infra-recovery-20260801-r1",
+        "calendar-w11-signed-line-live-20260801-r1",
+        "calendar-w11-signed-line-live-20260801-r2",
+        "calendar-w11-signed-line-live-20260801-r3",
+        "calendar-w11-root-regression-20260801-r1"
+      ]
+    },
+    "rootRegression": "1765 tests, 0 failures, 0 errors, 21 opt-in skipped; duration 502.6 seconds",
     "spotless": "spotless:check PASS",
-    "officialLineWebhookE2E": "scripts/dev-start.ps1 -SkipDocker -SkipDispatcher exit 0; subsequent dev-status.ps1 -ExternalLineProbe confirms main=UP, Postgres/Redis healthy and LINE=connected"
+    "officialLineWebhookE2E": "pre-71fc2e33ba5916a0d74387aaebbf28088c17214f runtime: scripts/dev-start.ps1 -SkipDocker -SkipDispatcher exit 0; subsequent dev-status.ps1 -ExternalLineProbe confirms main=UP, Postgres/Redis healthy and LINE=connected; runtime refresh to that commit is still required before the new monitoring baseline"
   },
   "security": {
     "legacyFlagOffPreserved": true,
@@ -2769,7 +2804,7 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "replayCorpus": "910 sanitized text records retained only in ignored private backup; 41 historical image turns not replayed"
   },
   "monitoring": {
-    "status": "INVALIDATED_BY_ACTIVE_PRODUCT_REPAIR",
+    "status": "PRODUCT_GATES_PASS_AWAITING_71FC2E33_RUNTIME_REFRESH_AND_NEW_BASELINE",
     "approvedByUser": true,
     "previousBaselineInvalidatedByApprovedReset": true,
     "secondBaselineInvalidatedByObservedProductFailures": true,
@@ -2787,14 +2822,14 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "simulatedTestTurnsCountTowardMonitoring": false
   },
   "remainingWork": [
-    "implement the provider-neutral read-only production route using the selected gpt-5.6-luna candidate with no legacy double-call and no model-owned business execution",
-    "only after a qualifying route passes actual signed-LINE warm/cold latency, start the repaired runtime and record a new metadata-only baseline",
+    "refresh the official local runtime to commit 71fc2e33ba5916a0d74387aaebbf28088c17214f and re-run dev-status.ps1 -ExternalLineProbe",
+    "record a new metadata-only baseline only after the refreshed runtime is healthy",
     "complete a fresh approved 24-hour and at-least-20-turn personal-use monitoring window",
     "final product PR, state-only handoff and HARD_YIELD receipt"
   ],
   "releaseBlockers": [
-    "No tested Anthropic full-schema, sparse-wire or typed-candidate route satisfies the unchanged Medium terminal P95 <= 4 seconds",
-    "The selected gpt-5.6-luna candidate has only passed the isolated typed-understanding gate; production routing and signed-LINE warm/cold terminal latency are not yet verified",
+    "The healthy local runtime was started before commit 71fc2e33ba5916a0d74387aaebbf28088c17214f and must be refreshed before a new 24-hour monitoring baseline is valid",
+    "The fresh 24-hour and at-least-20-real-LINE-turn monitoring window has not started",
     "GitHub CLI authentication is required before the product PR can be created; gh auth status at 2026-07-31 13:51 +08:00 reports no authenticated host"
   ],
   "userDecisionRequired": []

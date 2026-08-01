@@ -49,6 +49,45 @@ class ProviderNeutralIntentInterpreterTest {
     }
 
     @Test
+    void specializedRouteUsesOnlyCurrentUtteranceAndGroundsSourcesToIt() {
+        String userText = "下週哪一天最忙、哪筆行程最久？";
+        String contextualized = "【近期對話】\n使用者：另一個私人主題\n【使用者目前訊息】" + userText;
+        when(client.available()).thenReturn(true);
+        when(client.understand(userText)).thenReturn(
+                new ScheduleAnalysisUnderstandingClient.Decision(
+                        List.of(
+                                ScheduleAnalysisUnderstandingClient.Facet.BUSIEST_DAY,
+                                ScheduleAnalysisUnderstandingClient.Facet.LONGEST_ITEM),
+                        false));
+
+        IntentScript result = interpreter.interpret(
+                userText, contextualized, NOW, ConversationSnapshot.empty());
+
+        assertThat(result.commands()).extracting(IntentCommand::sourceText)
+                .containsOnly(userText);
+        verify(client).understand(userText);
+        verify(client, never()).understand(contextualized);
+        verifyNoInteractions(legacy);
+    }
+
+    @Test
+    void legacyRouteRetainsBoundedInterpretationContext() {
+        String userText = "下一個行程是什麼？";
+        String contextualized = "【近期對話】\n助理：已列出兩筆\n【使用者目前訊息】" + userText;
+        IntentScript expected = new IntentScript(List.of(
+                command(IntentCommand.Type.ASK_NEXT_SCHEDULE)));
+        when(legacy.interpret(contextualized, NOW, ConversationSnapshot.empty()))
+                .thenReturn(expected);
+
+        IntentScript result = interpreter.interpret(
+                userText, contextualized, NOW, ConversationSnapshot.empty());
+
+        assertThat(result).isSameAs(expected);
+        verify(legacy).interpret(contextualized, NOW, ConversationSnapshot.empty());
+        verifyNoInteractions(client);
+    }
+
+    @Test
     void mixedRequestKeepsReliableReadOnlyFacetAndRejectsTheOtherOperation() {
         String text = "找下週最長行程，然後新增週五兩點開會";
         when(client.available()).thenReturn(true);

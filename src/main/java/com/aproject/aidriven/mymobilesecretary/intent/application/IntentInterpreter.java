@@ -24,4 +24,17 @@ public interface IntentInterpreter {
     default IntentScript interpret(String text, Instant now, ConversationSnapshot context) {
         return interpret(text, now);
     }
+
+    /**
+     * Separates the exact current utterance from optional bounded interpretation context.
+     * Existing interpreters retain their context-aware behavior by default; specialized providers
+     * may deliberately consume only {@code userText} when their contract forbids prior context.
+     */
+    default IntentScript interpret(
+            String userText,
+            String interpretationText,
+            Instant now,
+            ConversationSnapshot context) {
+        return interpret(interpretationText, now, context);
+    }
 }

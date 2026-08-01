@@ -41,13 +41,22 @@ public final class ProviderNeutralIntentInterpreter implements IntentInterpreter
 
     @Override
     public IntentScript interpret(String text, Instant now, ConversationSnapshot context) {
-        if (!scheduleAnalysisRoutePolicy.matches(text) || !scheduleAnalysisClient.available()) {
-            return legacy.interpret(text, now, context);
+        return interpret(text, text, now, context);
+    }
+
+    @Override
+    public IntentScript interpret(
+            String userText,
+            String interpretationText,
+            Instant now,
+            ConversationSnapshot context) {
+        if (!scheduleAnalysisRoutePolicy.matches(userText) || !scheduleAnalysisClient.available()) {
+            return legacy.interpret(interpretationText, now, context);
         }
         ScheduleAnalysisUnderstandingClient.Decision decision =
-                Objects.requireNonNull(scheduleAnalysisClient.understand(text),
+                Objects.requireNonNull(scheduleAnalysisClient.understand(userText),
                         "schedule analysis decision");
-        return toIntentScript(text, decision);
+        return toIntentScript(userText, decision);
     }
 
     private static IntentScript toIntentScript(

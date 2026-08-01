@@ -718,7 +718,7 @@ public class IntentService {
             return interpreterFailureFallback(text, "意圖解析未啟用", mutationBoundary);
         }
         try {
-            script = interpreter.interpret(interpretationText, Instant.now(clock),
+            script = interpreter.interpret(text, interpretationText, Instant.now(clock),
                     conversationContextService.snapshot());
             script = IntentScriptSafetyPolicy.apply(text, script, clock);
             script = IntentScriptDateRangePolicy.apply(text, script, Instant.now(clock));

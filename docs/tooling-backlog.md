@@ -14,3 +14,7 @@
   PostgreSQL／Redis，並因固定 container name 衝突而中止。工具專用 session 應讓 restart
   支援並完整轉交 `-SkipDocker`，另補「shared containers 已健康、只重啟 main runtime」的測試；
   在修復前仍以官方 `dev-start.ps1 -SkipDocker -SkipDispatcher` 恢復，不停止或清理 shared service。
+- `scripts/dev-status.ps1 -ExternalLineProbe` 的 Docker preflight 目前直接等待 `docker info`，Docker
+  Desktop backend 尚存活但 engine CLI 無回應時沒有 bounded timeout，會讓整個 status／LINE probe
+  無限卡住並遺留 `docker.exe` child。工具專用 session 應為該 preflight 加入可稽核 timeout、精確
+  child cleanup 與 `INFRA_DOCKER_CLI_TIMEOUT` 分類；不得因 diagnostic timeout 重啟或清理 shared service。

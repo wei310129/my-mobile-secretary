@@ -1002,7 +1002,7 @@ stack trace、provider error 或 router reason。
 | 8 | COMPLETED | V72–V82；精準功能／隔離／RLS／neighbor／latency gate 全通過；sealed holdout 16 cases／19 turns；root regression 1417 tests、0 failure、0 error、18 skipped | — |
 | 9 | COMPLETED | W9-A–E PASS_PUBLISHED；latest V88；產品 merge `58e4029` | — |
 | 10 | COMPLETED | V89–V92 recurrence／ICS gates PASS_PUBLISHED；產品 merge `c4ade0b`、state merge `b657970`；`TR-CALENDAR-W10-MERGED=READY` | — |
-| 11 | IN_PROGRESS | W11-A/B/C/E/F 已通過；OpenAI `gpt-5.6-luna` 20/20、production adapter 4/4、signed LINE 5/5；W11-G 已阻止 cutover 後三個 legacy background worker 寫入，並移除接送字詞觸發的非必要追問，post-format focused 70/70、root 1765/0/0/21（783.2s） | 先發布 W11-G、刷新 runtime 並建立新的 24h／20-turn personal-use baseline；舊 11:43 baseline 已永久失效；其後產品 PR 與 state-only handoff |
+| 11 | IN_PROGRESS | W11-A/B/C/E/F 已通過；OpenAI `gpt-5.6-luna` 20/20、production adapter 4/4、signed LINE 5/5；W11-G `2b22073` 已阻止 cutover 後三個 legacy background worker 寫入並移除接送字詞觸發的非必要追問，post-format focused 70/70、root 1765/0/0/21（783.2s）；修正版 runtime／LINE E2E 健康 | Docker engine CLI timeout 解除後重跑完整 external probe 並建立新的 24h／20-turn personal-use baseline；舊 11:43 baseline 已永久失效；其後產品 PR 與 state-only handoff |
 | 12 | REQUIRES_DESTRUCTIVE_APPROVAL | — | 舵輪 11＋精確刪除清單／備份／復原演練＋使用者當輪批准 |
 
 ### 舵輪 0：決策 freeze 與 scenario manifest
@@ -2641,6 +2641,11 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
       "phase": "W11-LATENCY-SIGNED-LINE",
       "commit": "71fc2e33ba5916a0d74387aaebbf28088c17214f",
       "result": "raw current-user utterance is separated from bounded interpretation context; real Luna plus signed LINE/Testcontainers gate is correct, read-only and within unchanged four-second terminal budget"
+    },
+    {
+      "phase": "W11-G-CUTOVER-INTEGRITY-REPAIR",
+      "commit": "2b22073",
+      "result": "global Calendar V2 cutover stops all three legacy schedule background workers; unsolicited pickup-flow inference removed while generalized caregiving point reminders remain"
     }
   ],
   "tests": {
@@ -2812,9 +2817,10 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "startedAt": null,
     "notBefore": null,
     "minimumNaturalLanguageTurns": 20,
-    "officialLineProbe": "PENDING_REPAIRED_RUNTIME_REFRESH",
-    "runtimeSourceHead": null,
-    "runtimeProductCommit": null,
+    "officialLineProbe": "BLOCKED_INFRA_DOCKER_CLI_TIMEOUT_AFTER_DIRECT_OFFICIAL_LINE_E2E_PASS",
+    "runtimeSourceHead": "2b22073",
+    "runtimeProductCommit": "2b22073",
+    "runtimeServiceGeneration": "57cf3ebd63844a77a6fc54defa019c6c",
     "invalidatedBaseline": {
       "startedAt": "2026-08-01T11:43:02.4447406+08:00",
       "notBefore": "2026-08-02T11:43:02.4447406+08:00",
@@ -2839,13 +2845,14 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "simulatedTestTurnsCountTowardMonitoring": false
   },
   "remainingWork": [
-    "commit and push the green W11-G product repair, refresh the runtime once and record a new metadata-only baseline",
+    "after Docker engine CLI recovers, rerun scripts/dev-status.ps1 -ExternalLineProbe and record a new metadata-only baseline",
     "after the new notBefore, verify at least 20 real LINE inbound natural-language turns above the new baseline",
     "audit create/list/info/missing-field/rollback coverage, Calendar V2 routing, zero legacy schedule_item delta, errors, privacy and latency",
     "final product PR, state-only handoff and HARD_YIELD receipt"
   ],
   "releaseBlockers": [
     "The 2026-08-01T11:43:02.4447406+08:00 baseline is permanently invalid because a legacy recurring worker wrote schedule_item after global Calendar V2 cutover; a repaired runtime baseline has not been established yet",
+    "Docker Desktop backend, WSL, engine pipe and the repaired Spring application are alive, and direct Test-LineWebhookEndToEnd returned HTTP 200, but docker version/info/status time out; shared Docker service restart requires explicit lifecycle authority",
     "GitHub CLI authentication is required before the product PR can be created; gh auth status at 2026-07-31 13:51 +08:00 reports no authenticated host"
   ],
   "userDecisionRequired": []
@@ -2854,7 +2861,7 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
 
 #### W11-G cutover integrity 與接送語意修復（2026-08-01）
 
-狀態：`LOCAL_GREEN_AWAITING_COMMIT_AND_RUNTIME_REFRESH`。本 gate 沒有開始 W12，也沒有修改
+狀態：`PUSHED_RUNTIME_UP_BASELINE_BLOCKED_BY_DOCKER_CLI`。本 gate 沒有開始 W12，也沒有修改
 Booking、desktop state、Flyway migration 或 shared service lifecycle script。
 
 - metadata-only 監測發現 `schedule_item` 在沒有同期 LINE inbound／decision trace 的情況下由 3 增至 4；
@@ -2888,6 +2895,24 @@ Booking、desktop state、Flyway migration 或 shared service lifecycle script�
 本 gate 只允許下一步為 commit/push、release Docker test claim、runtime refresh 與新 baseline；
 在新 baseline 尚未建立前不得宣稱 monitoring `IN_PROGRESS`，在 24 小時與 20 個真實 LINE inbound
 turn 同時滿足前不得建立 W11 product PR 或 state-only READY handoff。
+
+Runtime／claim evidence：
+
+- product commit `2b22073` 已推送至 `origin/codex/calendar-w11-cutover`；Docker/Testcontainers
+  operation `calendar-w11-legacy-rollover-docker-20260801-r1` 於
+  `2026-08-01T05:38:50.7884570Z` 正常 `RELEASED`，owner PID 11548 已結束，沒有停止 shared service。
+- `dev-restart -SkipDispatcher` 在停止舊 main 後因 worktree Compose 與既有固定 container name
+  conflict 退出；沿用既有 containers 時第一次 `dev-start -SkipDocker -SkipDispatcher` 因它們仍是
+  Docker 重啟後的 exited state fail closed。精確 `docker start mms-postgres mms-redis` 後兩者恢復
+  `running/healthy`；第二次啟動因 invocation 未帶 JAVA_HOME 在 Maven runtime 前退出，注入已驗證
+  JDK 21 後官方啟動 exit 0。
+- repaired runtime generation `57cf3ebd63844a77a6fc54defa019c6c`、source head `2b22073`；
+  actuator health `UP`，同一官方 `Test-LineWebhookEndToEnd` 函式 PASS／HTTP 200。
+- 完整 `dev-status -ExternalLineProbe` 尚不能 PASS：它停在 `Test-DockerDaemon` 的 `docker info`；
+  Docker Desktop／WSL／backend／named pipe 存活，但 `docker version`、`docker info`、`docker desktop
+  status` 與空白 `DOCKER_CONFIG` probe 均在 30–60 秒 timeout。此項記為 infrastructure blocker，
+  不列產品紅、不建立 monitoring baseline、不自行重啟或清理 shared Docker service；工具改善已登記
+  `docs/tooling-backlog.md`。
 
 #### W11-F 語意泛化不變量與硬編碼稽核（2026-07-31）
 

@@ -2672,8 +2672,35 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
       "offlineTransportContract": "PASS; one POST to Chat Completions with exactly system plus current user, model/options/JSON schema asserted, no additional conversation or private context",
       "scopedSpotless": "PASS",
       "rootRegressionAfterHardening": "1749 tests, 0 failures, 0 errors, 19 opt-in skipped; duration 573.0 seconds",
-      "liveStatus": "BLOCKED_MISSING_LOCAL_CREDENTIAL",
-      "externalProviderCalls": 0,
+      "liveStatus": "BLOCKED_OPENAI_CREDIT_BALANCE_EXHAUSTED",
+      "credentialAndModelAccess": "OPENAI_API_KEY is present in the current process; credential value was neither read into evidence nor logged; GET /v1/models/gpt-5.4-nano returned HTTP 200",
+      "liveAttempt": {
+        "model": "gpt-5.4-nano",
+        "evaluatorRequests": 21,
+        "measuredScenarios": 20,
+        "successfulCompletions": 0,
+        "result": "INVALID_FOR_CORRECTNESS_AND_LATENCY",
+        "failureClass": "NonTransientAiException",
+        "observedRejectionLatencyMs": {
+          "median": 222,
+          "p95": 564,
+          "max": 797,
+          "validAsModelLatencyEvidence": false
+        },
+        "sanitizedDiagnostic": {
+          "statusCode": 429,
+          "errorType": "insufficient_quota",
+          "errorCode": "credit_balance_exhausted",
+          "errorParam": null
+        },
+        "diagnosticRequests": {
+          "modelAccessGet": 1,
+          "minimalChatCompletionPost": 1
+        },
+        "providerTokenUsageObserved": false,
+        "privateDataSent": false
+      },
+      "externalProviderCalls": 23,
       "externalMutationCount": 0,
       "productionFilesChanged": false
     },
@@ -2720,7 +2747,7 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "simulatedTestTurnsCountTowardMonitoring": false
   },
   "remainingWork": [
-    "configure an OpenAI API credential outside version control, then run the prepared 20-scenario typed-candidate live A/B beginning with gpt-5.4-nano",
+    "add usable API credits or billing to the OpenAI API project backing the configured credential, then rerun the same 20-scenario gpt-5.4-nano gate; do not advance to another candidate until a completion succeeds",
     "only after a provider achieves full correctness and model P95 <= 3000 ms, implement the provider-neutral read-only production route with no legacy double-call",
     "only after a qualifying route passes actual signed-LINE warm/cold latency, start the repaired runtime and record a new metadata-only baseline",
     "complete a fresh approved 24-hour and at-least-20-turn personal-use monitoring window",
@@ -2728,11 +2755,11 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
   ],
   "releaseBlockers": [
     "No tested Anthropic full-schema, sparse-wire or typed-candidate route satisfies the unchanged Medium terminal P95 <= 4 seconds",
-    "The approved OpenAI live evaluator is ready but neither SPRING_AI_OPENAI_API_KEY nor OPENAI_API_KEY is configured locally",
+    "The configured OpenAI credential and gpt-5.4-nano model access are valid, but every completion is rejected with HTTP 429 insufficient_quota / credit_balance_exhausted; rejection timings are not model latency evidence",
     "GitHub CLI authentication is required before the product PR can be created; gh auth status at 2026-07-31 13:51 +08:00 reports no authenticated host"
   ],
   "userDecisionRequired": [
-    "Configure SPRING_AI_OPENAI_API_KEY or OPENAI_API_KEY outside version control without pasting it into chat, then tell this session that the credential is available"
+    "Add API credits or billing to the OpenAI API project used by the configured credential without pasting the credential into chat, then tell this session that the quota is available"
   ]
 }
 ```

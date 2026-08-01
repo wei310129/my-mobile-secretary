@@ -3,7 +3,6 @@ package com.aproject.aidriven.mymobilesecretary.intent.application;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Optional;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 
@@ -56,10 +55,6 @@ final class IntentScriptSafetyPolicy {
         result = guardUnsupportedConditionalRecurrence(text, result);
         result = normalizeCaregivingReminders(text, result);
         result = guardReportedNoticeWithoutEnd(text, result);
-        Optional<String> pickupQuestion = IntentService.schoolPickupClarification(text);
-        if (pickupQuestion.isPresent()) {
-            result = IntentService.applySchoolPickupSafeguard(result, pickupQuestion.get());
-        }
         return normalizeScheduleReminder(text, result);
     }
 

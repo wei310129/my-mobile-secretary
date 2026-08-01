@@ -1,6 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.schedule.application;
 
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceBackgroundRunner;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2RoutingService;
 import org.springframework.scheduling.annotation.Scheduled;
 import org.springframework.stereotype.Component;
 
@@ -13,15 +14,21 @@ public class ScheduleFollowUpWorker {
 
     private final ScheduleFollowUpService followUpService;
     private final WorkspaceBackgroundRunner workspaceRunner;
+    private final CalendarV2RoutingService calendarRouting;
 
     public ScheduleFollowUpWorker(ScheduleFollowUpService followUpService,
-                                  WorkspaceBackgroundRunner workspaceRunner) {
+                                  WorkspaceBackgroundRunner workspaceRunner,
+                                  CalendarV2RoutingService calendarRouting) {
         this.followUpService = followUpService;
         this.workspaceRunner = workspaceRunner;
+        this.calendarRouting = calendarRouting;
     }
 
     @Scheduled(fixedDelayString = "${app.follow-up.poll-interval:1m}")
     public void poll() {
+        if (calendarRouting.globalCutoverEnabled()) {
+            return;
+        }
         workspaceRunner.forEachWorkspace("schedule-follow-up", ignored -> {
             followUpService.planFollowUpsForEndedSchedules();
             followUpService.askDueFollowUps();

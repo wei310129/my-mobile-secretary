@@ -1002,7 +1002,7 @@ stack trace、provider error 或 router reason。
 | 8 | COMPLETED | V72–V82；精準功能／隔離／RLS／neighbor／latency gate 全通過；sealed holdout 16 cases／19 turns；root regression 1417 tests、0 failure、0 error、18 skipped | — |
 | 9 | COMPLETED | W9-A–E PASS_PUBLISHED；latest V88；產品 merge `58e4029` | — |
 | 10 | COMPLETED | V89–V92 recurrence／ICS gates PASS_PUBLISHED；產品 merge `c4ade0b`、state merge `b657970`；`TR-CALENDAR-W10-MERGED=READY` | — |
-| 11 | IN_PROGRESS | W11-A/B/C/E 已通過；W11-F 語意泛化、reminder update 與複合行程分析 fail-closed 已通過 API／signed LINE；OpenAI `gpt-5.6-luna` 20/20、production adapter 4/4、signed LINE 5/5；root 1765/0/0/21（502.6s）；修正版 runtime 與 LINE probe 健康 | 新 24h／20-turn personal-use monitoring 已於 2026-08-01 11:43 +08:00 開始；產品 PR 與 state-only handoff |
+| 11 | IN_PROGRESS | W11-A/B/C/E/F 已通過；OpenAI `gpt-5.6-luna` 20/20、production adapter 4/4、signed LINE 5/5；W11-G 已阻止 cutover 後三個 legacy background worker 寫入，並移除接送字詞觸發的非必要追問，post-format focused 70/70、root 1765/0/0/21（783.2s） | 先發布 W11-G、刷新 runtime 並建立新的 24h／20-turn personal-use baseline；舊 11:43 baseline 已永久失效；其後產品 PR 與 state-only handoff |
 | 12 | REQUIRES_DESTRUCTIVE_APPROVAL | — | 舵輪 11＋精確刪除清單／備份／復原演練＋使用者當輪批准 |
 
 ### 舵輪 0：決策 freeze 與 scenario manifest
@@ -2779,7 +2779,7 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
         "calendar-w11-root-regression-20260801-r1"
       ]
     },
-    "rootRegression": "1765 tests, 0 failures, 0 errors, 21 opt-in skipped; duration 502.6 seconds",
+    "rootRegression": "1765 tests, 0 failures, 0 errors, 21 opt-in skipped; latest W11-G duration 783.2 seconds",
     "spotless": "spotless:check PASS",
     "officialLineWebhookE2E": "runtime refreshed from branch head 127507251a7681269b0093adb4fdfbd83df8e7b3 with product commit 71fc2e33ba5916a0d74387aaebbf28088c17214f as ancestor; scripts/dev-start.ps1 -SkipDocker -SkipDispatcher exit 0; dev-status.ps1 -ExternalLineProbe confirms main=UP, Postgres/Redis healthy and LINE=connected"
   },
@@ -2804,24 +2804,27 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "replayCorpus": "910 sanitized text records retained only in ignored private backup; 41 historical image turns not replayed"
   },
   "monitoring": {
-    "status": "IN_PROGRESS",
+    "status": "INVALIDATED_AWAITING_REPAIRED_RUNTIME_BASELINE",
     "approvedByUser": true,
     "previousBaselineInvalidatedByApprovedReset": true,
     "secondBaselineInvalidatedByObservedProductFailures": true,
-    "startedAt": "2026-08-01T11:43:02.4447406+08:00",
-    "notBefore": "2026-08-02T11:43:02.4447406+08:00",
+    "thirdBaselineInvalidatedByLegacyBackgroundWrite": true,
+    "startedAt": null,
+    "notBefore": null,
     "minimumNaturalLanguageTurns": 20,
-    "officialLineProbe": "PASS",
-    "runtimeSourceHead": "127507251a7681269b0093adb4fdfbd83df8e7b3",
-    "runtimeProductCommit": "71fc2e33ba5916a0d74387aaebbf28088c17214f",
-    "baseline": {
+    "officialLineProbe": "PENDING_REPAIRED_RUNTIME_REFRESH",
+    "runtimeSourceHead": null,
+    "runtimeProductCommit": null,
+    "invalidatedBaseline": {
+      "startedAt": "2026-08-01T11:43:02.4447406+08:00",
+      "notBefore": "2026-08-02T11:43:02.4447406+08:00",
       "lineInboundMessages": 18,
       "lineDecisionTraces": 18,
       "legacyScheduleItems": 3,
       "calendarPlans": 0,
       "intentIssues": 10
     },
-    "baselineTraceAggregate": [
+    "invalidatedBaselineTraceAggregate": [
       "ASK_PLACE|PASSED|CLARIFICATION|1",
       "CANCEL_CONTEXT,UNKNOWN|PASSED|SUCCEEDED|1",
       "CREATE_PLACE|PASSED|SUCCEEDED|1",
@@ -2836,17 +2839,55 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "simulatedTestTurnsCountTowardMonitoring": false
   },
   "remainingWork": [
-    "after 2026-08-02T11:43:02.4447406+08:00, verify at least 20 real LINE inbound natural-language turns above the metadata-only baseline",
+    "commit and push the green W11-G product repair, refresh the runtime once and record a new metadata-only baseline",
+    "after the new notBefore, verify at least 20 real LINE inbound natural-language turns above the new baseline",
     "audit create/list/info/missing-field/rollback coverage, Calendar V2 routing, zero legacy schedule_item delta, errors, privacy and latency",
     "final product PR, state-only handoff and HARD_YIELD receipt"
   ],
   "releaseBlockers": [
-    "The monitoring window cannot complete before 2026-08-02T11:43:02.4447406+08:00 and requires at least 20 real LINE inbound natural-language turns above baseline lineInboundMessages=18",
+    "The 2026-08-01T11:43:02.4447406+08:00 baseline is permanently invalid because a legacy recurring worker wrote schedule_item after global Calendar V2 cutover; a repaired runtime baseline has not been established yet",
     "GitHub CLI authentication is required before the product PR can be created; gh auth status at 2026-07-31 13:51 +08:00 reports no authenticated host"
   ],
   "userDecisionRequired": []
 }
 ```
+
+#### W11-G cutover integrity 與接送語意修復（2026-08-01）
+
+狀態：`LOCAL_GREEN_AWAITING_COMMIT_AND_RUNTIME_REFRESH`。本 gate 沒有開始 W12，也沒有修改
+Booking、desktop state、Flyway migration 或 shared service lifecycle script。
+
+- metadata-only 監測發現 `schedule_item` 在沒有同期 LINE inbound／decision trace 的情況下由 3 增至 4；
+  新列是 WEEKLY next occurrence，時間與 `RecurringScheduleWorker` 的十分鐘 tick 對齊。根因不是本輪
+  LINE 語意輸入，而是全域 Calendar V2 cutover 後 legacy recurring rollover 仍執行。
+- `CalendarV2RoutingService.globalCutoverEnabled()` 成為 workspace-wide background job 的明確邊界；
+  global cutover 開啟時 `RecurringScheduleWorker`、`PendingPromptWorker`、`ScheduleFollowUpWorker`
+  全部零進入 legacy service，flag 關閉時三者原行為完整保留。actor pilot 仍只影響 request routing，
+  不拿沒有 actor scope 的 background tick 猜測 workspace。
+- 移除 `schoolPickupClarification`、`applySchoolPickupSafeguard` 與其固定回覆／測試 oracle；不再因
+  「送孩子上課」推導未要求的接回流程或強迫回答誰送誰接。泛化 `TransportSemanticPolicy` 與
+  `normalizeCaregivingReminders` 保留：明確的送／接 action 與 title 順序不變，兩筆都成為
+  `CREATE_TASK` 定點提醒，due time 取各 action start、place 未提供就維持 null，不建立課程時段。
+- 純 safety policy replay 產生完全相同的兩筆 typed reminder；該層沒有 repository dependency，
+  因此 mutation count、legacy `schedule_item` delta 與 `calendar_plan` delta 均為 0。實際 LINE
+  mutation／duplicate delivery 仍須由新的 24h personal-use window 驗證，不能用此純函式測試冒充。
+- production／tests／capability catalog 對四個舊 method 名與兩段固定追問字串精準掃描為零；
+  progressive configured-model evaluator 沒有 SERVICE_GUARD 特判，維持走真實 interpreter + safety policy。
+- red-first：隔離副本在 production method／constructor 尚未存在時 test compile exit 1；不是
+  infrastructure failure。第一次 combined recurring flow 因 Docker unavailable 產生 9 errors，於
+  r1 Docker claim 與 server 28.3.2 下原命令 9/9 PASS，故只記 infrastructure event。
+- 格式前 focused：hotfix＋catalog 31/31、family/school transport neighbor 18/18、background cutover＋
+  routing API／recurring Testcontainers 21/21。Spotless 初次精準列出本批 10 個 Java 檔，於隔離
+  verification target 執行 `spotless:apply` 後 `spotless:check` PASS；不停止健康 runtime。
+- 格式後同批 focused：70 tests、0 failures、0 errors、0 skipped，258.3 秒。
+- 完整 root regression：1765 tests、0 failures、0 errors、21 opt-in skipped，783.2 秒；環境為
+  local Testcontainers／FAKE，external mutation count 0。
+- 2026-08-01 11:43 baseline 永久失效；必須先發布本修正、以官方 `dev-start`／`dev-status
+  -ExternalLineProbe` 刷新並確認 runtime，再建立新的 metadata-only startedAt/notBefore/counts。
+
+本 gate 只允許下一步為 commit/push、release Docker test claim、runtime refresh 與新 baseline；
+在新 baseline 尚未建立前不得宣稱 monitoring `IN_PROGRESS`，在 24 小時與 20 個真實 LINE inbound
+turn 同時滿足前不得建立 W11 product PR 或 state-only READY handoff。
 
 #### W11-F 語意泛化不變量與硬編碼稽核（2026-07-31）
 

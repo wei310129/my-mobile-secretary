@@ -22,6 +22,30 @@ class IntentScriptSafetyPolicyTest {
     }
 
     @Test
+    void schoolClassIsNotReplacedByAnUnsolicitedPickupClarification() {
+        IntentScript raw = script(
+                command(IntentCommand.Type.CREATE_SCHEDULE, "送女兒上課",
+                        "2026-07-19T09:40:00+08:00", "2026-07-19T10:00:00+08:00", null),
+                command(IntentCommand.Type.CREATE_SCHEDULE, "接女兒下課",
+                        "2026-07-19T12:00:00+08:00", "2026-07-19T12:20:00+08:00", null));
+
+        String text = "明天送女兒上英文課十點到十二點";
+        IntentScript safe = IntentScriptSafetyPolicy.apply(text, raw);
+
+        assertThat(safe.commands()).extracting(IntentCommand::type)
+                .containsExactly(IntentCommand.Type.CREATE_TASK, IntentCommand.Type.CREATE_TASK);
+        assertThat(safe.commands()).extracting(IntentCommand::title)
+                .containsExactly("送女兒上課", "接女兒下課");
+        assertThat(safe.commands()).extracting(IntentCommand::dueAt)
+                .containsExactly("2026-07-19T09:40:00+08:00", "2026-07-19T12:00:00+08:00");
+        assertThat(safe.commands()).extracting(IntentCommand::placeName).containsOnlyNulls();
+        assertThat(safe.commands()).extracting(IntentCommand::startAt).containsOnlyNulls();
+        assertThat(safe.commands()).noneMatch(command ->
+                command.type() == IntentCommand.Type.UNKNOWN);
+        assertThat(IntentScriptSafetyPolicy.apply(text, safe)).isEqualTo(safe);
+    }
+
+    @Test
     void anyReportedOrganizerNoticeWithoutEndTimeCannotBecomeInventedSchedule() {
         IntentScript raw = new IntentScript(java.util.List.of(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE, "游泳集合", "2026-08-01T10:00:00+08:00",
@@ -338,27 +362,6 @@ class IntentScriptSafetyPolicyTest {
             assertThat(command.type()).isEqualTo(IntentCommand.Type.UNKNOWN);
             assertThat(command.reason()).contains("不會建立正式資料");
         });
-    }
-
-    @Test
-    void uncertainPickupRemovesPickupMutationButKeepsGroundedDropOffReminder() {
-        IntentScript raw = script(new IntentCommand(
-                        IntentCommand.Type.CREATE_SCHEDULE, "送小明去上課", null,
-                        "2026-07-18T09:00:00+08:00", "2026-07-18T10:00:00+08:00",
-                        null, null, null, null, null, null, null, null, null,
-                        "明天九點送小明去上課"),
-                new IntentCommand(IntentCommand.Type.CREATE_TASK, "接小明",
-                        "2026-07-18T16:00:00+08:00", null, null, null, null, null,
-                        null, null, null, null, null, null,
-                        "下午四點可能由阿姨去學校接小明，也可能改成叔叔去"));
-
-        IntentScript safe = IntentScriptSafetyPolicy.apply(
-                "明天九點送小明去上課；下午四點可能由阿姨去學校接小明，也可能改成叔叔去，接的人待確認",
-                raw);
-
-        assertThat(safe.commands()).extracting(IntentCommand::type).containsExactly(
-                IntentCommand.Type.CREATE_TASK, IntentCommand.Type.UNKNOWN);
-        assertThat(safe.commands().getLast().reason()).contains("請確認誰送、誰接");
     }
 
     private static IntentScript script(IntentCommand... commands) {

@@ -697,12 +697,6 @@ public class IntentService {
         if (routineQuestion.isPresent()) {
             return IntentResult.clarificationNeeded(routineQuestion.get());
         }
-        Optional<String> schoolPickupQuestion = schoolPickupClarification(text);
-        boolean deferPickupClarification = schoolPickupQuestion.isPresent()
-                && hasIndependentIntentBesidesSchoolDropOff(text);
-        if (schoolPickupQuestion.isPresent() && !deferPickupClarification) {
-            return IntentResult.clarificationNeeded(schoolPickupQuestion.get());
-        }
         Optional<IntentResult> help = capabilityHelp(text, conversationContextService.snapshot());
         if (help.isPresent()) {
             return help.get();
@@ -731,9 +725,6 @@ public class IntentService {
         if (script == null || script.commands() == null || script.commands().isEmpty()) {
             flowTrace.validationFailed("EMPTY_INTERPRETATION");
             return interpreterFailureFallback(text, "解析結果是空的", mutationBoundary);
-        }
-        if (deferPickupClarification) {
-            script = applySchoolPickupSafeguard(script, schoolPickupQuestion.orElseThrow());
         }
         script = IntentScriptCompletenessPolicy.apply(text, script);
         Optional<IntentResult> feedbackOnly = collapseFeedbackOnlyScript(script);
@@ -1141,75 +1132,6 @@ public class IntentService {
                 """.formatted(hasDependentTransport
                         ? "接送完成後，工作地點在哪裡，最晚幾點要到？"
                         : "工作地點在哪裡，最晚幾點要到？").strip());
-    }
-
-    /**
-     * 單純送／接孩子是時間點提醒，不要求補齊另一段。只有原文明講要規劃完整接送，
-     * 同時表示接回分工未定時才追問；仍不可把課程時段算成使用者忙碌或發明緩衝。
-     */
-    static Optional<String> schoolPickupClarification(String text) {
-        String normalized = text == null ? "" : text.replaceAll("\\s+", "");
-        boolean classTrip = TransportSemanticPolicy
-                .isTransportToDependentActivity(normalized);
-        boolean scheduling = normalized.matches(".*(?:今天|明天|明日|後天|每週|每周|週[一二三四五六日天]|"
-                + "星期[一二三四五六日天]|禮拜[一二三四五六日天]|\\d{1,2}(?::\\d{2}|點)).*");
-        boolean pickupUncertain = containsAny(normalized,
-                "還不知道誰接", "不知道誰接", "誰接還不知道", "接的人還沒決定",
-                "接送人未定", "接送人待確認", "還沒確定誰接", "接的人不確定")
-                || (containsAny(normalized, "可能", "不一定", "未定", "待確認", "還沒確認")
-                && containsAny(normalized, "接", "校車", "送回", "回家"));
-        boolean pickupSpecified = !pickupUncertain && (normalized.contains("接")
-                || normalized.contains("校車") || normalized.contains("自己回")
-                || normalized.contains("自行回") || normalized.contains("自己搭")
-                || normalized.contains("自行搭") || normalized.contains("不用接")
-                || normalized.contains("不必接"));
-        if (!classTrip || !scheduling || pickupSpecified || !pickupUncertain) {
-            return Optional.empty();
-        }
-        return Optional.of("我理解送孩子去上課後通常還有下課接回，但接的人不一定是你。"
-                + "請確認誰送、誰接，以及接回時間和地點；確認前我不會建立行程或自行假設接送時間。");
-    }
-
-    static boolean hasIndependentIntentBesidesSchoolDropOff(String text) {
-        return IntentScriptCompletenessPolicy.hasIndependentActionableClause(text);
-    }
-
-    static IntentScript applySchoolPickupSafeguard(IntentScript script, String question) {
-        java.util.List<IntentCommand> safeCommands = new java.util.ArrayList<>();
-        boolean alreadyAsksAboutPickup = false;
-        for (IntentCommand command : script.commands()) {
-            if (command == null || command.type() == null) continue;
-            if (isUnsafeSchoolPickupMutation(command)) continue;
-            safeCommands.add(command);
-            if (command.type() == IntentCommand.Type.UNKNOWN
-                    && containsAny(command.reason() == null ? "" : command.reason(),
-                    "誰接", "由誰接", "接送人", "下課後", "校車")) {
-                alreadyAsksAboutPickup = true;
-            }
-        }
-        if (!alreadyAsksAboutPickup) {
-            safeCommands.add(new IntentCommand(IntentCommand.Type.UNKNOWN,
-                    null, null, null, null, null, null, question,
-                    null, null, null, null, null));
-        }
-        return new IntentScript(java.util.List.copyOf(safeCommands));
-    }
-
-    private static boolean isUnsafeSchoolPickupMutation(IntentCommand command) {
-        if (command == null || command.type() == null) return false;
-        boolean intervalMutation = switch (command.type()) {
-            case CREATE_SCHEDULE, CREATE_RELATIVE_SCHEDULE, RESCHEDULE_SCHEDULE,
-                    SET_SCHEDULE_RECURRING -> true;
-            default -> false;
-        };
-        String title = command.title() == null ? "" : command.title().replaceAll("\\s+", "");
-        String source = command.sourceText() == null ? "" : command.sourceText();
-        boolean dependentTransport = TransportSemanticPolicy
-                .isTransportToDependentActivity(title + source);
-        if (intervalMutation) return dependentTransport;
-        if (command.type() != IntentCommand.Type.CREATE_TASK) return false;
-        boolean pickupAction = title.matches(".*(?:接回|接(?!著|受|續)|送回).*");
-        return pickupAction && dependentTransport;
     }
 
     private static boolean containsAny(String text, String... values) {

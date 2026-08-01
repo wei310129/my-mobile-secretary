@@ -22,7 +22,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.test.context.ActiveProfiles;
 
-/** Third opt-in batch: longer everyday schedule messages, including the pickup safety guard. */
+/** Third opt-in batch: longer everyday schedule messages and caregiving transport semantics. */
 @SpringBootTest(webEnvironment = SpringBootTest.WebEnvironment.MOCK, properties = {
         "app.scheduling.enabled=false",
         "app.intent.enabled=true"

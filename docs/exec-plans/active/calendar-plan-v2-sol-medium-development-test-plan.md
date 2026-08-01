@@ -2667,40 +2667,80 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
       "transport": "Spring AI 1.1.5 Chat Completions; test-scope dependency and manually constructed model; no second production ChatModel bean",
       "redFirst": "testCompile exit 1 because org.springframework.ai.openai was absent before the test-scope dependency",
       "testCompile": "PASS after adding BOM-managed spring-ai-openai test dependency",
-      "deterministicMatrix": "3 tests, 0 failures, 0 errors, 1 live opt-in skipped; 20 unique positive/subset/mixed/neighbor scenarios including colloquial typo and prompt-injection cases",
+      "deterministicMatrix": "4 tests, 0 failures, 0 errors, 1 live opt-in skipped; 20 unique positive/subset/mixed/neighbor scenarios including colloquial typo and prompt-injection cases",
       "inputBoundary": "untrusted text is sent as the native ChatClient user role; no handcrafted XML delimiter or provider-visible private context",
-      "offlineTransportContract": "PASS; one POST to Chat Completions with exactly system plus current user, model/options/JSON schema asserted, no additional conversation or private context",
+      "offlineTransportContract": "PASS 2/2; reasoning models send effort=none, gpt-4.1-mini omits the unsupported reasoning field, and both send exactly system plus current user with bounded options/JSON schema and no additional conversation or private context",
       "scopedSpotless": "PASS",
       "rootRegressionAfterHardening": "1749 tests, 0 failures, 0 errors, 19 opt-in skipped; duration 573.0 seconds",
-      "liveStatus": "BLOCKED_OPENAI_CREDIT_BALANCE_EXHAUSTED",
-      "credentialAndModelAccess": "OPENAI_API_KEY is present in the current process; credential value was neither read into evidence nor logged; GET /v1/models/gpt-5.4-nano returned HTTP 200",
-      "liveAttempt": {
-        "model": "gpt-5.4-nano",
-        "evaluatorRequests": 21,
-        "measuredScenarios": 20,
-        "successfulCompletions": 0,
-        "result": "INVALID_FOR_CORRECTNESS_AND_LATENCY",
-        "failureClass": "NonTransientAiException",
-        "observedRejectionLatencyMs": {
-          "median": 222,
-          "p95": 564,
-          "max": 797,
-          "validAsModelLatencyEvidence": false
-        },
+      "liveStatus": "PASS_GPT_5_6_LUNA_SELECTED_FOR_PRODUCTION_INTEGRATION",
+      "credentialAndModelAccess": "OPENAI_API_KEY is present in the current process; credential value was neither read into evidence nor logged; post-credit minimal gpt-5.4-nano completion returned HTTP 200 using snapshot gpt-5.4-nano-2026-03-17",
+      "quotaHistory": {
+        "preCreditResult": "INVALID_FOR_CORRECTNESS_AND_LATENCY",
         "sanitizedDiagnostic": {
           "statusCode": 429,
           "errorType": "insufficient_quota",
           "errorCode": "credit_balance_exhausted",
           "errorParam": null
         },
-        "diagnosticRequests": {
-          "modelAccessGet": 1,
-          "minimalChatCompletionPost": 1
-        },
-        "providerTokenUsageObserved": false,
-        "privateDataSent": false
+        "rejectionLatencyWasModelEvidence": false,
+        "postCreditProbe": {
+          "statusCode": 200,
+          "promptTokens": 17,
+          "completionTokens": 4
+        }
       },
-      "externalProviderCalls": 23,
+      "originalContractBaseline": {
+        "gpt-5.4-nano": {
+          "correct": "16/20",
+          "medianMs": 970,
+          "p95Ms": 1523,
+          "maxMs": 1566
+        },
+        "gpt-5.6-luna": {
+          "correct": "16/20",
+          "medianMs": 853,
+          "p95Ms": 1078,
+          "maxMs": 1102
+        },
+        "gpt-4.1-mini": {
+          "correct": "17/20",
+          "medianMs": 838,
+          "p95Ms": 1212,
+          "maxMs": 1471
+        }
+      },
+      "generalizedContractRepair": {
+        "semanticRule": "valid analysis facets and containsOtherRequest are decided independently; an adjacent-gap request bound to the longest item retains both LONGEST_ITEM and ADJACENT_GAPS; prompt injection remains untrusted other work without erasing valid facets",
+        "transportRule": "reasoning options are emitted only for models that support them",
+        "redFirst": "non-reasoning offline transport expected no reasoning_effort but observed the literal value 'none'; test failed 1/1 before implementation",
+        "green": "offline reasoning/non-reasoning transport tests 2/2 PASS; full evaluator deterministic class 4 tests with 1 live opt-in skipped PASS"
+      },
+      "repairedContractComparison": {
+        "gpt-5.4-nano": {
+          "result": "FAIL_CORRECTNESS_17_OF_20",
+          "medianMs": 811,
+          "p95Ms": 1249,
+          "maxMs": 3604,
+          "outputTokensMinMax": "18/34"
+        },
+        "gpt-5.6-luna": {
+          "result": "PASS_CORRECTNESS_AND_MODEL_HEADROOM_20_OF_20",
+          "medianMs": 902,
+          "p95Ms": 1533,
+          "maxMs": 1638,
+          "outputTokensMinMax": "18/34"
+        },
+        "gpt-4.1-mini": {
+          "result": "FAIL_CORRECTNESS_18_OF_20",
+          "medianMs": 821,
+          "p95Ms": 1089,
+          "maxMs": 1153,
+          "outputTokensMinMax": "11/27"
+        }
+      },
+      "selection": "gpt-5.6-luna is the only tested candidate satisfying unchanged 20/20 correctness and model P95 <= 3000 ms; no threshold was relaxed and no first-green shortcut was used",
+      "externalProviderCalls": 151,
+      "successfulCompletions": 127,
       "externalMutationCount": 0,
       "productionFilesChanged": false
     },
@@ -2747,20 +2787,17 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "simulatedTestTurnsCountTowardMonitoring": false
   },
   "remainingWork": [
-    "add usable API credits or billing to the OpenAI API project backing the configured credential, then rerun the same 20-scenario gpt-5.4-nano gate; do not advance to another candidate until a completion succeeds",
-    "only after a provider achieves full correctness and model P95 <= 3000 ms, implement the provider-neutral read-only production route with no legacy double-call",
+    "implement the provider-neutral read-only production route using the selected gpt-5.6-luna candidate with no legacy double-call and no model-owned business execution",
     "only after a qualifying route passes actual signed-LINE warm/cold latency, start the repaired runtime and record a new metadata-only baseline",
     "complete a fresh approved 24-hour and at-least-20-turn personal-use monitoring window",
     "final product PR, state-only handoff and HARD_YIELD receipt"
   ],
   "releaseBlockers": [
     "No tested Anthropic full-schema, sparse-wire or typed-candidate route satisfies the unchanged Medium terminal P95 <= 4 seconds",
-    "The configured OpenAI credential and gpt-5.4-nano model access are valid, but every completion is rejected with HTTP 429 insufficient_quota / credit_balance_exhausted; rejection timings are not model latency evidence",
+    "The selected gpt-5.6-luna candidate has only passed the isolated typed-understanding gate; production routing and signed-LINE warm/cold terminal latency are not yet verified",
     "GitHub CLI authentication is required before the product PR can be created; gh auth status at 2026-07-31 13:51 +08:00 reports no authenticated host"
   ],
-  "userDecisionRequired": [
-    "Add API credits or billing to the OpenAI API project used by the configured credential without pasting the credential into chat, then tell this session that the quota is available"
-  ]
+  "userDecisionRequired": []
 }
 ```
 

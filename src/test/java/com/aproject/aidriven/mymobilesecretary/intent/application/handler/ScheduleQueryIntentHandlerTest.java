@@ -143,6 +143,26 @@ class ScheduleQueryIntentHandlerTest {
         assertThat(candidates.getValue()).containsExactly(tomorrow);
     }
 
+    @Test
+    void longestScheduleQueryExcludesItemsOutsideTheSuppliedRange() {
+        ScheduleItem tomorrow = schedule("明天", "2026-07-19T02:00:00Z");
+        ScheduleItem nextDay = schedule("後天", "2026-07-20T02:00:00Z");
+        when(scheduleInsightService.upcoming()).thenReturn(List.of(tomorrow, nextDay));
+        when(scheduleInsightService.longest(org.mockito.ArgumentMatchers.anyList()))
+                .thenReturn(Optional.empty());
+
+        handler.handle("明天最長的行程", new IntentCommand(
+                IntentCommand.Type.ASK_LONGEST_SCHEDULE,
+                null, null, "2026-07-19T00:00:00+08:00",
+                "2026-07-20T00:00:00+08:00", null, null, null,
+                null, null, null, null, null));
+
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<List<ScheduleItem>> candidates = ArgumentCaptor.forClass(List.class);
+        verify(scheduleInsightService).longest(candidates.capture());
+        assertThat(candidates.getValue()).containsExactly(tomorrow);
+    }
+
     private static IntentCommand command(IntentCommand.Type type) {
         return new IntentCommand(type, null, null, null, null, null, null, null,
                 null, null, null, null, null);

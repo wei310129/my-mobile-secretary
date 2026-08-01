@@ -110,6 +110,14 @@ app:
   intent:
     # LLM 意圖理解；關閉時 /api/intent 走安全降級，只有明確「提醒／記下」才建保底待辦
     enabled: true
+    schedule-analysis:
+      # Provider-neutral, read-only typed route. Blank key keeps the existing interpreter path.
+      enabled: ${OPENAI_SCHEDULE_ANALYSIS_ENABLED:true}
+      api-key: ${SPRING_AI_OPENAI_API_KEY:${OPENAI_API_KEY:}}
+      model: gpt-5.6-luna
+      connect-timeout: 2s
+      read-timeout: 8s
+      max-completion-tokens: 256
     capability-routing:
       # 先只比較候選路由與舊路由，不改變實際執行；累積 trace 後再按 domain 開 ACTIVE。
       mode: SHADOW

@@ -97,11 +97,10 @@
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-starter-model-anthropic</artifactId>
         </dependency>
-        <!-- W11 provider A/B only: manual test model avoids adding a second production ChatModel bean. -->
+        <!-- Bounded OpenAI adapter is built manually; no second production ChatModel bean is registered. -->
         <dependency>
             <groupId>org.springframework.ai</groupId>
             <artifactId>spring-ai-openai</artifactId>
-            <scope>test</scope>
         </dependency>
         <!-- Spring Cache abstraction (backed by Redis) for external API results -->
         <dependency>

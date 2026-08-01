@@ -101,7 +101,7 @@ public final class ScheduleQueryIntentHandler implements IntentHandler {
                 case GROUP_SCHEDULES_BY_DAY -> groupSchedules(options);
                 case CHECK_SCHEDULE_CONFLICTS -> checkScheduleConflicts(command, options);
                 case ASK_BUSY_SCHEDULE_DAY -> busiestScheduleDay(command, options);
-                case ASK_LONGEST_SCHEDULE -> longestSchedule(options);
+                case ASK_LONGEST_SCHEDULE -> longestSchedule(command, options);
                 case GROUP_SCHEDULES_BY_PLACE -> groupSchedulesByPlace(options);
                 default -> throw new IllegalArgumentException(
                         "unsupported lifestyle schedule query type " + command.type());
@@ -300,9 +300,11 @@ public final class ScheduleQueryIntentHandler implements IntentHandler {
                         "指定範圍內沒有已確認行程。"));
     }
 
-    private IntentResult longestSchedule(IntentOptions options) {
+    private IntentResult longestSchedule(IntentCommand command, IntentOptions options) {
         return scheduleInsightService.longest(
-                        filterSchedules(scheduleInsightService.upcoming(), options))
+                        filterSchedulesByRange(
+                                filterSchedules(scheduleInsightService.upcoming(), options),
+                                command.startAt(), command.endAt()))
                 .map(item -> {
                     contextService.rememberSchedule(item);
                     long minutes = Duration.between(item.getStartAt(), item.getEndAt()).toMinutes();

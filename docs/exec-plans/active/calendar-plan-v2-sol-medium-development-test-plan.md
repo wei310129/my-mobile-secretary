@@ -1002,7 +1002,7 @@ stack trace、provider error 或 router reason。
 | 8 | COMPLETED | V72–V82；精準功能／隔離／RLS／neighbor／latency gate 全通過；sealed holdout 16 cases／19 turns；root regression 1417 tests、0 failure、0 error、18 skipped | — |
 | 9 | COMPLETED | W9-A–E PASS_PUBLISHED；latest V88；產品 merge `58e4029` | — |
 | 10 | COMPLETED | V89–V92 recurrence／ICS gates PASS_PUBLISHED；產品 merge `c4ade0b`、state merge `b657970`；`TR-CALENDAR-W10-MERGED=READY` | — |
-| 11 | IN_PROGRESS | W11-A/B/C/E 已通過；W11-F 語意泛化、reminder update 與複合行程分析 fail-closed 已通過 API／signed LINE，neighbor 102/102、root 1745/0/0/16（438.5s）；live 107 required-facet oracle 1/1 PASS，但 model latency 10.471s | 解決 configured-model P95≤4s 後，才可啟動修正版 runtime／新 24h／20-turn baseline；產品 PR 與 state-only handoff |
+| 11 | IN_PROGRESS | W11-A/B/C/E 已通過；W11-F 語意泛化、reminder update 與複合行程分析 fail-closed 已通過 API／signed LINE；OpenAI `gpt-5.6-luna` 20/20、production adapter 4/4、signed LINE 5/5；root 1765/0/0/21（502.6s）；修正版 runtime 與 LINE probe 健康 | 新 24h／20-turn personal-use monitoring 已於 2026-08-01 11:43 +08:00 開始；產品 PR 與 state-only handoff |
 | 12 | REQUIRES_DESTRUCTIVE_APPROVAL | — | 舵輪 11＋精確刪除清單／備份／復原演練＋使用者當輪批准 |
 
 ### 舵輪 0：決策 freeze 與 scenario manifest
@@ -2781,7 +2781,7 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     },
     "rootRegression": "1765 tests, 0 failures, 0 errors, 21 opt-in skipped; duration 502.6 seconds",
     "spotless": "spotless:check PASS",
-    "officialLineWebhookE2E": "pre-71fc2e33ba5916a0d74387aaebbf28088c17214f runtime: scripts/dev-start.ps1 -SkipDocker -SkipDispatcher exit 0; subsequent dev-status.ps1 -ExternalLineProbe confirms main=UP, Postgres/Redis healthy and LINE=connected; runtime refresh to that commit is still required before the new monitoring baseline"
+    "officialLineWebhookE2E": "runtime refreshed from branch head 127507251a7681269b0093adb4fdfbd83df8e7b3 with product commit 71fc2e33ba5916a0d74387aaebbf28088c17214f as ancestor; scripts/dev-start.ps1 -SkipDocker -SkipDispatcher exit 0; dev-status.ps1 -ExternalLineProbe confirms main=UP, Postgres/Redis healthy and LINE=connected"
   },
   "security": {
     "legacyFlagOffPreserved": true,
@@ -2804,32 +2804,44 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "replayCorpus": "910 sanitized text records retained only in ignored private backup; 41 historical image turns not replayed"
   },
   "monitoring": {
-    "status": "PRODUCT_GATES_PASS_AWAITING_71FC2E33_RUNTIME_REFRESH_AND_NEW_BASELINE",
+    "status": "IN_PROGRESS",
     "approvedByUser": true,
     "previousBaselineInvalidatedByApprovedReset": true,
     "secondBaselineInvalidatedByObservedProductFailures": true,
-    "startedAt": null,
-    "notBefore": null,
+    "startedAt": "2026-08-01T11:43:02.4447406+08:00",
+    "notBefore": "2026-08-02T11:43:02.4447406+08:00",
     "minimumNaturalLanguageTurns": 20,
     "officialLineProbe": "PASS",
+    "runtimeSourceHead": "127507251a7681269b0093adb4fdfbd83df8e7b3",
+    "runtimeProductCommit": "71fc2e33ba5916a0d74387aaebbf28088c17214f",
     "baseline": {
-      "lineInboundMessages": 0,
-      "lineDecisionTraces": 0,
-      "legacyScheduleItems": 0,
+      "lineInboundMessages": 18,
+      "lineDecisionTraces": 18,
+      "legacyScheduleItems": 3,
       "calendarPlans": 0,
-      "intentIssues": 0
+      "intentIssues": 10
     },
+    "baselineTraceAggregate": [
+      "ASK_PLACE|PASSED|CLARIFICATION|1",
+      "CANCEL_CONTEXT,UNKNOWN|PASSED|SUCCEEDED|1",
+      "CREATE_PLACE|PASSED|SUCCEEDED|1",
+      "CREATE_SCHEDULE|PASSED|SUCCEEDED|1",
+      "CREATE_SCHEDULE,CREATE_SCHEDULE|PASSED|SUCCEEDED|1",
+      "FEEDBACK|PASSED|SUCCEEDED|4",
+      "FEEDBACK,UNKNOWN,UNKNOWN|PASSED|SUCCEEDED|1",
+      "NULL|FAILED|FALLBACK|2",
+      "NULL|NOT_RUN|SUCCEEDED|3",
+      "UNKNOWN|PASSED|CLARIFICATION|3"
+    ],
     "simulatedTestTurnsCountTowardMonitoring": false
   },
   "remainingWork": [
-    "refresh the official local runtime to commit 71fc2e33ba5916a0d74387aaebbf28088c17214f and re-run dev-status.ps1 -ExternalLineProbe",
-    "record a new metadata-only baseline only after the refreshed runtime is healthy",
-    "complete a fresh approved 24-hour and at-least-20-turn personal-use monitoring window",
+    "after 2026-08-02T11:43:02.4447406+08:00, verify at least 20 real LINE inbound natural-language turns above the metadata-only baseline",
+    "audit create/list/info/missing-field/rollback coverage, Calendar V2 routing, zero legacy schedule_item delta, errors, privacy and latency",
     "final product PR, state-only handoff and HARD_YIELD receipt"
   ],
   "releaseBlockers": [
-    "The healthy local runtime was started before commit 71fc2e33ba5916a0d74387aaebbf28088c17214f and must be refreshed before a new 24-hour monitoring baseline is valid",
-    "The fresh 24-hour and at-least-20-real-LINE-turn monitoring window has not started",
+    "The monitoring window cannot complete before 2026-08-02T11:43:02.4447406+08:00 and requires at least 20 real LINE inbound natural-language turns above baseline lineInboundMessages=18",
     "GitHub CLI authentication is required before the product PR can be created; gh auth status at 2026-07-31 13:51 +08:00 reports no authenticated host"
   ],
   "userDecisionRequired": []

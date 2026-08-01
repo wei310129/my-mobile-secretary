@@ -2626,6 +2626,11 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
       "phase": "W11-LATENCY-PROVIDER-EVALUATOR-HARDENING",
       "commit": "5b69a10708a4681eae16c8bd430cc5ebaaae047d",
       "result": "native user-role input plus colloquial typo and prompt-injection coverage; focused and full regression green with production routing unchanged"
+    },
+    {
+      "phase": "W11-LATENCY-PROVIDER-TRANSPORT-CONTRACT",
+      "commit": "31a661d65a50a25130340974399722320cb45384",
+      "result": "offline Spring AI Chat Completions contract proves two-message isolation, structured output, bounded options and one HTTP attempt without an external call"
     }
   ],
   "tests": {
@@ -2662,8 +2667,9 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
       "transport": "Spring AI 1.1.5 Chat Completions; test-scope dependency and manually constructed model; no second production ChatModel bean",
       "redFirst": "testCompile exit 1 because org.springframework.ai.openai was absent before the test-scope dependency",
       "testCompile": "PASS after adding BOM-managed spring-ai-openai test dependency",
-      "deterministicMatrix": "2 tests, 0 failures, 0 errors, 1 live opt-in skipped; 20 unique positive/subset/mixed/neighbor scenarios including colloquial typo and prompt-injection cases",
+      "deterministicMatrix": "3 tests, 0 failures, 0 errors, 1 live opt-in skipped; 20 unique positive/subset/mixed/neighbor scenarios including colloquial typo and prompt-injection cases",
       "inputBoundary": "untrusted text is sent as the native ChatClient user role; no handcrafted XML delimiter or provider-visible private context",
+      "offlineTransportContract": "PASS; one POST to Chat Completions with exactly system plus current user, model/options/JSON schema asserted, no additional conversation or private context",
       "scopedSpotless": "PASS",
       "rootRegressionAfterHardening": "1749 tests, 0 failures, 0 errors, 19 opt-in skipped; duration 573.0 seconds",
       "liveStatus": "BLOCKED_MISSING_LOCAL_CREDENTIAL",
@@ -2671,7 +2677,7 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
       "externalMutationCount": 0,
       "productionFilesChanged": false
     },
-    "rootRegression": "1749 tests, 0 failures, 0 errors, 19 opt-in skipped; duration 573.0 seconds",
+    "rootRegression": "1750 tests, 0 failures, 0 errors, 19 opt-in skipped; duration 584.2 seconds",
     "spotless": "spotless:check PASS",
     "officialLineWebhookE2E": "scripts/dev-start.ps1 -SkipDocker -SkipDispatcher exit 0; subsequent dev-status.ps1 -ExternalLineProbe confirms main=UP, Postgres/Redis healthy and LINE=connected"
   },

@@ -1002,7 +1002,7 @@ stack trace、provider error 或 router reason。
 | 8 | COMPLETED | V72–V82；精準功能／隔離／RLS／neighbor／latency gate 全通過；sealed holdout 16 cases／19 turns；root regression 1417 tests、0 failure、0 error、18 skipped | — |
 | 9 | COMPLETED | W9-A–E PASS_PUBLISHED；latest V88；產品 merge `58e4029` | — |
 | 10 | COMPLETED | V89–V92 recurrence／ICS gates PASS_PUBLISHED；產品 merge `c4ade0b`、state merge `b657970`；`TR-CALENDAR-W10-MERGED=READY` | — |
-| 11 | IN_PROGRESS | W11-A/B/C/E/F 已通過；OpenAI `gpt-5.6-luna` 20/20、production adapter 4/4、signed LINE 5/5；W11-G `2b22073` 已阻止 cutover 後三個 legacy background worker 寫入並移除接送字詞觸發的非必要追問，post-format focused 70/70、root 1765/0/0/21（783.2s）；修正版 runtime／LINE E2E 健康 | Docker engine CLI timeout 解除後重跑完整 external probe 並建立新的 24h／20-turn personal-use baseline；舊 11:43 baseline 已永久失效；其後產品 PR 與 state-only handoff |
+| 11 | IN_PROGRESS | W11-A/B/C/E/F/G 已通過；W11-H H1–H7 local product gate 已完成，修正後 root 1891/0/0/21（934.4s）；官方 runtime／external LINE probe 健康；第五次 metadata-only baseline 自 `2026-08-02T11:35:17.5842273+08:00` 起 `IN_PROGRESS` | 累積並稽核 24h／至少 20 筆新真實 LINE 文字 inbound；完成 Google／TDX benchmark、sealed holdout、coordination READY／desktop ACK；其後產品 PR 與 state-only handoff |
 | 12 | REQUIRES_DESTRUCTIVE_APPROVAL | — | 舵輪 11＋精確刪除清單／備份／復原演練＋使用者當輪批准 |
 
 ### 舵輪 0：決策 freeze 與 scenario manifest
@@ -2584,7 +2584,7 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
 
 ### 舵輪 11：Cutover rehearsal 與全路徑 release gate
 
-目前證據（2026-07-31，`IN_PROGRESS`，不得標成 READY）：
+目前證據（2026-08-02，`IN_PROGRESS`，不得標成 READY）：
 
 ```json
 {
@@ -2809,18 +2809,30 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "replayCorpus": "910 sanitized text records retained only in ignored private backup; 41 historical image turns not replayed"
   },
   "monitoring": {
-    "status": "INVALIDATED_AWAITING_REPAIRED_RUNTIME_BASELINE",
+    "status": "INVALIDATED_BY_APPROVED_W11_H_PRODUCT_WORK",
     "approvedByUser": true,
     "previousBaselineInvalidatedByApprovedReset": true,
     "secondBaselineInvalidatedByObservedProductFailures": true,
     "thirdBaselineInvalidatedByLegacyBackgroundWrite": true,
-    "startedAt": null,
-    "notBefore": null,
+    "startedAt": "2026-08-02T06:06:38.335359+08:00",
+    "notBefore": "2026-08-03T06:06:38.335359+08:00",
     "minimumNaturalLanguageTurns": 20,
-    "officialLineProbe": "BLOCKED_INFRA_DOCKER_CLI_TIMEOUT_AFTER_DIRECT_OFFICIAL_LINE_E2E_PASS",
-    "runtimeSourceHead": "2b22073",
-    "runtimeProductCommit": "2b22073",
-    "runtimeServiceGeneration": "57cf3ebd63844a77a6fc54defa019c6c",
+    "officialLineProbe": "PASS_MAIN_UP_POSTGRES_REDIS_HEALTHY_LINE_CONNECTED",
+    "runtimeSourceHead": "e5b2250ce922a0f489f885caa03453554d7491b3",
+    "runtimeProductCommit": "2b22073209f24960774431ad3d2c23c877646605",
+    "runtimeServiceGeneration": "b22ee7bdfac64fbe91ce0408007207a4",
+    "invalidatedAt": "2026-08-02T06:27:23.2638731+08:00",
+    "invalidationReason": "W11-H provider-neutral route evidence, adaptive reminder and adjacent-itinerary production gaps require new source changes and a later runtime refresh",
+    "baseline": {
+      "lineInboundMessages": 32,
+      "lineInboundTextMessages": 32,
+      "lineDecisionTraces": 32,
+      "lineDecisionTraceFailures": 2,
+      "legacyScheduleItems": 4,
+      "calendarPlans": 0,
+      "intentIssues": 22,
+      "flywayLatest": "V93"
+    },
     "invalidatedBaseline": {
       "startedAt": "2026-08-01T11:43:02.4447406+08:00",
       "notBefore": "2026-08-02T11:43:02.4447406+08:00",
@@ -2845,19 +2857,39 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
     "simulatedTestTurnsCountTowardMonitoring": false
   },
   "remainingWork": [
-    "after Docker engine CLI recovers, rerun scripts/dev-status.ps1 -ExternalLineProbe and record a new metadata-only baseline",
-    "after the new notBefore, verify at least 20 real LINE inbound natural-language turns above the new baseline",
+    "after 2026-08-03T06:06:38.335359+08:00, verify at least 20 real LINE inbound text turns above the 32-turn baseline",
     "audit create/list/info/missing-field/rollback coverage, Calendar V2 routing, zero legacy schedule_item delta, errors, privacy and latency",
-    "final product PR, state-only handoff and HARD_YIELD receipt"
+    "publish and integrate the W11-H two-machine evidence-lane development documents without starting post-swap T0 work",
+    "final product PR, matching state-only handoff, claim release and HARD_YIELD receipt"
   ],
   "releaseBlockers": [
-    "The 2026-08-01T11:43:02.4447406+08:00 baseline is permanently invalid because a legacy recurring worker wrote schedule_item after global Calendar V2 cutover; a repaired runtime baseline has not been established yet",
-    "Docker Desktop backend, WSL, engine pipe and the repaired Spring application are alive, and direct Test-LineWebhookEndToEnd returned HTTP 200, but docker version/info/status time out; shared Docker service restart requires explicit lifecycle authority",
-    "GitHub CLI authentication is required before the product PR can be created; gh auth status at 2026-07-31 13:51 +08:00 reports no authenticated host"
+    "The repaired monitoring window cannot close before 2026-08-03T06:06:38.335359+08:00 and a delta of at least 20 real LINE inbound text turns",
+    "The acceptance audit must prove legacy schedule_item remains at 4, inspect all new decision traces and verify the required scenario coverage, privacy and latency gates",
+    "GitHub CLI authentication must be rechecked before publishing the product and matching state-only PRs; the last historical check on 2026-07-31 reported no authenticated host"
   ],
   "userDecisionRequired": []
 }
 ```
+
+#### W11 repaired runtime 與第四次監測基線（2026-08-02）
+
+狀態：`INVALIDATED_BY_APPROVED_W11_H_PRODUCT_WORK`。本段保留第四次基線的歷史證據；W11-H
+production gap 於 `2026-08-02T06:27:23.2638731+08:00` 開始修正，因此該窗口不能再作 release
+acceptance。`scripts/dev-start.ps1 -SkipDocker -SkipDispatcher` 當時以 Java 21 正常完成，隨後
+`scripts/dev-status.ps1 -ExternalLineProbe` 回傳 exit 0，確認 main `UP`、PostgreSQL／Redis healthy、
+LINE connected。runtime source head 為 `e5b2250ce922a0f489f885caa03453554d7491b3`，包含產品修正
+`2b22073209f24960774431ad3d2c23c877646605`，service generation 為
+`b22ee7bdfac64fbe91ce0408007207a4`。
+
+第四次 metadata-only baseline 於 PostgreSQL `REPEATABLE READ READ ONLY` transaction 建立，沒有讀取
+LINE 原文、payload、外部 message ID、UUID 或秘密，也沒有任何資料 mutation。基線為 32 筆 LINE inbound
+message／32 筆文字 message、32 筆 decision trace（其中既有 2 筆 failure）、4 筆 legacy
+`schedule_item`、0 筆 `calendar_plan`、22 筆 `intent_issue`，Flyway 最新版本 V93。最早驗收時間為
+`2026-08-03T06:06:38.335359+08:00`；這個時間只保留追溯，不再是可用 gate。全部 W11-H production
+修正、focused/root 與 runtime refresh 完成後，必須重新建立 startedAt/notBefore/counts，並同時具備至少
+20 筆新的真實 LINE 文字 inbound、
+legacy `schedule_item` delta=0，並完成新 trace、Calendar V2 route、scenario coverage、privacy 與 latency
+稽核。模擬、synthetic、focused 或 provider benchmark turn 均不得計入此窗口。
 
 #### W11-G cutover integrity 與接送語意修復（2026-08-01）
 

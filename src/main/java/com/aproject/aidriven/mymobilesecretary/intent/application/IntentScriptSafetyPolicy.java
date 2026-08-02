@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarIntentDraftRequestPolicy;
 import java.time.Clock;
 import java.util.ArrayList;
 import java.util.List;
@@ -26,36 +27,64 @@ final class IntentScriptSafetyPolicy {
     }
 
     static IntentScript apply(String text, IntentScript script) {
-        return apply(text, script, Clock.systemDefaultZone());
+        return apply(text, script, Clock.systemDefaultZone(), false, false);
     }
 
     static IntentScript apply(String text, IntentScript script, Clock clock) {
-        return apply(text, script, clock, false);
+        return apply(text, script, clock, false, true);
     }
 
     static IntentScript applyStrict(String text, IntentScript script, Clock clock) {
-        return apply(text, script, clock, true);
+        return apply(text, script, clock, true, true);
     }
 
-    private static IntentScript apply(String text, IntentScript script, Clock clock,
-                                      boolean requireSourceText) {
+    private static IntentScript apply(
+            String text,
+            IntentScript script,
+            Clock clock,
+            boolean requireSourceText,
+            boolean enforcePastTime) {
         if (script == null || script.commands() == null) {
             return script;
         }
         IntentScript result = guardSourceGrounding(text, script, requireSourceText);
         result = normalizeMissingCommandTypes(result);
+        result = guardBareOneOClock(text, result, clock);
         result = CalendarDatePolicy.guard(text, result, clock);
         if (result.commands().stream().anyMatch(command ->
                 command != null && command.type() == IntentCommand.Type.UNKNOWN
                         && CalendarDatePolicy.clarification(text, clock).isPresent())) {
             return result;
         }
+        if (enforcePastTime) {
+            result = PastMutationTimePolicy.guard(result, clock);
+        }
         result = guardExplicitDraftOnly(text, result);
         result = guardUnsupportedReminderUpdate(text, result);
         result = guardUnsupportedConditionalRecurrence(text, result);
+        result = guardAmbiguousAccompaniment(text, result);
         result = normalizeCaregivingReminders(text, result);
         result = guardReportedNoticeWithoutEnd(text, result);
         return normalizeScheduleReminder(text, result);
+    }
+
+    private static IntentScript guardBareOneOClock(
+            String text, IntentScript script, Clock clock) {
+        var clarification = BareClockTimePolicy.clarification(text, clock);
+        if (clarification.isEmpty()
+                || script.commands().stream().noneMatch(
+                        IntentScriptSafetyPolicy::isAmbiguousTimeMutation)) {
+            return script;
+        }
+        return new IntentScript(List.of(unknown(clarification.orElseThrow())));
+    }
+
+    private static boolean isAmbiguousTimeMutation(IntentCommand command) {
+        if (isDirectCreation(command) || command.type() == null) return isDirectCreation(command);
+        return switch (command.type()) {
+            case RESCHEDULE_SCHEDULE, RESCHEDULE_TASK -> true;
+            default -> false;
+        };
     }
 
     private static IntentScript normalizeMissingCommandTypes(IntentScript script) {
@@ -77,11 +106,10 @@ final class IntentScriptSafetyPolicy {
     }
 
     private static IntentScript guardExplicitDraftOnly(String text, IntentScript script) {
-        String compact = compact(text);
-        boolean draftOnly = containsAny(compact, "保留草稿", "先留草稿", "先幫我留草稿", "只留草稿")
-                || containsAny(compact, "不要直接建立", "不要建立正式", "先不要建立正式");
-        if (!draftOnly) return script;
-        return rejectMatching(script, IntentScriptSafetyPolicy::isDirectCreation,
+        if (!CalendarIntentDraftRequestPolicy.isDraftOnly(text)) return script;
+        return rejectMatching(script,
+                command -> isDirectCreation(command)
+                        && command.type() != IntentCommand.Type.CREATE_SCHEDULE,
                 "你要求只保留草稿；目前沒有可安全執行的 typed 草稿操作，確認前不會建立正式資料。");
     }
 
@@ -193,6 +221,29 @@ final class IntentScriptSafetyPolicy {
         return new IntentScript(List.copyOf(normalized));
     }
 
+    private static IntentScript guardAmbiguousAccompaniment(
+            String text, IntentScript script) {
+        List<IntentCommand> safe = new ArrayList<>();
+        for (IntentCommand command : script.commands()) {
+            if (command == null || !isDirectCreation(command)) {
+                if (command != null) safe.add(command);
+                continue;
+            }
+            TransportSemanticPolicy.Decision decision =
+                    transportDecision(text, command);
+            if (decision.responsibility()
+                            == TransportSemanticPolicy.Responsibility.ACCOMPANY
+                    && decision.occupancy()
+                            == TransportSemanticPolicy.Occupancy.UNKNOWN) {
+                safe.add(unknown(
+                        "我知道這是陪同安排，但還不能確定你是否全程參加。你會從開始到結束都在場嗎？"));
+            } else {
+                safe.add(command);
+            }
+        }
+        return new IntentScript(List.copyOf(safe));
+    }
+
     private static boolean isCaregivingTransportSchedule(
             String text, IntentCommand command) {
         if (command == null || command.type() != IntentCommand.Type.CREATE_SCHEDULE) {
@@ -201,9 +252,13 @@ final class IntentScriptSafetyPolicy {
         String source = command.sourceText() == null || command.sourceText().isBlank()
                 ? text
                 : command.sourceText();
-        String evidence = compact((command.title() == null ? "" : command.title())
-                + " " + (source == null ? "" : source));
-        return TransportSemanticPolicy.isTransportToDependentActivity(evidence);
+        return transportDecision(source, command).isPointResponsibility();
+    }
+
+    private static TransportSemanticPolicy.Decision transportDecision(
+            String text, IntentCommand command) {
+        String evidence = text == null || text.isBlank() ? command.title() : text;
+        return TransportSemanticPolicy.classify(evidence);
     }
 
     private static IntentScript guardSourceGrounding(String text, IntentScript script,

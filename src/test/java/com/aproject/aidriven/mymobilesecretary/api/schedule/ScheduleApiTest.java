@@ -123,7 +123,7 @@ class ScheduleApiTest extends IntegrationTestBase {
         var json = objectMapper.readTree(body);
         org.assertj.core.api.Assertions.assertThat(json.get("feasible").asBoolean()).isFalse();
         org.assertj.core.api.Assertions.assertThat(json.get("issues").get(0).get("type").asText())
-                .isEqualTo("TRAVEL_FROM_CURRENT_LOCATION");
+                .isEqualTo("ROUTE_EVIDENCE_INSUFFICIENT");
 
         // 使用者說「我已安排好交通」→ 強制確認
         long id = json.get("schedule").get("id").asLong();

@@ -78,7 +78,8 @@ public class ConversationFocusAtomicExecutor {
             case ENTER -> {
                 if (control instanceof FocusControl.EnterWorkflow enter) {
                     bind(requirePersisted(focusService.enterWorkflow(
-                            enter.domain(), enter.workflowId(), enter.safeLabel(), inboundHmac)));
+                            enter.domain(), enter.workflowId(), enter.safeLabel(),
+                            enter.activityCode(), enter.activityLabel(), inboundHmac)));
                 } else if (control instanceof FocusControl.EnterResource enter) {
                     requirePersisted(focusService.enterResource(
                             enter.domain(), enter.routingKey(), enter.safeLabel(), inboundHmac));
@@ -97,7 +98,8 @@ public class ConversationFocusAtomicExecutor {
             case SWITCH -> {
                 if (control instanceof FocusControl.SwitchWorkflow change) {
                     bind(requirePersisted(focusService.switchWorkflow(
-                            change.domain(), change.workflowId(), change.safeLabel(), inboundHmac)));
+                            change.domain(), change.workflowId(), change.safeLabel(),
+                            change.activityCode(), change.activityLabel(), inboundHmac)));
                 } else {
                     FocusControl.SwitchResource change = require(
                             control, FocusControl.SwitchResource.class, type);

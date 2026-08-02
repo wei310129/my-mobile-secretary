@@ -164,7 +164,9 @@ public class CalendarAdoptionService {
         WorkspaceContext context = tenantContext();
         return jdbc.query(
                 """
-                SELECT node.node_key, node.resolved_time,
+                SELECT node.plan_id, node.source_node_id,
+                    node.source_created_by_user_id,
+                    node.node_key, node.resolved_time,
                     node.location_label, node.latitude, node.longitude,
                     node.adjustability, node.source_node_revision
                 FROM calendar_personal_projection_snapshot snapshot
@@ -212,6 +214,9 @@ public class CalendarAdoptionService {
                 ORDER BY node.resolved_time, node.node_key
                 """,
                 (row, ignored) -> new PersonalRouteConstraint(
+                        row.getObject("plan_id", UUID.class),
+                        row.getObject("source_node_id", UUID.class),
+                        row.getObject("source_created_by_user_id", UUID.class),
                         row.getString("node_key"),
                         row.getTimestamp("resolved_time").toInstant(),
                         row.getString("location_label") == null

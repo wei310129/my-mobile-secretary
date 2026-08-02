@@ -358,9 +358,16 @@ public class FeasibilityService {
             Duration gap = Duration.between(prev.getEndAt(), candidate.getStartAt())
                     .minus(overrunBuffer).minus(preferenceBuffer);
             return () -> {
-                Duration need = travelTimeEstimator.estimate(
+                var evidence = travelTimeEstimator.estimateEvidence(
                         prevPlace.getLatitude(), prevPlace.getLongitude(),
                         candidatePlace.getLatitude(), candidatePlace.getLongitude(), prev.getEndAt());
+                if (!evidence.supportsFeasibilityClaim()) {
+                    return Optional.of(insufficientRouteEvidence(
+                            "從「%s」到「%s」".formatted(
+                                    prevPlace.getName(), candidatePlace.getName()),
+                            prev.getId()));
+                }
+                Duration need = evidence.duration();
                 if (need.compareTo(gap) <= 0) {
                     return Optional.empty();
                 }
@@ -384,9 +391,14 @@ public class FeasibilityService {
         Instant now = Instant.now(clock);
         Duration gap = Duration.between(now, candidate.getStartAt());
         return () -> {
-            Duration need = travelTimeEstimator.estimate(
+            var evidence = travelTimeEstimator.estimateEvidence(
                     lastLocation.getLatitude(), lastLocation.getLongitude(),
                     candidatePlace.getLatitude(), candidatePlace.getLongitude(), now);
+            if (!evidence.supportsFeasibilityClaim()) {
+                return Optional.of(insufficientRouteEvidence(
+                        "從目前位置到「%s」".formatted(candidatePlace.getName()), null));
+            }
+            Duration need = evidence.duration();
             if (!gap.isNegative() && need.compareTo(gap) <= 0) {
                 return Optional.empty();
             }
@@ -420,9 +432,16 @@ public class FeasibilityService {
         Duration gap = Duration.between(candidate.getEndAt(), next.getStartAt())
                 .minus(overrunBuffer).minus(preferenceBuffer);
         return () -> {
-            Duration need = travelTimeEstimator.estimate(
+            var evidence = travelTimeEstimator.estimateEvidence(
                     candidatePlace.getLatitude(), candidatePlace.getLongitude(),
                     nextPlace.getLatitude(), nextPlace.getLongitude(), candidate.getEndAt());
+            if (!evidence.supportsFeasibilityClaim()) {
+                return Optional.of(insufficientRouteEvidence(
+                        "從「%s」到「%s」".formatted(
+                                candidatePlace.getName(), nextPlace.getName()),
+                        next.getId()));
+            }
+            Duration need = evidence.duration();
             if (need.compareTo(gap) <= 0) {
                 return Optional.empty();
             }
@@ -435,6 +454,15 @@ public class FeasibilityService {
                                     need.toMinutes(), Math.max(gap.toMinutes(), 0), bufferNote),
                     next.getId()));
         };
+    }
+
+    private static FeasibilityIssue insufficientRouteEvidence(
+            String legDescription, Long relatedScheduleId) {
+        return new FeasibilityIssue(
+                FeasibilityIssue.Type.ROUTE_EVIDENCE_INSUFFICIENT,
+                "%s目前只有直線距離粗估，不能據此判定可行或準時；請確認交通方式，或等可靠路線資料後再判斷。"
+                        .formatted(legDescription),
+                relatedScheduleId);
     }
 
 }

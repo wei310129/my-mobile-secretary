@@ -42,10 +42,12 @@ class CompositeTravelTimeEstimatorTest {
     void usesTdxTransitTimePlusBufferWhenAvailable() {
         when(tdxRoutingClient.getTransitTravelTime(any())).thenReturn(Duration.ofMinutes(45));
 
-        Duration result = estimator(true).estimate(25.0, 121.5, 24.9, 121.5, DEPART);
+        var result = estimator(true).estimateEvidence(25.0, 121.5, 24.9, 121.5, DEPART);
 
         // 45 分鐘車程 + 10 分鐘轉場緩衝
-        assertThat(result).isEqualTo(Duration.ofMinutes(55));
+        assertThat(result.duration()).isEqualTo(Duration.ofMinutes(55));
+        assertThat(result.source()).isEqualTo(TravelTimeEstimator.EvidenceSource.TDX_TRANSIT);
+        assertThat(result.supportsFeasibilityClaim()).isTrue();
     }
 
     @Test
@@ -53,16 +55,21 @@ class CompositeTravelTimeEstimatorTest {
         when(tdxRoutingClient.getTransitTravelTime(any()))
                 .thenThrow(new IntegrationException("TDX down"));
 
-        Duration result = estimator(true).estimate(25.0, 121.5, 24.9, 121.5, DEPART);
+        var result = estimator(true).estimateEvidence(25.0, 121.5, 24.9, 121.5, DEPART);
 
-        assertThat(result).isEqualTo(fallback.estimate(25.0, 121.5, 24.9, 121.5, DEPART));
+        assertThat(result.duration())
+                .isEqualTo(fallback.estimate(25.0, 121.5, 24.9, 121.5, DEPART));
+        assertThat(result.source()).isEqualTo(TravelTimeEstimator.EvidenceSource.STRAIGHT_LINE);
+        assertThat(result.supportsFeasibilityClaim()).isFalse();
     }
 
     @Test
     void disabledTdxGoesStraightToFallbackWithoutCalling() {
-        Duration result = estimator(false).estimate(25.0, 121.5, 24.9, 121.5, DEPART);
+        var result = estimator(false).estimateEvidence(25.0, 121.5, 24.9, 121.5, DEPART);
 
-        assertThat(result).isEqualTo(fallback.estimate(25.0, 121.5, 24.9, 121.5, DEPART));
+        assertThat(result.duration())
+                .isEqualTo(fallback.estimate(25.0, 121.5, 24.9, 121.5, DEPART));
+        assertThat(result.supportsFeasibilityClaim()).isFalse();
         verify(tdxRoutingClient, never()).getTransitTravelTime(any());
     }
 }

@@ -166,6 +166,43 @@ class CalendarRlsIntegrationTest extends IntegrationTestBase {
                 workspace,
                 owner,
                 owner));
+        UUID routeRiskId = UUID.randomUUID();
+        runtime(ownerContext, () -> jdbc.update(
+                """
+                INSERT INTO calendar_route_risk (
+                    id,
+                    from_plan_id, from_node_id,
+                    from_source_created_by_user_id,
+                    from_node_revision,
+                    to_plan_id, to_node_id,
+                    to_source_created_by_user_id,
+                    to_node_revision,
+                    risk_kind, status, revision,
+                    required_travel_seconds,
+                    available_gap_seconds,
+                    recommended_departure,
+                    last_notified_required_seconds,
+                    last_notified_departure, notified_at,
+                    created_at, updated_at,
+                    workspace_id, created_by_user_id)
+                VALUES (?, ?, ?, ?, 1, ?, ?, ?, 1,
+                    'IMPOSSIBLE', 'OPEN', 1,
+                    3600, 0, ?, 3600, ?, ?, ?, ?, ?, ?)
+                """,
+                routeRiskId,
+                planId,
+                nodeId,
+                owner,
+                planId,
+                nodeId,
+                owner,
+                Timestamp.from(NOW),
+                Timestamp.from(NOW),
+                Timestamp.from(NOW),
+                Timestamp.from(NOW),
+                Timestamp.from(NOW),
+                workspace,
+                owner));
 
         assertThat(inContext(context(peer, workspace), () -> plans
                         .findByIdAndWorkspaceIdAndCreatedByUserId(planId, workspace, peer)))
@@ -178,19 +215,28 @@ class CalendarRlsIntegrationTest extends IntegrationTestBase {
                         "SELECT count(*) FROM calendar_plan", Long.class)))
                 .isZero();
         assertThat(runtime(ownerContext, () -> counts()))
-                .containsExactly(1L, 1L, 1L, 1L, 1L, 1L, 1L);
+                .containsExactly(1L, 1L, 1L, 1L, 1L, 1L, 1L, 1L);
         assertThat(runtime(context(peer, workspace), this::counts))
-                .containsExactly(0L, 0L, 0L, 0L, 0L, 0L, 0L);
+                .containsExactly(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L);
         assertThat(runtime(context(outsider, otherWorkspace), () -> jdbc.queryForObject(
                         "SELECT count(*) FROM calendar_plan", Long.class)))
                 .isZero();
         assertThat(runtime(WorkspaceContext.system(), this::counts))
-                .containsExactly(0L, 0L, 0L, 0L, 0L, 0L, 0L);
+                .containsExactly(0L, 0L, 0L, 0L, 0L, 0L, 0L, 0L);
         assertThat(runtime(context(peer, workspace), () -> jdbc.update(
                         "UPDATE calendar_plan SET title = '越權修改' WHERE id = ?", planId)))
                 .isZero();
         assertThat(runtime(context(peer, workspace), () -> jdbc.update(
                         "DELETE FROM calendar_plan WHERE id = ?", planId)))
+                .isZero();
+        assertThat(runtime(context(peer, workspace), () -> jdbc.update(
+                        """
+                        UPDATE calendar_route_risk
+                        SET status = 'CONFIRMED', confirmed_at = ?
+                        WHERE id = ?
+                        """,
+                        Timestamp.from(NOW),
+                        routeRiskId)))
                 .isZero();
         assertThatThrownBy(() -> runtime(context(peer, workspace), () -> jdbc.update(
                         """
@@ -305,6 +351,8 @@ class CalendarRlsIntegrationTest extends IntegrationTestBase {
                         Long.class),
                 jdbc.queryForObject("SELECT count(*) FROM calendar_adoption", Long.class),
                 jdbc.queryForObject(
-                        "SELECT count(*) FROM calendar_adoption_node", Long.class));
+                        "SELECT count(*) FROM calendar_adoption_node", Long.class),
+                jdbc.queryForObject(
+                        "SELECT count(*) FROM calendar_route_risk", Long.class));
     }
 }

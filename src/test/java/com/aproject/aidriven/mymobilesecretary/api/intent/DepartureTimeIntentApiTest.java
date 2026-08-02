@@ -6,12 +6,18 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 
 import com.aproject.aidriven.mymobilesecretary.IntegrationTestBase;
 import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubIntentInterpreter;
+import com.aproject.aidriven.mymobilesecretary.integration.transport.GoogleRoutesClient;
+import com.aproject.aidriven.mymobilesecretary.integration.transport.GoogleRoutesClient.GoogleRoute;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentOptions;
 import com.aproject.aidriven.mymobilesecretary.knowledge.application.PlanningPreferenceService;
+import java.time.Duration;
+import java.util.List;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatchers;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /** Scenario #159: latest departure uses an explicit origin and deterministic buffers. */
 class DepartureTimeIntentApiTest extends IntegrationTestBase {
@@ -22,11 +28,18 @@ class DepartureTimeIntentApiTest extends IntegrationTestBase {
     @Autowired
     private PlanningPreferenceService preferenceService;
 
+    @MockitoBean
+    private GoogleRoutesClient googleRoutesClient;
+
     @Test
     void computesLatestDepartureFromHomeWithoutRequiringCurrentGps() throws Exception {
         createPlace("家", 24.9820, 121.5360);
         createPlace("台大醫院", 25.0417, 121.5190);
         preferenceService.setBuffers(15, 0);
+        org.mockito.Mockito.when(googleRoutesClient.usable()).thenReturn(true);
+        org.mockito.Mockito.when(googleRoutesClient.computeRoutes(ArgumentMatchers.any()))
+                .thenReturn(List.of(new GoogleRoute(
+                        Duration.ofMinutes(35), Duration.ofMinutes(28), 12_000)));
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.ASK_DEPARTURE_TIME, null,
                 "2026-07-22T10:00:00+08:00", null, null, "台大醫院",

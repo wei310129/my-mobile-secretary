@@ -116,6 +116,19 @@ public class ConversationFocus extends WorkspaceOwnedEntity {
         this.updatedAt = now;
     }
 
+    public void initializeActivity(String code, String label) {
+        if (activityCode != null || activityLabel != null) {
+            throw new IllegalStateException("focus activity is already initialized");
+        }
+        if (code == null && label == null) return;
+        if ((code == null) != (label == null)) {
+            throw new IllegalArgumentException(
+                    "activity code and label must initialize together");
+        }
+        this.activityCode = required(code, "activity code", 80);
+        this.activityLabel = required(label, "activity label", 200);
+    }
+
     public void suspend(Instant now) { requireOpen(); status = ConversationFocusStatus.SUSPENDED; updatedAt = now; }
     public void resume(Instant now) { resume(now, null); }
     public void resume(Instant now, String refreshedSafeLabel) { if (status != ConversationFocusStatus.SUSPENDED) throw new IllegalStateException("only suspended focus can resume"); if (refreshedSafeLabel != null) safeLabel = required(refreshedSafeLabel, "safe label", 200); status = ConversationFocusStatus.ACTIVE; updatedAt = now; }

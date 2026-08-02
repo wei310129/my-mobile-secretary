@@ -23,6 +23,8 @@ public record FeasibilityIssue(Type type, String message, Long relatedScheduleId
         /** 結束後趕不上下一個行程。 */
         TRAVEL_TO_NEXT,
         /** 從目前位置趕不到(例:人在高雄、預約在台北)。 */
-        TRAVEL_FROM_CURRENT_LOCATION
+        TRAVEL_FROM_CURRENT_LOCATION,
+        /** 只有直線粗估或其他不可靠 evidence，不能宣稱可行或準時。 */
+        ROUTE_EVIDENCE_INSUFFICIENT
     }
 }

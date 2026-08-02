@@ -5,7 +5,9 @@ import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContex
 import java.time.Instant;
 import java.time.LocalDate;
 import java.time.ZoneId;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -92,7 +94,17 @@ public class PersonalRouteProjectionService {
                 },
                 context.workspaceId(),
                 context.actorId()).stream().filter(java.util.Objects::nonNull).toList();
-        return new PersonalRouteProjection(busy, adoptions.constraints());
+        LinkedHashMap<RouteIdentity, PersonalRouteConstraint> constraints =
+                new LinkedHashMap<>();
+        for (PersonalRouteConstraint constraint : adoptions.constraints()) {
+            constraints.put(new RouteIdentity(
+                    constraint.planId(), constraint.nodeId()), constraint);
+        }
+        for (PersonalRouteConstraint constraint : ownedConstraints(context)) {
+            constraints.putIfAbsent(new RouteIdentity(
+                    constraint.planId(), constraint.nodeId()), constraint);
+        }
+        return new PersonalRouteProjection(busy, List.copyOf(constraints.values()));
     }
 
     public List<CalendarBusyInterval> busyIntervals(Instant from, Instant to) {
@@ -104,6 +116,46 @@ public class PersonalRouteProjectionService {
                 .toList();
     }
 
+    private List<PersonalRouteConstraint> ownedConstraints(WorkspaceContext context) {
+        return jdbc.query(
+                """
+                SELECT node.plan_id, node.id, node.node_key,
+                       node.resolved_time, node.location_label,
+                       node.latitude, node.longitude,
+                       node.adjustability, node.revision
+                FROM calendar_time_node node
+                JOIN calendar_plan plan
+                  ON plan.id = node.plan_id
+                 AND plan.workspace_id = node.workspace_id
+                 AND plan.created_by_user_id = node.created_by_user_id
+                JOIN workspace workspace
+                  ON workspace.id = plan.workspace_id
+                 AND workspace.type = 'PERSONAL'
+                WHERE node.workspace_id = ?
+                  AND node.created_by_user_id = ?
+                  AND node.cancellation_status = 'ACTIVE'
+                  AND node.resolved_time IS NOT NULL
+                ORDER BY node.resolved_time, node.node_key
+                """,
+                (row, ignored) -> new PersonalRouteConstraint(
+                        row.getObject("plan_id", UUID.class),
+                        row.getObject("id", UUID.class),
+                        context.actorId(),
+                        row.getString("node_key"),
+                        row.getTimestamp("resolved_time").toInstant(),
+                        row.getString("location_label") == null
+                                ? null
+                                : new CalendarLocation(
+                                        row.getString("location_label"),
+                                        row.getDouble("latitude"),
+                                        row.getDouble("longitude")),
+                        com.aproject.aidriven.mymobilesecretary.calendar.domain
+                                .Adjustability.valueOf(row.getString("adjustability")),
+                        row.getLong("revision")),
+                context.workspaceId(),
+                context.actorId());
+    }
+
     private static WorkspaceContext tenantContext() {
         WorkspaceContext context = WorkspaceContextHolder.requireContext();
         if (!context.isTenantScope()) {
@@ -111,4 +163,6 @@ public class PersonalRouteProjectionService {
         }
         return context;
     }
+
+    private record RouteIdentity(UUID planId, UUID nodeId) {}
 }

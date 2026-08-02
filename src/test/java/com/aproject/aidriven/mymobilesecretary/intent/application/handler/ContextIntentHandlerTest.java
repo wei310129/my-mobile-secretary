@@ -4,6 +4,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarIntentDraftConversationService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.GeofenceRuleService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
@@ -37,7 +38,8 @@ class ContextIntentHandlerTest {
                 mock(PlaceAliasService.class),
                 mock(PlaceService.class),
                 mock(GeofenceRuleService.class),
-                bulkCancellationService);
+                bulkCancellationService,
+                mock(CalendarIntentDraftConversationService.class));
     }
 
     @Test

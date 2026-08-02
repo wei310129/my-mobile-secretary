@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.adoption.CalendarRouteRiskCoordinator;
+import com.aproject.aidriven.mymobilesecretary.calendar.adoption.CalendarRouteRiskResponsePolicy;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
@@ -14,8 +16,10 @@ import com.aproject.aidriven.mymobilesecretary.knowledge.application.PlanningPre
 import com.aproject.aidriven.mymobilesecretary.planner.application.FeasibilityService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.FreeSlotService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.LocalizedWeatherService;
+import com.aproject.aidriven.mymobilesecretary.planner.application.RoutePlanningRequest;
 import com.aproject.aidriven.mymobilesecretary.planner.application.RouteSuggestionService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.TravelPlanningService;
+import com.aproject.aidriven.mymobilesecretary.planner.application.TravelTimeEstimator;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import java.time.Clock;
@@ -33,6 +37,7 @@ class PlannerIntentHandlerTest {
     private TravelPlanningService travelPlanningService;
     private FeasibilityService feasibilityService;
     private PlanningPreferenceService preferenceService;
+    private CalendarRouteRiskCoordinator routeRiskCoordinator;
     private PlannerIntentHandler handler;
 
     @BeforeEach
@@ -42,6 +47,7 @@ class PlannerIntentHandlerTest {
         travelPlanningService = mock(TravelPlanningService.class);
         feasibilityService = mock(FeasibilityService.class);
         preferenceService = mock(PlanningPreferenceService.class);
+        routeRiskCoordinator = mock(CalendarRouteRiskCoordinator.class);
         handler = new PlannerIntentHandler(
                 mock(TaskService.class),
                 mock(ScheduleService.class),
@@ -54,6 +60,8 @@ class PlannerIntentHandlerTest {
                 weatherService,
                 preferenceService,
                 mock(ConversationContextService.class),
+                routeRiskCoordinator,
+                new CalendarRouteRiskResponsePolicy(),
                 Clock.systemUTC());
     }
 
@@ -90,11 +98,13 @@ class PlannerIntentHandlerTest {
         Instant arriveBy = Instant.parse("2026-07-22T02:00:00Z");
         var plan = new TravelPlanningService.DeparturePlan(
                 Instant.parse("2026-07-22T00:55:00Z"), arriveBy,
-                Duration.ofMinutes(50), Duration.ofMinutes(10), Duration.ofMinutes(15));
+                Duration.ofMinutes(50), Duration.ofMinutes(10), Duration.ofMinutes(15),
+                TravelTimeEstimator.EvidenceSource.TDX_TRANSIT);
         when(placeAliasService.resolve("家")).thenReturn(Optional.of(home));
         when(placeAliasService.resolve("台大醫院")).thenReturn(Optional.of(hospital));
         when(travelPlanningService.latestDepartureBetweenPlaces(
-                home, hospital, arriveBy, Duration.ofMinutes(15))).thenReturn(plan);
+                home, hospital, arriveBy, Duration.ofMinutes(15),
+                RoutePlanningRequest.TravelMode.DRIVE)).thenReturn(Optional.of(plan));
 
         IntentCommand command = new IntentCommand(
                 IntentCommand.Type.ASK_DEPARTURE_TIME, null,
@@ -103,7 +113,7 @@ class PlannerIntentHandlerTest {
                 com.aproject.aidriven.mymobilesecretary.intent.application.IntentOptions.empty()
                         .withDepartureOrigin("家", 15));
 
-        IntentResult result = handler.handle("十點前到醫院", command);
+        IntentResult result = handler.handle("從家開車，十點前到醫院", command);
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.TRAVEL_INFO);
         assertThat(result.message()).contains(
@@ -111,7 +121,26 @@ class PlannerIntentHandlerTest {
                 "交通估計 50 分鐘",
                 "基本轉場緩衝 10 分鐘",
                 "另保留 15 分鐘停車／抵達緩衝",
-                "10:00 前到「台大醫院」");
+                "10:00 前到「台大醫院」",
+                "建議提醒：出發前 30 分鐘、出發時");
+    }
+
+    @Test
+    void missingTransportModeAsksOnePublicQuestionWithoutRouteCall() {
+        IntentCommand command = new IntentCommand(
+                IntentCommand.Type.ASK_TRAVEL_TIME, null,
+                null, null, null, "台大醫院",
+                null, null, null, null, null, null, null,
+                com.aproject.aidriven.mymobilesecretary.intent.application.IntentOptions.empty());
+
+        IntentResult result = handler.handle("到台大醫院要多久", command);
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.TRAVEL_INFO);
+        assertThat(result.message())
+                .isEqualTo(IntentResult.message(IntentResult.Action.TRAVEL_INFO,
+                        "我還不知道這次的交通方式。這次要用開車、機車、步行，還是大眾運輸？")
+                        .message());
+        org.mockito.Mockito.verifyNoInteractions(travelPlanningService);
     }
 
     @Test
@@ -142,6 +171,45 @@ class PlannerIntentHandlerTest {
         assertThat(result.message()).contains(
                 "只做檢查，未建立行程", "08:40–10:40", "準備 20 分鐘",
                 "後續交通 40 分鐘", "準備段與「送小孩」", "08:40–08:50");
+    }
+
+    @Test
+    void unspecifiedPairChecksPersonalAdjacentCalendarWithoutFieldLeak() {
+        when(routeRiskCoordinator.synchronizeCurrent())
+                .thenReturn(new CalendarRouteRiskCoordinator.SynchronizationResult(
+                        java.util.List.of(), java.util.List.of()));
+
+        IntentResult result = handler.handle(
+                "幫我看看前後行程趕不趕得上",
+                command(IntentCommand.Type.CHECK_FEASIBILITY));
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.CONNECTION_CHECKED);
+        assertThat(result.message())
+                .contains("沒有兩個可銜接的定點行程", "要先補上行程地點嗎？")
+                .doesNotContain("title", "referenceTitle", "CHECK_FEASIBILITY");
+    }
+
+    @Test
+    void oneMissingLegacyTitleAsksOnePublicQuestion() {
+        IntentCommand command = new IntentCommand(
+                IntentCommand.Type.CHECK_FEASIBILITY,
+                "前一個行程",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                com.aproject.aidriven.mymobilesecretary.intent.application.IntentOptions.empty());
+
+        assertThat(handler.handle("前一個行程來得及嗎", command).message())
+                .contains("要檢查哪兩個行程？")
+                .doesNotContain("referenceTitle", "validation");
     }
 
     private static IntentCommand command(IntentCommand.Type type) {

@@ -35,8 +35,12 @@ class ConversationFocusIdempotencyTest extends IntegrationTestBase {
                 () -> FocusResponseEnvelope.withoutNotice("主要回覆")))
                 .isInstanceOf(IllegalStateException.class);
 
-        verify(focusService).enterWorkflow(org.mockito.ArgumentMatchers.anyString(),
-                org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString(),
+        verify(focusService).enterWorkflow(
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.any(),
+                org.mockito.ArgumentMatchers.anyString(),
+                org.mockito.ArgumentMatchers.isNull(),
+                org.mockito.ArgumentMatchers.isNull(),
                 org.mockito.ArgumentMatchers.anyString());
     }
 

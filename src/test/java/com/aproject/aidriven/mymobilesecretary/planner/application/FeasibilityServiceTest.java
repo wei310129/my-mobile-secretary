@@ -70,10 +70,16 @@ class FeasibilityServiceTest {
 
     @BeforeEach
     void setUp() {
-        // 用直線估算器(確定性),TDX 版在 CompositeTravelTimeEstimatorTest 另測
+        // 既有可達／不可達規則使用 deterministic routed test evidence；直線 approximation 另有安全測試。
+        StraightLineTravelTimeEstimator deterministicDuration =
+                new StraightLineTravelTimeEstimator(
+                        new FeasibilityProperties(25, Duration.ofMinutes(10)));
+        TravelTimeEstimator routedTestEstimator =
+                (fromLat, fromLon, toLat, toLon, departAt) -> deterministicDuration.estimate(
+                        fromLat, fromLon, toLat, toLon, departAt);
         service = new FeasibilityService(
                 scheduleItemRepository, placeRepository, locationEventRepository,
-                new StraightLineTravelTimeEstimator(new FeasibilityProperties(25, Duration.ofMinutes(10))),
+                routedTestEstimator,
                 bufferRuleService,
                 planningPreferenceService,
                 taskRepository,
@@ -221,6 +227,32 @@ class FeasibilityServiceTest {
                 schedule(1, "剪頭髮", NOW.plus(Duration.ofDays(1)), NOW.plus(Duration.ofDays(1)).plus(Duration.ofHours(1)), 10L));
 
         assertThat(result.feasible()).isTrue();
+    }
+
+    @Test
+    void straightLineApproximationRequiresConfirmationInsteadOfClaimingFeasible() {
+        confirmedItems();
+        when(placeRepository.findById(10L))
+                .thenReturn(Optional.of(place(10, "台北理髮廳", TPE_LAT, TPE_LON)));
+        when(locationEventRepository.findTopByOrderByOccurredAtDesc()).thenReturn(Optional.of(
+                LocationEvent.record(
+                        LocationEventType.MANUAL_PING, KHH_LAT, KHH_LON, NOW, "test", NOW)));
+        FeasibilityService approximateService = new FeasibilityService(
+                scheduleItemRepository, placeRepository, locationEventRepository,
+                new StraightLineTravelTimeEstimator(
+                        new FeasibilityProperties(25, Duration.ofMinutes(10))),
+                bufferRuleService, planningPreferenceService, taskRepository,
+                Clock.fixed(NOW, ZoneOffset.UTC));
+        approximateService.setLifestyleWindowService(lifestyleWindowService);
+
+        FeasibilityResult result = approximateService.check(schedule(
+                1, "剪頭髮", NOW.plus(Duration.ofDays(1)),
+                NOW.plus(Duration.ofDays(1)).plus(Duration.ofHours(1)), 10L));
+
+        assertThat(result.feasible()).isFalse();
+        assertThat(result.issues()).extracting(FeasibilityIssue::type)
+                .containsExactly(FeasibilityIssue.Type.ROUTE_EVIDENCE_INSUFFICIENT);
+        assertThat(result.issues().get(0).message()).contains("直線距離粗估", "不能據此判定");
     }
 
     /** 前一行程在高雄結束,30 分鐘後要到台北 → 趕不到。 */

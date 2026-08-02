@@ -147,6 +147,9 @@ app:
     google-places:
       # 建地點的資訊補全(計費服務,按次計);api-key 放 secrets.yaml,沒設就要求自帶座標
       enabled: true
+    google-routes:
+      # Google Routes 是計費服務；api-key 只放 secrets.yaml，沒設時 provider policy fail closed
+      enabled: true
     line:
       # 真憑證放 secrets.yaml;未設定時 webhook 直接吞掉請求(見 LineWebhookController)
       enabled: true

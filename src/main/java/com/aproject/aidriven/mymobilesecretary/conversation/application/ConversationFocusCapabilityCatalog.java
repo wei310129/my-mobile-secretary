@@ -63,6 +63,7 @@ public final class ConversationFocusCapabilityCatalog {
         values.put(IntentCommand.Type.CREATE_TASK, FocusBehavior.START_OR_SWITCH);
         values.put(IntentCommand.Type.CREATE_SCHEDULE, FocusBehavior.START_OR_SWITCH);
         values.put(IntentCommand.Type.RESCHEDULE_SCHEDULE, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.UPDATE_SCHEDULE, FocusBehavior.START_OR_SWITCH);
         values.put(IntentCommand.Type.UPDATE_TASK, FocusBehavior.START_OR_SWITCH);
         values.put(IntentCommand.Type.RECORD_VENUE_VISIT_INFO, FocusBehavior.START_OR_SWITCH);
         values.put(IntentCommand.Type.UPSERT_TAG_RELATION, FocusBehavior.START_OR_SWITCH);
@@ -72,6 +73,8 @@ public final class ConversationFocusCapabilityCatalog {
         values.put(IntentCommand.Type.PLAN_PACKING_LIST, FocusBehavior.START_OR_SWITCH);
         values.put(IntentCommand.Type.CANCEL_SCHEDULE, FocusBehavior.TERMINAL);
         values.put(IntentCommand.Type.CANCEL_TASK, FocusBehavior.TERMINAL);
+        values.put(IntentCommand.Type.ACCEPT_CONTEXT, FocusBehavior.TERMINAL);
+        values.put(IntentCommand.Type.CANCEL_CONTEXT, FocusBehavior.TERMINAL);
         values.put(IntentCommand.Type.CONFIRM_TRAVEL_ITINERARY_DRAFT, FocusBehavior.TERMINAL);
         values.put(IntentCommand.Type.DISCARD_TRAVEL_ITINERARY_DRAFT, FocusBehavior.TERMINAL);
         values.put(IntentCommand.Type.ADD_SHOPPING_ITEMS, FocusBehavior.START_OR_SWITCH);

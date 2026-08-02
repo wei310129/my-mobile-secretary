@@ -6,6 +6,7 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarIntentDraftConversationService;
 import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2IntentService;
 import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2RoutingService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService;
@@ -24,19 +25,22 @@ class ScheduleMutationIntentHandlerTest {
     private ScheduleService legacySchedules;
     private CalendarV2RoutingService routing;
     private CalendarV2IntentService calendarV2;
+    private CalendarIntentDraftConversationService calendarDrafts;
 
     @BeforeEach
     void setUp() {
         legacySchedules = mock(ScheduleService.class);
         routing = mock(CalendarV2RoutingService.class);
         calendarV2 = mock(CalendarV2IntentService.class);
+        calendarDrafts = mock(CalendarIntentDraftConversationService.class);
         handler = new ScheduleMutationIntentHandler(
                 legacySchedules,
                 mock(PlaceAliasService.class),
                 mock(ConversationContextService.class),
                 mock(BulkScheduleCancellationService.class),
                 routing,
-                calendarV2);
+                calendarV2,
+                calendarDrafts);
     }
 
     @Test
@@ -55,7 +59,7 @@ class ScheduleMutationIntentHandlerTest {
     }
 
     @Test
-    void cutoverCreateDelegatesOnlyToCalendarV2() {
+    void cutoverCreateUsesDraftPreflightLane() {
         IntentCommand command = new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE,
                 "客戶會議",
@@ -71,11 +75,44 @@ class ScheduleMutationIntentHandlerTest {
                 null,
                 null,
                 IntentOptions.empty());
+        var expected = com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult
+                .suggestionMade("先確認路線風險");
         when(routing.useCalendarV2()).thenReturn(true);
+        when(calendarDrafts.createWithPreflight(command)).thenReturn(expected);
 
-        handler.handle("明天九點建立客戶會議", command);
+        var result = handler.handle("明天九點建立客戶會議", command);
 
-        verify(calendarV2).create(command);
-        verifyNoInteractions(legacySchedules);
+        assertThat(result).isSameAs(expected);
+        verify(calendarDrafts).createWithPreflight(command);
+        verifyNoInteractions(legacySchedules, calendarV2);
+    }
+
+    @Test
+    void recurringCutoverCreateUsesTheSameDraftPreflightLane() {
+        IntentCommand command = new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                "每週例會",
+                null,
+                "2026-07-31T09:00:00+08:00",
+                "2026-07-31T10:00:00+08:00",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                true,
+                IntentOptions.empty());
+        var expected = com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult
+                .suggestionMade("固定行程已通過草稿預檢");
+        when(routing.useCalendarV2()).thenReturn(true);
+        when(calendarDrafts.createWithPreflight(command)).thenReturn(expected);
+
+        var result = handler.handle("每週五九點建立例會", command);
+
+        assertThat(result).isSameAs(expected);
+        verify(calendarDrafts).createWithPreflight(command);
+        verifyNoInteractions(legacySchedules, calendarV2);
     }
 }

@@ -129,13 +129,13 @@ class CalendarV2CutoverIntentApiTest extends IntegrationTestBase {
     @Test
     void recurringCreatePersistsOneCalendarSeriesWithoutLegacyDualWrite() throws Exception {
         String title = "W11 每週課程";
-        String source = "每週六下午兩點到四點上 W11 陶藝課";
+        String source = "8月8日每週六下午兩點到四點上 W11 陶藝課";
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE,
                 title,
                 null,
-                "2026-08-01T14:00:00+08:00",
-                "2026-08-01T16:00:00+08:00",
+                "2026-08-08T14:00:00+08:00",
+                "2026-08-08T16:00:00+08:00",
                 null,
                 null,
                 null,

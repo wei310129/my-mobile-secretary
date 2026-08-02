@@ -14,11 +14,21 @@ public sealed interface FocusControl permits FocusControl.None, FocusControl.Ent
     static Close close() { return Close.INSTANCE; }
 
     enum None implements FocusControl { INSTANCE }
-    record EnterWorkflow(String domain, UUID workflowId, String safeLabel) implements FocusControl { }
+    record EnterWorkflow(String domain, UUID workflowId, String safeLabel,
+                         String activityCode, String activityLabel) implements FocusControl {
+        public EnterWorkflow(String domain, UUID workflowId, String safeLabel) {
+            this(domain, workflowId, safeLabel, null, null);
+        }
+    }
     record EnterAsyncWork(String domain, UUID workflowId, String safeLabel) implements FocusControl { }
     record EnterResource(String domain, String routingKey, String safeLabel) implements FocusControl { }
     record ChangeSubfocus(String code, String safeLabel) implements FocusControl { }
-    record SwitchWorkflow(String domain, UUID workflowId, String safeLabel) implements FocusControl { }
+    record SwitchWorkflow(String domain, UUID workflowId, String safeLabel,
+                          String activityCode, String activityLabel) implements FocusControl {
+        public SwitchWorkflow(String domain, UUID workflowId, String safeLabel) {
+            this(domain, workflowId, safeLabel, null, null);
+        }
+    }
     record SwitchResource(String domain, String routingKey, String safeLabel) implements FocusControl { }
     record Resume(UUID focusId, String safeLabel) implements FocusControl {
         public Resume(UUID focusId) {

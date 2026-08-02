@@ -305,6 +305,45 @@ class CalendarReminderApplicationServiceTest extends IntegrationTestBase {
     }
 
     @Test
+    void adaptiveDepartureRemindersAreAtomicAndMoveWithDepartureNodeRevision() {
+        TestScope scope = seedCalendar("calendar-adaptive-departure-reminder", false);
+        Instant original = scope.nodeTime();
+
+        List<CalendarReminderRuleView> created = inContext(
+                scope.context(),
+                () -> reminders.createAdaptiveDepartureReminders(
+                        scope.planKey(),
+                        "anchor",
+                        Duration.ofMinutes(31),
+                        CalendarReminderDeliveryMode.ONCE,
+                        NotificationChannel.LOG));
+
+        assertThat(created).extracting(CalendarReminderRuleView::firstScheduledAt)
+                .containsExactly(original.minus(Duration.ofMinutes(30)), original);
+        inContext(scope.context(), () -> calendars.reviseLockedNode(
+                scope.planKey(), "anchor", original.plus(Duration.ofHours(1)), 1));
+        assertThat(jdbc.queryForList(
+                        """
+                        SELECT scheduled_at FROM calendar_reminder_occurrence
+                        WHERE workspace_id = ? AND status = 'PENDING'
+                        ORDER BY scheduled_at
+                        """,
+                        Instant.class,
+                        scope.workspaceId()))
+                .containsExactly(
+                        original.plus(Duration.ofMinutes(30)),
+                        original.plus(Duration.ofHours(1)));
+        assertThat(jdbc.queryForObject(
+                        """
+                        SELECT count(*) FROM calendar_reminder_rule
+                        WHERE workspace_id = ? AND status = 'ACTIVE'
+                        """,
+                        Long.class,
+                        scope.workspaceId()))
+                .isEqualTo(2L);
+    }
+
+    @Test
     void criticalAckChoiceIsExplicitAndAcknowledgementCancelsFutureEscalation() {
         TestScope scope = seedCalendar("calendar-reminder-ack", true);
 

@@ -43,29 +43,44 @@ public class ConversationFocusService {
 
     public ConversationFocus enterWorkflow(String domain, UUID workflowId, String label,
                                             String inboundHmac) {
-        return enter(ConversationFocusRootKind.WORKFLOW, domain, null, workflowId, label, inboundHmac);
+        return enterWorkflow(domain, workflowId, label, null, null, inboundHmac);
+    }
+
+    public ConversationFocus enterWorkflow(
+            String domain, UUID workflowId, String label,
+            String activityCode, String activityLabel, String inboundHmac) {
+        return enter(ConversationFocusRootKind.WORKFLOW, domain, null, workflowId, label,
+                activityCode, activityLabel, inboundHmac);
     }
 
     public ConversationFocus enterAsyncWork(String domain, UUID workflowId, String label,
                                             String inboundHmac) {
-        return enter(ConversationFocusRootKind.ASYNC_WORK, domain, null, workflowId, label, inboundHmac);
+        return enter(ConversationFocusRootKind.ASYNC_WORK, domain, null, workflowId, label,
+                null, null, inboundHmac);
     }
 
     public ConversationFocus enterResource(String domain, String routingKey, String label,
                                            String inboundHmac) {
-        return enter(ConversationFocusRootKind.RESOURCE, domain, routingKey, null, label, inboundHmac);
+        return enter(ConversationFocusRootKind.RESOURCE, domain, routingKey, null, label,
+                null, null, inboundHmac);
     }
 
     public ConversationFocus switchWorkflow(String domain, UUID workflowId, String label,
                                             String inboundHmac) {
+        return switchWorkflow(domain, workflowId, label, null, null, inboundHmac);
+    }
+
+    public ConversationFocus switchWorkflow(
+            String domain, UUID workflowId, String label,
+            String activityCode, String activityLabel, String inboundHmac) {
         return switchFocus(ConversationFocusRootKind.WORKFLOW, domain, null, workflowId, label,
-                inboundHmac);
+                activityCode, activityLabel, inboundHmac);
     }
 
     public ConversationFocus switchResource(String domain, String routingKey, String label,
                                             String inboundHmac) {
         return switchFocus(ConversationFocusRootKind.RESOURCE, domain, routingKey, null, label,
-                inboundHmac);
+                null, null, inboundHmac);
     }
 
     public void exit(String inboundHmac) {
@@ -175,7 +190,8 @@ public class ConversationFocusService {
     }
 
     private ConversationFocus enter(ConversationFocusRootKind kind, String domain, String routingKey,
-                                    UUID workflowId, String label, String inboundHmac) {
+                                    UUID workflowId, String label, String activityCode,
+                                    String activityLabel, String inboundHmac) {
         WorkspaceContext context = WorkspaceContextHolder.requireContext();
         ConversationScopeKey scope = scope(context);
         ConversationFocusHead head = head(context, scope);
@@ -188,6 +204,7 @@ public class ConversationFocusService {
         }
         Instant now = Instant.now(clock);
         ConversationFocus focus = createFocus(scope, context, kind, domain, routingKey, workflowId, label, now);
+        focus.initializeActivity(activityCode, activityLabel);
         focuses.save(focus);
         record(context, scope, head, FocusTransitionType.ENTER, null, focus.getId(), inboundHmac, now);
         return focus;
@@ -195,6 +212,7 @@ public class ConversationFocusService {
 
     private ConversationFocus switchFocus(ConversationFocusRootKind kind, String domain,
                                           String routingKey, UUID workflowId, String label,
+                                          String activityCode, String activityLabel,
                                           String inboundHmac) {
         WorkspaceContext context = WorkspaceContextHolder.requireContext();
         ConversationScopeKey scope = scope(context);
@@ -211,6 +229,7 @@ public class ConversationFocusService {
         previous.suspend(now);
         focuses.saveAndFlush(previous);
         ConversationFocus next = createFocus(scope, context, kind, domain, routingKey, workflowId, label, now);
+        next.initializeActivity(activityCode, activityLabel);
         focuses.save(next);
         record(context, scope, head, FocusTransitionType.SWITCH,
                 previous.getId(), next.getId(), inboundHmac, now);

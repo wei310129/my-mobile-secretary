@@ -1,5 +1,8 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application.handler;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.adoption.CalendarRouteRiskCoordinator;
+import com.aproject.aidriven.mymobilesecretary.calendar.adoption.CalendarRouteRiskResponsePolicy;
+import com.aproject.aidriven.mymobilesecretary.calendar.domain.AdaptiveDepartureReminderPolicy;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
@@ -11,7 +14,9 @@ import com.aproject.aidriven.mymobilesecretary.knowledge.application.PlanningPre
 import com.aproject.aidriven.mymobilesecretary.planner.application.FeasibilityService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.FreeSlotService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.LocalizedWeatherService;
+import com.aproject.aidriven.mymobilesecretary.planner.application.RoutePlanningRequest;
 import com.aproject.aidriven.mymobilesecretary.planner.application.RouteSuggestionService;
+import com.aproject.aidriven.mymobilesecretary.planner.application.TransportModePolicy;
 import com.aproject.aidriven.mymobilesecretary.planner.application.TravelPlanningService;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
@@ -59,6 +64,8 @@ public final class PlannerIntentHandler implements IntentHandler {
     private final LocalizedWeatherService localizedWeatherService;
     private final PlanningPreferenceService preferenceService;
     private final ConversationContextService contextService;
+    private final CalendarRouteRiskCoordinator routeRiskCoordinator;
+    private final CalendarRouteRiskResponsePolicy routeRiskResponses;
     private final Clock clock;
 
     @Override
@@ -76,9 +83,9 @@ public final class PlannerIntentHandler implements IntentHandler {
                 case ASK_WEATHER -> IntentResult.message(IntentResult.Action.WEATHER_INFO,
                         localizedWeatherService.describeCurrentForecast());
                 case CREATE_WEATHER_REMINDER -> createWeatherReminder(command, options);
-                case ASK_TRAVEL_TIME -> askTravelTime(command, options);
-                case ASK_DEPARTURE_TIME -> askDepartureTime(command, options);
-                case CREATE_TRAFFIC_WATCH -> createTrafficWatch(command, options);
+                case ASK_TRAVEL_TIME -> askTravelTime(text, command, options);
+                case ASK_DEPARTURE_TIME -> askDepartureTime(text, command, options);
+                case CREATE_TRAFFIC_WATCH -> createTrafficWatch(text, command, options);
                 case CHECK_FEASIBILITY -> checkConnection(command, options);
                 case SET_PLANNING_BUFFER -> setPlanningBuffer(options);
                 default -> throw new IllegalArgumentException(
@@ -129,23 +136,44 @@ public final class PlannerIntentHandler implements IntentHandler {
                 "已設定 %s 檢查天氣;達到降雨門檻才提醒「%s」。".formatted(format(due), title));
     }
 
-    private IntentResult askTravelTime(IntentCommand command, IntentOptions options) {
+    private IntentResult askTravelTime(
+            String userText, IntentCommand command, IntentOptions options) {
+        var mode = resolvedTransportMode(userText);
+        if (mode.isEmpty()) {
+            return transportModeQuestion(userText);
+        }
         Place to = resolvePlace(command.placeName()).orElseThrow(() ->
                 new IllegalArgumentException("unknown destination place"));
         Optional<TravelPlanningService.TravelEstimate> estimate;
         if (options.fromPlaceName() != null && !options.fromPlaceName().isBlank()) {
             Place from = resolvePlace(options.fromPlaceName()).orElseThrow();
-            estimate = travelPlanningService.betweenPlaces(from, to, parse(command.startAt()));
+            estimate = travelPlanningService.betweenPlaces(
+                    from, to, parse(command.startAt()), mode.orElseThrow());
         } else {
-            estimate = travelPlanningService.fromCurrentLocation(to, parse(command.startAt()));
+            estimate = travelPlanningService.fromCurrentLocation(
+                    to, parse(command.startAt()), mode.orElseThrow());
         }
         return IntentResult.message(IntentResult.Action.TRAVEL_INFO,
-                estimate.map(value -> "到「%s」估計約 %d 分鐘。".formatted(
-                                to.getName(), value.duration().toMinutes()))
-                        .orElse("我還不知道你目前的位置,先回報位置才能估交通時間。"));
+                estimate.map(value -> travelEstimateMessage(to, value))
+                        .orElse("目前沒有足夠的可靠路線資料；請稍後再試，或改用另一種交通方式。"));
     }
 
-    private IntentResult askDepartureTime(IntentCommand command, IntentOptions options) {
+    private static String travelEstimateMessage(
+            Place destination, TravelPlanningService.TravelEstimate estimate) {
+        if (!estimate.reliable()) {
+            return "目前只有到「%s」的直線距離粗估（約 %d 分鐘），不能據此判定可行或準時；請先確認交通方式。"
+                    .formatted(destination.getName(), estimate.duration().toMinutes());
+        }
+        return "到「%s」的可靠路線估計約 %d 分鐘。"
+                .formatted(destination.getName(), estimate.duration().toMinutes());
+    }
+
+    private IntentResult askDepartureTime(
+            String userText, IntentCommand command, IntentOptions options) {
+        var mode = resolvedTransportMode(userText);
+        if (mode.isEmpty()) {
+            return transportModeQuestion(userText);
+        }
         ScheduleItem schedule = command.placeName() == null ? scheduleTarget(command, options) : null;
         Place destination = schedule != null && schedule.getPlaceId() != null
                 ? placeService.getPlace(schedule.getPlaceId())
@@ -168,17 +196,17 @@ public final class PlannerIntentHandler implements IntentHandler {
         if (options.fromPlaceName() != null && !options.fromPlaceName().isBlank()) {
             Place from = resolvePlace(options.fromPlaceName()).orElseThrow(() ->
                     new IllegalArgumentException("unknown origin place"));
-            plan = Optional.of(travelPlanningService.latestDepartureBetweenPlaces(
-                    from, destination, arrive, extraBuffer));
+            plan = travelPlanningService.latestDepartureBetweenPlaces(
+                    from, destination, arrive, extraBuffer, mode.orElseThrow());
             origin = "從「%s」".formatted(from.getName());
         } else {
             plan = travelPlanningService.latestDepartureFromCurrentLocation(
-                    destination, arrive, extraBuffer);
+                    destination, arrive, extraBuffer, mode.orElseThrow());
             origin = "從目前位置";
         }
         return IntentResult.message(IntentResult.Action.TRAVEL_INFO,
                 plan.map(value -> departureMessage(origin, destination, value))
-                        .orElse("我還不知道你目前的位置,先回報位置才能反推出發時間。"));
+                        .orElse("目前沒有足夠的可靠路線資料，不能反推最晚安全出發時間；請稍後再試或換交通方式。"));
     }
 
     private static String departureMessage(
@@ -187,20 +215,44 @@ public final class PlannerIntentHandler implements IntentHandler {
                 ? ""
                 : "，另保留 %d 分鐘停車／抵達緩衝".formatted(
                         plan.extraArrivalBuffer().toMinutes());
-        return "%s最晚 %s 出發，交通估計 %d 分鐘（含系統基本轉場緩衝 %d 分鐘）%s，才能在 %s 前到「%s」。"
+        String reminders = AdaptiveDepartureReminderPolicy.offsets(plan.travelDuration()).stream()
+                .map(PlannerIntentHandler::reminderOffsetLabel)
+                .collect(java.util.stream.Collectors.joining("、"));
+        return "%s最晚 %s 出發，交通估計 %d 分鐘（含系統基本轉場緩衝 %d 分鐘）%s，才能在 %s 前到「%s」。建議提醒：%s。"
                 .formatted(origin, format(plan.departAt()), plan.travelDuration().toMinutes(),
                         plan.includedTransferBuffer().toMinutes(), extra,
-                        format(plan.arriveBy()), destination.getName());
+                        format(plan.arriveBy()), destination.getName(), reminders);
     }
 
-    private IntentResult createTrafficWatch(IntentCommand command, IntentOptions options) {
+    private static String reminderOffsetLabel(Duration offset) {
+        return offset.isZero()
+                ? "出發時"
+                : "出發前 %d 分鐘".formatted(offset.abs().toMinutes());
+    }
+
+    private IntentResult createTrafficWatch(
+            String userText, IntentCommand command, IntentOptions options) {
+        var mode = resolvedTransportMode(userText);
+        if (mode.isEmpty()) {
+            return transportModeQuestion(userText);
+        }
+        if (mode.orElseThrow() != RoutePlanningRequest.TravelMode.DRIVE
+                && mode.orElseThrow() != RoutePlanningRequest.TravelMode.TWO_WHEELER) {
+            return IntentResult.message(IntentResult.Action.TRAVEL_INFO,
+                    "路況監看目前只適用開車或機車。你這次要用哪一種？");
+        }
         ScheduleItem schedule = scheduleTarget(command, options);
         if (schedule.getPlaceId() == null) {
             throw new IllegalArgumentException("schedule has no place");
         }
         Place destination = placeService.getPlace(schedule.getPlaceId());
-        var estimate = travelPlanningService.fromCurrentLocation(destination, Instant.now(clock))
+        var estimate = travelPlanningService.fromCurrentLocation(
+                        destination, Instant.now(clock), mode.orElseThrow())
                 .orElseThrow(() -> new IllegalArgumentException("current location missing"));
+        if (!estimate.reliable()) {
+            return IntentResult.message(IntentResult.Action.TRAVEL_INFO,
+                    "目前只有直線距離粗估，不能可靠監看路況或承諾提醒時間；請先確認交通方式與可用路線來源。");
+        }
         int early = positive(options.leadMinutes(), 30);
         Instant checkAt = schedule.getStartAt().minus(estimate.duration()).minus(Duration.ofMinutes(early));
         if (!checkAt.isAfter(Instant.now(clock))) {
@@ -217,10 +269,43 @@ public final class PlannerIntentHandler implements IntentHandler {
                         .formatted(format(checkAt), destination.getName()));
     }
 
+    private static Optional<RoutePlanningRequest.TravelMode> resolvedTransportMode(
+            String userText) {
+        var resolution = TransportModePolicy.resolve(userText);
+        return resolution.status() == TransportModePolicy.Status.RESOLVED
+                ? Optional.of(resolution.mode())
+                : Optional.empty();
+    }
+
+    private static IntentResult transportModeQuestion(String userText) {
+        var status = TransportModePolicy.resolve(userText).status();
+        String prefix = status == TransportModePolicy.Status.AMBIGUOUS
+                ? "你提到不只一種交通方式。"
+                : "我還不知道這次的交通方式。";
+        return IntentResult.message(IntentResult.Action.TRAVEL_INFO,
+                prefix + "這次要用開車、機車、步行，還是大眾運輸？");
+    }
+
     private IntentResult checkConnection(IntentCommand command, IntentOptions options) {
         if (command.startAt() != null
                 && (command.endAt() != null || options.durationMinutes() != null)) {
             return checkHypotheticalWindow(command, options);
+        }
+        if ((command.title() == null || command.title().isBlank())
+                && (options.referenceTitle() == null
+                        || options.referenceTitle().isBlank())) {
+            var synchronization = routeRiskCoordinator.synchronizeCurrent();
+            return IntentResult.message(
+                    IntentResult.Action.CONNECTION_CHECKED,
+                    routeRiskResponses.describe(synchronization.assessments()));
+        }
+        if (command.title() == null
+                || command.title().isBlank()
+                || options.referenceTitle() == null
+                || options.referenceTitle().isBlank()) {
+            return IntentResult.message(
+                    IntentResult.Action.CONNECTION_CHECKED,
+                    "要檢查哪兩個行程？請告訴我兩個名稱。");
         }
         require(command.title(), "title");
         require(options.referenceTitle(), "referenceTitle");
@@ -232,7 +317,9 @@ public final class PlannerIntentHandler implements IntentHandler {
             second = temporary;
         }
         var check = travelPlanningService.checkConnection(first, second);
-        String message = check.feasible()
+        String message = !check.reliable()
+                ? "目前只有直線距離粗估，不能判定這兩段是否趕得上；請先確認交通方式或可靠路線資料。"
+                : check.feasible()
                 ? "來得及:空檔 %d 分鐘,預估交通 %d 分鐘。".formatted(
                         check.gap().toMinutes(), check.travel().toMinutes())
                 : "來不及:空檔 %d 分鐘,預估交通需要 %d 分鐘。".formatted(

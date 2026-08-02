@@ -5,6 +5,7 @@ import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContex
 import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarApplicationService;
 import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarNodeCanceledEvent;
 import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarNodeRevisedEvent;
+import com.aproject.aidriven.mymobilesecretary.calendar.domain.AdaptiveDepartureReminderPolicy;
 import com.aproject.aidriven.mymobilesecretary.calendar.domain.Criticality;
 import com.aproject.aidriven.mymobilesecretary.calendar.persistence.CalendarTimeNodeEntity;
 import com.aproject.aidriven.mymobilesecretary.calendar.persistence.CalendarTimeNodeRepository;
@@ -117,6 +118,32 @@ public class CalendarReminderApplicationService {
                 ackInterval,
                 maxAlerts,
                 preferredChannel);
+    }
+
+    /**
+     * 為明確的出發節點建立本次 route 的自適應相對提醒。整批在同一 transaction；任一 quota／duplicate
+     * gate 失敗就全部 rollback。永久偏好必須走另一個明確「以後都這樣」流程，不由本方法保存。
+     */
+    public List<CalendarReminderRuleView> createAdaptiveDepartureReminders(
+            String planKey,
+            String departureNodeKey,
+            Duration routeDuration,
+            CalendarReminderDeliveryMode deliveryMode,
+            NotificationChannel preferredChannel) {
+        CalendarTimeNodeEntity node = lockedNode(planKey, departureNodeKey);
+        List<CalendarReminderRuleView> created = new java.util.ArrayList<>();
+        for (Duration offset : AdaptiveDepartureReminderPolicy.offsets(routeDuration)) {
+            created.add(createRelative(
+                    node,
+                    offset,
+                    CalendarReminderOwnerKind.PERSONAL,
+                    deliveryMode,
+                    null,
+                    null,
+                    preferredChannel,
+                    departureNodeKey));
+        }
+        return List.copyOf(created);
     }
 
     private CalendarReminderRuleView createRelative(

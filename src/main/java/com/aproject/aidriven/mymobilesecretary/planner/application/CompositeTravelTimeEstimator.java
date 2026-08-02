@@ -39,17 +39,25 @@ public class CompositeTravelTimeEstimator implements TravelTimeEstimator {
 
     @Override
     public Duration estimate(double fromLat, double fromLon, double toLat, double toLon, Instant departAt) {
+        return estimateEvidence(fromLat, fromLon, toLat, toLon, departAt).duration();
+    }
+
+    @Override
+    public TravelTimeEvidence estimateEvidence(
+            double fromLat, double fromLon, double toLat, double toLon, Instant departAt) {
         if (!tdxProperties.usable()) {
-            return fallback.estimate(fromLat, fromLon, toLat, toLon, departAt);
+            return fallback.estimateEvidence(fromLat, fromLon, toLat, toLon, departAt);
         }
         try {
             Duration transit = tdxRoutingClient.getTransitTravelTime(
                     TravelQuery.of(fromLat, fromLon, toLat, toLon, departAt));
             // TDX 回的是車上+等車時間;仍加轉場緩衝(出門、走到站牌)
-            return transit.plus(feasibilityProperties.transferBuffer());
+            return TravelTimeEvidence.routed(
+                    transit.plus(feasibilityProperties.transferBuffer()),
+                    EvidenceSource.TDX_TRANSIT);
         } catch (Exception e) {
             log.warn("TDX travel time failed, falling back to straight-line estimate", e);
-            return fallback.estimate(fromLat, fromLon, toLat, toLon, departAt);
+            return fallback.estimateEvidence(fromLat, fromLon, toLat, toLon, departAt);
         }
     }
 }

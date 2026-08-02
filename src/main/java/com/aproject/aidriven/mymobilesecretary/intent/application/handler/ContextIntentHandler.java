@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application.handler;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarIntentDraftConversationService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.GeofenceRuleService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
@@ -41,6 +42,7 @@ public final class ContextIntentHandler implements IntentHandler {
     private final PlaceService placeService;
     private final GeofenceRuleService geofenceService;
     private final BulkScheduleCancellationService bulkScheduleCancellationService;
+    private final CalendarIntentDraftConversationService calendarDrafts;
 
     @Override
     public Set<IntentCommand.Type> supportedTypes() {
@@ -66,6 +68,8 @@ public final class ContextIntentHandler implements IntentHandler {
     }
 
     private IntentResult acceptContext() {
+        var calendarDraft = calendarDrafts.confirmActive();
+        if (calendarDraft.isPresent()) return calendarDraft.orElseThrow();
         var snapshot = contextService.snapshot();
         if (IntentResult.Action.SCHEDULE_CANCELLATION_PREVIEWED.name()
                 .equals(snapshot.lastAction())) {
@@ -106,6 +110,8 @@ public final class ContextIntentHandler implements IntentHandler {
     }
 
     private IntentResult cancelContext(IntentOptions options) {
+        var calendarDraft = calendarDrafts.discardActive();
+        if (calendarDraft.isPresent()) return calendarDraft.orElseThrow();
         if ("TASK".equalsIgnoreCase(options.referenceKind())) {
             Long id = contextService.taskIdAt(options.ordinal());
             if (id == null) {

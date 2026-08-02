@@ -14,7 +14,25 @@ final class UserReplySafetyPolicy {
             "需由系統回覆",
             "使用者詢問「",
             "使用者確認是",
-            "使用者要求「");
+            "使用者要求「",
+            "Intent",
+            "intent=",
+            "validation",
+            "handler",
+            "schema",
+            "reason=",
+            "field=",
+            "startAt",
+            "endAt",
+            "arriveBy",
+            "departAt",
+            "referenceTitle",
+            "nodeId",
+            "planId",
+            "workspaceId",
+            "actorId",
+            "sourceCreatedByUserId",
+            "UUID");
 
     private UserReplySafetyPolicy() {
     }
@@ -22,7 +40,7 @@ final class UserReplySafetyPolicy {
     static String sanitize(String message) {
         if (message == null || message.isBlank()) return message;
         if (INTERNAL_MARKERS.stream().noneMatch(message::contains)) return message;
-        return "我剛才的說明不夠清楚。請直接說要處理哪一筆，或引用那筆資料，"
-                + "我會接著完成，不需要你理解系統內部細節。";
+        return "我剛才的說明不夠清楚，沒有據此建立或修改資料。你要處理哪一筆？"
+                + "請直接說名稱或引用那筆資料，我會接著處理，不需要你理解系統內部細節。";
     }
 }

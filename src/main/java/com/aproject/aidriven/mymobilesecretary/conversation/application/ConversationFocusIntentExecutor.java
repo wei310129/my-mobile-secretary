@@ -184,9 +184,11 @@ public final class ConversationFocusIntentExecutor {
         if (target.workflow()) {
             control = hadActiveFocus
                     ? new FocusControl.SwitchWorkflow(
-                            target.domain(), target.workflowId(), target.safeLabel())
+                            target.domain(), target.workflowId(), target.safeLabel(),
+                            target.activityCode(), target.activityLabel())
                     : new FocusControl.EnterWorkflow(
-                            target.domain(), target.workflowId(), target.safeLabel());
+                            target.domain(), target.workflowId(), target.safeLabel(),
+                            target.activityCode(), target.activityLabel());
         } else {
             control = hadActiveFocus
                     ? new FocusControl.SwitchResource(

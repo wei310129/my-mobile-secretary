@@ -134,6 +134,22 @@ class IntentScriptSafetyPolicyTest {
     }
 
     @Test
+    void titleAndSourceCannotFormSyntheticTransportGrammarAcrossTheirBoundary() {
+        IntentScript raw = script(command(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                "固定意圖測試送課",
+                "2027-10-06T10:00:00+08:00",
+                "2027-10-06T10:20:00+08:00",
+                null));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "每週三早上十點固定意圖測試送課", raw);
+
+        assertThat(safe.commands()).extracting(IntentCommand::type)
+                .containsExactly(IntentCommand.Type.CREATE_SCHEDULE);
+    }
+
+    @Test
     void connectiveJieZheDoesNotBecomeAPickupResponsibility() {
         IntentScript raw = script(command(
                 IntentCommand.Type.CREATE_SCHEDULE,
@@ -147,6 +163,79 @@ class IntentScriptSafetyPolicyTest {
 
         assertThat(safe.commands()).extracting(IntentCommand::type)
                 .containsExactly(IntentCommand.Type.CREATE_SCHEDULE);
+    }
+
+    @Test
+    void accompanimentWithUnknownOccupancyAsksOneQuestionBeforeMutation() {
+        IntentScript raw = script(command(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                "陪媽媽去醫院",
+                "2026-07-19T09:00:00+08:00",
+                "2026-07-19T11:00:00+08:00",
+                null));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "明天九點陪媽媽去醫院", raw);
+
+        assertThat(safe.commands()).singleElement().satisfies(command -> {
+            assertThat(command.type()).isEqualTo(IntentCommand.Type.UNKNOWN);
+            assertThat(command.reason())
+                    .contains("陪同安排", "是否全程參加")
+                    .doesNotContain("occupancy", "validation");
+        });
+    }
+
+    @Test
+    void nonPersonDeliveryIsAPointTaskInsteadOfInventedOccupancy() {
+        IntentScript raw = script(command(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                "送文件到公司",
+                "2026-07-19T09:00:00+08:00",
+                "2026-07-19T10:00:00+08:00",
+                null));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "明天九點送文件到公司", raw);
+
+        assertThat(safe.commands()).singleElement().satisfies(command -> {
+            assertThat(command.type()).isEqualTo(IntentCommand.Type.CREATE_TASK);
+            assertThat(command.dueAt()).isEqualTo("2026-07-19T09:00:00+08:00");
+            assertThat(command.startAt()).isNull();
+        });
+    }
+
+    @Test
+    void beingDrivenByAnotherPersonKeepsSelfFullInterval() {
+        IntentScript raw = script(command(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                "媽媽送我去醫院",
+                "2026-07-19T09:00:00+08:00",
+                "2026-07-19T11:00:00+08:00",
+                null));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "明天媽媽送我去醫院，九點到十一點", raw);
+
+        assertThat(safe.commands()).extracting(IntentCommand::type)
+                .containsExactly(IntentCommand.Type.CREATE_SCHEDULE);
+    }
+
+    @Test
+    void activityWithoutTransportEvidenceDoesNotAskWhoWillDrive() {
+        IntentScript raw = script(command(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                "小宇上游泳課",
+                "2026-07-19T09:00:00+08:00",
+                "2026-07-19T10:00:00+08:00",
+                null));
+
+        IntentScript safe = IntentScriptSafetyPolicy.apply(
+                "明天九點到十點小宇上游泳課", raw);
+
+        assertThat(safe.commands()).singleElement().satisfies(command -> {
+            assertThat(command.type()).isEqualTo(IntentCommand.Type.CREATE_SCHEDULE);
+            assertThat(command.reason()).isNull();
+        });
     }
 
     @Test
@@ -335,7 +424,7 @@ class IntentScriptSafetyPolicyTest {
     }
 
     @Test
-    void explicitDraftOnlyRequestCannotCreateFormalSchedule() {
+    void explicitDraftOnlyScheduleStaysTypedForTheDraftHandler() {
         IntentScript raw = script(command(
                 IntentCommand.Type.CREATE_SCHEDULE, "跟朋友吃飯",
                 "2026-07-18T19:00:00+08:00", "2026-07-18T21:00:00+08:00", null));
@@ -343,10 +432,8 @@ class IntentScriptSafetyPolicyTest {
         IntentScript safe = IntentScriptSafetyPolicy.apply(
                 "明天晚上七點左右跟朋友吃飯，先幫我保留草稿，不要直接建立正式行程", raw);
 
-        assertThat(safe.commands()).singleElement().satisfies(command -> {
-            assertThat(command.type()).isEqualTo(IntentCommand.Type.UNKNOWN);
-            assertThat(command.reason()).contains("只保留草稿", "不會建立正式資料");
-        });
+        assertThat(safe.commands()).singleElement().satisfies(command ->
+                assertThat(command.type()).isEqualTo(IntentCommand.Type.CREATE_SCHEDULE));
     }
 
     @Test

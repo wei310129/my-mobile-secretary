@@ -1,5 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application.handler;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarIntentDraftConversationService;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarIntentDraftRequestPolicy;
 import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarIntentPlacementResolver;
 import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2IntentService;
 import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2RoutingService;
@@ -54,6 +56,7 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
     private final BulkScheduleCancellationService bulkCancellationService;
     private final CalendarV2RoutingService calendarV2Routing;
     private final CalendarV2IntentService calendarV2;
+    private final CalendarIntentDraftConversationService calendarDrafts;
 
     @Override
     public Set<IntentCommand.Type> supportedTypes() {
@@ -63,8 +66,20 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
     @Override
     public IntentResult handle(String text, IntentCommand command) {
         if (command.type() == IntentCommand.Type.CREATE_SCHEDULE
+                && CalendarIntentDraftRequestPolicy.isDraftOnly(text)) {
+            return calendarV2Routing.useCalendarV2()
+                    ? calendarDrafts.propose(command)
+                    : IntentResult.clarificationNeeded(
+                            "我知道你只要先準備提案，但目前還不能安全保留這種行程；這次沒有新增資料。");
+        }
+        if (command.type() == IntentCommand.Type.UPDATE_SCHEDULE
+                || command.type() == IntentCommand.Type.RESCHEDULE_SCHEDULE) {
+            var revised = calendarDrafts.reviseActive(command);
+            if (revised.isPresent()) return revised.orElseThrow();
+        }
+        if (command.type() == IntentCommand.Type.CREATE_SCHEDULE
                 && calendarV2Routing.useCalendarV2()) {
-            return calendarV2.create(command);
+            return calendarDrafts.createWithPreflight(command);
         }
         return switch (command.type()) {
             case CREATE_SCHEDULE -> createSchedule(command);

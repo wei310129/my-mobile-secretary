@@ -438,3 +438,5 @@
 438|引用剛上傳的新版船票說「把日本旅行的船票 PDF 換成這版」|MANAGE_CALENDAR_ATTACHMENT|title=船票 PDF;options.condition=REPLACE;options.referenceTitle=日本旅行;options.category=PLAN；只接受 server trusted media reference，binding revision+1且舊 content grants全撤銷
 439|永久刪掉日本旅行的船票 PDF 原檔|MANAGE_CALENDAR_ATTACHMENT|title=船票 PDF;options.condition=DELETE_SOURCE;options.referenceTitle=日本旅行;options.category=PLAN；只回永久刪除確認預覽，未確認前 media/binding/grant mutation=0
 440|直接同步到我的 iPhone 行事曆|EXPLAIN_CALENDAR_EXTERNAL_SYNC|只說明一次性 ICS 與未來 iOS client/EventKit 邊界；不得宣稱已寫入裝置、背景刷新或雙向同步，所有業務 mutation=0
+441|幫我看看前後行程趕不趕得上|CHECK_FEASIBILITY|未指定兩個 legacy title 時檢查個人 Calendar projection 的相鄰定點行程；可靠 route 才能判定，risk revision 同版只通知一次
+442|9月10日下午三點到四點客戶會議，只留草稿，不要直接建立|CREATE_SCHEDULE|建立 actor/scope 綁定的 Calendar typed draft；確認前 Calendar plan/task mutation=0；修正用 expected revision；可信引用優先於其他平行草稿

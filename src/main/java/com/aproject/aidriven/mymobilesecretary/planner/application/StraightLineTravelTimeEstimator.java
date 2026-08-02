@@ -25,4 +25,11 @@ public class StraightLineTravelTimeEstimator implements TravelTimeEstimator {
         long seconds = Math.round(meters / (properties.assumedSpeedKmh() * 1000.0 / 3600.0));
         return Duration.ofSeconds(seconds).plus(properties.transferBuffer());
     }
+
+    @Override
+    public TravelTimeEvidence estimateEvidence(
+            double fromLat, double fromLon, double toLat, double toLon, Instant departAt) {
+        return TravelTimeEvidence.approximation(
+                estimate(fromLat, fromLon, toLat, toLon, departAt));
+    }
 }

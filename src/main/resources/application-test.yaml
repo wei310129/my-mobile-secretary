@@ -21,6 +21,9 @@ app:
     google-places:
       # 測試絕不打真實 Google:缺座標一律回業務錯誤
       enabled: false
+    google-routes:
+      # 測試只用 fake HTTP client contract，Spring tests 不打真實 Google Routes
+      enabled: false
     tdx:
       # 測試絕不打真實 TDX:交通估算直接用直線粗估
       enabled: false

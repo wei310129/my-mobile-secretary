@@ -48,6 +48,9 @@ function Get-DevStateValue {
 
 $allHealthy = $true
 $dockerAvailable = (Get-Command docker -ErrorAction SilentlyContinue) -and (Test-DockerDaemon)
+$checkoutVersion = Get-CheckoutServiceVersion
+$runningVersion = $null
+$versionComparison = $null
 
 # Required main infrastructure.
 $pgStatus = if ($dockerAvailable) { Get-ContainerHealth -ContainerName "mms-postgres" } else { $null }
@@ -63,12 +66,30 @@ $appPortPid = Get-PortOwnerPid -Port $AppPort
 if ($appPortPid) {
     $health = try { (Invoke-RestMethod -Uri "http://localhost:$AppPort/actuator/health" -TimeoutSec 3).status } catch { "no response" }
     $managed = Test-ManagedProcess -ProcessId $appPortPid -Kind "SpringBoot"
-    $color = if ($health -eq "UP" -and $managed) { "Green" } else { "Yellow" }
+    $runningVersion = Get-RunningServiceVersion
+    $versionComparison = Compare-ServiceVersion -Running $runningVersion -Checkout $checkoutVersion
+    $color = if ($health -eq "UP" -and $managed -and $versionComparison.Status -eq "CURRENT") { "Green" } else { "Yellow" }
     Add-StatusDetail -Message "Spring Boot:    running (PID $appPortPid, health=$health, managed=$managed)" -ForegroundColor $color
-    if ($health -ne "UP" -or -not $managed) { $allHealthy = $false }
+    $runningLabel = if ($runningVersion.Available) { $runningVersion.VersionLabel } else { "unavailable" }
+    Add-StatusDetail -Message "  running version: $runningLabel ($($versionComparison.Status))" -ForegroundColor $color
+    if ($runningVersion.Available) {
+        Add-StatusDetail -Message "  running SHA:     $($runningVersion.GitSha)" -ForegroundColor DarkGray
+        Add-StatusDetail -Message "  started at:      $($runningVersion.StartedAt)" -ForegroundColor DarkGray
+        Add-StatusDetail -Message "  change:          $($runningVersion.ChangeSummary)" -ForegroundColor DarkGray
+    } elseif ($runningVersion.Error) {
+        Add-StatusDetail -Message "  version error:   $($runningVersion.Error)" -ForegroundColor Yellow
+    }
+    if ($health -ne "UP" -or -not $managed -or $versionComparison.Status -ne "CURRENT") { $allHealthy = $false }
 } else {
     Add-StatusDetail -Message "Spring Boot:    not running" -ForegroundColor DarkGray
     $allHealthy = $false
+}
+$checkoutLabel = if ($checkoutVersion.Available) { $checkoutVersion.VersionLabel } else { "unavailable" }
+Add-StatusDetail -Message "Checkout:       $checkoutLabel" -ForegroundColor DarkGray
+if ($checkoutVersion.Available) {
+    Add-StatusDetail -Message "  checkout SHA:    $($checkoutVersion.GitSha)" -ForegroundColor DarkGray
+} elseif ($checkoutVersion.Error) {
+    Add-StatusDetail -Message "  checkout error:  $($checkoutVersion.Error)" -ForegroundColor Yellow
 }
 
 # Dispatcher is isolated and affects the exit code only when explicitly required.
@@ -159,5 +180,6 @@ if (-not $allHealthy) {
 }
 $dispatcherSummary = if ($dispatcherHealthy) { "dispatcher=healthy" } else { "dispatcher=optional-unavailable" }
 $lineSummary = if ($ExternalLineProbe -and -not $SkipLineWebhookTest -and -not $NoNgrokRequired) { "LINE=connected" } else { "LINE=skipped" }
-Write-Host "Development environment healthy: main=UP; Postgres=healthy; Redis=healthy; $dispatcherSummary; $lineSummary." -ForegroundColor Green
+$versionSummary = if ($runningVersion) { $runningVersion.VersionLabel } else { "unknown" }
+Write-Host "Development environment healthy: main=UP; version=$versionSummary; source=CURRENT; Postgres=healthy; Redis=healthy; $dispatcherSummary; $lineSummary." -ForegroundColor Green
 exit 0

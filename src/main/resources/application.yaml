@@ -40,6 +40,10 @@ management:
     web:
       exposure:
         include: health,info
+  info:
+    # A custom contributor exposes only the version fields that are safe and stable for tooling.
+    git:
+      enabled: false
 
 app:
   media:

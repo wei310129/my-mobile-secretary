@@ -36,12 +36,25 @@ powershell -ExecutionPolicy Bypass -File .\scripts\mvn-safe.ps1 test
   避免多條開發線共用 `target`。只有確認為舊 class／產生碼污染或正式完整驗收時才明確加
   `-Clean`；`Cannot close compiler resources` 先確認無並行 Maven，再於工作區沙箱外以相同參數
   重試，不得把 clean 當第一步。
+- GitHub Actions 的 Ubuntu ephemeral runner 是唯一例外：測試 workflow 必須透過
+  `scripts/test.ps1 -Ci` 間接使用受限的 `scripts/mvn-ci.ps1`；該入口會驗證 `CI=true` 與
+  `GITHUB_ACTIONS=true`，只允許 `test`／`test-compile`，不得用於本機、常駐 runner、clean、
+  install、deploy、Spotless apply 或啟動服務。
 
 - 開機後、LINE 無回應或需要確認完整服務時，先執行 `scripts\dev-start.ps1`，並以腳本內建的
   LINE 官方端到端測試為準；只有腳本回傳非零時，才從 LINE／ngrok／Spring Boot／Redis／
   PostgreSQL 逐層診斷，不得先重新手動探索或分別啟動各服務。
 
 `docs/architecture.md` 說明產品與長期架構原則；`docs/decisions/current.md` 是目前已拍板決策入口；`docs/development-plan.md` 保留階段、驗收、進度與歷史追溯。實作若互相衝突，先確認現況與決策，不得直接覆寫產品語意。
+
+## Java 服務版本交付
+
+- 修改 Java、`pom.xml` 或主程式 resources 前先記錄 Spring Boot 是否正在運行。
+- 本次範圍的修改完成且驗收通過後，預設自動建立 Git commit，讓流水號與 SHA 成為可精確追溯的交付版本；只有混入不明／非本次修改、測試未通過、提交邊界不清楚或需要使用者決策時，才先詢問是否提交或如何拆分。
+- 自動 commit 成功後預設立即 push 至目前分支已設定的 upstream；只有缺少 upstream、遠端分歧／拒絕、憑證或網路失敗、可能包含敏感資料或需要改寫遠端歷史時才停止並詢問，不得自行 force push。
+- 若修改前正在運行，完成後必須透過既有協調式 lifecycle 重啟主服務，並以 `/actuator/info` 驗證運行 SHA；不得只以 health=UP 宣稱最新版。若修改前停止，維持停止且明確回報未部署。
+- 每次開發交付固定回報流水號、完整 Git SHA、主要改動、clean/dirty 與服務狀態。只有 clean checkout、clean build、流水號及 SHA 全部一致時才可回報 `RUNNING_CURRENT`；dirty、stale 或 metadata 缺失必須明示不可精確驗證。
+- 流水號是 `git rev-list --count HEAD` 的易讀識別，可能在平行分支重複；完整 Git SHA 永遠是權威版本。
 
 ## 任務路由
 

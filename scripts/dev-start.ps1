@@ -204,8 +204,14 @@ if ($existingAppPid) {
         Write-Host "Main PID $existingAppPid exists but its health check failed." -ForegroundColor Red
         exit 1
     }
+    $runningVersion = Get-RunningServiceVersion
+    $checkoutVersion = Get-CheckoutServiceVersion
+    $versionComparison = Compare-ServiceVersion -Running $runningVersion -Checkout $checkoutVersion
+    if ($versionComparison.Status -ne "CURRENT") {
+        throw "Existing main application version is $($versionComparison.Status) ($($runningVersion.VersionLabel)); use dev-restart.ps1 -SkipDispatcher. $($versionComparison.Reason)"
+    }
     $appPid = $existingAppPid
-    Write-DevProgress -Message "  Main application is already healthy (PID $appPid)." -ForegroundColor DarkGray
+    Write-DevProgress -Message "  Main application is already healthy and current (PID $appPid, version $($runningVersion.VersionLabel))." -ForegroundColor DarkGray
 } else {
     $launchFile = if (Test-CoordinationMavenEnabled) { Join-Path $PSScriptRoot 'coordinated-maven-run.ps1' } else { "$RepoRoot\mvnw.cmd" }
     $launchArguments = if (Test-CoordinationMavenEnabled) {
@@ -225,7 +231,16 @@ if ($existingAppPid) {
         Stop-ProcessTree -ProcessId $appPid -Label "Spring Boot (failed startup)"
         exit 1
     }
-    Write-DevProgress -Message "  Main application is ready (PID $appPid)." -ForegroundColor Green
+    $runningVersion = Get-RunningServiceVersion
+    $checkoutVersion = Get-CheckoutServiceVersion
+    $versionComparison = Compare-ServiceVersion -Running $runningVersion -Checkout $checkoutVersion
+    if ($versionComparison.Status -notin @("CURRENT", "DIRTY")) {
+        Write-Host "Main application started but version verification is $($versionComparison.Status)." -ForegroundColor Red
+        Stop-ProcessTree -ProcessId $appPid -Label "Spring Boot (unverifiable version)" -Port $AppPort
+        exit 1
+    }
+    $versionColor = if ($versionComparison.Status -eq "CURRENT") { "Green" } else { "Yellow" }
+    Write-DevProgress -Message "  Main application is ready (PID $appPid, version $($runningVersion.VersionLabel), source=$($versionComparison.Status))." -ForegroundColor $versionColor
 }
 
 # 4) Dispatcher database failure cannot delay the main application becoming ready.
@@ -322,6 +337,9 @@ $stateUpdates = @{
     profile       = $Profile
     dispatcherArmed = [bool]$ArmDispatcher
     startedAt     = (Get-Date).ToString("o")
+    serviceVersion = $runningVersion.VersionLabel
+    serviceGitSha = $runningVersion.GitSha
+    serviceSourceStatus = $versionComparison.Status
 }
 if ($script:StartServiceGeneration) { $stateUpdates["serviceGeneration"] = $script:StartServiceGeneration.Generation; $stateUpdates["serviceLogDirectory"] = $script:StartServiceGeneration.LogDirectory }
 Write-DevState -Updates $stateUpdates
@@ -356,7 +374,7 @@ if (-not $lineWebhookReady) { exit 1 }
 if ($ArmDispatcher -and -not $dispatcherPid) { exit 2 }
 $dispatcherSummary = if ($SkipDispatcher) { "dispatcher=skipped" } elseif ($dispatcherPid) { "dispatcher=$automationMode" } else { "dispatcher=unavailable" }
 $lineSummary = if ($NoNgrok) { "LINE=skipped" } else { "LINE=connected" }
-Write-Host "Development environment ready: main=http://localhost:$AppPort; $dispatcherSummary; $lineSummary; logs=scripts\.logs\." -ForegroundColor Green
+Write-Host "Development environment ready: main=http://localhost:$AppPort; version=$($runningVersion.VersionLabel); source=$($versionComparison.Status); $dispatcherSummary; $lineSummary; logs=scripts\.logs\." -ForegroundColor Green
 $lifecycleOutcome = 'READY'
 } finally {
     Exit-DevLifecycleCoordination -Operation $lifecycleLease -Action start -Outcome $lifecycleOutcome

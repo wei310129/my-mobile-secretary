@@ -106,6 +106,100 @@ function Read-DevState {
     return [pscustomobject]@{}
 }
 
+function Get-CheckoutServiceVersion {
+    try {
+        $gitShaLines = @(& git -C $RepoRoot rev-parse HEAD 2>$null)
+        $gitShaExitCode = $LASTEXITCODE
+        $gitSha = $gitShaLines | Select-Object -First 1
+        if ($gitShaExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($gitSha)) {
+            throw "git rev-parse HEAD failed"
+        }
+        $buildNumberLines = @(& git -C $RepoRoot rev-list --count HEAD 2>$null)
+        $buildNumberExitCode = $LASTEXITCODE
+        $buildNumberRaw = $buildNumberLines | Select-Object -First 1
+        if ($buildNumberExitCode -ne 0) { throw "git rev-list --count HEAD failed" }
+        $buildNumber = 0L
+        if (-not [long]::TryParse([string]$buildNumberRaw, [ref]$buildNumber) -or $buildNumber -le 0) {
+            throw "Git commit count is not a positive integer"
+        }
+        $changeSummaryLines = @(& git -C $RepoRoot log -1 --pretty=format:%s 2>$null)
+        $changeSummaryExitCode = $LASTEXITCODE
+        $changeSummary = $changeSummaryLines | Select-Object -First 1
+        if ($changeSummaryExitCode -ne 0 -or [string]::IsNullOrWhiteSpace($changeSummary)) {
+            throw "git log summary failed"
+        }
+        $dirtyLines = @(& git -C $RepoRoot status --porcelain 2>$null)
+        if ($LASTEXITCODE -ne 0) { throw "git status --porcelain failed" }
+        $dirty = $dirtyLines.Count -gt 0
+        $shortGitSha = ([string]$gitSha).Substring(0, [Math]::Min(12, ([string]$gitSha).Length))
+        return [pscustomobject]@{
+            Available = $true
+            BuildNumber = $buildNumber
+            VersionLabel = "$buildNumber-$shortGitSha$(if ($dirty) { '-dirty' } else { '' })"
+            GitSha = [string]$gitSha
+            ShortGitSha = $shortGitSha
+            ChangeSummary = [string]$changeSummary
+            Dirty = $dirty
+            Error = $null
+        }
+    } catch {
+        return [pscustomobject]@{
+            Available = $false; BuildNumber = $null; VersionLabel = $null; GitSha = $null
+            ShortGitSha = $null; ChangeSummary = $null; Dirty = $null; Error = $_.Exception.Message
+        }
+    }
+}
+
+function Get-RunningServiceVersion {
+    param([int]$Port = $AppPort)
+    try {
+        $response = Invoke-RestMethod -Uri "http://localhost:$Port/actuator/info" `
+            -TimeoutSec 3 -ErrorAction Stop
+        $service = $response.service
+        if ($null -eq $service -or [string]::IsNullOrWhiteSpace([string]$service.gitSha) -or
+                [string]::IsNullOrWhiteSpace([string]$service.versionLabel)) {
+            throw "Actuator info contains no service version metadata"
+        }
+        return [pscustomobject]@{
+            Available = $true
+            BuildNumber = [long]$service.buildNumber
+            VersionLabel = [string]$service.versionLabel
+            GitSha = [string]$service.gitSha
+            ShortGitSha = [string]$service.shortGitSha
+            ChangeSummary = [string]$service.changeSummary
+            Dirty = [bool]$service.dirty
+            CommitTime = [string]$service.commitTime
+            BuildTime = [string]$service.buildTime
+            StartedAt = [string]$service.startedAt
+            Error = $null
+        }
+    } catch {
+        return [pscustomobject]@{
+            Available = $false; BuildNumber = $null; VersionLabel = $null; GitSha = $null
+            ShortGitSha = $null; ChangeSummary = $null; Dirty = $null; CommitTime = $null
+            BuildTime = $null; StartedAt = $null; Error = $_.Exception.Message
+        }
+    }
+}
+
+function Compare-ServiceVersion {
+    param(
+        [Parameter(Mandatory)]$Running,
+        [Parameter(Mandatory)]$Checkout
+    )
+    if (-not $Running.Available -or -not $Checkout.Available) {
+        return [pscustomobject]@{ Status = "UNKNOWN"; Reason = "Version metadata is unavailable." }
+    }
+    if ([string]$Running.GitSha -ne [string]$Checkout.GitSha -or
+            [long]$Running.BuildNumber -ne [long]$Checkout.BuildNumber) {
+        return [pscustomobject]@{ Status = "STALE"; Reason = "Running source identity differs from checkout HEAD." }
+    }
+    if ([bool]$Running.Dirty -or [bool]$Checkout.Dirty) {
+        return [pscustomobject]@{ Status = "DIRTY"; Reason = "Uncommitted content cannot be verified by Git SHA alone." }
+    }
+    return [pscustomobject]@{ Status = "CURRENT"; Reason = "Running source identity matches clean checkout HEAD." }
+}
+
 function Write-DevState {
     param([Parameter(Mandatory)][hashtable]$Updates)
     $guard = New-CoordinationMutex "service-state/$StateFile"

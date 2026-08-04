@@ -1,0 +1,116 @@
+name: Test gates
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: test-gates-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  CI: "true"
+
+jobs:
+  fast:
+    name: Fast tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Inventory summary
+        shell: pwsh
+        run: ./scripts/test-inventory.ps1 -Mode Summary -ShardCount 3 -Json
+      - name: Run fast lane
+        shell: pwsh
+        run: ./scripts/test.ps1 -Lane Fast -Ci
+      - name: Upload fast reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-fast
+          path: target/surefire-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 14
+
+  integration:
+    name: Integration shard ${{ matrix.shard }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [0, 1, 2]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Run serial integration shard
+        shell: pwsh
+        run: ./scripts/test.ps1 -Lane Integration -ShardCount 3 -ShardIndex ${{ matrix.shard }} -Ci
+      - name: Upload integration reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-integration-${{ matrix.shard }}
+          path: target/surefire-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 14
+
+  automated-regression:
+    name: Automated regression complete
+    if: always()
+    needs: [fast, integration]
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download test reports
+        uses: actions/download-artifact@v4
+        with:
+          pattern: surefire-*
+          path: artifacts
+      - name: Verify exact automated test coverage
+        shell: pwsh
+        run: ./scripts/test-inventory.ps1 -Mode VerifyReports -ReportRoots artifacts -Json
+      - name: Enforce upstream job status
+        if: needs.fast.result != 'success' || needs.integration.result != 'success'
+        shell: pwsh
+        run: throw 'Fast or integration test job failed.'
+
+  main-serial-regression:
+    name: Main serial regression
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+          cache: maven
+      - name: Run one-JVM automated regression
+        shell: pwsh
+        run: ./scripts/test.ps1 -Lane Full -Ci
+      - name: Upload serial reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: surefire-main-serial
+          path: target/surefire-reports/TEST-*.xml
+          if-no-files-found: error
+          retention-days: 14

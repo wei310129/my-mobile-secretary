@@ -2,7 +2,7 @@
 
 ## 為什麼縮小日常測試範圍
 
-專案目前有 147 份測試來源（2026-07-17 計數；文件初版時為 57 份），其中多數 API／repository 測試會啟動
+專案在 2026-08-04 有 390 份測試 Java 來源、384 個可執行 test class（2026-07-17 為 147 份；文件初版時為 57 份），其中多數 API／repository 測試會啟動
 Spring、PostgreSQL/PostGIS 與 Redis Testcontainers。
 這些完整整合測試適合驗收關鍵節點，但每個小修改都全跑，等待時間與輸出量會快速放大。
 
@@ -69,6 +69,15 @@ Spring、PostgreSQL/PostGIS 與 Redis Testcontainers。
 ## 目前常用命令
 
 ```powershell
+# 日常第一輪：排除 integration／live，目標 30–60 秒內取得可信結果
+powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1 -Lane Fast
+
+# 依 working tree 路徑選擇；未知、高風險或跨三模組變更會 fail-closed 升級 Full
+powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1 -Lane Relevant
+
+# 所有 deterministic automated tests；只排除明確標記的 live evaluation
+powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1 -Lane Full
+
 # 編譯主程式與全部測試來源，不執行測試
 powershell -ExecutionPolicy Bypass -File .\scripts\mvn-safe.ps1 -DskipTests test-compile
 
@@ -81,9 +90,66 @@ powershell -ExecutionPolicy Bypass -File .\scripts\mvn-safe.ps1 test
 
 測試範圍以「變更的依賴圖與失敗後果」決定，不用固定成功率門檻猜測品質；每次交付都要明確列出實際跑過與尚未跑的範圍。
 
-## 現況快照（2026-07-17）
+## 分層、選測與 CI gate（2026-08-04）
 
-- 主應用：356 份主程式來源、147 份測試來源（其中 `*Test.java` 143 份）。
+### 固定分層
+
+- `fast`：不啟動完整 Spring／Testcontainers 的純 Java domain、application policy、formatter 與契約測試。
+- `integration`：完整 Spring wiring、MockMvc、PostgreSQL/PostGIS、Redis、Flyway、RLS、outbox 或 concurrency 測試。
+- `live`：需要真實 model／外部服務或人工授權的 opt-in evaluation；一般 automated regression 永遠排除。
+- `migration`、`rls`、`conversation`、`latency` 是風險 traits，不取代 primary lane。
+- `IntegrationTestBase` 統一帶 `integration` tag；獨立 Testcontainers migration test 同時帶
+  `integration`／`migration`。新增高成本測試不得依檔名猜分類。
+
+`scripts/test-inventory.ps1` 以 test source、Spring／Testcontainers 種子與 class inheritance 建立 inventory。
+未分類測試仍屬 automated；report aggregator 要求 381 個 automated test class 在 Fast＋三個 Integration
+shard 中恰好各出現一次，漏測、重複或額外 suite 都失敗。
+
+### Relevant fail-closed 規則
+
+- 一般單模組 Java 變更先跑 Fast，再追加該模組的 integration classes。
+- intent／conversation 與 booking／execution／payment 使用已知相鄰模組集合。
+- `pom.xml`、Flyway、共用 API／shared、整合測試基底、test tooling、未知路徑或三個以上模組直接 Full。
+- `Relevant` 只讀 `git status --porcelain`，不依賴未受控的 Git diff；呼叫端也可用 `-ChangedPaths` 明示範圍。
+- 精準測試不取代 PR、合併及部署前完整 gate；執行結果必須回報實際 lane 與升級理由。
+
+### GitHub Actions
+
+- `.github/workflows/test-gates.yml` 使用 Java 21 Ubuntu ephemeral runners 與 Maven dependency cache。
+- PR required checks 應設定為 `Fast tests`、三個 `Integration shard` 與
+  `Automated regression complete`；integration job 之間並行，單一 job 內保持 serial。
+- `main` push 額外執行 `Main serial regression`，偵測 context cache、順序或跨 suite 污染；部署只能使用
+  同一 SHA 已通過 PR 聚合與 main serial regression 的版本。
+- CI 不快取 `target`、資料庫或 container state，不使用 Testcontainers experimental reuse；失敗測試不得
+  靜默 retry、永久 quarantine 或以新增 skip 維持綠燈。
+- 第一階段不設 coverage 百分比硬閘；保留 Surefire XML 14 天，先以每 job 時間、slow suites、skip 與
+  shard imbalance 建立趨勢。完成穩定觀察後再決定 coverage 趨勢產物，不把低價值百分比當品質替代品。
+
+### 效能目標與逐批重整
+
+- 一般純 domain／service 變更：Fast cold P90 ≤ 60 秒、warm P90 ≤ 30 秒。
+- Relevant 必須先在 60 秒內交付 Fast 結果；需要容器的 focused integration 可繼續執行。
+- PR 三個 integration shards：初始目標 median ≤ 6 分鐘、P90 ≤ 8 分鐘；以 GitHub 實測校正 shard，
+  不以刪案例達標。
+- 後續一次只重整一個 subsystem：抽出純 Java policy、縮窄 controller protocol test、保留每個 domain
+  至少一條真實 entry path；repository、Flyway、RLS、transaction、async／outbox 仍使用真實基礎設施。
+- fixture reset 僅在證明 transaction rollback 等價後才縮小；HTTP、async、commit visibility、RLS
+  transaction-local 與 migration 案例維持必要的真實 reset。
+
+### Context 壓縮提醒點
+
+- **CI 基礎完成**：inventory、Fast／Relevant／Full、三 shards、aggregator 與 main serial gate 全部驗證後，
+  主動提醒適合壓縮；續作摘要保留目前階段、已拍板決策、不變量、修改檔案、雙機基準、測試結果、
+  未完成工作、下一步與風險。
+- **每個 subsystem 重整出口**：該批 Fast／Relevant／PR Full／main serial 全綠且行為等價已記錄後才提醒；
+  migration 中途、測試失敗未定位或仍依賴大量未摘要上下文時不得提醒。
+- **20 個 PR 穩定觀察完成**：保留最終 SHA、P50／P90、漏選、flaky、shard imbalance、例外與後續治理規則。
+
+## 現況快照（2026-08-04）
+
+- 主應用：390 份測試 Java 來源、384 個可執行 test class；inventory 為 Fast 257、Integration 124、
+  Live 3，automated 合計 381。桌電 2026-08-02 既有 Surefire 報告為 1,618 tests、0 failure、0 error、
+  16 skipped，test class 累計 311.4 秒；歷史完整 Maven wall time 約 319.6–836.8 秒。
 - `internal/ai-dispatcher`（獨立 Maven 專案）：72 份 Java 來源、13 份測試類別；測試指令
   `.\mvnw.cmd -f internal/ai-dispatcher/pom.xml test`，與主應用測試互不影響。
 - 上方逐波觀察紀錄保留為歷史 log；新的觀察請依日期續記，不回改舊紀錄。

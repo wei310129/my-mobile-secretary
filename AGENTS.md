@@ -36,6 +36,10 @@ powershell -ExecutionPolicy Bypass -File .\scripts\mvn-safe.ps1 test
   避免多條開發線共用 `target`。只有確認為舊 class／產生碼污染或正式完整驗收時才明確加
   `-Clean`；`Cannot close compiler resources` 先確認無並行 Maven，再於工作區沙箱外以相同參數
   重試，不得把 clean 當第一步。
+- GitHub Actions 的 Ubuntu ephemeral runner 是唯一例外：測試 workflow 必須透過
+  `scripts/test.ps1 -Ci` 間接使用受限的 `scripts/mvn-ci.ps1`；該入口會驗證 `CI=true` 與
+  `GITHUB_ACTIONS=true`，只允許 `test`／`test-compile`，不得用於本機、常駐 runner、clean、
+  install、deploy、Spotless apply 或啟動服務。
 
 - 開機後、LINE 無回應或需要確認完整服務時，先執行 `scripts\dev-start.ps1`，並以腳本內建的
   LINE 官方端到端測試為準；只有腳本回傳非零時，才從 LINE／ngrok／Spring Boot／Redis／

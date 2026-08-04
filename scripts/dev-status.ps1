@@ -26,6 +26,7 @@ param(
 )
 
 . "$PSScriptRoot\_devops-common.ps1"
+. "$PSScriptRoot\environment-common.ps1"
 $state = Read-DevState
 
 $statusDetails = [System.Collections.Generic.List[object]]::new()
@@ -47,7 +48,23 @@ function Get-DevStateValue {
 }
 
 $allHealthy = $true
-$dockerAvailable = (Get-Command docker -ErrorAction SilentlyContinue) -and (Test-DockerDaemon)
+$environmentContext = Get-EnvironmentStateContext -RepoRoot $RepoRoot
+$environmentSnapshot = Read-EnvironmentJson -Path $environmentContext.SnapshotPath
+$environmentFresh = Test-EnvironmentSnapshotFresh -Snapshot $environmentSnapshot
+$environmentReady = $environmentSnapshot -and [bool]$environmentSnapshot.capability.Ready
+if ($environmentSnapshot) {
+    $environmentDisplay = "state=$($environmentSnapshot.capability.State), capability=$($environmentSnapshot.requestedCapability), caller=$($environmentSnapshot.caller.Kind), fresh=$environmentFresh"
+    Add-StatusDetail -Message "Environment:    $environmentDisplay" -ForegroundColor $(if($environmentFresh -and $environmentReady){'Green'}else{'Yellow'})
+} else {
+    Add-StatusDetail -Message 'Environment:    snapshot missing; run dev-preflight.ps1' -ForegroundColor Yellow
+}
+if (-not $environmentFresh -or -not $environmentReady) { $allHealthy = $false }
+$dockerProbe = Get-EnvironmentDockerProbe -RequireDaemon
+$dockerAvailable = [bool]$dockerProbe.Ready
+$dockerCallerBlocked = $dockerProbe.State -eq 'HOST_READY_CALLER_BLOCKED'
+$dockerUnknown = $dockerProbe.State -eq 'UNKNOWN'
+Add-StatusDetail -Message ("Docker:         state={0}, cli={1}, daemon={2}" -f $dockerProbe.State,$dockerProbe.CliReady,$dockerProbe.DaemonReady) `
+    -ForegroundColor $(if($dockerAvailable){'Green'}elseif($dockerCallerBlocked -or $dockerUnknown){'Yellow'}else{'Red'})
 $checkoutVersion = Get-CheckoutServiceVersion
 $runningVersion = $null
 $versionComparison = $null

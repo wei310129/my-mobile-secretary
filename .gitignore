@@ -40,6 +40,7 @@ scripts/.dev-state.json
 scripts/.logs/
 scripts/.coordination-test-state/
 scripts/.handoff-state/
+scripts/.environment-test-state/
 
 ### 本機私有上傳原檔（metadata 在 DB；bytes 不進版控）###
 /var/

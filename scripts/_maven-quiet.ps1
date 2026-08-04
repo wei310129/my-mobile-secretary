@@ -393,6 +393,19 @@ function Invoke-QuietMaven {
         return 1
     }
 
+    $homeJava = if ($env:JAVA_HOME) { Join-Path $env:JAVA_HOME 'bin\java.exe' } else { $null }
+    if (-not $homeJava -or -not (Test-Path -LiteralPath $homeJava -PathType Leaf)) {
+        try {
+            if (-not (Get-Command Resolve-EnvironmentJavaHome -ErrorAction SilentlyContinue)) {
+                . "$PSScriptRoot\environment-common.ps1"
+            }
+            Resolve-EnvironmentJavaHome -RepoRoot $MavenRepoRoot -ApplyProcess | Out-Null
+        } catch {
+            Write-Host ("Maven Java preflight failed: {0}" -f $_.Exception.Message)
+            return 1
+        }
+    }
+
     $effectiveArguments = Add-MavenOutputArguments -Arguments $Arguments
     $projectDirectory = Get-MavenProjectDirectory -Arguments $Arguments
     $reportDirectory = Join-Path $projectDirectory 'target\surefire-reports'

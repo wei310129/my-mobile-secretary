@@ -31,6 +31,7 @@ param(
 )
 
 . "$PSScriptRoot\_devops-common.ps1"
+. "$PSScriptRoot\environment-common.ps1"
 $script:DevVerboseOutput = [bool]$VerboseOutput
 Normalize-ProcessPathEnvironment
 if ($SkipDispatcher -and $ArmDispatcher) { throw "-SkipDispatcher cannot be combined with -ArmDispatcher." }
@@ -48,6 +49,11 @@ function Resolve-StartLogPath {
     return Join-Path $script:StartServiceGeneration.LogDirectory $Name
 }
 Set-Location $RepoRoot
+$environmentPreflight = Invoke-EnvironmentPreflight -Capability MAVEN -RepoRoot $RepoRoot -ApplyProcessJava
+if (-not $environmentPreflight.capability.Ready) {
+    Write-Host "Development runtime preflight blocked: $($environmentPreflight.capability.Reason)" -ForegroundColor Red
+    exit 1
+}
 $lifecycleLease = Enter-DevLifecycleCoordination -Action start
 $lifecycleOutcome = 'FAILED'
 

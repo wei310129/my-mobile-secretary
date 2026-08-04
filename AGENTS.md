@@ -23,10 +23,32 @@
 - 規劃可由 Terra 在同一 session 持續執行到完成的開發文件時，文件必須明列「Context 壓縮提醒點」：每個提醒點要寫明觸發條件、已完成／已驗證的範圍、壓縮後必須保留的續作摘要（目前輪次、已拍板決策、不變量、修改檔案、驗證結果、未完成工作、下一步與風險）。適合的觸發點包括一個有明確出口的舵輪／階段已完成並記錄 gate 結果、複雜調查已收斂且即將轉入獨立實作或驗收階段；不得在未提交關鍵決策、migration／破壞性操作中途、測試失敗尚未定位，或仍需依賴大量未摘要上下文時列為提醒點。
 - 到達文件列出的提醒點時，Terra 必須主動且簡短提醒使用者「現在是適合壓縮 context 的時機」，附上該文件指定的續作摘要；提醒只建議壓縮，不得自行壓縮、遺失已拍板決策或把壓縮當成跳過驗證的理由。若同一階段仍有直接相依的未完成工作，延後提醒至該階段出口。
 - 一般功能開發不得順手調整啟停或工具腳本；只把已觀察到的具體需求登記至 `docs/tooling-backlog.md`，留待工具專用 session。
+- Codex 建立本 repository 的 commit 一律顯式使用 `git commit --no-gpg-sign`；不得等待 GPG pinentry，
+  也不得為此修改使用者的全域 Git 簽章設定。
+
+## 開發環境強制 preflight
+
+- 每個 session 開始先依 `docs/agent-context/development-environment-preflight.md` 宣告 capability。唯讀／規劃
+  session 至少執行 `dev-preflight.ps1 -Capability READ_ONLY -Async`；寫碼、Maven、Docker、runtime、
+  LINE 或 external operation 若已知本輪稍後會需要，必須在唯讀盤點期間先用對應 capability `-Async`
+  預熱，並在實際使用資源前取得對應的新鮮 receipt；不得等主流程走到該步才開始同步探測。
+- Codex sandbox 回傳 `asyncLauncher=AGENT_ASYNC_TOOL_REQUIRED` 時，代表 detached child 生命週期不可靠；
+  agent 必須用自身可持續的非同步 tool execution 執行相同 capability 的
+  `dev-environment-monitor.ps1 -Once`，同時繼續唯讀盤點，不能宣稱背景刷新已開始或等待到 gate 才補跑。
+- `MATCH` 與 `COMPATIBLE_DRIFT` 可繼續；`ACTION_REQUIRED`、`UNKNOWN` 或
+  `HOST_READY_CALLER_BLOCKED` 對 mutation gate 一律 fail closed，並以 `dev-environment-report.ps1`
+  記錄。不得因 host 看似正常就把 sandbox／caller 權限冒充 READY。
+- 環境校準以代表指令是否一致為準，不要求各主機的 Git／JDK／Docker patch 或安裝路徑表面相同；
+  只有已造成指令失敗或結果不一致才調整。Java 必須實際通過 `JAVA_HOME\bin\java.exe` 與 `mvnw.cmd -v`。
+- Calendar W10 closure 必須有 Manual environment review receipt；Calendar W11 起每個 major Release
+  Gate 必須有 Automatic、零 open blocker、contract fingerprint 相符且已進 Git 的 review evidence，
+  且每台參與該 release 的 active machine 都要有指定 alias 與實際使用 capability 的獨立 evidence；
+  否則不得標 `PASS`／`MERGED`。
 
 常用指令：
 
 ```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-preflight.ps1 -Capability READ_ONLY -Async
 powershell -ExecutionPolicy Bypass -File .\scripts\dev-start.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\dev-status.ps1
 powershell -ExecutionPolicy Bypass -File .\scripts\mvn-safe.ps1 test

@@ -24,12 +24,17 @@ param(
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_maven-quiet.ps1"
 . "$PSScriptRoot\coordination-maven.ps1"
+. "$PSScriptRoot\environment-common.ps1"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $mavenWrapper = Join-Path $repoRoot 'mvnw.cmd'
 $exitCode = 1
 
 try {
+    $preflight = Invoke-EnvironmentPreflight -Capability MAVEN -RepoRoot $repoRoot -ApplyProcessJava
+    if (-not $preflight.capability.Ready) {
+        throw "Maven environment preflight is $($preflight.capability.State): $($preflight.capability.Reason)"
+    }
     if (-not (Test-Path -LiteralPath $mavenWrapper)) {
         throw "找不到 Maven Wrapper：$mavenWrapper"
     }

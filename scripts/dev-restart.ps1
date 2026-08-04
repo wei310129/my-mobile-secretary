@@ -23,8 +23,14 @@ param(
 )
 
 . "$PSScriptRoot\_devops-common.ps1"
+. "$PSScriptRoot\environment-common.ps1"
 $script:DevVerboseOutput = $false
 Set-Location $RepoRoot
+$environmentPreflight = Invoke-EnvironmentPreflight -Capability MAVEN -RepoRoot $RepoRoot -ApplyProcessJava
+if (-not $environmentPreflight.capability.Ready) {
+    Write-Host "Development runtime preflight blocked: $($environmentPreflight.capability.Reason)" -ForegroundColor Red
+    exit 1
+}
 
 $startParameters = @{ Profile = $Profile }
 if ($SkipDispatcher) { $startParameters["SkipDispatcher"] = $true }

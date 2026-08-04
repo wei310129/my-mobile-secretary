@@ -1,0 +1,174 @@
+{
+  "schemaVersion": 1,
+  "protectedBase": "main",
+  "requiredChecks": [
+    "Merge policy",
+    "Fast tests",
+    "Integration shard 0",
+    "Integration shard 1",
+    "Integration shard 2",
+    "Automated regression complete"
+  ],
+  "requiredCheckAppId": 15368,
+  "allowedStatuses": [
+    "PENDING",
+    "BLOCKED",
+    "READY",
+    "ACKNOWLEDGED",
+    "IN_PROGRESS",
+    "PASS",
+    "MERGED",
+    "STALE",
+    "CONSUMED",
+    "REVOKED"
+  ],
+  "branchPolicies": [
+    {
+      "name": "tooling",
+      "branchRegex": "^tooling/",
+      "allowedPaths": [
+        "AGENTS.md",
+        ".github/**",
+        "scripts/**",
+        "pom.xml",
+        "docs/test-strategy.md",
+        "docs/tooling-backlog.md",
+        "docs/decisions/current.md"
+      ],
+      "forbiddenPaths": [
+        "docs/exec-plans/active/handoffs/**",
+        "src/main/**",
+        "src/test/**"
+      ]
+    },
+    {
+      "name": "desktop-state",
+      "branchRegex": "^desktop/.+-state$",
+      "allowedPaths": [
+        "docs/exec-plans/active/handoffs/desktop-trigger-state.json",
+        "docs/exec-plans/active/*booking*",
+        "docs/exec-plans/active/*add*"
+      ],
+      "forbiddenPaths": [
+        "docs/exec-plans/active/handoffs/laptop-trigger-state.json"
+      ]
+    },
+    {
+      "name": "desktop-booking-durable",
+      "branchRegex": "^desktop/booking-b3-durable$",
+      "allowedPaths": [
+        "src/main/java/**/booking/**",
+        "src/test/java/**/booking/**",
+        "src/main/resources/db/migration/**",
+        "docs/exec-plans/active/*booking*"
+      ],
+      "forbiddenPaths": [
+        "docs/exec-plans/active/handoffs/**",
+        ".github/**",
+        "scripts/**",
+        "pom.xml",
+        "AGENTS.md",
+        "src/main/resources/application*.yml",
+        "src/main/resources/application*.yaml"
+      ],
+      "schemaGrantTrigger": "TR-SCHEMA-B3-DURABLE-GRANT"
+    },
+    {
+      "name": "desktop-booking",
+      "branchRegex": "^desktop/booking-(?!b3-durable$)(?!.*-state$)",
+      "allowedPaths": [
+        "src/main/java/**/booking/**",
+        "src/test/java/**/booking/**",
+        "docs/exec-plans/active/*booking*"
+      ],
+      "forbiddenPaths": [
+        "docs/exec-plans/active/handoffs/**",
+        ".github/**",
+        "scripts/**",
+        "pom.xml",
+        "AGENTS.md",
+        "src/main/resources/**"
+      ]
+    },
+    {
+      "name": "desktop-add",
+      "branchRegex": "^desktop/add-(?!.*-state$)",
+      "allowedPaths": [
+        "src/main/java/**/execution/**",
+        "src/test/java/**/execution/**",
+        "docs/exec-plans/active/*add*"
+      ],
+      "forbiddenPaths": [
+        "docs/exec-plans/active/handoffs/**",
+        ".github/**",
+        "scripts/**",
+        "pom.xml",
+        "AGENTS.md",
+        "src/main/resources/**"
+      ]
+    },
+    {
+      "name": "laptop-state",
+      "branchRegex": "^(codex|laptop)/.+-state$",
+      "allowedPaths": [
+        "docs/exec-plans/active/handoffs/laptop-trigger-state.json",
+        "docs/exec-plans/active/index.md",
+        "docs/exec-plans/active/*.md",
+        "docs/decisions/current.md"
+      ],
+      "forbiddenPaths": [
+        "docs/exec-plans/active/handoffs/desktop-trigger-state.json"
+      ]
+    },
+    {
+      "name": "laptop-product",
+      "branchRegex": "^(codex|laptop)/(?!.*-state$)",
+      "allowedPaths": [
+        "**"
+      ],
+      "forbiddenPaths": [
+        "docs/exec-plans/active/handoffs/desktop-trigger-state.json",
+        "src/main/java/**/booking/**",
+        "src/test/java/**/booking/**",
+        "src/main/java/**/execution/**",
+        "src/test/java/**/execution/**"
+      ]
+    },
+    {
+      "name": "integration",
+      "branchRegex": "^integration/",
+      "allowedPaths": [
+        "**"
+      ],
+      "forbiddenPaths": []
+    }
+  ],
+  "sensitiveDestructivePaths": [
+    ".github/**",
+    "AGENTS.md",
+    "pom.xml",
+    "src/main/resources/db/migration/**",
+    "docs/exec-plans/active/handoffs/**"
+  ],
+  "serialRegressionPaths": [
+    ".github/**",
+    "scripts/test*.ps1",
+    "scripts/mvn-ci.ps1",
+    "scripts/merge-policy.ps1",
+    "scripts/merge-pr.ps1",
+    "scripts/tests/merge-policy-test.ps1",
+    "scripts/tests/merge-pr-test.ps1",
+    "pom.xml",
+    "src/main/resources/db/migration/**",
+    "src/main/resources/application*.yml",
+    "src/main/resources/application*.yaml",
+    "src/test/java/**/IntegrationTestBase.java"
+  ],
+  "oneTimeTriggerConsumptions": [
+    {
+      "producerTrigger": "TR-SCHEMA-B3-DURABLE-GRANT",
+      "consumerGate": "TR-B3-DURABLE-MERGED",
+      "consumerVersionField": "consumedSchemaVersion"
+    }
+  ]
+}

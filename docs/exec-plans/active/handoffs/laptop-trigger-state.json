@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "ownerLane": "laptop",
-  "updatedOn": "2026-07-30",
+  "updatedOn": "2026-08-04",
   "humanAvailability": {
     "mode": "UNSPECIFIED",
     "timezone": "Asia/Taipei",
@@ -26,8 +26,8 @@
       "publishedSha": null
     },
     "TR-SCHEMA-B3-DURABLE-GRANT": {
-      "status": "READY",
-      "grantStatus": "GRANTED_ONCE",
+      "status": "CONSUMED",
+      "grantStatus": "CONSUMED",
       "publishedSha": "280dedaa52567cc0cf09975e39cfe235435b4018",
       "ownerBranch": "desktop/booking-b3-durable",
       "baseSha": "280dedaa52567cc0cf09975e39cfe235435b4018",

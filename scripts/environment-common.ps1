@@ -167,7 +167,6 @@ function Assert-EnvironmentTargetWorktree {
     if (-not (Test-Path -LiteralPath (Join-Path $identity.Path '.git'))) { throw 'Target worktree Git metadata is missing.' }
     return $identity
 }
-
 function Get-EnvironmentOriginFromConfig {
     param([string]$CommonDirectory)
     if (-not $CommonDirectory) { return $null }
@@ -239,7 +238,6 @@ function Assert-EnvironmentMachineAlias {
     }
     return $validated
 }
-
 function Set-EnvironmentMachineAlias {
     param([Parameter(Mandatory)][string]$MachineAlias, [string]$StateRoot = (Get-EnvironmentDefaultRoot))
     $validated = Get-EnvironmentMachineAlias -StateRoot $StateRoot -MachineAlias $MachineAlias
@@ -663,6 +661,8 @@ function New-EnvironmentSnapshot {
         contract = $contract; capability = $capabilityState; probes = [pscustomobject]$probes
     }
     if (-not $NoWrite) {
+        [IO.Directory]::CreateDirectory($context.MachineRoot) | Out-Null
+        [IO.Directory]::CreateDirectory($context.ReceiptsPath) | Out-Null
         Write-CoordinationJsonAtomic -Path $capabilitySnapshotPath -Document $snapshot
         Write-CoordinationJsonAtomic -Path $context.SnapshotPath -Document $snapshot
     }

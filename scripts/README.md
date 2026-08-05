@@ -18,11 +18,12 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev-stop.ps1
 
 `dev-start.ps1` 是開機後的標準入口，不必先手動開 Docker Desktop。它會依序：
 
-1. 透過 `start-docker-desktop-managed.ps1` 使用固定 executable identity、coordination mutex 與
-   bounded stability window 管理 Docker Desktop；不會因 container name conflict 執行 taskkill、repair、
-   rename 或重建。
+1. 透過 `start-docker-desktop-managed.ps1` 與 main 的 `start-managed-docker-desktop.ps1` 受限入口，
+   驗證固定 executable／Authenticode identity、coordination mutex、CLI/context/daemon readiness 與
+   bounded stability window；已 ready 時只回傳 receipt，失敗或逾時不停止、重啟、prune 或刪除 Docker 資源。
 2. 驗證 coordination class、identity、Compose project/service、image、published port 與 volume contract，
-   復用健康的 PostgreSQL／Redis；相符但停止時只允許受限 `docker start` 並等待 healthy。
+   復用健康的 PostgreSQL／Redis；相符但停止時只允許受限 `docker start` 並等待 healthy。container name
+   conflict 不會觸發 taskkill、repair、rename、replace 或重建。
 3. 從 LINE API 讀取目前 webhook 固定網域，以同一網域啟動 ngrok，避免誤開隨機網址。
 4. 啟動 Spring Boot 與 failure-isolated AI Dispatcher。
 5. 最後呼叫 LINE 官方 webhook test，直接驗證 `LINE -> ngrok -> Spring Boot`；只有失敗時
@@ -32,6 +33,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev-stop.ps1
 只有明確加 `-ExternalLineProbe` 才執行 LINE 官方端到端測試。若本機開發不需要公開 webhook，
 可在啟動加 `-NoNgrok`。若本機允許執行 PowerShell 腳本，也可在 `scripts` 目錄直接使用
 `.\dev-restart.ps1`。
+
+Docker Desktop 的受限入口與環境 preflight：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-managed-docker-desktop.ps1 -TimeoutSeconds 180
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-preflight.ps1 -Capability DOCKER_TEST -RequireFresh
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-preflight.ps1 -Capability DOCKER_TEST -Async
+```
+
+`DOCKER_TEST -Async` 只建立受控 demand並交由 repository-owned monitor；sandbox detached child
+不可靠時，agent 必須用可持續的 monitor／launcher execution取得 fresh receipt。environment receipt
+只寫入 `var\environment-state\v1`，coordination receipt只寫入既有 LOCALAPPDATA coordination v1
+root。Codex policy 只允許上述精確 project entrypoint，不允許任意 `Start-Process`、exe、arguments、
+Docker CLI destructive command或 Docker 資料資源清理。
 
 一般啟動與重啟會明確關閉 development feed、Dispatcher scheduler 與 Codex CLI adapter；
 目前只啟動 Dispatcher 服務做健康檢查，不會自動開發。當 Dispatcher lane 處於 `STARTING`、

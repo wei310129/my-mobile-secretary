@@ -12,7 +12,12 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\environment-common.ps1"
+. "$PSScriptRoot\project-tool-policy.ps1"
+. "$PSScriptRoot\managed-docker-desktop.ps1"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$environmentLayout = Get-EnvironmentGitLayout -RepoRoot $repoRoot
+$allowedStateRoot = Join-Path $environmentLayout.PrimaryRoot 'var\environment-state\v1'
+Assert-ProjectEnvironmentStateRoot -StateRoot $StateRoot -AllowedRoot $allowedStateRoot
 $contextArguments = @{ RepoRoot=$repoRoot }
 if ($StateRoot) { $contextArguments.StateRoot = $StateRoot }
 if ($MachineAlias) { $contextArguments.MachineAlias = $MachineAlias }
@@ -23,9 +28,20 @@ try { $monitorHeld = Wait-CoordinationMutex -Mutex $monitorMutex -Deadline ([dat
 if (-not $monitorHeld) { $monitorMutex.Dispose(); exit 0 }
 
 function Start-EnvironmentDockerDesktop {
-    $result = Ensure-ManagedDockerDaemon -StartupTimeoutSeconds 180
-    if ($result.Outcome -eq 'READY') { return $true }
-    if ($result.Classification -eq 'AGENT_ASYNC_TOOL_REQUIRED') {
+    $useFormalEntrypoint = [string]::Equals(
+        [IO.Path]::GetFullPath($repoRoot).TrimEnd('\'),
+        [IO.Path]::GetFullPath($script:ManagedDockerProjectRoot).TrimEnd('\'),
+        [StringComparison]::OrdinalIgnoreCase) -or
+        [IO.Path]::GetFullPath($repoRoot).StartsWith("$([IO.Path]::GetFullPath($script:ManagedDockerProjectRoot).TrimEnd('\'))\var\worktrees\", [StringComparison]::OrdinalIgnoreCase)
+    $result = if ($useFormalEntrypoint) {
+        Invoke-ManagedDockerDesktop -RepoRoot $repoRoot -StateRoot $context.StateRoot -TimeoutSeconds 180
+    } else {
+        Ensure-ManagedDockerDaemon -StartupTimeoutSeconds 180
+    }
+    if ($useFormalEntrypoint -and $result.outcome -eq 'READY' -and $result.daemonReady) { return $true }
+    if (-not $useFormalEntrypoint -and $result.Outcome -eq 'READY') { return $true }
+    $classification = if ($useFormalEntrypoint) { $result.failureClassification } else { $result.Classification }
+    if ($classification -eq 'AGENT_ASYNC_TOOL_REQUIRED') {
         Write-Host 'AGENT_ASYNC_TOOL_REQUIRED: keep the host managed Docker launcher monitor alive.'
     }
     return $false

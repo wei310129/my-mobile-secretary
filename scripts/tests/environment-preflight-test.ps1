@@ -4,7 +4,7 @@ param()
 $ErrorActionPreference = 'Stop'
 . (Join-Path (Split-Path -Parent $PSScriptRoot) 'environment-common.ps1')
 $repoRoot = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
-$testBase = Join-Path (Split-Path -Parent $PSScriptRoot) '.environment-test-state'
+$testBase = Join-Path ([IO.Path]::GetTempPath()) 'mms-environment-test-state'
 $testRoot = Join-Path $testBase ([guid]::NewGuid().ToString())
 [IO.Directory]::CreateDirectory($testRoot) | Out-Null
 $assertions = 0
@@ -122,4 +122,3 @@ try {
 } finally {
     if (Test-Path -LiteralPath $testRoot) { Remove-Item -LiteralPath $testRoot -Recurse -Force }
 }
-

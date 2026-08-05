@@ -11,7 +11,11 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\environment-common.ps1"
+. "$PSScriptRoot\project-tool-policy.ps1"
 $repoRoot = Split-Path -Parent $PSScriptRoot
+$environmentLayout = Get-EnvironmentGitLayout -RepoRoot $repoRoot
+$allowedStateRoot = Join-Path $environmentLayout.PrimaryRoot 'var\environment-state\v1'
+Assert-ProjectEnvironmentStateRoot -StateRoot $StateRoot -AllowedRoot $allowedStateRoot
 $arguments = @{ Capability=$Capability; RepoRoot=$repoRoot }
 if ($StateRoot) { $arguments.StateRoot = $StateRoot }
 if ($MachineAlias) { $arguments.MachineAlias = $MachineAlias }
@@ -24,7 +28,7 @@ try {
         $context = Get-EnvironmentStateContext @contextArguments
         Write-EnvironmentDemand -Context $context -Capability $Capability
         $cachedSnapshot = Read-EnvironmentJson -Path (Get-EnvironmentSnapshotPath -Context $context -Capability $Capability)
-        $snapshot = if (Test-EnvironmentSnapshotFresh -Snapshot $cachedSnapshot -Capability $Capability -RepoRoot $repoRoot) {
+        $snapshot = if (-not $RequireFresh -and (Test-EnvironmentSnapshotFresh -Snapshot $cachedSnapshot -Capability $Capability -RepoRoot $repoRoot)) {
             $cachedSnapshot
         } else { $null }
         $asyncLauncher = $null
@@ -84,4 +88,3 @@ try {
     else { Write-Host ("Environment preflight failed: {0}" -f $_.Exception.Message) }
     exit 50
 }
-

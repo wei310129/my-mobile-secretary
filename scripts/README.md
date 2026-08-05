@@ -20,10 +20,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev-stop.ps1
 
 `dev-start.ps1` 是開機後的標準入口，不必先手動開 Docker Desktop。它會依序：
 
-1. 啟動 Docker Desktop；若 daemon 因 lingering Docker Desktop processes 無法建立，先用
-   官方 `DockerCli -Shutdown`，再只清理 Docker Desktop／backend 殘留程序後重試。
-   WSL 冷啟動或 VHDX 維護可能超過兩分鐘；修復後會再保留最多三分鐘的有界等待時間，期間每 15 秒
-   顯示 frontend/backend 程序數，避免 engine 即將就緒時被過早判定失敗。
+1. 透過 `start-managed-docker-desktop.ps1` 驗證固定 Docker Desktop／CLI 路徑、Docker Inc
+   Authenticode identity、`machine/docker-daemon` mutex與 bounded daemon readiness。已 ready時只回傳
+   `already-running`；啟動失敗或逾時只回傳 failure receipt，不停止、重啟、prune或刪除任何 Docker 資源。
 2. 啟動並等待 PostgreSQL、Redis healthy。
 3. 從 LINE API 讀取目前 webhook 固定網域，以同一網域啟動 ngrok，避免誤開隨機網址。
 4. 啟動 Spring Boot 與 failure-isolated AI Dispatcher。
@@ -34,6 +33,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev-stop.ps1
 LINE 官方端到端測試；只想看本機狀態時可加 `-SkipLineWebhookTest`，本機開發不需要公開
 webhook 時可在啟動加 `-NoNgrok`。若本機允許執行 PowerShell 腳本，也可在 `scripts`
 目錄直接使用 `.\dev-restart.ps1`。
+
+Docker Desktop 的受限入口與環境 preflight：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\start-managed-docker-desktop.ps1 -TimeoutSeconds 180
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-preflight.ps1 -Capability DOCKER_TEST -RequireFresh
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-preflight.ps1 -Capability DOCKER_TEST -Async
+```
+
+`DOCKER_TEST -Async` 只建立受控 demand並交由 repository-owned monitor；sandbox detached child
+不可靠時，agent 必須用可持續的 monitor／launcher execution取得 fresh receipt。environment receipt
+只寫入 `var\environment-state\v1`，coordination receipt只寫入既有 LOCALAPPDATA coordination v1
+root。Codex policy 只允許上述精確 project entrypoint，不允許任意 `Start-Process`、exe、arguments、
+Docker CLI destructive command或 Docker 資料資源清理。
 
 一般啟動與重啟會明確關閉 development feed、Dispatcher scheduler 與 Codex CLI adapter；
 目前只啟動 Dispatcher 服務做健康檢查，不會自動開發。當 Dispatcher lane 處於 `STARTING`、

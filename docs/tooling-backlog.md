@@ -12,6 +12,14 @@
 
 ## 已觀察案例與決策索引
 
+- 2026-08-05 route-origin hardening 在 `DOCKER_TEST` preflight 遇到 Docker CLI/context/daemon
+  caller block；agent 不能以一般升權方式啟動 Docker Desktop。處置決策是：新增
+  `start-managed-docker-desktop.ps1`，固定 Docker Desktop／CLI allowlist與 Docker Inc signature，使用
+  `machine/docker-daemon` mutex，最多啟動一次並 bounded 等待 `docker context`、daemon info及
+  `docker ps`。每次產生不含 secret 的 environment／coordination receipt；timeout、identity mismatch、
+  mutex或receipt failure均 fail closed。禁止 `DockerCli -Shutdown`、Stop-Process、prune、compose down -v、
+  container/image/network/volume/database cleanup。`dev-preflight`／monitor與`dev-start`只能委派此入口。
+
 - 2026-08-05 `calendar-w11` 發生 stale Spring Maven launcher：`.dev-state.json` 仍記錄 PID 2228，
   coordination manifest 仍標 active，但 OS process／mutex 已不存在；舊 `dev-stop.ps1` 又因後續 ngrok
   verification failure 未逐 component 提交 state。處置決策是：Codex 只允許 repository-owned

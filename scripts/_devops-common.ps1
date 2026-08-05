@@ -13,6 +13,7 @@ $DispatcherPom = Join-Path $DispatcherRoot "pom.xml"
 $DispatcherComposeFile = Join-Path $DispatcherRoot "compose.yaml"
 . "$PSScriptRoot\coordination-common.ps1"
 . "$PSScriptRoot\managed-process-lifecycle.ps1"
+. "$PSScriptRoot\managed-docker-desktop.ps1"
 
 function Write-DevProgress {
     param(
@@ -414,72 +415,17 @@ function Test-DockerDaemon {
     return $LASTEXITCODE -eq 0
 }
 
-function Resolve-DockerDesktopExe {
-    $candidates = @(
-        (Join-Path $env:ProgramFiles "Docker\Docker\Docker Desktop.exe"),
-        (Join-Path $env:LOCALAPPDATA "Docker\Docker Desktop.exe")
-    )
-    foreach ($candidate in $candidates) {
-        if ($candidate -and (Test-Path -LiteralPath $candidate -PathType Leaf)) { return $candidate }
-    }
-    return $null
-}
-
-function Wait-DockerDaemon {
-    param([int]$TimeoutSec = 120)
-    $deadline = (Get-Date).AddSeconds($TimeoutSec)
-    $nextProgress = (Get-Date).AddSeconds(15)
-    while ((Get-Date) -lt $deadline) {
-        if (Test-DockerDaemon) { return $true }
-        if ((Get-Date) -ge $nextProgress) {
-            $remaining = [Math]::Max(0, [int]($deadline - (Get-Date)).TotalSeconds)
-            $desktopCount = @(Get-Process -Name "Docker Desktop" -ErrorAction SilentlyContinue).Count
-            $backendCount = @(Get-Process -Name "com.docker.backend" -ErrorAction SilentlyContinue).Count
-            Write-Host "  Waiting for Docker daemon ($remaining sec left; desktop=$desktopCount, backend=$backendCount)..." `
-                -ForegroundColor DarkGray
-            $nextProgress = (Get-Date).AddSeconds(15)
-        }
-        Start-Sleep -Seconds 3
-    }
-    return $false
-}
-
-# A reboot leaves Docker Desktop stopped. Occasionally Docker Desktop itself reports lingering
-# frontend/backend processes and never creates docker_engine. Recovery is deliberately limited to
-# Docker Desktop's own known process names, and only runs while the daemon is unreachable.
+# Docker Desktop startup is a repository-owned, bounded, idempotent operation. It never stops,
+# restarts, prunes, or removes Docker resources; the launcher owns executable identity, the
+# machine/docker-daemon mutex, and the readiness receipt.
 function Ensure-DockerDaemon {
-    # WSL may need more than two minutes after a cold boot or VHDX maintenance. The recovery
-    # attempt already proved that known Docker backends are alive, so allow a bounded extra minute
-    # instead of declaring failure seconds before docker_engine becomes available.
     param([int]$InitialTimeoutSec = 120, [int]$RecoveryTimeoutSec = 180)
-    if (Test-DockerDaemon) { return $true }
-
-    $desktopExe = Resolve-DockerDesktopExe
-    if (-not $desktopExe) {
-        Write-Host "Docker Desktop executable was not found." -ForegroundColor Red
-        return $false
-    }
-
-    Write-Host "  Docker daemon is stopped; starting Docker Desktop..." -ForegroundColor Yellow
-    Start-Process -FilePath $desktopExe -WindowStyle Hidden | Out-Null
-    if (Wait-DockerDaemon -TimeoutSec $InitialTimeoutSec) { return $true }
-
-    Write-Host "  Docker daemon is still unavailable; repairing lingering Docker Desktop processes..." `
-        -ForegroundColor Yellow
-    $dockerCli = Join-Path (Split-Path -Parent $desktopExe) "DockerCli.exe"
-    if (Test-Path -LiteralPath $dockerCli -PathType Leaf) {
-        $shutdown = Start-Process -FilePath $dockerCli -ArgumentList "-Shutdown" -WindowStyle Hidden -PassThru
-        if (-not $shutdown.WaitForExit(15000)) {
-            Stop-Process -Id $shutdown.Id -Force -ErrorAction SilentlyContinue
-        }
-    }
-
-    Get-Process -ErrorAction SilentlyContinue |
-        Where-Object { $_.ProcessName -in @("Docker Desktop", "com.docker.backend") } |
-        ForEach-Object { Stop-Process -Id $_.Id -Force -ErrorAction SilentlyContinue }
-    Start-Sleep -Seconds 3
-    Start-Process -FilePath $desktopExe -WindowStyle Hidden | Out-Null
-    return Wait-DockerDaemon -TimeoutSec $RecoveryTimeoutSec
+    $timeout = [Math]::Min([Math]::Max($InitialTimeoutSec, 1), [Math]::Max($RecoveryTimeoutSec, 1))
+    $result = Invoke-ManagedDockerDesktop -RepoRoot $RepoRoot -TimeoutSeconds $timeout
+    if ($result.outcome -eq 'READY' -and $result.daemonReady) { return $true }
+    Write-Host ("Managed Docker Desktop did not become ready: {0}" -f $result.failureClassification) `
+        -ForegroundColor Red
+    return $false
 }
 
 # Reads only the single local Dispatcher lane snapshot. This is used to avoid killing a supervised

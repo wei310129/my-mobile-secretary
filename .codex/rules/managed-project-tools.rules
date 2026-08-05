@@ -55,3 +55,27 @@ prefix_rule(
     decision = "allow",
     justification = "Managed stop entrypoint used from a project worktree",
 )
+
+prefix_rule(
+    pattern = ["powershell", "-ExecutionPolicy", "Bypass", "-File", ".\\scripts\\start-managed-docker-desktop.ps1"],
+    decision = "allow",
+    justification = "Repository-owned Docker Desktop launcher validates fixed Docker identity, mutex ownership, and bounded daemon readiness",
+)
+
+prefix_rule(
+    pattern = ["powershell", "-ExecutionPolicy", "Bypass", "-File", ".\\scripts\\dev-preflight.ps1"],
+    decision = "allow",
+    justification = "Repository-owned environment preflight writes only its validated environment-state and coordination receipts",
+)
+
+prefix_rule(
+    pattern = ["powershell", "-ExecutionPolicy", "Bypass", "-File", ".\\scripts\\dev-environment-monitor.ps1"],
+    decision = "allow",
+    justification = "Repository-owned bounded environment monitor delegates Docker startup to the managed launcher",
+)
+
+prefix_rule(
+    pattern = ["powershell", "-ExecutionPolicy", "Bypass", "-File", "D:\\my-project\\my-mobile-secretary\\scripts\\start-managed-docker-desktop.ps1"],
+    decision = "allow",
+    justification = "Managed Docker Desktop launcher from the primary project worktree",
+)

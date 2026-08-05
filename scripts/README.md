@@ -40,6 +40,24 @@ webhook 時可在啟動加 `-NoNgrok`。若本機允許執行 PowerShell 腳本�
 `RUNNING` 或 `RECOVERING` 時，`dev-restart.ps1` 與 `dev-stop.ps1` 會拒絕終止程序樹，避免把
 正在執行的 Codex 連同 Dispatcher 一起強制殺掉。`dev-status.ps1` 會顯示目前 lane 狀態。
 
+`dev-stop.ps1` 會在每個 component 驗證停止後立刻原子更新該 component 的 `.dev-state.json`，並
+釋放／reconcile 對應 ownership；後續 ngrok 驗證失敗不會回復已清除的 Spring Boot 或 Dispatcher
+state。tracked launcher 即使已失去 port，也只有在 PID、process start time、精確 worktree command
+或 active coordination operation 全部吻合時才可停止；PID reuse、跨 worktree、另一個 active owner
+或 query 不可判定時一律 fail closed。
+
+Codex 需要處理另一個 `var\worktrees` worktree 的 stale managed process 時，只能使用不接受 PID 的
+受限入口：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\stop-managed-worktree-process.ps1 `
+  -Worktree D:\my-project\my-mobile-secretary\var\worktrees\calendar-w11 `
+  -Component SpringBoot
+```
+
+此入口會先讀目標 worktree state／可信 receipt，核對同一 worktree 的 coordination resource與其他
+active operation，再委派正式 `Stop-ProcessTree`。它不接受任意 PID，也不清 log、DB、volume或舊 evidence。
+
 本機 Spring Boot 應用日誌寫入 `scripts\.logs\spring-boot.log`，每個檔案最多 10 MB、
 保留 7 天且總量最多 100 MB。`spring-boot.out.log` / `spring-boot.err.log` 只保留 Maven
 啟動器輸出；ngrok 只記錄警告以上。Postgres 與 Redis 的 Docker 日誌各自限制為
@@ -54,6 +72,16 @@ webhook 時可在啟動加 `-NoNgrok`。若本機允許執行 PowerShell 腳本�
 powershell -ExecutionPolicy Bypass -File .\scripts\mvn-safe.ps1 test
 powershell -ExecutionPolicy Bypass -File .\scripts\mvn-safe.ps1 '-Dtest=ReceiptServiceTest' test
 ```
+
+Codex policy 只核准這個 repository-owned entrypoint；裸 `mvnw.cmd` 沒有 allow rule。runner 只接受
+單一 allowlisted lifecycle goal（compile、test-compile、test、package、verify或spotless:check），
+拒絕 `-f`／`--file` 與會把 execution/write root 導出 worktree 的 Maven properties。coordination
+operation／receipt 只由同一 library 原子寫入固定 LOCALAPPDATA coordination v1 tree，resource key
+由 runner 所在 worktree 推導，不能由呼叫者指定。
+
+同一 project rules 以 `forbidden` 阻擋 `git reset`、`git clean`、會覆寫檔案的 `git checkout`、
+`git restore` 與 `git stash`。mixed-owner worktree 必須改用新 branch／獨立 worktree或經 review 的
+精確 patch，不得用會改寫、刪除或隱藏既有變更的指令處理。
 
 只有已確認舊 class／annotation generated source 污染，或執行正式完整驗收時才使用：
 

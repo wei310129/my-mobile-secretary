@@ -4,6 +4,9 @@ import com.aproject.aidriven.mymobilesecretary.family.application.FamilyMessageS
 import com.aproject.aidriven.mymobilesecretary.geo.application.GeofenceRuleService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
+import com.aproject.aidriven.mymobilesecretary.geo.catalog.application.SystemPlaceCatalogAdoption;
+import com.aproject.aidriven.mymobilesecretary.geo.catalog.application.SystemPlaceCatalogLookup;
+import com.aproject.aidriven.mymobilesecretary.geo.catalog.application.SystemPlaceCatalogService;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationContextService;
@@ -25,6 +28,8 @@ public final class PlaceIntentHandler implements IntentHandler {
 
     private static final Set<IntentCommand.Type> SUPPORTED_TYPES = Set.of(
             IntentCommand.Type.ASK_PLACE,
+            IntentCommand.Type.ASK_PLACE_CATALOG,
+            IntentCommand.Type.ADOPT_PLACE_CATALOG,
             IntentCommand.Type.CREATE_PLACE,
             IntentCommand.Type.UPDATE_PLACE,
             IntentCommand.Type.BIND_TASK_PLACE,
@@ -44,6 +49,7 @@ public final class PlaceIntentHandler implements IntentHandler {
     private final NearbySuggestionService nearbySuggestionService;
     private final ConversationContextService contextService;
     private final FamilyMessageService familyMessageService;
+    private final SystemPlaceCatalogService systemPlaceCatalogService;
     private final int bindRadiusMeters;
 
     public PlaceIntentHandler(
@@ -54,6 +60,7 @@ public final class PlaceIntentHandler implements IntentHandler {
             NearbySuggestionService nearbySuggestionService,
             ConversationContextService contextService,
             FamilyMessageService familyMessageService,
+            SystemPlaceCatalogService systemPlaceCatalogService,
             @Value("${app.knowledge.auto-bind-radius-meters:200}") int bindRadiusMeters) {
         this.taskService = taskService;
         this.placeAliasService = placeAliasService;
@@ -62,6 +69,7 @@ public final class PlaceIntentHandler implements IntentHandler {
         this.nearbySuggestionService = nearbySuggestionService;
         this.contextService = contextService;
         this.familyMessageService = familyMessageService;
+        this.systemPlaceCatalogService = systemPlaceCatalogService;
         this.bindRadiusMeters = bindRadiusMeters;
     }
 
@@ -75,6 +83,8 @@ public final class PlaceIntentHandler implements IntentHandler {
         IntentOptions options = command.safeOptions();
         return switch (command.type()) {
             case ASK_PLACE -> askPlace(command);
+            case ASK_PLACE_CATALOG -> askPlaceCatalog(command);
+            case ADOPT_PLACE_CATALOG -> adoptPlaceCatalog(command);
             case CREATE_PLACE -> createPlace(command);
             case UPDATE_PLACE -> updatePlace(command);
             case BIND_TASK_PLACE -> bindTaskPlace(command, options);
@@ -109,9 +119,16 @@ public final class PlaceIntentHandler implements IntentHandler {
         require(command.placeName(), "placeName");
         return resolvePlace(command.placeName())
                 .map(this::placeInfo)
-                .orElseGet(() -> IntentResult.clarificationNeeded(
-                        "我沒有叫「%s」的地點紀錄,說「建立地點:%s」我就去 Google 查來存。"
-                                .formatted(command.placeName(), command.placeName())));
+                .orElseGet(() -> {
+                    SystemPlaceCatalogLookup catalogLookup = systemPlaceCatalogService.lookup(
+                            command.placeName(), command.safeOptions().catalogRegion());
+                    if (catalogLookup.status() != SystemPlaceCatalogLookup.Status.NOT_FOUND) {
+                        return catalogLookupResult(catalogLookup);
+                    }
+                    return IntentResult.clarificationNeeded(
+                            "我沒有叫「%s」的地點紀錄,說「建立地點:%s」我就去 Google 查來存。"
+                                    .formatted(command.placeName(), command.placeName()));
+                });
     }
 
     private IntentResult createPlace(IntentCommand command) {
@@ -119,6 +136,67 @@ public final class PlaceIntentHandler implements IntentHandler {
         Optional<Place> existing = resolvePlace(command.placeName());
         return existing.map(this::placeInfo).orElseGet(() -> IntentResult.placeCreated(
                 placeService.createPlace(command.placeName(), null, null, null, null)));
+    }
+
+    private IntentResult askPlaceCatalog(IntentCommand command) {
+        require(command.placeName(), "placeName");
+        SystemPlaceCatalogLookup lookup = systemPlaceCatalogService.lookup(
+                command.placeName(), command.safeOptions().catalogRegion());
+        return catalogLookupResult(lookup);
+    }
+
+    private IntentResult adoptPlaceCatalog(IntentCommand command) {
+        require(command.placeName(), "placeName");
+        SystemPlaceCatalogLookup lookup = systemPlaceCatalogService.lookup(
+                command.placeName(), command.safeOptions().catalogRegion());
+        if (lookup.status() == SystemPlaceCatalogLookup.Status.NOT_FOUND) {
+            return IntentResult.clarificationNeeded(
+                    "系統內建地點沒有「%s」；這次沒有建立任何自訂地點。"
+                            .formatted(command.placeName()));
+        }
+        Integer ordinal = command.safeOptions().ordinal();
+        if (lookup.status() != SystemPlaceCatalogLookup.Status.EXACT && ordinal == null) {
+            return catalogLookupResult(lookup);
+        }
+        try {
+            SystemPlaceCatalogAdoption adoption = systemPlaceCatalogService.adopt(
+                    command.placeName(), command.safeOptions().catalogRegion(), ordinal);
+            return IntentResult.placeCatalogAdopted(
+                    adoption.point(), lookup.status() != SystemPlaceCatalogLookup.Status.EXACT);
+        } catch (IllegalArgumentException exception) {
+            return IntentResult.clarificationNeeded(
+                    "請用候選編號選一個系統內建地點；我不會自行猜分店或地區。");
+        }
+    }
+
+    private static IntentResult catalogLookupResult(SystemPlaceCatalogLookup lookup) {
+        if (lookup.status() == SystemPlaceCatalogLookup.Status.NOT_FOUND) {
+            return IntentResult.clarificationNeeded(
+                    "系統內建地點找不到「%s」；如果要查外部地點，請明確說要建立自訂地點。"
+                            .formatted(lookup.query()));
+        }
+        String rows = java.util.stream.IntStream.range(0, lookup.candidates().size())
+                .mapToObj(index -> {
+                    var point = lookup.candidates().get(index);
+                    String region = point.region() == null ? "未提供地區" : point.region();
+                    String address = point.address() == null ? "未提供地址" : point.address();
+                    return "%d.「%s」｜%s｜%s".formatted(index + 1, point.pointName(), region, address);
+                }).collect(java.util.stream.Collectors.joining("\n"));
+        return switch (lookup.status()) {
+            case EXACT -> IntentResult.placeCatalogMessage(
+                    "系統內建地點「%s」：%s。來源：%s"
+                            .formatted(lookup.candidates().getFirst().pointName(),
+                                    lookup.candidates().getFirst().address() == null
+                                            ? "地址未提供" : lookup.candidates().getFirst().address(),
+                                    lookup.candidates().getFirst().sourceName()));
+            case CROSS_REGION -> IntentResult.clarificationNeeded(
+                    "「%s」在不同地區有多個系統內建結果，請先說地區；我不會自行猜。\n%s"
+                            .formatted(lookup.query(), rows));
+            case MULTIPOINT, MULTIPLE -> IntentResult.clarificationNeeded(
+                    "「%s」有多個系統內建地點，請回覆編號選一個：\n%s"
+                            .formatted(lookup.query(), rows));
+            case NOT_FOUND -> throw new IllegalStateException("handled above");
+        };
     }
 
     private IntentResult updatePlace(IntentCommand command) {

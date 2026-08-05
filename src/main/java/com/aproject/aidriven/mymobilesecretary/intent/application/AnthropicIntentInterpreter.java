@@ -91,6 +91,10 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
               明講「以後／之後每次都改」→ options.recurrenceScope=SERIES;
               已知是固定行程但沒說改本次或整個系列時輸出 UNKNOWN 回問,不可自行選範圍。
             - 問已知地點資訊→ ASK_PLACE,placeName=地點名；家人上課地址也是 ASK_PLACE，不是姓名詢問。
+            - 問系統是否知道某個內建地點、列出內建分店→ ASK_PLACE_CATALOG,placeName=地點名；這是唯讀，
+              不建立使用者自訂地點。若使用者明確指定地區，options.catalogRegion 填地區。
+            - 明確選用系統內建地點→ ADOPT_PLACE_CATALOG,placeName=地點名；若是候選清單回覆，
+              options.ordinal 填使用者指定的編號；不可把 catalog key 當成使用者自然語言自行猜出來。
             - 查詢待辦清單(「還有什麼要做」「我有哪些待辦」)→ LIST_TASKS。
             - 查詢行程(「今天有什麼行程」「接下來要幹嘛」)→ LIST_SCHEDULES。
             - 查指定過去或特定日期的行程(「昨天的行程」「上禮拜五的行程」)→ LIST_SCHEDULES_ON_DATE,
@@ -137,7 +141,7 @@ public class AnthropicIntentInterpreter implements IntentInterpreter {
             - options 可填:filter、ordinal、durationMinutes、leadMinutes、radiusMeters、triggerType、
               recurrence、recurrenceUntil、recurrenceScope、category、itemNames、quantity、referenceTitle、referenceKind、timeOfDay、
               keepTime、shiftMinutes、condition、fromPlaceName、bufferMinutes、clarificationQuestion、alias。
-              第二波欄位還有 newTitle、description、quietStart、quietEnd、allowHighPriority。
+              第二波欄位還有 newTitle、description、quietStart、quietEnd、allowHighPriority、catalogRegion。
             - CREATE_TASK 可同時填 dueAt、placeName 與 options。原句明講「去某地買／拿／做」時 placeName
               必須保留完整店名或地點，不可只存標題與期限。重複提醒填 options.recurrence;
               天氣條件提醒用 CREATE_WEATHER_REMINDER,不要把「如果」忽略。

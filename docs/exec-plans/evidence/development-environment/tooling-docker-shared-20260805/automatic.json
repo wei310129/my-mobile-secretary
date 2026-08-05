@@ -1,0 +1,34 @@
+{
+    "schemaVersion":  2,
+    "releaseGate":  "tooling-docker-shared-20260805",
+    "mode":  "Automatic",
+    "outcome":  "PASS",
+    "machineAlias":  "tooling-sandbox-20260805",
+    "reviewedAt":  "2026-08-05T13:16:26.7784541Z",
+    "contractFingerprint":  "e43874472f69f3f66d949f02",
+    "targetWorktree":  {
+                           "path":  "C:\\Users\\ADMIN\\IdeaProjects\\my-mobile-secretary\\var\\worktrees\\tooling-docker-shared-20260805",
+                           "worktreeId":  "ccbd188863e3e05e5434864e",
+                           "repoId":  "58827f126b78fc21c4023114",
+                           "primaryRoot":  "C:\\Users\\ADMIN\\IdeaProjects\\my-mobile-secretary",
+                           "commonDirectory":  "C:\\Users\\ADMIN\\IdeaProjects\\my-mobile-secretary\\.git",
+                           "branch":  "refs/heads/tooling/docker-shared-lifecycle-review-20260805",
+                           "head":  "eb3da1cf8767d67f2b747b8fec0ae8ddb0790731",
+                           "registered":  true
+                       },
+    "evidencePath":  "C:\\Users\\ADMIN\\IdeaProjects\\my-mobile-secretary\\var\\worktrees\\tooling-docker-shared-20260805\\docs\\exec-plans\\evidence\\development-environment\\tooling-docker-shared-20260805\\automatic.json",
+    "evidenceRoot":  "C:\\Users\\ADMIN\\IdeaProjects\\my-mobile-secretary\\var\\worktrees\\tooling-docker-shared-20260805\\docs\\exec-plans\\evidence\\development-environment\\tooling-docker-shared-20260805",
+    "capabilities":  [
+                         {
+                             "name":  "READ_ONLY",
+                             "state":  "MATCH",
+                             "ready":  true,
+                             "reason":  null
+                         }
+                     ],
+    "issues":  [
+
+               ],
+    "openCount":  0,
+    "policy":  "W11+ automatic hard gate"
+}

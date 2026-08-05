@@ -12,6 +12,7 @@ $DispatcherRoot = Join-Path $RepoRoot "internal\ai-dispatcher"
 $DispatcherPom = Join-Path $DispatcherRoot "pom.xml"
 $DispatcherComposeFile = Join-Path $DispatcherRoot "compose.yaml"
 . "$PSScriptRoot\coordination-common.ps1"
+. "$PSScriptRoot\managed-process-lifecycle.ps1"
 
 function Write-DevProgress {
     param(

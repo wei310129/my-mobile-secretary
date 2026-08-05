@@ -111,6 +111,7 @@ Write-DevProgress -Message "  Main Postgres and Redis are healthy." -ForegroundC
 # 2) ngrok is part of the main application lifecycle.
 $ngrokUrl = $null
 $ngrokPid = $null
+$ngrokOwnershipReceiptId = $null
 $lineWebhookConfiguration = $null
 if (-not $NoNgrok) {
     Write-DevProgress -Message "[2/6] Starting ngrok for the configured LINE webhook..." -ForegroundColor Yellow
@@ -144,6 +145,11 @@ if (-not $NoNgrok) {
     $existingNgrokPid = Resolve-ManagedProcessId -TrackedProcessId $null -Port $NgrokApiPort -Kind "Ngrok"
     if ($existingNgrokPid) {
         $ngrokPid = $existingNgrokPid
+        $previousNgrokState = Read-DevState
+        if ($previousNgrokState.ngrokPid -eq $ngrokPid -and
+                $previousNgrokState.PSObject.Properties['ngrokOwnershipReceiptId']) {
+            $ngrokOwnershipReceiptId = $previousNgrokState.ngrokOwnershipReceiptId
+        }
         $ngrokUrl = Get-NgrokPublicUrl -TimeoutSec 10
         $ngrokHost = if ($ngrokUrl) { ([uri]$ngrokUrl).Host } else { $null }
         if ($ngrokHost -eq $lineWebhookUri.Host) {
@@ -175,6 +181,8 @@ if (-not $NoNgrok) {
             -RedirectStandardOutput (Resolve-StartLogPath "ngrok.out.log") `
             -RedirectStandardError (Resolve-StartLogPath "ngrok.err.log")
         $ngrokPid = $proc.Id
+        $ngrokOwnershipReceiptId = New-ManagedProcessOwnershipReceipt `
+            -Worktree $RepoRoot -Component Ngrok -ProcessId $ngrokPid
         $ngrokUrl = Get-NgrokPublicUrl -TimeoutSec 20
         if (-not $ngrokUrl) {
             Write-Host "ngrok did not expose a public URL. Check scripts\.logs\ngrok.err.log." -ForegroundColor Red
@@ -333,6 +341,7 @@ $stateUpdates = @{
     springBootPid = $appPid
     dispatcherPid = $dispatcherPid
     ngrokPid      = $ngrokPid
+    ngrokOwnershipReceiptId = $ngrokOwnershipReceiptId
     ngrokUrl      = $ngrokUrl
     profile       = $Profile
     dispatcherArmed = [bool]$ArmDispatcher

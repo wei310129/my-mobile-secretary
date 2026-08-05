@@ -35,13 +35,22 @@ try {
         $persistentRepairPending = $snapshot -and $snapshot.probes.Java.PSObject.Properties['PersistentRepairEligible'] -and
             [bool]$snapshot.probes.Java.PersistentRepairEligible
         if (-not $snapshot -or $persistentRepairPending) {
-            $asyncLauncher = 'AGENT_ASYNC_TOOL_REQUIRED'
-            Write-EnvironmentIssue -Code 'ASYNC_AGENT_LAUNCH_REQUIRED' -Capability $Capability `
-                -Expected 'the agent can keep the repository-owned monitor execution alive' `
-                -Actual 'detached child authority is intentionally not granted by the project policy' `
-                -Status ACCEPTED_LIMITATION `
-                -ResolutionEvidence 'agent must run dev-environment-monitor.ps1 with its asynchronous tool execution and continue read-only work' `
-                -RepoRoot $repoRoot -StateRoot $context.StateRoot -MachineAlias $context.MachineAlias | Out-Null
+            $monitorArguments = @('-NoProfile','-ExecutionPolicy','Bypass','-File',"$PSScriptRoot\dev-environment-monitor.ps1",'-Capability',$Capability,'-Once')
+            if ($Capability -in @('MAVEN','DOCKER_TEST','DEV_RUNTIME','LINE_E2E')) { $monitorArguments += '-AllowSafeRepair' }
+            if ($StateRoot) { $monitorArguments += @('-StateRoot',$StateRoot) }
+            if ($MachineAlias) { $monitorArguments += @('-MachineAlias',$MachineAlias) }
+            if ((Get-EnvironmentCallerContext).IsSandbox) {
+                $asyncLauncher = 'AGENT_ASYNC_TOOL_REQUIRED'
+                Write-EnvironmentIssue -Code 'ASYNC_AGENT_LAUNCH_REQUIRED' -Capability $Capability `
+                    -Expected 'the caller can keep a detached monitor alive after preflight exits' `
+                    -Actual 'Codex sandbox child lifetime is not durable after the parent tool process exits' `
+                    -Status ACCEPTED_LIMITATION `
+                    -ResolutionEvidence 'agent must run dev-environment-monitor.ps1 with its asynchronous tool execution and continue read-only work' `
+                    -RepoRoot $repoRoot -StateRoot $context.StateRoot -MachineAlias $context.MachineAlias | Out-Null
+            } else {
+                Start-Process -FilePath powershell.exe -ArgumentList $monitorArguments -WindowStyle Hidden | Out-Null
+                $asyncLauncher = 'DETACHED_PROCESS'
+            }
         }
         if (-not $snapshot) {
             $snapshot = [pscustomobject]@{

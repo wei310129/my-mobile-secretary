@@ -42,6 +42,10 @@ if ($ArmDispatcher) {
 }
 Ensure-LogsDir
 $script:StartServiceGeneration = $null
+$script:StartServiceGenerationPublished = $false
+$script:StartNewNgrokPid = $null
+$script:StartNewAppPid = $null
+$script:StartNewDispatcherPid = $null
 function Resolve-StartLogPath {
     param([Parameter(Mandatory)][string]$Name)
     if ($null -eq $script:StartServiceGeneration) { $script:StartServiceGeneration = New-DevServiceGeneration }
@@ -52,10 +56,14 @@ $lifecycleLease = Enter-DevLifecycleCoordination -Action start
 $lifecycleOutcome = 'FAILED'
 
 try {
-    Assert-CommandAvailable -Name "docker"
     if (-not (Test-Path "$RepoRoot\mvnw.cmd")) { throw "Missing Maven wrapper: $RepoRoot\mvnw.cmd" }
-    if (-not (Ensure-DockerDaemon)) {
-        throw "Docker daemon could not be started. Check Docker Desktop logs, then rerun dev-start.ps1."
+    $sharedInfrastructureResult = if ($SkipDocker) {
+        Get-SharedInfrastructureStatus -Name @('main-postgres','main-redis')
+    } else {
+        Ensure-SharedInfrastructure -Name @('main-postgres','main-redis')
+    }
+    if ($sharedInfrastructureResult.Outcome -ne 'READY') {
+        throw "Shared development infrastructure is $($sharedInfrastructureResult.Classification): $($sharedInfrastructureResult.Reason)"
     }
     if ($ArmDispatcher) { Assert-DispatcherSessionReady }
     Assert-PortAvailableOrManaged -Port $AppPort -Kind "SpringBoot"
@@ -72,30 +80,9 @@ $automationMode = if ($ArmDispatcher) { "ARMED" } else { "DISARMED" }
 $automationColor = if ($ArmDispatcher) { "Yellow" } else { "DarkGray" }
 Write-DevProgress -Message "  Dispatcher automation is $automationMode." -ForegroundColor $automationColor
 
-# 1) Main application infrastructure is required.
-if (-not $SkipDocker) {
-    Write-DevProgress -Message "[1/6] Starting main Postgres and Redis..." -ForegroundColor Yellow
-    $composeOutput = docker compose up -d 2>&1
-    if ($LASTEXITCODE -ne 0) {
-        $composeOutput | ForEach-Object { Write-Host $_ }
-        Write-Host "Main docker compose startup failed." -ForegroundColor Red
-        exit 1
-    }
-    $pgOk = Wait-ContainerHealthy -ContainerName "mms-postgres" -TimeoutSec 60
-    $redisOk = Wait-ContainerHealthy -ContainerName "mms-redis" -TimeoutSec 60
-    if (-not $pgOk -or -not $redisOk) {
-        Write-Host "Main Postgres or Redis did not become healthy." -ForegroundColor Red
-        exit 1
-    }
-} else {
-    Write-DevProgress -Message "[1/6] Checking existing main containers (-SkipDocker)..." -ForegroundColor Yellow
-    $pgOk = (Get-ContainerHealth -ContainerName "mms-postgres") -eq "healthy"
-    $redisOk = (Get-ContainerHealth -ContainerName "mms-redis") -eq "healthy"
-    if (-not $pgOk -or -not $redisOk) {
-        Write-Host "-SkipDocker requires healthy mms-postgres and mms-redis containers." -ForegroundColor Red
-        exit 1
-    }
-}
+# 1) Main application infrastructure is a fixed shared-persistent contract.
+$sharedAction = if ($sharedInfrastructureResult.PSObject.Properties['Action']) { $sharedInfrastructureResult.Action } else { 'VERIFIED' }
+Write-DevProgress -Message "[1/6] Shared Postgres and Redis: $sharedAction (automatic worktree reuse)." -ForegroundColor Yellow
 
 if (-not (Wait-TcpPort -Port 5432 -TimeoutSec 60) -or
         -not (Wait-TcpPort -Port 6379 -TimeoutSec 60)) {
@@ -181,6 +168,7 @@ if (-not $NoNgrok) {
             -RedirectStandardOutput (Resolve-StartLogPath "ngrok.out.log") `
             -RedirectStandardError (Resolve-StartLogPath "ngrok.err.log")
         $ngrokPid = $proc.Id
+        $script:StartNewNgrokPid = $ngrokPid
         $ngrokOwnershipReceiptId = New-ManagedProcessOwnershipReceipt `
             -Worktree $RepoRoot -Component Ngrok -ProcessId $ngrokPid
         $ngrokUrl = Get-NgrokPublicUrl -TimeoutSec 20
@@ -234,6 +222,7 @@ if ($existingAppPid) {
         -RedirectStandardOutput (Resolve-StartLogPath "spring-boot.out.log") `
         -RedirectStandardError (Resolve-StartLogPath "spring-boot.err.log")
     $appPid = $proc.Id
+    $script:StartNewAppPid = $appPid
     if (-not (Wait-HttpOk -Url "http://localhost:$AppPort/actuator/health" -TimeoutSec 240 -ProcessId $appPid)) {
         Write-Host "Main health check failed. Check scripts\.logs\spring-boot.err.log." -ForegroundColor Red
         Stop-ProcessTree -ProcessId $appPid -Label "Spring Boot (failed startup)"
@@ -257,25 +246,18 @@ if ($SkipDispatcher) {
     Write-DevProgress -Message "[4/6] Skipping AI Dispatcher database (-SkipDispatcher)." -ForegroundColor DarkGray
 } elseif (-not (Test-Path $DispatcherComposeFile) -or -not (Test-Path $DispatcherPom)) {
     Write-Host "[4/6] AI Dispatcher files are incomplete. Main application remains available." -ForegroundColor Yellow
-} elseif (-not $SkipDocker) {
-    Write-DevProgress -Message "[4/6] Starting the isolated Dispatcher PostgreSQL..." -ForegroundColor Yellow
-    $dispatcherComposeOutput = docker compose -f $DispatcherComposeFile up -d 2>&1
-    if ($LASTEXITCODE -eq 0) {
-        $dispatcherDbReady = Wait-ContainerHealthy -ContainerName "mms-ai-dispatcher-postgres" -TimeoutSec 60
-    }
-    if ($dispatcherDbReady) {
-        Write-DevProgress -Message "  Dispatcher PostgreSQL is healthy (isolated DB and volume)." -ForegroundColor Green
-    } else {
-        $dispatcherComposeOutput | ForEach-Object { Write-Host $_ }
-        Write-Host "  Dispatcher PostgreSQL failed. Dispatcher is skipped; main application remains up." -ForegroundColor Yellow
-    }
 } else {
-    Write-DevProgress -Message "[4/6] Checking existing Dispatcher PostgreSQL (-SkipDocker)..." -ForegroundColor Yellow
-    $dispatcherDbReady = (Get-ContainerHealth -ContainerName "mms-ai-dispatcher-postgres") -eq "healthy"
-    if ($dispatcherDbReady) {
-        Write-DevProgress -Message "  Dispatcher PostgreSQL is healthy." -ForegroundColor Green
+    Write-DevProgress -Message "[4/6] Reusing the isolated Dispatcher PostgreSQL shared contract..." -ForegroundColor Yellow
+    $dispatcherInfrastructureResult = if ($SkipDocker) {
+        Get-SharedInfrastructureStatus -Name @('dispatcher-postgres')
     } else {
-        Write-Host "  Dispatcher DB is not healthy. Dispatcher is skipped; main application remains up." -ForegroundColor Yellow
+        Ensure-SharedInfrastructure -Name @('dispatcher-postgres')
+    }
+    if ($dispatcherInfrastructureResult.Outcome -eq 'READY') {
+        $dispatcherDbReady = $true
+        Write-DevProgress -Message "  Dispatcher PostgreSQL is healthy and identity-verified." -ForegroundColor Green
+    } else {
+        Write-Host "  Dispatcher DB is $($dispatcherInfrastructureResult.Classification). Dispatcher is skipped; main application remains up." -ForegroundColor Yellow
     }
 }
 
@@ -324,6 +306,7 @@ if ($SkipDispatcher) {
                 -RedirectStandardOutput (Resolve-StartLogPath "ai-dispatcher.out.log") `
                 -RedirectStandardError (Resolve-StartLogPath "ai-dispatcher.err.log")
             $dispatcherPid = $proc.Id
+            $script:StartNewDispatcherPid = $dispatcherPid
             if (Wait-HttpOk -Url "http://localhost:$DispatcherPort/actuator/health" -TimeoutSec 120 -ProcessId $dispatcherPid) {
                 Write-DevProgress -Message "  AI Dispatcher is ready (PID $dispatcherPid)." -ForegroundColor Green
             } else {
@@ -336,22 +319,6 @@ if ($SkipDispatcher) {
         Write-Host "  Dispatcher skipped: $($_.Exception.Message)" -ForegroundColor Yellow
     }
 }
-
-$stateUpdates = @{
-    springBootPid = $appPid
-    dispatcherPid = $dispatcherPid
-    ngrokPid      = $ngrokPid
-    ngrokOwnershipReceiptId = $ngrokOwnershipReceiptId
-    ngrokUrl      = $ngrokUrl
-    profile       = $Profile
-    dispatcherArmed = [bool]$ArmDispatcher
-    startedAt     = (Get-Date).ToString("o")
-    serviceVersion = $runningVersion.VersionLabel
-    serviceGitSha = $runningVersion.GitSha
-    serviceSourceStatus = $versionComparison.Status
-}
-if ($script:StartServiceGeneration) { $stateUpdates["serviceGeneration"] = $script:StartServiceGeneration.Generation; $stateUpdates["serviceLogDirectory"] = $script:StartServiceGeneration.LogDirectory }
-Write-DevState -Updates $stateUpdates
 
 # Final verification is intentionally outside-in. If it passes, every required layer from LINE's
 # platform through ngrok and Spring Boot is connected. Layered diagnostics are only needed on failure.
@@ -380,11 +347,42 @@ if (-not $NoNgrok) {
 }
 
 if (-not $lineWebhookReady) { exit 1 }
+
 if ($ArmDispatcher -and -not $dispatcherPid) { exit 2 }
+
+$stateUpdates = @{
+    springBootPid = $appPid
+    dispatcherPid = $dispatcherPid
+    ngrokPid      = $ngrokPid
+    ngrokOwnershipReceiptId = $ngrokOwnershipReceiptId
+    ngrokUrl      = $ngrokUrl
+    profile       = $Profile
+    dispatcherArmed = [bool]$ArmDispatcher
+    startedAt     = (Get-Date).ToString("o")
+    serviceVersion = $runningVersion.VersionLabel
+    serviceGitSha = $runningVersion.GitSha
+    serviceSourceStatus = $versionComparison.Status
+}
+if ($script:StartServiceGeneration) { $stateUpdates["serviceGeneration"] = $script:StartServiceGeneration.Generation; $stateUpdates["serviceLogDirectory"] = $script:StartServiceGeneration.LogDirectory }
+Write-DevState -Updates $stateUpdates
+$script:StartServiceGenerationPublished = $true
+
 $dispatcherSummary = if ($SkipDispatcher) { "dispatcher=skipped" } elseif ($dispatcherPid) { "dispatcher=$automationMode" } else { "dispatcher=unavailable" }
 $lineSummary = if ($NoNgrok) { "LINE=skipped" } else { "LINE=connected" }
 Write-Host "Development environment ready: main=http://localhost:$AppPort; version=$($runningVersion.VersionLabel); source=$($versionComparison.Status); $dispatcherSummary; $lineSummary; logs=scripts\.logs\." -ForegroundColor Green
 $lifecycleOutcome = 'READY'
 } finally {
+    if (-not $script:StartServiceGenerationPublished) {
+        foreach ($startedProcess in @(
+            [pscustomobject]@{Pid=$script:StartNewDispatcherPid;Label='AI Dispatcher (startup rollback)';Port=$DispatcherPort},
+            [pscustomobject]@{Pid=$script:StartNewAppPid;Label='Spring Boot (startup rollback)';Port=$AppPort},
+            [pscustomobject]@{Pid=$script:StartNewNgrokPid;Label='ngrok (startup rollback)';Port=$NgrokApiPort}
+        )) {
+            if ($startedProcess.Pid) {
+                try { Stop-ProcessTree -ProcessId ([int]$startedProcess.Pid) -Label $startedProcess.Label -Port $startedProcess.Port | Out-Null } catch { }
+            }
+        }
+        Remove-DevServiceGenerationIfUnpublished -Generation $script:StartServiceGeneration
+    }
     Exit-DevLifecycleCoordination -Operation $lifecycleLease -Action start -Outcome $lifecycleOutcome
 }

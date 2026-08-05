@@ -12,6 +12,7 @@ $DispatcherRoot = Join-Path $RepoRoot "internal\ai-dispatcher"
 $DispatcherPom = Join-Path $DispatcherRoot "pom.xml"
 $DispatcherComposeFile = Join-Path $DispatcherRoot "compose.yaml"
 . "$PSScriptRoot\coordination-common.ps1"
+. "$PSScriptRoot\docker-shared-infrastructure.ps1"
 . "$PSScriptRoot\managed-process-lifecycle.ps1"
 . "$PSScriptRoot\managed-docker-desktop.ps1"
 
@@ -48,6 +49,19 @@ function New-DevServiceGeneration {
     return [pscustomobject]@{ Generation = $generation; LogDirectory = $path }
 }
 
+function Remove-DevServiceGenerationIfUnpublished {
+    param([AllowNull()]$Generation)
+    if ($null -eq $Generation -or -not $Generation.LogDirectory) { return }
+    $allowedRoot = [IO.Path]::GetFullPath((Join-Path $LogsDir 'generations')).TrimEnd('\', '/') + [IO.Path]::DirectorySeparatorChar
+    $candidate = [IO.Path]::GetFullPath([string]$Generation.LogDirectory)
+    if (-not $candidate.StartsWith($allowedRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Unpublished service generation cleanup escaped the owned generations directory.'
+    }
+    if (Test-Path -LiteralPath $candidate -PathType Container) {
+        Remove-Item -LiteralPath $candidate -Recurse -Force
+    }
+}
+
 # Some launchers provide both Path and PATH in the native environment block. Windows PowerShell
 # treats environment keys as case-insensitive, so Start-Process rejects that inherited block.
 # Rebuild only this script process's PATH entry; system and user environment settings are untouched.
@@ -64,7 +78,7 @@ function Test-CoordinationMavenEnabled {
 
 function Enter-DevLifecycleCoordination {
     param([Parameter(Mandatory)][ValidateSet('start', 'stop', 'restart')][string]$Action)
-    if ($env:MMS_COORDINATION_LIFECYCLE_ENABLED -ne 'true' -or $env:MMS_COORDINATION_LIFECYCLE_HELD -eq 'true') {
+    if ($env:MMS_COORDINATION_LIFECYCLE_ENABLED -eq 'false' -or $env:MMS_COORDINATION_LIFECYCLE_HELD -eq 'true') {
         return $null
     }
     $resources = @(
@@ -318,7 +332,7 @@ function Stop-ProcessTree {
     )
     $proc = Get-Process -Id $ProcessId -ErrorAction SilentlyContinue
     if ($null -eq $proc) {
-        Write-Host "  $Label`: 行程 $ProcessId 已經不在,跳過。" -ForegroundColor DarkGray
+        Write-Host ('  {0}: process {1} is already absent; skipped.' -f $Label, $ProcessId) -ForegroundColor DarkGray
         return [pscustomobject]@{ Success = $true; TaskkillExitCode = 0; ProcessExited = $true; PortReleased = $true }
     }
     & taskkill /F /T /PID $ProcessId 2>&1 | Out-Null
@@ -331,7 +345,7 @@ function Stop-ProcessTree {
         Start-Sleep -Milliseconds 200
     } while ((Get-Date) -lt $deadline)
     $success = $taskkillExitCode -eq 0 -and $processExited -and $portReleased
-    if ($success) { Write-DevProgress -Message "  $Label`: 已停止(PID $ProcessId)。" -ForegroundColor Green }
+    if ($success) { Write-DevProgress -Message ('  {0}: stopped process tree (PID {1}).' -f $Label, $ProcessId) -ForegroundColor Green }
     return [pscustomobject]@{ Success = $success; TaskkillExitCode = $taskkillExitCode; ProcessExited = $processExited; PortReleased = $portReleased }
 }
 
@@ -411,21 +425,33 @@ function Wait-TcpPort {
 }
 
 function Test-DockerDaemon {
-    docker info --format "{{.ServerVersion}}" 2>$null | Out-Null
-    return $LASTEXITCODE -eq 0
+    $probe = Get-ManagedDockerReadinessProbe
+    return [bool]$probe.DaemonReady -and [bool]$probe.CliReady
 }
 
-# Docker Desktop startup is a repository-owned, bounded, idempotent operation. It never stops,
-# restarts, prunes, or removes Docker resources; the launcher owns executable identity, the
-# machine/docker-daemon mutex, and the readiness receipt.
+function Resolve-DockerDesktopExe {
+    $identity = Get-DockerDesktopExecutableIdentity
+    if ($identity.Ready) { return $identity.Path }
+    return $null
+}
+
+function Wait-DockerDaemon {
+    param([int]$TimeoutSec = 120)
+    $result = Ensure-ManagedDockerDaemon -StartupTimeoutSeconds $TimeoutSec
+    return $result.Outcome -eq 'READY'
+}
+
+# A reboot leaves Docker Desktop stopped. Occasionally Docker Desktop itself reports lingering
+# frontend/backend processes and never creates docker_engine. Recovery is deliberately limited to
+# Docker Desktop's own known process names, and only runs while the daemon is unreachable.
 function Ensure-DockerDaemon {
     param([int]$InitialTimeoutSec = 120, [int]$RecoveryTimeoutSec = 180)
-    $timeout = [Math]::Min([Math]::Max($InitialTimeoutSec, 1), [Math]::Max($RecoveryTimeoutSec, 1))
-    $result = Invoke-ManagedDockerDesktop -RepoRoot $RepoRoot -TimeoutSeconds $timeout
-    if ($result.outcome -eq 'READY' -and $result.daemonReady) { return $true }
-    Write-Host ("Managed Docker Desktop did not become ready: {0}" -f $result.failureClassification) `
-        -ForegroundColor Red
-    return $false
+    $startupTimeout = [Math]::Max($InitialTimeoutSec, $RecoveryTimeoutSec)
+    $result = Ensure-ManagedDockerDaemon -StartupTimeoutSeconds $startupTimeout
+    if ($result.Outcome -ne 'READY' -and $result.Reason) {
+        Write-Host ("  Docker readiness: {0} ({1})" -f $result.Classification, $result.Reason) -ForegroundColor Yellow
+    }
+    return $result.Outcome -eq 'READY'
 }
 
 # Reads only the single local Dispatcher lane snapshot. This is used to avoid killing a supervised

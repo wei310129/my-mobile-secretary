@@ -28,8 +28,23 @@ try { $monitorHeld = Wait-CoordinationMutex -Mutex $monitorMutex -Deadline ([dat
 if (-not $monitorHeld) { $monitorMutex.Dispose(); exit 0 }
 
 function Start-EnvironmentDockerDesktop {
-    $result = Invoke-ManagedDockerDesktop -RepoRoot $repoRoot -StateRoot $context.StateRoot -TimeoutSeconds 180
-    return $result.outcome -eq 'READY' -and [bool]$result.daemonReady
+    $useFormalEntrypoint = [string]::Equals(
+        [IO.Path]::GetFullPath($repoRoot).TrimEnd('\'),
+        [IO.Path]::GetFullPath($script:ManagedDockerProjectRoot).TrimEnd('\'),
+        [StringComparison]::OrdinalIgnoreCase) -or
+        [IO.Path]::GetFullPath($repoRoot).StartsWith("$([IO.Path]::GetFullPath($script:ManagedDockerProjectRoot).TrimEnd('\'))\var\worktrees\", [StringComparison]::OrdinalIgnoreCase)
+    $result = if ($useFormalEntrypoint) {
+        Invoke-ManagedDockerDesktop -RepoRoot $repoRoot -StateRoot $context.StateRoot -TimeoutSeconds 180
+    } else {
+        Ensure-ManagedDockerDaemon -StartupTimeoutSeconds 180
+    }
+    if ($useFormalEntrypoint -and $result.outcome -eq 'READY' -and $result.daemonReady) { return $true }
+    if (-not $useFormalEntrypoint -and $result.Outcome -eq 'READY') { return $true }
+    $classification = if ($useFormalEntrypoint) { $result.failureClassification } else { $result.Classification }
+    if ($classification -eq 'AGENT_ASYNC_TOOL_REQUIRED') {
+        Write-Host 'AGENT_ASYNC_TOOL_REQUIRED: keep the host managed Docker launcher monitor alive.'
+    }
+    return $false
 }
 
 try {

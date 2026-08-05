@@ -1,5 +1,5 @@
 [CmdletBinding()]
-param()
+param([switch]$RunLive)
 
 $ErrorActionPreference = 'Stop'
 $scripts = Split-Path -Parent $PSScriptRoot
@@ -12,6 +12,18 @@ function Assert-DockerTest {
     param([bool]$Condition, [string]$Message)
     if (-not $Condition) { throw $Message }
     $script:assertions++
+}
+
+$contents = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $scripts 'managed-docker-desktop.ps1')
+$forbiddenTokens = @('DockerCli -Shutdown', 'Stop-Process', 'docker system prune', 'compose down -v')
+foreach ($token in $forbiddenTokens) {
+    Assert-DockerTest ($contents -notmatch [regex]::Escape($token)) "managed Docker helper contains forbidden token: $token"
+}
+
+if (-not $RunLive) {
+    [pscustomobject]@{ status = 'passed'; assertions = $assertions; liveDocker = 'skipped'; resources = 'unchanged'; reason = 'live Docker lifecycle requires explicit -RunLive outside the sandbox' } |
+        ConvertTo-Json -Compress
+    exit 0
 }
 
 $desktopIdentity = Resolve-ManagedDockerDesktopIdentity
@@ -51,12 +63,6 @@ try {
 } finally {
     $script:ManagedDockerDesktopPath = $previousPath
     if (Test-Path -LiteralPath $fixture -PathType Leaf) { Remove-Item -LiteralPath $fixture -Force }
-}
-
-$forbiddenTokens = @('DockerCli -Shutdown', 'Stop-Process', 'docker system prune', 'compose down -v')
-foreach ($token in $forbiddenTokens) {
-    $contents = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $scripts 'managed-docker-desktop.ps1')
-    Assert-DockerTest ($contents -notmatch [regex]::Escape($token)) "managed Docker helper contains forbidden token: $token"
 }
 
 [pscustomobject]@{ status = 'passed'; assertions = $assertions; liveDocker = 'verified'; resources = 'retained' } |

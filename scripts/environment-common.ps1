@@ -1,7 +1,7 @@
 Set-StrictMode -Version Latest
 
 . "$PSScriptRoot\coordination-common.ps1"
-. "$PSScriptRoot\managed-docker-desktop.ps1"
+. "$PSScriptRoot\docker-shared-infrastructure.ps1"
 
 $script:EnvironmentSchemaVersion = 2
 $script:EnvironmentCapabilityNames = @(
@@ -112,6 +112,61 @@ function Get-EnvironmentGitLayout {
     return [pscustomobject]@{ RepoRoot=$fullRoot;PrimaryRoot=$primaryRoot;GitDirectory=$gitDirectory;CommonDirectory=$commonDirectory }
 }
 
+function Normalize-EnvironmentPath {
+    param([Parameter(Mandatory)][string]$Path)
+    return [IO.Path]::GetFullPath($Path).TrimEnd('\', '/')
+}
+
+function Get-EnvironmentRegisteredWorktrees {
+    param([string]$AnchorWorktree = (Split-Path -Parent $PSScriptRoot))
+    $anchorLayout = Get-EnvironmentGitLayout -RepoRoot $AnchorWorktree
+    $lines = @(& git -C $anchorLayout.PrimaryRoot worktree list --porcelain 2>$null)
+    if ($LASTEXITCODE -ne 0) { throw 'Git registered worktree list could not be verified.' }
+    $entries = [Collections.Generic.List[object]]::new()
+    $current = $null
+    foreach ($line in $lines) {
+        if ($line -match '^worktree\s+(?<path>.+)$') {
+            if ($current) { $entries.Add([pscustomobject]$current) }
+            $current = [ordered]@{ Path=(Normalize-EnvironmentPath $Matches.path.Trim()); Head=$null; Branch=$null }
+        } elseif ($current -and $line -match '^HEAD\s+(?<head>[0-9a-fA-F]{40})$') {
+            $current.Head = $Matches.head.ToLowerInvariant()
+        } elseif ($current -and $line -match '^branch\s+(?<branch>.+)$') {
+            $current.Branch = $Matches.branch
+        }
+    }
+    if ($current) { $entries.Add([pscustomobject]$current) }
+    return @($entries)
+}
+
+function Get-EnvironmentWorktreeIdentity {
+    param([Parameter(Mandatory)][string]$Worktree,[string]$AnchorWorktree)
+    $target = Normalize-EnvironmentPath $Worktree
+    $layout = Get-EnvironmentGitLayout -RepoRoot $target
+    $anchor = if ($AnchorWorktree) { Normalize-EnvironmentPath $AnchorWorktree } else { $layout.PrimaryRoot }
+    $anchorLayout = Get-EnvironmentGitLayout -RepoRoot $anchor
+    $registered = @(Get-EnvironmentRegisteredWorktrees -AnchorWorktree $anchor)
+    $entry = @($registered | Where-Object { [string]::Equals($_.Path,$target,[StringComparison]::OrdinalIgnoreCase) }) | Select-Object -First 1
+    $common = Normalize-EnvironmentPath $layout.CommonDirectory
+    $anchorCommon = Normalize-EnvironmentPath $anchorLayout.CommonDirectory
+    $sameCommon = [string]::Equals($common,$anchorCommon,[StringComparison]::OrdinalIgnoreCase)
+    $repo = Get-EnvironmentRepositoryIdentity -RepoRoot $target
+    $worktreeId = (Get-CoordinationHash ("$common|$target")).Substring(0,24)
+    return [pscustomobject]@{
+        Path=$target; PrimaryRoot=(Normalize-EnvironmentPath $layout.PrimaryRoot); CommonDirectory=$common
+        Registered=($null -ne $entry); SameCommonDirectory=$sameCommon; RepoId=$repo.RepoId
+        WorktreeId=$worktreeId; Head=if($entry){$entry.Head}else{$null}; Branch=if($entry){$entry.Branch}else{$null}
+        IsPrimary=[string]::Equals($target,(Normalize-EnvironmentPath $layout.PrimaryRoot),[StringComparison]::OrdinalIgnoreCase)
+    }
+}
+
+function Assert-EnvironmentTargetWorktree {
+    param([Parameter(Mandatory)][string]$TargetWorktree,[Parameter(Mandatory)][string]$AnchorWorktree)
+    $identity = Get-EnvironmentWorktreeIdentity -Worktree $TargetWorktree -AnchorWorktree $AnchorWorktree
+    if (-not $identity.Registered) { throw "Target worktree is not registered by Git: $($identity.Path)" }
+    if (-not $identity.SameCommonDirectory) { throw 'Target worktree belongs to a different Git common-dir/repository.' }
+    if (-not (Test-Path -LiteralPath (Join-Path $identity.Path '.git'))) { throw 'Target worktree Git metadata is missing.' }
+    return $identity
+}
 function Get-EnvironmentOriginFromConfig {
     param([string]$CommonDirectory)
     if (-not $CommonDirectory) { return $null }
@@ -168,6 +223,21 @@ function Get-EnvironmentMachineAlias {
     return 'machine-{0}' -f (Get-CoordinationHash $computerName.ToLowerInvariant()).Substring(0, 8)
 }
 
+function Assert-EnvironmentMachineAlias {
+    param([Parameter(Mandatory)][string]$StateRoot,[Parameter(Mandatory)][string]$MachineAlias)
+    $validated = Get-EnvironmentMachineAlias -StateRoot $StateRoot -MachineAlias $MachineAlias
+    $aliasPath = Join-Path $StateRoot 'machine-alias.txt'
+    if (Test-Path -LiteralPath $aliasPath -PathType Leaf) {
+        $stored = [IO.File]::ReadAllText($aliasPath, [Text.Encoding]::UTF8).Trim()
+        if (-not [string]::Equals($stored,$validated,[StringComparison]::Ordinal)) {
+            throw "Machine alias does not match the verified state root: expected $stored, got $validated"
+        }
+    }
+    if ($env:MMS_MACHINE_ALIAS -and -not [string]::Equals($env:MMS_MACHINE_ALIAS,$validated,[StringComparison]::Ordinal)) {
+        throw "Machine alias does not match MMS_MACHINE_ALIAS."
+    }
+    return $validated
+}
 function Set-EnvironmentMachineAlias {
     param([Parameter(Mandatory)][string]$MachineAlias, [string]$StateRoot = (Get-EnvironmentDefaultRoot))
     $validated = Get-EnvironmentMachineAlias -StateRoot $StateRoot -MachineAlias $MachineAlias
@@ -395,46 +465,28 @@ function Get-EnvironmentCallerContext {
 }
 
 function Get-EnvironmentDockerProbe {
-    param([switch]$RequireDaemon)
-    $identity = $null
-    try { $identity = Resolve-ManagedDockerCliIdentity }
-    catch {
-        return [pscustomobject]@{ State = 'ACTION_REQUIRED'; Ready = $false; CliReady = $false; DaemonReady = $false; Reason = $_.Exception.Message }
-    }
-    $client = Invoke-EnvironmentProcess -FilePath $identity.Path -Arguments @('--version') -TimeoutMilliseconds 3000
-    $context = Invoke-EnvironmentProcess -FilePath $identity.Path -Arguments @('context', 'show') -TimeoutMilliseconds 3000
-    $daemon = $null
-    $representative = $null
-    if ($RequireDaemon) {
-        $daemon = Invoke-EnvironmentProcess -FilePath $identity.Path `
-            -Arguments @('version', '--format', '{{.Client.Version}}|{{.Server.Version}}') -TimeoutMilliseconds 5000
-        $representative = Invoke-EnvironmentProcess -FilePath $identity.Path `
-            -Arguments @('ps', '--format', '{{.ID}}') -TimeoutMilliseconds 5000
-    }
-    $cliReady = $client.ExitCode -eq 0 -and $context.ExitCode -eq 0
-    $daemonReady = -not $RequireDaemon -or ($daemon -and $daemon.ExitCode -eq 0 -and $representative.ExitCode -eq 0)
-    $caller = Get-EnvironmentCallerContext
-    $daemonText = if ($daemon) { "$($daemon.Output)`n$($daemon.Error)" } else { '' }
-    $daemonAccessDenied = $RequireDaemon -and $caller.IsSandbox -and
-        $daemonText -match '(?i)access is denied|permission denied|not permitted'
-    $state = if ($cliReady -and $daemonReady) {
+    param([switch]$RequireDaemon,[switch]$RequireSharedContainers)
+    $probe = Get-ManagedDockerReadinessProbe
+    $state = if (-not $RequireDaemon -and $probe.CliReady -and $probe.ContextReady) {
         'MATCH'
-    } elseif ($cliReady -and $daemonAccessDenied) {
-        'HOST_READY_CALLER_BLOCKED'
-    } elseif ($cliReady -and $RequireDaemon -and $caller.IsSandbox) {
-        'UNKNOWN'
+    } elseif ($probe.Classification) {
+        [string]$probe.Classification
     } else {
-        'ACTION_REQUIRED'
+        'MATCH'
     }
+    $shared = $null
+    if ($RequireDaemon -and $state -eq 'MATCH' -and $RequireSharedContainers) {
+        $shared = Get-SharedInfrastructureStatus -Name @('main-postgres','main-redis') -SkipDockerReadiness
+        if ($shared.Outcome -ne 'READY') { $state = [string]$shared.Classification }
+    }
+    $ready = $state -eq 'MATCH' -or $state -eq 'COMPATIBLE_DRIFT'
+    $reason = if ($state -eq 'MATCH') { $null } elseif ($shared -and $shared.Reason) { $shared.Reason } elseif ($probe.Error) { $probe.Error } else { "Docker readiness classification is $state" }
     return [pscustomobject]@{
-        State = $state; Ready = $script:EnvironmentReadyStates -contains $state
-        CliReady = $cliReady; DaemonReady = [bool]$daemonReady
-        DaemonAccessDenied = [bool]$daemonAccessDenied
-        ExecutablePath = $identity.Path; ExecutableSha256 = $identity.Sha256
-        RepresentativeReady = if ($representative) { $representative.ExitCode -eq 0 } else { $null }
-        ClientVersion = if ($client.ExitCode -eq 0) { $client.Output.Trim() } else { $null }
-        ContextAvailable = $context.ExitCode -eq 0
-        Reason = if ($state -eq 'MATCH') { $null } elseif ($state -eq 'HOST_READY_CALLER_BLOCKED') { 'Docker daemon exists but denies the current sandbox caller' } elseif ($state -eq 'UNKNOWN') { 'current sandbox cannot determine whether the Docker daemon is ready' } else { 'Docker CLI, context, or daemon validation failed' }
+        State = $state; Ready = $ready; CliReady = [bool]$probe.CliReady
+        DaemonReady = [bool]$probe.DaemonReady; ContextAvailable = [bool]$probe.ContextReady
+        DaemonAccessDenied = [bool]$probe.CallerAccessDenied
+        Classification = $state; ClientVersion = $probe.ClientVersion; ContextName = $probe.ContextName
+        Shared = $shared; Reason = $reason
     }
 }
 
@@ -486,10 +538,26 @@ function Resolve-EnvironmentCapabilityState {
     }
     $blocked = @($required | Where-Object { -not $_.Ready })
     if ($blocked.Count -gt 0) {
-        $callerBlocked = @($blocked | Where-Object { $_.State -eq 'HOST_READY_CALLER_BLOCKED' }).Count -gt 0
+        $knownClassifications = @(
+            'DESKTOP_NOT_RUNNING','DAEMON_NOT_READY','CALLER_ACCESS_DENIED','AGENT_ASYNC_TOOL_REQUIRED',
+            'SHARED_CONTAINER_STOPPED','SHARED_CONTAINER_IDENTITY_MISMATCH','SHARED_CONTAINER_UNHEALTHY',
+            'WORKTREE_COMPOSE_NAME_CONFLICT','HOST_READY_CALLER_BLOCKED'
+        )
+        $classified = @($blocked | ForEach-Object {
+                if ($_.PSObject.Properties['Classification'] -and $_.Classification -in $knownClassifications) {
+                    [string]$_.Classification
+                } elseif ($_.State -in $knownClassifications) {
+                    [string]$_.State
+                }
+            } | Select-Object -First 1)
+        $legacyCallerBlocked = @($blocked | Where-Object { $_.State -eq 'HOST_READY_CALLER_BLOCKED' }).Count -gt 0
+        $callerBlocked = @($blocked | Where-Object {
+                $classificationValue = if ($_.PSObject.Properties['Classification']) { [string]$_.Classification } else { $null }
+                $_.State -eq 'CALLER_ACCESS_DENIED' -or $classificationValue -eq 'CALLER_ACCESS_DENIED'
+            }).Count -gt 0
         $unknown = @($blocked | Where-Object { $_.State -eq 'UNKNOWN' }).Count -gt 0
         return [pscustomobject]@{
-            State = if ($callerBlocked) { 'HOST_READY_CALLER_BLOCKED' } elseif ($unknown) { 'UNKNOWN' } else { 'ACTION_REQUIRED' }
+            State = if ($legacyCallerBlocked) { 'HOST_READY_CALLER_BLOCKED' } elseif ($callerBlocked) { 'CALLER_ACCESS_DENIED' } elseif ($classified.Count -gt 0) { $classified[0] } elseif ($unknown) { 'UNKNOWN' } else { 'ACTION_REQUIRED' }
             Ready = $false; Reason = (@($blocked | ForEach-Object { $_.Reason } | Where-Object { $_ }) -join '; ')
         }
     }
@@ -580,7 +648,7 @@ function New-EnvironmentSnapshot {
         PowerShell = if ($ProbeOverrides -and $ProbeOverrides.ContainsKey('PowerShell')) { $ProbeOverrides.PowerShell } else { Get-EnvironmentPowerShellProbe }
         Git = if ($ProbeOverrides -and $ProbeOverrides.ContainsKey('Git')) { $ProbeOverrides.Git } else { Get-EnvironmentGitProbe -RepoRoot $RepoRoot }
         Java = if ($ProbeOverrides -and $ProbeOverrides.ContainsKey('Java')) { $ProbeOverrides.Java } elseif ($needsJava) { Get-EnvironmentJavaProbe -RepoRoot $RepoRoot } else { [pscustomobject]@{ State='UNKNOWN';Ready=$false;Reason='not probed for requested capability' } }
-        Docker = if ($ProbeOverrides -and $ProbeOverrides.ContainsKey('Docker')) { $ProbeOverrides.Docker } elseif ($needsDocker) { Get-EnvironmentDockerProbe -RequireDaemon } else { [pscustomobject]@{ State='UNKNOWN';Ready=$false;Reason='not probed for requested capability' } }
+        Docker = if ($ProbeOverrides -and $ProbeOverrides.ContainsKey('Docker')) { $ProbeOverrides.Docker } elseif ($needsDocker) { Get-EnvironmentDockerProbe -RequireDaemon -RequireSharedContainers } else { [pscustomobject]@{ State='UNKNOWN';Ready=$false;Reason='not probed for requested capability' } }
         Runtime = if ($ProbeOverrides -and $ProbeOverrides.ContainsKey('Runtime')) { $ProbeOverrides.Runtime } elseif ($needsRuntime) { Get-EnvironmentRuntimeProbe } else { [pscustomobject]@{ State='UNKNOWN';Ready=$false;Reason='not probed for requested capability' } }
     }
     $capabilityState = Resolve-EnvironmentCapabilityState -Capability $Capability -Probes ([pscustomobject]$probes)
@@ -757,6 +825,10 @@ function Assert-EnvironmentReviewDocument {
         [Parameter(Mandatory)][string]$ReleaseGate,
         [Parameter(Mandatory)][ValidateSet('Manual','Automatic')][string]$Mode,
         [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),
+        [string]$TargetWorktree,
+        [string]$AnchorWorktree,
+        [string]$EvidenceRoot,
+        [string]$StateRoot,
         [string]$MachineAlias,
         [string[]]$RequiredCapability = @(),
         [ValidateRange(1,168)][int]$MaximumAgeHours = 48
@@ -766,6 +838,34 @@ function Assert-EnvironmentReviewDocument {
     if ($Review.mode -ne $Mode) { throw "Environment review mode mismatch: expected $Mode, got $($Review.mode)" }
     if ($MachineAlias -and $Review.machineAlias -ne $MachineAlias) {
         throw "Environment review machine mismatch: expected $MachineAlias, got $($Review.machineAlias)"
+    }
+    $target = if ($TargetWorktree) { $TargetWorktree } else { $RepoRoot }
+    $anchor = if ($AnchorWorktree) { $AnchorWorktree } else { $RepoRoot }
+    $targetIdentity = Assert-EnvironmentTargetWorktree -TargetWorktree $target -AnchorWorktree $anchor
+    if (-not $Review.PSObject.Properties['targetWorktree'] -or
+            -not [bool]$Review.targetWorktree.registered -or
+            $Review.targetWorktree.worktreeId -ne $targetIdentity.WorktreeId -or
+            $Review.targetWorktree.repoId -ne $targetIdentity.RepoId -or
+            -not [string]::Equals([string]$Review.targetWorktree.path,$targetIdentity.Path,[StringComparison]::OrdinalIgnoreCase) -or
+            -not [string]::Equals([string]$Review.targetWorktree.commonDirectory,$targetIdentity.CommonDirectory,[StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Environment review target worktree identity does not match the registered target.'
+    }
+    if ($StateRoot -and $MachineAlias) { Assert-EnvironmentMachineAlias -StateRoot $StateRoot -MachineAlias $MachineAlias | Out-Null }
+    $allowed = [IO.Path]::GetFullPath((Join-Path $targetIdentity.Path 'docs\exec-plans\evidence\development-environment')).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
+    $allowedRoot = $allowed.TrimEnd('\','/')
+    if ($EvidenceRoot) {
+        $resolvedRoot = [IO.Path]::GetFullPath($EvidenceRoot).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
+        if (-not $resolvedRoot.StartsWith($allowed,[StringComparison]::OrdinalIgnoreCase)) { throw 'Environment review evidence root escaped the target worktree.' }
+    }
+    $reviewEvidencePaths = @()
+    if ($Review.PSObject.Properties['evidenceRoot']) { $reviewEvidencePaths += [string]$Review.evidenceRoot }
+    if ($Review.PSObject.Properties['evidencePath']) { $reviewEvidencePaths += [string]$Review.evidencePath }
+    foreach ($reviewEvidencePath in @($reviewEvidencePaths | Where-Object { $_ })) {
+        $resolvedReviewPath = [IO.Path]::GetFullPath($reviewEvidencePath)
+        if (-not [string]::Equals($resolvedReviewPath,$allowedRoot,[StringComparison]::OrdinalIgnoreCase) -and
+            -not $resolvedReviewPath.StartsWith($allowed,[StringComparison]::OrdinalIgnoreCase)) {
+            throw 'Environment review evidence escaped the target worktree approved directory.'
+        }
     }
     if ($Review.outcome -ne 'PASS' -or [int]$Review.openCount -ne 0) { throw 'Environment review contains open blockers and cannot release.' }
     if ([datetime]$Review.reviewedAt -lt [datetime]::UtcNow.AddHours(-$MaximumAgeHours)) { throw 'Environment review evidence is stale.' }

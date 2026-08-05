@@ -3,7 +3,7 @@
   Restarts the main application and AI Dispatcher. Databases and ngrok stay up by default.
 
 .PARAMETER Full
-  Stops both Compose projects and then starts the full environment. Volumes are retained.
+  Restarts application processes and revalidates shared-persistent Docker infrastructure without stopping it.
 
 .PARAMETER Profile
   Spring profile for the main application. Defaults to local.
@@ -43,7 +43,8 @@ $lifecycleOutcome = 'FAILED'
 try {
 if ($Full) {
     Write-Host "=== Full restart ===" -ForegroundColor Cyan
-    & "$PSScriptRoot\dev-stop.ps1" -Docker
+    Write-Host "Shared persistent Docker infrastructure is preserved and revalidated by dev-start." -ForegroundColor DarkGray
+    & "$PSScriptRoot\dev-stop.ps1"
     if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
     & "$PSScriptRoot\dev-start.ps1" @startParameters
     $childExitCode = $LASTEXITCODE

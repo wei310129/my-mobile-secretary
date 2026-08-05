@@ -47,14 +47,23 @@ function Get-DevStateValue {
 }
 
 $allHealthy = $true
-$dockerAvailable = (Get-Command docker -ErrorAction SilentlyContinue) -and (Test-DockerDaemon)
+$mainSharedStatus = Get-SharedInfrastructureStatus -Name @('main-postgres','main-redis') -DockerStabilityWindowSeconds 1
+$dockerAvailable = $mainSharedStatus.Readiness -and $mainSharedStatus.Readiness.Outcome -eq 'READY'
+$sharedEntries = @{}
+foreach ($entry in @($mainSharedStatus.Containers)) { $sharedEntries[$entry.Contract.Name] = $entry }
+$dockerClassification = if ($mainSharedStatus.Classification) { $mainSharedStatus.Classification } else { 'DAEMON_NOT_READY' }
+if (-not $dockerAvailable) {
+    Add-StatusDetail -Message "Docker:         not ready ($dockerClassification)" -ForegroundColor Yellow
+}
 $checkoutVersion = Get-CheckoutServiceVersion
 $runningVersion = $null
 $versionComparison = $null
 
 # Required main infrastructure.
-$pgStatus = if ($dockerAvailable) { Get-ContainerHealth -ContainerName "mms-postgres" } else { $null }
-$redisStatus = if ($dockerAvailable) { Get-ContainerHealth -ContainerName "mms-redis" } else { $null }
+$pgEntry = $sharedEntries['main-postgres']
+$redisEntry = $sharedEntries['main-redis']
+$pgStatus = if ($dockerAvailable -and $pgEntry) { $pgEntry.Health } else { $null }
+$redisStatus = if ($dockerAvailable -and $redisEntry) { $redisEntry.Health } else { $null }
 $pgDisplay = if ($pgStatus) { $pgStatus } else { "not running" }
 $redisDisplay = if ($redisStatus) { $redisStatus } else { "not running" }
 Add-StatusDetail -Message "Postgres:       $pgDisplay"
@@ -93,9 +102,9 @@ if ($checkoutVersion.Available) {
 }
 
 # Dispatcher is isolated and affects the exit code only when explicitly required.
-$dispatcherDbStatus = if ($dockerAvailable) {
-    Get-ContainerHealth -ContainerName "mms-ai-dispatcher-postgres"
-} else { $null }
+$dispatcherContract = Get-SharedInfrastructureContracts -Name @('dispatcher-postgres') | Select-Object -First 1
+$dispatcherEntry = if ($dockerAvailable) { Get-SharedContainerStatus -Contract $dispatcherContract } else { $null }
+$dispatcherDbStatus = if ($dockerAvailable -and $dispatcherEntry -and $dispatcherEntry.Health) { $dispatcherEntry.Health } else { $null }
 $dispatcherDbHealthy = $dispatcherDbStatus -eq "healthy"
 $dispatcherDbDisplay = if ($dispatcherDbStatus) { $dispatcherDbStatus } else { "not running" }
 Add-StatusDetail -Message "Dispatcher DB:  $dispatcherDbDisplay"

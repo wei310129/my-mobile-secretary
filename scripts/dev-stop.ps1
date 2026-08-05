@@ -4,10 +4,10 @@
   Stops the main application, AI Dispatcher, and ngrok. Databases stay up by default.
 
 .PARAMETER Docker
-  Also stops both Compose projects while retaining their volumes.
+  Validates shared-persistent containers and reports them retained; it never stops or removes them.
 
 .PARAMETER RemoveVolumes
-  Requires -Docker. Permanently removes both local database volumes.
+  Rejected because shared-persistent volumes are protected.
 
 .PARAMETER VerboseOutput
   Prints normal per-component stop progress in addition to the final summary.
@@ -24,6 +24,10 @@ Set-Location $RepoRoot
 
 if ($RemoveVolumes -and -not $Docker) {
     Write-Host "-RemoveVolumes requires -Docker. Nothing was stopped." -ForegroundColor Red
+    exit 1
+}
+if ($RemoveVolumes) {
+    Write-Host "Shared-persistent containers and volumes are protected; -RemoveVolumes is not permitted." -ForegroundColor Red
     exit 1
 }
 
@@ -72,38 +76,17 @@ if ($ngrokResult.Disposition -eq 'ALREADY_STOPPED') {
 }
 
 if ($Docker) {
-    Assert-CommandAvailable -Name "docker"
-    $dockerStopFailed = $false
-    if ($RemoveVolumes) {
-        Write-DevProgress -Message "  Stopping main Compose project and removing its volumes..." -ForegroundColor Red
-        $mainComposeOutput = docker compose down -v 2>&1
-        if ($LASTEXITCODE -ne 0) { $dockerStopFailed = $true; $mainComposeOutput | ForEach-Object { Write-Host $_ } }
-
-        if (Test-Path $DispatcherComposeFile) {
-            Write-DevProgress -Message "  Stopping Dispatcher Compose project and removing its isolated volume..." -ForegroundColor Red
-            $dispatcherComposeOutput = docker compose -f $DispatcherComposeFile down -v 2>&1
-            if ($LASTEXITCODE -ne 0) { $dockerStopFailed = $true; $dispatcherComposeOutput | ForEach-Object { Write-Host $_ } }
-        }
-    } else {
-        Write-DevProgress -Message "  Stopping main Compose project (volumes retained)..." -ForegroundColor Yellow
-        $mainComposeOutput = docker compose stop 2>&1
-        if ($LASTEXITCODE -ne 0) { $dockerStopFailed = $true; $mainComposeOutput | ForEach-Object { Write-Host $_ } }
-
-        if (Test-Path $DispatcherComposeFile) {
-            Write-DevProgress -Message "  Stopping Dispatcher Compose project (isolated volume retained)..." -ForegroundColor Yellow
-            $dispatcherComposeOutput = docker compose -f $DispatcherComposeFile stop 2>&1
-            if ($LASTEXITCODE -ne 0) { $dockerStopFailed = $true; $dispatcherComposeOutput | ForEach-Object { Write-Host $_ } }
-        }
-    }
-    if ($dockerStopFailed) {
-        Write-Host "At least one Compose project failed to stop." -ForegroundColor Red
+    $sharedStatus = Get-SharedInfrastructureStatus -Name @('main-postgres','main-redis','dispatcher-postgres')
+    if ($sharedStatus.Outcome -eq 'BLOCKED') {
+        Write-Host "Shared infrastructure was not changed: $($sharedStatus.Classification) ($($sharedStatus.Reason))." -ForegroundColor Red
         exit 1
     }
+    Write-DevProgress -Message "  Shared-persistent Docker containers and volumes remain running by policy." -ForegroundColor DarkGray
 } else {
-    Write-DevProgress -Message "  Both database environments remain running. Use -Docker to stop them." -ForegroundColor DarkGray
+    Write-DevProgress -Message "  Both shared-persistent database environments remain running by policy." -ForegroundColor DarkGray
 }
 
-$databaseSummary = if ($Docker -and $RemoveVolumes) { "databases=removed" } elseif ($Docker) { "databases=stopped-volumes-retained" } else { "databases=running" }
+$databaseSummary = if ($Docker) { "databases=shared-persistent-retained" } else { "databases=running" }
 Write-Host "Development environment stopped: applications=stopped; ngrok=stopped; $databaseSummary." -ForegroundColor Green
 $lifecycleOutcome = 'READY'
 } finally {

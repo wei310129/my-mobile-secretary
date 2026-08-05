@@ -29,6 +29,7 @@
       "allowedPaths": [
         "AGENTS.md",
         ".github/**",
+        ".codex/**",
         "scripts/**",
         "pom.xml",
         "docs/test-strategy.md",

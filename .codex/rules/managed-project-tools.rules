@@ -1,0 +1,57 @@
+# Minimal project-owned entrypoints. Each script validates its own target and does not expose
+# arbitrary PowerShell, AppData paths, Maven project files, or process ids.
+
+# Destructive working-tree rewrites are blocked even if another config layer would allow them.
+# Recovery must use a new branch/commit or an explicitly reviewed file-level patch instead.
+prefix_rule(
+    pattern = ["git", "reset"],
+    decision = "forbidden",
+    justification = "Do not rewrite index/history or discard worktree changes; use a new branch or reviewed patch.",
+    match = ["git reset", "git reset --hard HEAD", "git reset HEAD -- file.txt"],
+)
+
+prefix_rule(
+    pattern = ["git", "clean"],
+    decision = "forbidden",
+    justification = "Do not delete untracked project data; inspect and remove only an explicitly approved exact target.",
+    match = ["git clean -fd", "git clean -n"],
+)
+
+prefix_rule(
+    pattern = ["git", "checkout", ["--", "-f", "--force"]],
+    decision = "forbidden",
+    justification = "Do not overwrite worktree changes with checkout; use a reviewed patch or a new worktree.",
+    match = ["git checkout -- file.txt", "git checkout -f main"],
+)
+
+prefix_rule(
+    pattern = ["git", "restore"],
+    decision = "forbidden",
+    justification = "Do not discard or rewrite worktree/index state with restore; use a reviewed patch.",
+    match = ["git restore file.txt", "git restore --staged file.txt"],
+)
+
+prefix_rule(
+    pattern = ["git", "stash"],
+    decision = "forbidden",
+    justification = "Do not hide mixed-owner changes; publish or isolate work in a separate worktree.",
+    match = ["git stash", "git stash push -u"],
+)
+
+prefix_rule(
+    pattern = ["powershell", "-ExecutionPolicy", "Bypass", "-File", ".\\scripts\\mvn-safe.ps1"],
+    decision = "allow",
+    justification = "Validated Maven runner with an exact worktree coordination resource",
+)
+
+prefix_rule(
+    pattern = ["powershell", "-ExecutionPolicy", "Bypass", "-File", ".\\scripts\\stop-managed-worktree-process.ps1"],
+    decision = "allow",
+    justification = "Managed stop resolves PID internally and requires exact worktree owner proof",
+)
+
+prefix_rule(
+    pattern = ["powershell", "-ExecutionPolicy", "Bypass", "-File", "D:\\my-project\\my-mobile-secretary\\scripts\\stop-managed-worktree-process.ps1"],
+    decision = "allow",
+    justification = "Managed stop entrypoint used from a project worktree",
+)

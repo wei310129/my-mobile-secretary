@@ -3,7 +3,7 @@ param()
 $ErrorActionPreference = 'Stop'
 $adapter = Join-Path (Split-Path -Parent $PSScriptRoot) 'coordination-maven.ps1'
 . $adapter
-$base = Join-Path (Split-Path -Parent $PSScriptRoot) '.coordination-test-state'
+$base = Join-Path ([IO.Path]::GetTempPath()) 'mms-coordination-test'
 $root = Join-Path $base ([guid]::NewGuid().ToString())
 [IO.Directory]::CreateDirectory($root) | Out-Null
 $jobs = [Collections.Generic.List[object]]::new()

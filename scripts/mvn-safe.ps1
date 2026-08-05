@@ -24,6 +24,7 @@ param(
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\_maven-quiet.ps1"
 . "$PSScriptRoot\coordination-maven.ps1"
+. "$PSScriptRoot\project-tool-policy.ps1"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $mavenWrapper = Join-Path $repoRoot 'mvnw.cmd'
@@ -36,6 +37,7 @@ try {
     if (-not $MavenArguments -or $MavenArguments.Count -eq 0) {
         throw '請提供 Maven goal，例如 test 或 package。'
     }
+    Assert-RepositoryMavenInvocation -RepoRoot $repoRoot -Arguments $MavenArguments
 
     # Windows treats environment keys case-insensitively. Keep one canonical Path entry so
     # cmd.exe/Java children receive a clean environment block.

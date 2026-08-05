@@ -32,6 +32,8 @@
         ".codex/**",
         "scripts/**",
         "pom.xml",
+        "docs/agent-context/development-environment-preflight.md",
+        "docs/exec-plans/evidence/development-environment/**",
         "docs/test-strategy.md",
         "docs/tooling-backlog.md",
         "docs/decisions/current.md"

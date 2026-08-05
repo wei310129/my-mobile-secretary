@@ -52,7 +52,9 @@ try {
 
     $validFiles = Write-ChangedFiles -Name 'valid.json' -Files @(
         @{ filename = '.github/merge-policy.json'; status = 'added' },
-        @{ filename = 'scripts/merge-policy.ps1'; status = 'added' }
+        @{ filename = 'scripts/merge-policy.ps1'; status = 'added' },
+        @{ filename = 'docs/agent-context/development-environment-preflight.md'; status = 'added' },
+        @{ filename = 'docs/exec-plans/evidence/development-environment/tooling/automatic.json'; status = 'added' }
     )
     $common = @{
         BaseRef = 'main'

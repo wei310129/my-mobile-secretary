@@ -12,6 +12,13 @@
 - 新增使用者可感知的 domain event 時，必須同步接入通用 LifeRecord／tag graph recorder；開發回饋不記為生活事件。
 - 不得靜默更改使用者已拍板的提醒頻率、緩衝時間或產品行為；需要變更時先取得確認。
 - 不得把 secrets、API key 或本機 `secrets.yaml` 提交進版控。
+- Agent 不得從「完成工作」「建立 PR」「CI 全綠」、過往授權或使用者沉默推論 merge 權限；每次 merge
+  都必須取得使用者當輪對精確 PR／head SHA 的明確授權，並重新驗證 PR 仍是該 SHA。
+- Agent 只可在 `Merge policy` 與所有 required checks 對同一 head SHA 成功、branch protection 無 bypass、
+  review conversations 已解決、PR 非 draft 且基於最新 `main` 時執行一般 merge；不得使用 admin bypass、force、改寫歷史或先 merge
+  再等待 gate。授權後若 head SHA 改變，舊授權立即失效，必須重新詢問。Agent merge 一律透過
+  `scripts/merge-pr.ps1 -PrNumber <PR> -ExpectedHeadSha <SHA> -UserAuthorizedThisTurn -Execute`，不得直接
+  呼叫 `gh pr merge` 或其他合併入口。
 
 ## 開發 context 與輸出控制
 

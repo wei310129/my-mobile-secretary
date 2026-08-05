@@ -116,7 +116,16 @@ shard 中恰好各出現一次，漏測、重複或額外 suite 都失敗。
 ### GitHub Actions
 
 - `.github/workflows/test-gates.yml` 使用 Java 21 Ubuntu ephemeral runners 與 Maven dependency cache。
-- PR required checks 應設定為 `Fast tests`、三個 `Integration shard` 與
+- PR 先執行 required `Merge policy`：只接受已登錄 branch ownership，驗證 changed-path allowlist、敏感
+  刪除／改名、Flyway immutability／版本唯一性、handoff 狀態／SHA ancestry 與一次性 trigger 消耗一致性。
+  未登錄 branch、跨 lane 寫入或 durable state 矛盾一律 fail closed。
+- Agent 實際合併只能經 `scripts/merge-pr.ps1`，以使用者當輪授權的 PR／head SHA 重新查核 GitHub；
+  head 改變、draft、非 CLEAN、required check 不綠、branch protection 不 strict 或管理員可 bypass 都拒絕。
+- Commit 前可用 `scripts/merge-policy.ps1 -UseWorkingTreeChanges` 依 `git status --porcelain` 驗證本機範圍；
+  CI 不信任本機摘要，仍從 GitHub Pull Files API 重新取得完整 changed-file 清單。
+- `pom.xml`、test／CI tooling、migration、application config 或 integration base 等高風險路徑會在 PR
+  合併前加跑 one-JVM `PR risk serial regression`；`Merge policy` 只有在必要 serial 成功後才成功。
+- PR required checks 應設定為 `Merge policy`、`Fast tests`、三個 `Integration shard` 與
   `Automated regression complete`；integration job 之間並行，單一 job 內保持 serial。
 - `main` push 額外執行 `Main serial regression`，偵測 context cache、順序或跨 suite 污染；部署只能使用
   同一 SHA 已通過 PR 聚合與 main serial regression 的版本。

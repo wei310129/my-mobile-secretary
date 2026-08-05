@@ -142,6 +142,31 @@ function Ensure-ManagedDockerDaemon {
         if($caller.IsSandbox -or $env:AGENT_ASYNC_TOOL_REQUIRED -eq 'true'){
             return [pscustomobject]@{Outcome='BLOCKED';Classification='AGENT_ASYNC_TOOL_REQUIRED';Reason='Docker Desktop is not stable; a host managed launcher must be held by the agent monitor';Started=$false;StableSamples=$initial.StableSamples;Probe=$initial.Probe}
         }
+        $managedRoot = 'D:\my-project\my-mobile-secretary'
+        $managedRootVariable = Get-Variable -Name ManagedDockerProjectRoot -ErrorAction SilentlyContinue
+        if ($managedRootVariable -and $managedRootVariable.Value) { $managedRoot = [string]$managedRootVariable.Value }
+        $currentRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot)).TrimEnd('\','/')
+        $managedRoot = [IO.Path]::GetFullPath($managedRoot).TrimEnd('\','/')
+        $formalEntrypoint = Get-Command Invoke-ManagedDockerDesktop -ErrorAction SilentlyContinue
+        $formalRootMatch = [string]::Equals($currentRoot,$managedRoot,[StringComparison]::OrdinalIgnoreCase) -or
+            $currentRoot.StartsWith("$managedRoot\var\worktrees\",[StringComparison]::OrdinalIgnoreCase)
+        if (-not $ProbeAdapter -and $formalEntrypoint -and $formalRootMatch) {
+            $formal = Invoke-ManagedDockerDesktop -RepoRoot $currentRoot -TimeoutSeconds $StartupTimeoutSeconds
+            $formalReady = $formal.outcome -eq 'READY' -and [bool]$formal.daemonReady
+            $formalClass = if ($formalReady) { 'MATCH' } elseif ($formal.failureClassification -eq 'COORDINATION_BUSY') { 'BUSY' } elseif ($formal.failureClassification -eq 'EXECUTABLE_IDENTITY_INVALID') { 'DESKTOP_NOT_RUNNING' } else { 'DAEMON_NOT_READY' }
+            $formalProbe = [pscustomobject]@{
+                Classification=if($formalReady){$null}else{$formalClass}; Error=if($formalReady){$null}else{[string]$formal.failureClassification}
+                ContextName=$formal.dockerContext; ClientVersion=$null; DaemonVersion=$formal.serverVersion
+                CliReady=([bool]$formal.cliPath); ContextReady=(-not [string]::IsNullOrWhiteSpace([string]$formal.dockerContext)); DaemonReady=[bool]$formal.daemonReady
+            }
+            return [pscustomobject]@{
+                Outcome=if($formalReady){'READY'}else{'BLOCKED'}; Classification=$formalClass; Reason=if($formalReady){$null}else{"formal managed Docker launcher: $($formal.failureClassification)"}
+                Started=([string]$formal.launchDisposition -eq 'started'); StableSamples=0; Probe=$formalProbe; FormalReceipt=$formal
+            }
+        }
+        if (-not $ProbeAdapter -and -not $formalRootMatch) {
+            return [pscustomobject]@{Outcome='BLOCKED';Classification=if($initial.Classification){$initial.Classification}else{'DAEMON_NOT_READY'};Reason='Docker Desktop launch is restricted to the verified formal managed entrypoint for the primary repository root';Started=$false;StableSamples=$initial.StableSamples;Probe=$initial.Probe}
+        }
         $desktop = @(Get-Process -Name 'Docker Desktop' -ErrorAction SilentlyContinue)
         $backend = @(Get-Process -Name 'com.docker.backend' -ErrorAction SilentlyContinue)
         if($desktop.Count -gt 0 -or $backend.Count -gt 0){
@@ -149,15 +174,7 @@ function Ensure-ManagedDockerDaemon {
         }
         $identity = Get-DockerDesktopExecutableIdentity
         if(-not $identity.Ready){return [pscustomobject]@{Outcome='BLOCKED';Classification='DESKTOP_NOT_RUNNING';Reason=$identity.Reason;Started=$false;StableSamples=$initial.StableSamples}}
-        $process = Start-Process -FilePath $identity.Path -WindowStyle Hidden -PassThru
-        $deadline = [datetime]::UtcNow.AddSeconds($StartupTimeoutSeconds)
-        $last = $initial
-        while([datetime]::UtcNow -lt $deadline){
-            $last = Test-ManagedDockerReadiness -StabilityWindowSeconds $StabilityWindowSeconds -StabilityIntervalSeconds $StabilityIntervalSeconds -ProbeAdapter $ProbeAdapter
-            if($last.Outcome -eq 'READY'){return [pscustomobject]@{Outcome='READY';Classification='MATCH';Reason=$null;Started=$true;LauncherPid=$process.Id;StableSamples=$last.StableSamples;Probe=$last.Probe;ExecutableIdentity=$identity}}
-            Start-Sleep -Seconds 2
-        }
-        return [pscustomobject]@{Outcome='BLOCKED';Classification=if($last.Classification){$last.Classification}else{'DAEMON_NOT_READY'};Reason="Docker Desktop did not pass bounded readiness within $StartupTimeoutSeconds seconds";Started=$true;LauncherPid=$process.Id;StableSamples=$last.StableSamples;Probe=$last.Probe;ExecutableIdentity=$identity}
+        return [pscustomobject]@{Outcome='BLOCKED';Classification=if($initial.Classification){$initial.Classification}else{'DAEMON_NOT_READY'};Reason='Docker Desktop launch requires the verified formal managed entrypoint';Started=$false;StableSamples=$initial.StableSamples;Probe=$initial.Probe;ExecutableIdentity=$identity}
     } finally {
         if($held){$mutex.ReleaseMutex()}
         $mutex.Dispose()

@@ -8,6 +8,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\coordination-common.ps1"
+. "$PSScriptRoot\managed-docker-desktop.ps1"
 . "$PSScriptRoot\docker-shared-infrastructure.ps1"
 
 try {

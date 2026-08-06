@@ -40,5 +40,6 @@ foreach ($name in @('dev-start.ps1','dev-restart.ps1','dev-stop.ps1')) {
 $restartText = Get-Content -LiteralPath (Join-Path $scriptsRoot 'dev-restart.ps1') -Raw -Encoding UTF8
 Assert-LifecycleTest ($restartText.Contains('Shared persistent Docker infrastructure is preserved')) 'full restart does not preserve shared infrastructure policy'
 Assert-LifecycleTest ($restartText -notmatch '(?im)dev-stop\.ps1[^\r\n]*-Docker') 'full restart forwards a Docker stop mutation'
+Assert-LifecycleTest ($restartText.Contains('$startParameters["NoNgrok"] = $true')) 'restart cannot preserve a local-only NoNgrok decision'
 
-[pscustomobject]@{status='passed';assertions=11;generationRollback='verified';sharedDockerLifecycle='no direct compose mutation'} | ConvertTo-Json -Compress
+[pscustomobject]@{status='passed';assertions=12;generationRollback='verified';sharedDockerLifecycle='no direct compose mutation'} | ConvertTo-Json -Compress

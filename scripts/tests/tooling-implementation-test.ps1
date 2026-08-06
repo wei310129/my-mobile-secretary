@@ -17,6 +17,8 @@ $tests = @(
     'test-strategy-tools-test.ps1',
     'merge-policy-test.ps1',
     'merge-pr-test.ps1',
+    'producer-handoff-test.ps1',
+    'producer-handoff-workflow-test.ps1',
     'environment-preflight-test.ps1',
     'environment-release-review-test.ps1',
     'shared-infrastructure-test.ps1',

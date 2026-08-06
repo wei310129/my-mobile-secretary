@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "enabledVariable": "TOOLING_PRODUCER_ENABLED",
+  "appIdVariable": "TOOLING_PRODUCER_APP_ID",
+  "appPrivateKeySecret": "TOOLING_PRODUCER_APP_PRIVATE_KEY",
+  "environment": "tooling-producer",
+  "receiptIssueTitle": "[Coordination] Producer handoff receipts",
+  "maxAutomaticRebuilds": 1,
+  "events": [
+    {
+      "eventId": "TR-DESKTOP-ROUTE-BENCHMARK-START",
+      "producerLane": "laptop",
+      "consumerLane": "desktop",
+      "statePath": "docs/exec-plans/active/handoffs/laptop-trigger-state.json",
+      "stateCollection": "triggers",
+      "requestDirectory": "docs/exec-plans/active/handoffs/requests",
+      "receiptDirectory": "docs/exec-plans/active/handoffs/receipts",
+      "evidencePlanPath": "docs/exec-plans/active/calendar-w11-h-two-machine-development-test-plan.md",
+      "evidenceGate": "W11-H coordination publication",
+      "allowedFromStatuses": [
+        "BLOCKED",
+        "PENDING"
+      ],
+      "targetStatus": "READY",
+      "notification": "NOTIFY_AND_CONTINUE",
+      "consumerAction": "Desktop fetches origin/main, verifies the published SHA and allowlist, records ACK, then starts the W11-H route benchmark evidence lane.",
+      "allowedPaths": [
+        "docs/exec-plans/evidence/calendar-w11-h/desktop-route-benchmark/**",
+        "docs/exec-plans/evidence/calendar-w11-h/sealed-holdout/**",
+        "docs/exec-plans/evidence/calendar-w11-h/public-response-evaluation/**",
+        "docs/exec-plans/evidence/development-environment/calendar-w11-desktop.json"
+      ],
+      "forbiddenPaths": [
+        "src/**",
+        "pom.xml",
+        "scripts/**",
+        "src/main/resources/db/migration/**"
+      ],
+      "resourceClaims": [],
+      "externalMutationCount": 0
+    }
+  ]
+}

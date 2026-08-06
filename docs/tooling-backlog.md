@@ -8,7 +8,10 @@
 
 ## 待處理
 
-目前沒有已登記的待處理項目。
+- Producer handoff automation v1 已有獨立 tooling implementation，但在 laptop-owned coordination PR
+  發布 `TR-DESKTOP-ROUTE-BENCHMARK-START` live contract、完成 GitHub App/environment 設定、dry-run、
+  真實 state-only PR／Issue receipt 與 desktop fetch/ACK 前，不得視為完成或移除此項。Tooling branch
+  不得為了驗收自行修改 laptop producer state。
 
 ## 已觀察案例與決策索引
 

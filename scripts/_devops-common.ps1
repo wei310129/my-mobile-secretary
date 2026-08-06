@@ -625,17 +625,81 @@ function Get-NgrokPublicUrl {
     return $null
 }
 
+function Resolve-RegisteredPrimaryRepositoryRoot {
+    # Linked worktrees intentionally do not contain a copy of the untracked primary
+    # secrets.yaml. Resolve only the registered primary worktree in the same Git
+    # common-dir; never accept an arbitrary sibling or a path supplied by a caller.
+    $worktreeLines = @(& git -C $RepoRoot worktree list --porcelain 2>$null)
+    if ($LASTEXITCODE -ne 0) { return $null }
+    $primaryLine = $worktreeLines |
+        Where-Object { [string]$_ -match '^worktree\s+' } |
+        Select-Object -First 1
+    if (-not $primaryLine) { return $null }
+    $primaryText = ([string]$primaryLine -replace '^worktree\s+', '').Trim()
+    if ([string]::IsNullOrWhiteSpace($primaryText)) { return $null }
+
+    try { $primaryRoot = [IO.Path]::GetFullPath($primaryText) }
+    catch { return $null }
+    if (-not (Test-Path -LiteralPath (Join-Path $primaryRoot '.git') -PathType Container)) { return $null }
+
+    $commonDirectory = @(& git -C $RepoRoot rev-parse --git-common-dir 2>$null) |
+        Select-Object -First 1
+    $primaryCommonDirectory = @(& git -C $primaryRoot rev-parse --git-common-dir 2>$null) |
+        Select-Object -First 1
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace([string]$commonDirectory) -or
+            [string]::IsNullOrWhiteSpace([string]$primaryCommonDirectory)) { return $null }
+
+    try {
+        $commonPath = if ([IO.Path]::IsPathRooted([string]$commonDirectory)) {
+            [IO.Path]::GetFullPath([string]$commonDirectory)
+        } else {
+            [IO.Path]::GetFullPath((Join-Path $RepoRoot ([string]$commonDirectory)))
+        }
+        $primaryCommonPath = if ([IO.Path]::IsPathRooted([string]$primaryCommonDirectory)) {
+            [IO.Path]::GetFullPath([string]$primaryCommonDirectory)
+        } else {
+            [IO.Path]::GetFullPath((Join-Path $primaryRoot ([string]$primaryCommonDirectory)))
+        }
+    } catch { return $null }
+    if (-not [string]::Equals($commonPath, $primaryCommonPath, [StringComparison]::OrdinalIgnoreCase)) { return $null }
+    return $primaryRoot.TrimEnd('\', '/')
+}
+
 function Get-LocalSecretValue {
     param([Parameter(Mandatory)][string]$Name)
-    $secretsFile = Join-Path $RepoRoot "secrets.yaml"
-    if (-not (Test-Path -LiteralPath $secretsFile -PathType Leaf)) { return $null }
-    $raw = Get-Content -LiteralPath $secretsFile -Raw -Encoding UTF8
+    $roots = [Collections.Generic.List[string]]::new()
+    $roots.Add([IO.Path]::GetFullPath($RepoRoot))
+    $primaryRoot = Resolve-RegisteredPrimaryRepositoryRoot
+    if ($primaryRoot -and -not [string]::Equals($primaryRoot, $roots[0], [StringComparison]::OrdinalIgnoreCase)) {
+        $roots.Add($primaryRoot)
+    }
+
     $pattern = '(?m)^\s*' + [regex]::Escape($Name) + '\s*:\s*([^#\r\n]+)'
-    $match = [regex]::Match($raw, $pattern)
-    if (-not $match.Success) { return $null }
-    $value = $match.Groups[1].Value.Trim().Trim('"').Trim("'")
-    if ([string]::IsNullOrWhiteSpace($value) -or $value -eq "not-configured") { return $null }
-    return $value
+    foreach ($root in $roots) {
+        $secretsFile = Join-Path $root "secrets.yaml"
+        if (-not (Test-Path -LiteralPath $secretsFile -PathType Leaf)) { continue }
+        $raw = Get-Content -LiteralPath $secretsFile -Raw -Encoding UTF8
+        $match = [regex]::Match($raw, $pattern)
+        if (-not $match.Success) { continue }
+        $value = $match.Groups[1].Value.Trim().Trim('"').Trim("'")
+        if ([string]::IsNullOrWhiteSpace($value) -or $value -eq "not-configured") { continue }
+        return $value
+    }
+    return $null
+}
+
+function Initialize-LocalApplicationSecretEnvironment {
+    # Spring Boot runs with the linked worktree as its working directory, so its
+    # relative secrets import cannot see the primary root. Pass only the required
+    # HMAC contract through the child process environment; do not copy or write secrets.
+    $hmacKey = Get-LocalSecretValue -Name 'CONVERSATION_SCOPE_HMAC_KEY_BASE64'
+    if ($hmacKey) {
+        [Environment]::SetEnvironmentVariable('CONVERSATION_SCOPE_HMAC_KEY_BASE64', $hmacKey, 'Process')
+    }
+    $previousHmacKey = Get-LocalSecretValue -Name 'CONVERSATION_SCOPE_PREVIOUS_HMAC_KEY_BASE64'
+    if ($previousHmacKey) {
+        [Environment]::SetEnvironmentVariable('CONVERSATION_SCOPE_PREVIOUS_HMAC_KEY_BASE64', $previousHmacKey, 'Process')
+    }
 }
 
 function Get-LineAccessToken {

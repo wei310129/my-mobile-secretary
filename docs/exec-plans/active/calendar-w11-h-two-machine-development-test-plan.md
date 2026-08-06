@@ -25,7 +25,7 @@ sealed holdout 與黑箱公開回覆／latency evidence，不執行 Maven、Dock
 ```json
 {
   "observedOn": "2026-08-07",
-  "observedOriginMain": "0eba57aab203b8cd861055b4105d2a31b37464ec",
+  "observedOriginMain": "e5a1a42a092f72e49bb773423501c655cb388c77",
   "coordinationTrigger": "TR-DESKTOP-ROUTE-BENCHMARK-START",
   "coordinationStatus": "BLOCKED_NEEDS_PUBLISH",
   "externalMutationCount": 0

@@ -1249,7 +1249,8 @@ public class IntentService {
                     ASK_FREQUENT_STORE, ASK_INVENTORY_EXTREMES,
                     CHECK_SHOPPING_INVENTORY, LIST_UNPLACED_ITEMS,
                     ASK_ITEM_KNOWLEDGE_SUMMARY, ASK_SCHEDULE_REMINDER,
-                    ASK_SCHEDULE_INFO, ASK_PRICE_HISTORY, ASK_PLACE, ASK_TASK_PLACE,
+                    ASK_SCHEDULE_INFO, ASK_PRICE_HISTORY, ASK_PLACE, ASK_PLACE_CATALOG,
+                    ADOPT_PLACE_CATALOG, ASK_TASK_PLACE,
                     LIST_TASKS, LIST_SCHEDULES, SUGGEST_NEARBY, BOOK_RESTAURANT,
                     UNKNOWN -> false;
             default -> true;

@@ -265,7 +265,14 @@ if ($SkipDispatcher) {
 $dispatcherPid = $null
 if ($SkipDispatcher) {
     $previousState = Read-DevState
-    $dispatcherPid = Resolve-ManagedProcessId -TrackedProcessId $previousState.dispatcherPid `
+    $previousDispatcherPid = $null
+    if ($previousState) {
+        $dispatcherProperty = $previousState.PSObject.Properties['dispatcherPid']
+        if ($dispatcherProperty) {
+            $previousDispatcherPid = $dispatcherProperty.Value
+        }
+    }
+    $dispatcherPid = Resolve-ManagedProcessId -TrackedProcessId $previousDispatcherPid `
         -Port $DispatcherPort -Kind "Dispatcher"
     if ($dispatcherPid) {
         Write-DevProgress -Message "[5/6] Preserving existing AI Dispatcher PID $dispatcherPid (-SkipDispatcher)." `

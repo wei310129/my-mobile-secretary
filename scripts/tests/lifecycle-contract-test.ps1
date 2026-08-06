@@ -31,6 +31,7 @@ $stateWrite = $startText.IndexOf('$stateUpdates = @{', [StringComparison]::Ordin
 Assert-LifecycleTest ($lineFailure -ge 0 -and $stateWrite -gt $lineFailure) 'dev-start writes healthy state before final LINE failure gate'
 Assert-LifecycleTest ($startText.Contains('Remove-DevServiceGenerationIfUnpublished -Generation $script:StartServiceGeneration')) 'dev-start lacks unpublished generation rollback'
 Assert-LifecycleTest ($startText.Contains('$script:StartServiceGenerationPublished = $false')) 'dev-start lacks unpublished generation default'
+Assert-LifecycleTest ($startText.Contains('$previousState.PSObject.Properties[''dispatcherPid'']')) 'dev-start does not handle an absent Dispatcher state field under strict mode'
 
 foreach ($name in @('dev-start.ps1','dev-restart.ps1','dev-stop.ps1')) {
     $text = Get-Content -LiteralPath (Join-Path $scriptsRoot $name) -Raw -Encoding UTF8
@@ -40,4 +41,4 @@ $restartText = Get-Content -LiteralPath (Join-Path $scriptsRoot 'dev-restart.ps1
 Assert-LifecycleTest ($restartText.Contains('Shared persistent Docker infrastructure is preserved')) 'full restart does not preserve shared infrastructure policy'
 Assert-LifecycleTest ($restartText -notmatch '(?im)dev-stop\.ps1[^\r\n]*-Docker') 'full restart forwards a Docker stop mutation'
 
-[pscustomobject]@{status='passed';assertions=10;generationRollback='verified';sharedDockerLifecycle='no direct compose mutation'} | ConvertTo-Json -Compress
+[pscustomobject]@{status='passed';assertions=11;generationRollback='verified';sharedDockerLifecycle='no direct compose mutation'} | ConvertTo-Json -Compress

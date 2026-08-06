@@ -92,6 +92,8 @@ public record IntentResult(
         SCHEDULES_LISTED,
         SUGGESTION_MADE,
         PLACE_INFO,
+        PLACE_CATALOG_INFO,
+        PLACE_CATALOG_ADOPTED,
         PLACE_CREATED,
         PLACE_UPDATED,
         TASK_PLACE_BOUND,
@@ -574,6 +576,24 @@ public record IntentResult(
         return new IntentResult(Action.PLACE_INFO,
                 "我知道「%s」%s。\n- %s%s%s".formatted(
                         place.getName(), type, location, learned, question), null, null);
+    }
+
+    public static IntentResult placeCatalogMessage(String message) {
+        return new IntentResult(Action.PLACE_CATALOG_INFO, message, null, null);
+    }
+
+    public static IntentResult placeCatalogAdopted(
+            com.aproject.aidriven.mymobilesecretary.geo.catalog.application.SystemPlaceCatalogView point,
+            boolean discloseSavedState) {
+        String location = point.address() == null || point.address().isBlank()
+                ? "尚未有可讀地址"
+                : "地址：" + point.address();
+        String coordinates = point.hasCoordinates() ? "；已有座標證據" : "；目前沒有座標證據，不能用於路線判斷";
+        String savedState = discloseSavedState ? "；這次沒有建立自訂地點" : "";
+        return new IntentResult(Action.PLACE_CATALOG_ADOPTED,
+                "已選用系統內建地點「%s」%s。來源：%s%s%s"
+                        .formatted(point.pointName(), location, point.sourceName(), coordinates, savedState),
+                null, null);
     }
 
     /** 一句多操作的合併回覆:逐項列出各自結果。 */

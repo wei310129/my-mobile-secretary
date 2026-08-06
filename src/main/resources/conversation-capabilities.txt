@@ -438,3 +438,5 @@
 438|引用剛上傳的新版船票說「把日本旅行的船票 PDF 換成這版」|MANAGE_CALENDAR_ATTACHMENT|title=船票 PDF;options.condition=REPLACE;options.referenceTitle=日本旅行;options.category=PLAN；只接受 server trusted media reference，binding revision+1且舊 content grants全撤銷
 439|永久刪掉日本旅行的船票 PDF 原檔|MANAGE_CALENDAR_ATTACHMENT|title=船票 PDF;options.condition=DELETE_SOURCE;options.referenceTitle=日本旅行;options.category=PLAN；只回永久刪除確認預覽，未確認前 media/binding/grant mutation=0
 440|直接同步到我的 iPhone 行事曆|EXPLAIN_CALENDAR_EXTERNAL_SYNC|只說明一次性 ICS 與未來 iOS client/EventKit 邊界；不得宣稱已寫入裝置、背景刷新或雙向同步，所有業務 mutation=0
+441|系統知道台北車站嗎|ASK_PLACE_CATALOG|placeName=台北車站；只查系統內建 catalog，不建立自訂地點
+442|採用系統內建的台北車站南一門|ADOPT_PLACE_CATALOG|placeName=台北車站南一門；只產生 typed evidence，不建立自訂地點

@@ -24,11 +24,22 @@ Assert-MavenWorktreeTest ([string]::Equals($anchor, $expectedAnchor, [StringComp
 Assert-MavenWorktreeTest (Test-Path -LiteralPath $anchor -PathType Container) 'Maven Git anchor directory is not present'
 
 $seen = Invoke-WithMavenWorktreeGitContext -RepoRoot $repoRoot -Runner {
-    [Environment]::GetEnvironmentVariable('MMS_MAVEN_GIT_DIRECTORY', 'Process')
+    [pscustomobject]@{
+        MavenGitDirectory = [Environment]::GetEnvironmentVariable('MMS_MAVEN_GIT_DIRECTORY', 'Process')
+        GitDirectory = [Environment]::GetEnvironmentVariable('GIT_DIR', 'Process')
+        GitWorkTree = [Environment]::GetEnvironmentVariable('GIT_WORK_TREE', 'Process')
+    }
 }
-Assert-MavenWorktreeTest ([string]::Equals([string]$seen, $anchor, [StringComparison]::OrdinalIgnoreCase)) `
+Assert-MavenWorktreeTest ([string]::Equals([string]$seen.MavenGitDirectory, $anchor, [StringComparison]::OrdinalIgnoreCase)) `
     'Maven runner did not receive the verified worktree Git anchor'
-Assert-MavenWorktreeTest ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('MMS_MAVEN_GIT_DIRECTORY', 'Process'))) `
+$expectedGitDirectory = [IO.Path]::GetFullPath($gitDirectory).TrimEnd('\', '/')
+Assert-MavenWorktreeTest ([string]::Equals([string]$seen.GitDirectory, $expectedGitDirectory, [StringComparison]::OrdinalIgnoreCase)) `
+    'Maven runner did not receive the verified GIT_DIR'
+Assert-MavenWorktreeTest ([string]::Equals([string]$seen.GitWorkTree, $repoRoot, [StringComparison]::OrdinalIgnoreCase)) `
+    'Maven runner did not receive the target GIT_WORK_TREE'
+Assert-MavenWorktreeTest ([string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('MMS_MAVEN_GIT_DIRECTORY', 'Process')) -and
+        [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('GIT_DIR', 'Process')) -and
+        [string]::IsNullOrWhiteSpace([Environment]::GetEnvironmentVariable('GIT_WORK_TREE', 'Process'))) `
     'Maven worktree Git context was not restored after the runner'
 
 $pom = Get-Content -Raw -Encoding UTF8 (Join-Path $repoRoot 'pom.xml')

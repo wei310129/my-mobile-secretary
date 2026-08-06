@@ -33,12 +33,25 @@ function Invoke-WithMavenWorktreeGitContext {
         [Parameter(Mandatory)][scriptblock]$Runner
     )
     $previous = [Environment]::GetEnvironmentVariable('MMS_MAVEN_GIT_DIRECTORY', 'Process')
+    $previousGitDirectory = [Environment]::GetEnvironmentVariable('GIT_DIR', 'Process')
+    $previousGitWorkTree = [Environment]::GetEnvironmentVariable('GIT_WORK_TREE', 'Process')
     try {
+        $gitDirectoryLines = @(& git -C $RepoRoot rev-parse --git-dir 2>$null)
+        if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace([string]($gitDirectoryLines | Select-Object -First 1))) {
+            throw 'Maven worktree Git directory could not be resolved for native Git status.'
+        }
+        $gitDirectory = [IO.Path]::GetFullPath([string]($gitDirectoryLines | Select-Object -First 1)).TrimEnd('\', '/')
         $env:MMS_MAVEN_GIT_DIRECTORY = Resolve-MavenGitDirectoryAnchor -RepoRoot $RepoRoot
+        $env:GIT_DIR = $gitDirectory
+        $env:GIT_WORK_TREE = [IO.Path]::GetFullPath($RepoRoot).TrimEnd('\', '/')
         return & $Runner
     } finally {
         if ($null -eq $previous) { Remove-Item Env:MMS_MAVEN_GIT_DIRECTORY -ErrorAction SilentlyContinue }
         else { $env:MMS_MAVEN_GIT_DIRECTORY = $previous }
+        if ($null -eq $previousGitDirectory) { Remove-Item Env:GIT_DIR -ErrorAction SilentlyContinue }
+        else { $env:GIT_DIR = $previousGitDirectory }
+        if ($null -eq $previousGitWorkTree) { Remove-Item Env:GIT_WORK_TREE -ErrorAction SilentlyContinue }
+        else { $env:GIT_WORK_TREE = $previousGitWorkTree }
     }
 }
 

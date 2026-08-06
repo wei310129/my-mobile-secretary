@@ -58,6 +58,9 @@ typed handoff requirement 交給桌電。
 ### L3：Calendar 與 Travel 主線
 
 - 依 Calendar active plan 完成 W9-D、W9-E、W10；每輪重新取得 source／Flyway claim。
+- W11-H 依 `calendar-w11-h-two-machine-development-test-plan.md` 執行。筆電先發布
+  `TR-DESKTOP-ROUTE-BENCHMARK-START` coordination-only handoff；桌電 ACK 後只做 evidence，筆電仍是
+  production owner 並可繼續 eligible H1–H4 gate。
 - W10 只解除 Travel 3B-B recurrence dependency；Travel 必須自行通過 3B-B。
 - W10 合併後更新 `TR-CALENDAR-W10-MERGED` 並 `HARD_YIELD`，讓使用者決定先恢復 Travel、
   發 schema token（若其他條件也成立）或繼續筆電主線；不得默認替使用者選。

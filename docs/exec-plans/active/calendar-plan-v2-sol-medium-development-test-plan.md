@@ -2584,6 +2584,11 @@ W10-E–G published release gate（2026-07-30，PASS_PUBLISHED）：
 
 ### 舵輪 11：Cutover rehearsal 與全路徑 release gate
 
+W11 的 H1–H7 泛化語意、秘書式回覆、時間理解、多輪草稿、provider route、adaptive reminder、
+adjacent-itinerary feasibility，以及筆電 production＋桌電 evidence-only 的執行契約，統一以
+`calendar-w11-h-two-machine-development-test-plan.md` 為直接子計畫。該子計畫不得改寫本文件前置
+wheel 的 PASS 條件；桌電 evidence lane 也不得取得 Calendar／Intent／LINE／Flyway ownership。
+
 Gate：
 
 - permanent regression、sealed holdout、API、RLS、reminder、route、quoted context 全通過。

@@ -23,6 +23,12 @@
 產品 active plan 仍是該 bounded context 的功能契約；本文件只決定「誰、何時、在哪一條 branch
 實作」，不重寫 Calendar、Travel、Booking 或 Conversation 的產品語意。
 
+Calendar W11-H 另核准一條無 production/resource claim 的桌電 evidence-only lane，完整契約見
+`calendar-w11-h-two-machine-development-test-plan.md`。它不改變 production ownership；只有
+`TR-DESKTOP-ROUTE-BENCHMARK-START` Git READY 且桌電 ACK 後，桌電才可寫入該計畫的 evidence
+allowlist。W11 closure 與 `TR-MACHINE-LANE-SWAP-MERGED` 前，桌電仍不是 Calendar／Intent／LINE／
+Flyway production owner。
+
 ## 2. 已拍板決策
 
 - 桌電順序為 Booking B3／B4 優先，接著是 ADD execution。
@@ -112,6 +118,7 @@ Calendar gate。桌電不得自行修改這段狀態替自己開閘。
 | `docs/decisions/current.md`、active index、本文件、筆電 runbook | 筆電 | 筆電 |
 | Booking active plan、桌電 runbook 的 gate evidence | 筆電發布 B2 前 | 桌電可精準更新；不得改中央決策 |
 | 桌電啟動 prompt | 筆電 | 筆電；視為模板，不回填執行證據 |
+| `docs/exec-plans/evidence/calendar-w11-h/**`、`docs/exec-plans/evidence/development-environment/calendar-w11-desktop.json` | 不建立 | 只有 route-benchmark trigger READY／ACK 後由桌電寫入明列的 evidence allowlist；不得延伸到 production／中央 state |
 
 「可讀取」不等於「可修改」。桌電可讀 Calendar／Travel 的公開型別與 handoff，但不得為了讓
 Booking 或 execution 編譯而改上游模組；缺介面時回報筆電建立 typed handoff。

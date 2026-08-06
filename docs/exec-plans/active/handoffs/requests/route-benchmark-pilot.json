@@ -1,0 +1,9 @@
+{
+  "schemaVersion": 1,
+  "requestId": "route-benchmark-pilot",
+  "eventId": "TR-DESKTOP-ROUTE-BENCHMARK-START",
+  "evidence": {
+    "planPath": "docs/exec-plans/active/calendar-w11-h-two-machine-development-test-plan.md",
+    "gate": "W11-H coordination publication"
+  }
+}

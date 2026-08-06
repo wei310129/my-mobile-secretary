@@ -2,6 +2,7 @@ name: Test gates
 
 on:
   pull_request:
+    # Draft PRs must enter the same required-check path when they become ready.
     types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]

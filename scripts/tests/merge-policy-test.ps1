@@ -145,13 +145,13 @@ try {
 
     $matchingRouteSha = '4444444444444444444444444444444444444444'
     $laptopWithRoute = Get-Content -LiteralPath $laptopPath -Raw -Encoding utf8 | ConvertFrom-Json
-    $laptopWithRoute.triggers | Add-Member -NotePropertyName 'TR-DESKTOP-ROUTE-BENCHMARK-START' -NotePropertyValue ([pscustomobject]@{
+    $laptopWithRoute.triggers | Add-Member -Force -NotePropertyName 'TR-DESKTOP-ROUTE-BENCHMARK-START' -NotePropertyValue ([pscustomobject]@{
         status = 'READY'; publishedSha = $matchingRouteSha
     })
     [IO.File]::WriteAllText($laptopPath, ($laptopWithRoute | ConvertTo-Json -Depth 20), [Text.UTF8Encoding]::new($false))
     $desktopPath = Join-Path $handoffRoot 'desktop-trigger-state.json'
     $desktopWithRoute = Get-Content -LiteralPath $desktopPath -Raw -Encoding utf8 | ConvertFrom-Json
-    $desktopWithRoute.consumedLaptopTriggers | Add-Member -NotePropertyName 'TR-DESKTOP-ROUTE-BENCHMARK-START' -NotePropertyValue ([pscustomobject]@{
+    $desktopWithRoute.consumedLaptopTriggers | Add-Member -Force -NotePropertyName 'TR-DESKTOP-ROUTE-BENCHMARK-START' -NotePropertyValue ([pscustomobject]@{
         status = 'ACKNOWLEDGED'; publishedSha = $matchingRouteSha; acknowledgedOn = '2026-08-07'
     })
     [IO.File]::WriteAllText($desktopPath, ($desktopWithRoute | ConvertTo-Json -Depth 20), [Text.UTF8Encoding]::new($false))

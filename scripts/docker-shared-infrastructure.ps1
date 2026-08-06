@@ -24,8 +24,27 @@ function Get-DockerObjectProperty {
 
 function Invoke-SharedDockerCommand {
     param([Parameter(Mandatory)][string[]]$Arguments)
+    $managedResolver = Get-Command Resolve-ManagedDockerCliIdentity -ErrorAction SilentlyContinue
+    $managedRunner = Get-Command Invoke-ManagedDockerCli -ErrorAction SilentlyContinue
+    if ($managedResolver -and $managedRunner) {
+        try {
+            $cliIdentity = & $managedResolver
+            $managed = & $managedRunner -CliIdentity $cliIdentity -Arguments $Arguments -TimeoutMilliseconds 120000
+            return [pscustomobject]@{
+                ExitCode = [int]$managed.ExitCode
+                Output = [string]$managed.Output
+                Error = if ([int]$managed.ExitCode -eq 0) { $null } else { [string]$managed.Error }
+            }
+        } catch {
+            return [pscustomobject]@{ ExitCode=1; Output=''; Error=$_.Exception.Message }
+        }
+    }
     try {
-        $lines = @(& docker @Arguments 2>&1)
+        $docker = Get-Command docker -CommandType Application -ErrorAction SilentlyContinue
+        if (-not $docker) {
+            return [pscustomobject]@{ ExitCode=1; Output=''; Error='Docker CLI is unavailable at the verified managed installation path.' }
+        }
+        $lines = @(& $docker.Source @Arguments 2>&1)
         $exitCode = if ($null -eq $LASTEXITCODE) { 1 } else { [int]$LASTEXITCODE }
         $text = ($lines | ForEach-Object { [string]$_ }) -join [Environment]::NewLine
         return [pscustomobject]@{ ExitCode=$exitCode; Output=$text.Trim(); Error=if($exitCode -eq 0){$null}else{$text.Trim()} }
@@ -57,16 +76,34 @@ function Get-SharedCallerContext {
 }
 
 function Get-DockerDesktopExecutablePath {
+    $managedResolver = Get-Command Resolve-ManagedDockerDesktopIdentity -ErrorAction SilentlyContinue
+    if ($managedResolver) {
+        try { return ([string]((& $managedResolver).Path)) } catch { return $null }
+    }
     $programFiles = [Environment]::GetEnvironmentVariable('ProgramFiles','Process')
     if ([string]::IsNullOrWhiteSpace($programFiles)) { $programFiles = [Environment]::GetEnvironmentVariable('ProgramFiles','Machine') }
-    if ([string]::IsNullOrWhiteSpace($programFiles)) { return $null }
-    $path = [IO.Path]::GetFullPath((Join-Path $programFiles $script:DockerDesktopRelativePath))
-    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
-    if ([IO.Path]::GetFileName($path) -cne $script:DockerDesktopExecutableName) { return $null }
-    return $path
+    $localAppData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+    $candidates = @()
+    if (-not [string]::IsNullOrWhiteSpace($localAppData)) { $candidates += Join-Path $localAppData 'Programs\DockerDesktop\Docker Desktop.exe' }
+    if (-not [string]::IsNullOrWhiteSpace($programFiles)) { $candidates += Join-Path $programFiles $script:DockerDesktopRelativePath }
+    foreach ($candidate in $candidates) {
+        $path = [IO.Path]::GetFullPath($candidate)
+        if ((Test-Path -LiteralPath $path -PathType Leaf) -and [IO.Path]::GetFileName($path) -ceq $script:DockerDesktopExecutableName) { return $path }
+    }
+    return $null
 }
 
 function Get-DockerDesktopExecutableIdentity {
+    $managedResolver = Get-Command Resolve-ManagedDockerDesktopIdentity -ErrorAction SilentlyContinue
+    if ($managedResolver) {
+        try {
+            $managed = & $managedResolver
+            $version = [Diagnostics.FileVersionInfo]::GetVersionInfo([string]$managed.Path)
+            return [pscustomobject]@{Ready=$true;Path=$managed.Path;FileVersion=[string]$version.FileVersion;ProductName=[string]$version.ProductName;Sha256=$managed.Sha256;Reason=$null}
+        } catch {
+            return [pscustomobject]@{Ready=$false;Path=$null;FileVersion=$null;ProductName=$null;Sha256=$null;Reason="Docker Desktop executable identity probe failed: $($_.Exception.Message)"}
+        }
+    }
     $path = Get-DockerDesktopExecutablePath
     if (-not $path) { return [pscustomobject]@{Ready=$false;Path=$null;FileVersion=$null;ProductName=$null;Sha256=$null;Reason='fixed Docker Desktop executable was not found'} }
     try {
@@ -82,21 +119,29 @@ function Get-DockerDesktopExecutableIdentity {
 }
 
 function Get-ManagedDockerReadinessProbe {
-    $docker = Get-Command docker -ErrorAction SilentlyContinue
-    $missing = [pscustomobject]@{ExitCode=1;Output='';Error='docker CLI is not installed'}
-    $client = if($docker){Invoke-SharedDockerCommand -Arguments @('--version')}else{$missing}
-    $context = if($docker){Invoke-SharedDockerCommand -Arguments @('context','show')}else{$missing}
-    $daemon = if($docker){Invoke-SharedDockerCommand -Arguments @('version','--format','{{.Client.Version}}|{{.Server.Version}}')}else{$missing}
+    $managedResolver = Get-Command Resolve-ManagedDockerCliIdentity -ErrorAction SilentlyContinue
+    $cliAvailable = $false
+    $cliError = $null
+    if ($managedResolver) {
+        try { & $managedResolver | Out-Null; $cliAvailable = $true } catch { $cliError = $_.Exception.Message }
+    } else {
+        $cliAvailable = $null -ne (Get-Command docker -CommandType Application -ErrorAction SilentlyContinue)
+        if (-not $cliAvailable) { $cliError = 'Docker CLI is not installed' }
+    }
+    $missing = [pscustomobject]@{ExitCode=1;Output='';Error=$cliError}
+    $client = if($cliAvailable){Invoke-SharedDockerCommand -Arguments @('--version')}else{$missing}
+    $context = if($cliAvailable){Invoke-SharedDockerCommand -Arguments @('context','show')}else{$missing}
+    $daemon = if($cliAvailable){Invoke-SharedDockerCommand -Arguments @('version','--format','{{.Client.Version}}|{{.Server.Version}}')}else{$missing}
     $desktop = @(Get-Process -Name 'Docker Desktop' -ErrorAction SilentlyContinue)
     $backend = @(Get-Process -Name 'com.docker.backend' -ErrorAction SilentlyContinue)
     $identity = Get-DockerDesktopExecutableIdentity
     $daemonText = @($daemon.Output,$daemon.Error) -join [Environment]::NewLine
     $accessDenied = $daemonText -match '(?i)access is denied|permission denied|not permitted|forbidden'
-    $cliReady = $null -ne $docker -and $client.ExitCode -eq 0 -and $context.ExitCode -eq 0
+    $cliReady = $cliAvailable -and $client.ExitCode -eq 0 -and $context.ExitCode -eq 0
     $daemonReady = $daemon.ExitCode -eq 0 -and -not [string]::IsNullOrWhiteSpace($daemon.Output)
     $lifecycleReady = $desktop.Count -gt 0 -or $backend.Count -gt 0
     $identityReady = -not $lifecycleReady -or $identity.Ready
-    $classification = if(-not $docker){'DAEMON_NOT_READY'}elseif($accessDenied){'CALLER_ACCESS_DENIED'}elseif(-not $lifecycleReady -and -not $daemonReady){'DESKTOP_NOT_RUNNING'}elseif(-not $daemonReady){'DAEMON_NOT_READY'}elseif(-not $identityReady){'DESKTOP_NOT_RUNNING'}elseif(-not $cliReady){'DAEMON_NOT_READY'}else{$null}
+    $classification = if(-not $cliAvailable){'DAEMON_NOT_READY'}elseif($accessDenied){'CALLER_ACCESS_DENIED'}elseif(-not $lifecycleReady -and -not $daemonReady){'DESKTOP_NOT_RUNNING'}elseif(-not $daemonReady){'DAEMON_NOT_READY'}elseif(-not $identityReady){'DESKTOP_NOT_RUNNING'}elseif(-not $cliReady){'DAEMON_NOT_READY'}else{$null}
     $reason = if($classification){(@($daemon.Error,$context.Error,$identity.Reason)|Where-Object{$_}) -join '; '}else{$null}
     return [pscustomobject]@{
         CliReady=$cliReady; ContextReady=($context.ExitCode -eq 0); DaemonReady=$daemonReady; LifecycleReady=$lifecycleReady

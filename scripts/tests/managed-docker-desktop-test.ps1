@@ -15,6 +15,7 @@ function Assert-DockerTest {
 }
 
 $contents = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $scripts 'managed-docker-desktop.ps1')
+$sharedContents = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path $scripts 'docker-shared-infrastructure.ps1')
 $forbiddenTokens = @('DockerCli -Shutdown', 'Stop-Process', 'docker system prune', 'compose down -v')
 foreach ($token in $forbiddenTokens) {
     Assert-DockerTest ($contents -notmatch [regex]::Escape($token)) "managed Docker helper contains forbidden token: $token"
@@ -22,6 +23,9 @@ foreach ($token in $forbiddenTokens) {
 
 Assert-DockerTest ($script:ManagedDockerDesktopPath -match '(?i)(?:Programs[\\/]DockerDesktop|Program Files[\\/]Docker[\\/]Docker)[\\/]Docker Desktop[.]exe$') 'Docker Desktop identity was not selected from a fixed canonical path'
 Assert-DockerTest ($script:ManagedDockerCliPath -match '(?i)(?:Programs[\\/]DockerDesktop|Program Files[\\/]Docker[\\/]Docker)[\\/]resources[\\/]bin[\\/]docker[.]exe$') 'Docker CLI identity was not selected from a fixed canonical path'
+Assert-DockerTest ($contents -notmatch 'Get-Command docker -CommandType Application') 'managed Docker CLI identity still depends on ambient PATH discovery'
+Assert-DockerTest ($sharedContents.Contains('Resolve-ManagedDockerCliIdentity') -and $sharedContents.Contains('Invoke-ManagedDockerCli')) 'shared Docker commands do not use the verified CLI identity'
+Assert-DockerTest ($sharedContents.Contains('Resolve-ManagedDockerDesktopIdentity')) 'shared Docker readiness does not use the verified Desktop identity'
 $resolvedProjectRoot = Resolve-ManagedDockerProjectRoot -RepoRoot $repoRoot
 Assert-DockerTest ($resolvedProjectRoot -and (Test-Path -LiteralPath (Join-Path $resolvedProjectRoot '.git'))) 'managed Docker project root was not resolved from registered Git metadata'
 $unregisteredRejected = $false

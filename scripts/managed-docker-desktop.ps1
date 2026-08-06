@@ -147,17 +147,6 @@ function Resolve-ManagedDockerDesktopIdentity {
 
 function Resolve-ManagedDockerCliIdentity {
     $expected = [IO.Path]::GetFullPath($script:ManagedDockerCliPath)
-    $commands = @(Get-Command docker -CommandType Application -ErrorAction SilentlyContinue)
-    $matching = @($commands | Where-Object {
-        try { [string]::Equals([IO.Path]::GetFullPath([string]$_.Source), $expected, [StringComparison]::OrdinalIgnoreCase) }
-        catch { $false }
-    })
-    if ($matching.Count -eq 0) {
-        throw 'Docker CLI is unavailable at the allowlisted Docker installation path.'
-    }
-    if ($matching.Count -gt 1) {
-        throw 'Docker CLI has multiple matching allowlisted command entries; launch refused.'
-    }
     return Resolve-ManagedDockerFileIdentity -ExpectedPath $expected -Label 'Docker CLI'
 }
 

@@ -124,6 +124,45 @@ powershell -ExecutionPolicy Bypass -File .\scripts\tests\tooling-implementation-
 contract、worktree evidence ownership 與 startup rollback；shared Docker 測試使用 fake adapter，
 不會刪除、重建或改動真實 container／volume。
 
+## Producer handoff automation
+
+`producer-handoff.ps1` 將產品 PR 合併後的 state-only handoff 變成可重播、fail-closed 的資料契約。
+v1 只 allowlist `TR-DESKTOP-ROUTE-BENCHMARK-START`，request 只能提供 `requestId`、`eventId` 與一個
+active-plan evidence；state path、lane、status、通知與 consumer action 都由
+`.github/producer-handoff-policy.json` 決定，request 不能覆寫。
+
+兩條 workflow 的邊界如下：
+
+- `producer-handoff-request.yml` 只監聽 request manifest；kill switch 關閉時只做 dry-run。
+- `producer-handoff-state.yml` 只處理 `automation/producer-handoff/**` 的 state＋receipt PR，並等待
+  repository 既有 required checks；不新增一般產品 PR 的 required check。
+- manual dispatch 會向 GitHub API 重驗 PR、merge SHA 與 merge timestamp；state validation／rebuild
+  只執行 PR base／`main` 的 trusted engine 與 policy，不執行 PR head 提供的 tooling code。
+- 目標 trigger 未改但其他 main state 前進時最多自動 rebuild 一次；目標 trigger、owner 或 schema
+  改變就 fail closed，不覆蓋 producer 的新決策。
+- Git state 合併後才更新 `[Coordination] Producer handoff receipts` Issue；Issue 暫時失敗可直接 rerun
+  finalizer；kill switch 關閉時 finalizer 也不做 Issue mutation。READY state 不回滾，但 consumer 仍須
+  看到 receipt、fetch、驗證 SHA 後才能 ACK。Merge policy 會強制 active desktop ACK 的 event 與
+  `publishedSha` 對應同名 laptop `READY`／`CONSUMED` producer state。
+
+Repository 設定必須先建立 `tooling-producer` environment，允許 `main` 與
+`automation/producer-handoff/**`，並設定：
+
+- repository variable `TOOLING_PRODUCER_ENABLED=false`（完成 dry-run 後才改 `true`）
+- repository/environment variable `TOOLING_PRODUCER_APP_ID`
+- environment secret `TOOLING_PRODUCER_APP_PRIVATE_KEY`
+
+GitHub App 只安裝於本 repository，權限限定 Contents、Pull requests、Issues read/write與 Metadata read；
+不得有 direct-push 或 branch-protection bypass。啟用前先執行本機零 mutation contract gate：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\tests\producer-handoff-test.ps1
+powershell -ExecutionPolicy Bypass -File .\scripts\tests\producer-handoff-workflow-test.ps1
+```
+
+Live pilot 仍需由 laptop-owned coordination PR 先加入 PENDING/BLOCKED trigger與單一 request manifest；
+tooling branch 不得直接修改 producer state或替 consumer 開閘。
+
 ## PowerShell 腳本
 
 第一次先建地點與任務:

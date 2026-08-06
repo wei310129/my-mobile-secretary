@@ -45,6 +45,27 @@
       ]
     },
     {
+      "name": "producer-handoff-state",
+      "branchRegex": "^automation/producer-handoff/[a-z0-9._-]+/[0-9a-f]{12}$",
+      "allowedPaths": [
+        "docs/exec-plans/active/handoffs/laptop-trigger-state.json",
+        "docs/exec-plans/active/handoffs/receipts/*.json"
+      ],
+      "forbiddenPaths": [
+        ".github/**",
+        "scripts/**",
+        "pom.xml",
+        "src/**",
+        "docs/exec-plans/active/handoffs/desktop-trigger-state.json",
+        "docs/exec-plans/active/handoffs/requests/**"
+      ],
+      "exactChangedFiles": 2,
+      "requiredPathPatterns": [
+        "docs/exec-plans/active/handoffs/laptop-trigger-state.json",
+        "docs/exec-plans/active/handoffs/receipts/*.json"
+      ]
+    },
+    {
       "name": "desktop-state",
       "branchRegex": "^desktop/.+-state$",
       "allowedPaths": [
@@ -115,6 +136,7 @@
       "branchRegex": "^(codex|laptop)/.+-state$",
       "allowedPaths": [
         "docs/exec-plans/active/handoffs/laptop-trigger-state.json",
+        "docs/exec-plans/active/handoffs/requests/*.json",
         "docs/exec-plans/active/index.md",
         "docs/exec-plans/active/*.md",
         "docs/decisions/current.md"

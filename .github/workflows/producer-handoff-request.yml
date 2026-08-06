@@ -1,0 +1,251 @@
+name: Producer handoff request
+
+on:
+  pull_request:
+    types: [closed]
+    branches: [main]
+    paths:
+      - docs/exec-plans/active/handoffs/requests/*.json
+  workflow_dispatch:
+    inputs:
+      request_path:
+        description: Existing request manifest on main
+        required: true
+        type: string
+      product_merge_sha:
+        description: Product merge SHA already in main
+        required: true
+        type: string
+      product_pr_url:
+        description: Merged product PR URL
+        required: true
+        type: string
+      published_at:
+        description: Product merge timestamp in ISO-8601 form
+        required: true
+        type: string
+      dry_run:
+        description: Validate without creating a branch, PR, or issue comment
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: producer-handoff-request-${{ github.event.pull_request.merge_commit_sha || inputs.product_merge_sha }}
+  cancel-in-progress: false
+
+jobs:
+  validate:
+    name: Validate producer request
+    if: github.event_name == 'workflow_dispatch' || github.event.pull_request.merged == true
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      request_path: ${{ steps.context.outputs.request_path }}
+      product_merge_sha: ${{ steps.context.outputs.product_merge_sha }}
+      product_pr_url: ${{ steps.context.outputs.product_pr_url }}
+      published_at: ${{ steps.context.outputs.published_at }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Locate the merged request
+        if: github.event_name == 'pull_request'
+        id: locate
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              per_page: 100
+            });
+            const matches = files.filter(file =>
+              file.status !== 'removed' &&
+              /^docs\/exec-plans\/active\/handoffs\/requests\/[^/]+[.]json$/.test(file.filename)
+            );
+            if (matches.length !== 1) {
+              core.setFailed(`Merged producer handoff PR must contain exactly one request manifest; found ${matches.length}.`);
+              return;
+            }
+            core.setOutput('request_path', matches[0].filename);
+      - name: Verify manual product PR context
+        if: github.event_name == 'workflow_dispatch'
+        id: manual-context
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        env:
+          REQUESTED_SHA: ${{ inputs.product_merge_sha }}
+          REQUESTED_PR_URL: ${{ inputs.product_pr_url }}
+          REQUESTED_PUBLISHED_AT: ${{ inputs.published_at }}
+        with:
+          script: |
+            const prefix = `https://github.com/${context.repo.owner}/${context.repo.repo}/pull/`;
+            const requestedUrl = process.env.REQUESTED_PR_URL || '';
+            if (!requestedUrl.startsWith(prefix) || !/^[1-9][0-9]*$/.test(requestedUrl.slice(prefix.length))) {
+              core.setFailed('Manual product PR URL must identify a pull request in this repository.');
+              return;
+            }
+            const pullNumber = Number(requestedUrl.slice(prefix.length));
+            const response = await github.rest.pulls.get({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: pullNumber
+            });
+            const pull = response.data;
+            if (!pull.merged || !pull.merge_commit_sha || !pull.merged_at) {
+              core.setFailed('Manual product PR is not merged.');
+              return;
+            }
+            if (pull.merge_commit_sha !== process.env.REQUESTED_SHA) {
+              core.setFailed('Manual product merge SHA does not match GitHub.');
+              return;
+            }
+            const requestedTime = Date.parse(process.env.REQUESTED_PUBLISHED_AT || '');
+            const actualTime = Date.parse(pull.merged_at);
+            if (!Number.isFinite(requestedTime) || requestedTime !== actualTime) {
+              core.setFailed('Manual product merge timestamp does not match GitHub.');
+              return;
+            }
+            core.setOutput('product_merge_sha', pull.merge_commit_sha);
+            core.setOutput('product_pr_url', pull.html_url);
+            core.setOutput('published_at', pull.merged_at);
+      - name: Resolve immutable product context
+        id: context
+        shell: pwsh
+        env:
+          EVENT_NAME: ${{ github.event_name }}
+          MERGED_REQUEST_PATH: ${{ steps.locate.outputs.request_path }}
+          MERGED_SHA: ${{ github.event.pull_request.merge_commit_sha }}
+          MERGED_PR_URL: ${{ github.event.pull_request.html_url }}
+          MERGED_AT: ${{ github.event.pull_request.merged_at }}
+          MANUAL_REQUEST_PATH: ${{ inputs.request_path }}
+          MANUAL_SHA: ${{ steps.manual-context.outputs.product_merge_sha }}
+          MANUAL_PR_URL: ${{ steps.manual-context.outputs.product_pr_url }}
+          MANUAL_PUBLISHED_AT: ${{ steps.manual-context.outputs.published_at }}
+        run: |
+          if ($env:EVENT_NAME -eq 'workflow_dispatch') {
+            $requestPath = $env:MANUAL_REQUEST_PATH
+            $productSha = $env:MANUAL_SHA
+            $productPr = $env:MANUAL_PR_URL
+            $publishedAt = $env:MANUAL_PUBLISHED_AT
+          } else {
+            $requestPath = $env:MERGED_REQUEST_PATH
+            $productSha = $env:MERGED_SHA
+            $productPr = $env:MERGED_PR_URL
+            $publishedAt = $env:MERGED_AT
+          }
+          if ($productSha -notmatch '^[0-9a-f]{40}$') { throw 'Product merge SHA is invalid.' }
+          git merge-base --is-ancestor $productSha HEAD
+          if ($LASTEXITCODE -ne 0) { throw 'Product merge SHA is not in current main ancestry.' }
+          "request_path=$requestPath" >> $env:GITHUB_OUTPUT
+          "product_merge_sha=$productSha" >> $env:GITHUB_OUTPUT
+          "product_pr_url=$productPr" >> $env:GITHUB_OUTPUT
+          "published_at=$publishedAt" >> $env:GITHUB_OUTPUT
+      - name: Validate fail-closed request contract
+        shell: pwsh
+        env:
+          REQUEST_PATH: ${{ steps.context.outputs.request_path }}
+        run: |
+          ./scripts/tests/producer-handoff-test.ps1
+          ./scripts/producer-handoff.ps1 -Mode ValidateRequest -RequestPath $env:REQUEST_PATH -Json
+      - name: Record dry-run result
+        if: vars.TOOLING_PRODUCER_ENABLED != 'true' || (github.event_name == 'workflow_dispatch' && inputs.dry_run)
+        shell: pwsh
+        run: |
+          @"
+          ## Producer handoff dry-run
+
+          Request validation passed. No branch, pull request, issue comment, resource claim, or external mutation was created.
+          "@ >> $env:GITHUB_STEP_SUMMARY
+
+  create-state-pr:
+    name: Create producer state PR
+    needs: validate
+    if: >-
+      needs.validate.result == 'success' &&
+      vars.TOOLING_PRODUCER_ENABLED == 'true' &&
+      (github.event_name == 'pull_request' || inputs.dry_run == false)
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: tooling-producer
+    permissions:
+      contents: read
+    steps:
+      - name: Mint repository-scoped App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          app-id: ${{ vars.TOOLING_PRODUCER_APP_ID }}
+          private-key: ${{ secrets.TOOLING_PRODUCER_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Render policy-owned state and receipt
+        id: prepare
+        shell: pwsh
+        env:
+          REQUEST_PATH: ${{ needs.validate.outputs.request_path }}
+          PRODUCT_SHA: ${{ needs.validate.outputs.product_merge_sha }}
+          PRODUCT_PR: ${{ needs.validate.outputs.product_pr_url }}
+          PUBLISHED_AT: ${{ needs.validate.outputs.published_at }}
+          WORKFLOW_URL: https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          $result = ./scripts/producer-handoff.ps1 -Mode PrepareState `
+            -RequestPath $env:REQUEST_PATH `
+            -ProductMergeSha $env:PRODUCT_SHA `
+            -ProductPrUrl $env:PRODUCT_PR `
+            -WorkflowRunUrl $env:WORKFLOW_URL `
+            -PublishedAt $env:PUBLISHED_AT `
+            -Json | ConvertFrom-Json
+          "status=$($result.status)" >> $env:GITHUB_OUTPUT
+          if ($result.status -eq 'prepared') {
+            "branch=$($result.branch)" >> $env:GITHUB_OUTPUT
+            "state_path=$($result.statePath)" >> $env:GITHUB_OUTPUT
+            "receipt_path=$($result.receiptPath)" >> $env:GITHUB_OUTPUT
+          }
+          $result | ConvertTo-Json -Compress
+      - name: Create idempotent state-only PR
+        if: steps.prepare.outputs.status == 'prepared'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          BRANCH: ${{ steps.prepare.outputs.branch }}
+          STATE_PATH: ${{ steps.prepare.outputs.state_path }}
+          RECEIPT_PATH: ${{ steps.prepare.outputs.receipt_path }}
+          EVENT_ID: TR-DESKTOP-ROUTE-BENCHMARK-START
+          PRODUCT_SHA: ${{ needs.validate.outputs.product_merge_sha }}
+        run: |
+          $existing = @(gh pr list --repo $env:GITHUB_REPOSITORY --head $env:BRANCH --state all --json number,state,url | ConvertFrom-Json)
+          if ($existing.Count -gt 0) {
+            "Existing state PR: $($existing[0].url) ($($existing[0].state))" >> $env:GITHUB_STEP_SUMMARY
+            exit 0
+          }
+          git ls-remote --exit-code --heads origin "refs/heads/$env:BRANCH" | Out-Null
+          if ($LASTEXITCODE -eq 0) { throw 'Owned automation branch exists without a GitHub PR; refusing takeover.' }
+          git checkout -b $env:BRANCH
+          git config user.name 'tooling-producer[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- $env:STATE_PATH $env:RECEIPT_PATH
+          $changed = @(git status --short)
+          if ($changed.Count -ne 2) { throw "Expected exactly two staged paths; found $($changed.Count)." }
+          git commit -m "chore(handoff): deliver $env:EVENT_ID"
+          git push --set-upstream origin $env:BRANCH
+          $body = @"
+          Automated state-only handoff for $env:EVENT_ID.
+
+          Product merge SHA: $env:PRODUCT_SHA
+
+          This PR may only update the producer-owned state and matching receipt. Consumer ACK remains manual.
+          "@
+          $url = gh pr create --repo $env:GITHUB_REPOSITORY --base main --head $env:BRANCH `
+            --title "chore(handoff): deliver $env:EVENT_ID" --body $body
+          "Created state-only PR: $url" >> $env:GITHUB_STEP_SUMMARY

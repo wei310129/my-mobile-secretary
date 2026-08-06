@@ -127,6 +127,19 @@ foreach ($file in $changedFiles) {
     $normalizedFiles.Add([pscustomobject]@{ path = $path; status = $status })
 }
 
+if ($branchPolicy.PSObject.Properties['exactChangedFiles'] -and
+        $normalizedFiles.Count -ne [int]$branchPolicy.exactChangedFiles) {
+    Fail-Policy "Branch policy '$($branchPolicy.name)' requires exactly $($branchPolicy.exactChangedFiles) changed files."
+}
+if ($branchPolicy.PSObject.Properties['requiredPathPatterns']) {
+    foreach ($requiredPattern in @($branchPolicy.requiredPathPatterns)) {
+        $matches = @($normalizedFiles | Where-Object { Test-PathPattern -Path $_.path -Pattern ([string]$requiredPattern) })
+        if ($matches.Count -ne 1) {
+            Fail-Policy "Branch policy '$($branchPolicy.name)' requires exactly one path matching '$requiredPattern'."
+        }
+    }
+}
+
 $migrationPrefix = 'src/main/resources/db/migration/'
 $changedMigrations = @($normalizedFiles | Where-Object { $_.path -like "$migrationPrefix*" })
 foreach ($migration in $changedMigrations) {
@@ -184,6 +197,23 @@ foreach ($entry in $durableEntries) {
                 -not (Test-GitAncestor -Candidate $publishedSha -Descendant $HeadSha)) {
             Fail-Policy "Trigger '$($entry.id)' publishedSha is not in PR base/head ancestry."
         }
+    }
+}
+
+$activeConsumerStatuses = @('ACKNOWLEDGED', 'IN_PROGRESS', 'PASS', 'MERGED', 'CONSUMED')
+foreach ($property in $desktopState.consumedLaptopTriggers.PSObject.Properties) {
+    $consumerTrigger = $property.Value
+    if ([string]$consumerTrigger.status -notin $activeConsumerStatuses) { continue }
+    $producerProperty = $laptopState.triggers.PSObject.Properties[$property.Name]
+    if ($null -eq $producerProperty) {
+        Fail-Policy "Consumed laptop trigger '$($property.Name)' has no matching producer trigger."
+    }
+    $producerTrigger = $producerProperty.Value
+    if ([string]$producerTrigger.status -notin @('READY', 'CONSUMED')) {
+        Fail-Policy "Consumed laptop trigger '$($property.Name)' is active while producer status is '$($producerTrigger.status)'."
+    }
+    if ([string]$consumerTrigger.publishedSha -ne [string]$producerTrigger.publishedSha) {
+        Fail-Policy "Consumed laptop trigger '$($property.Name)' publishedSha does not match producer state."
     }
 }
 

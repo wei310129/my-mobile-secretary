@@ -1,0 +1,315 @@
+name: Producer handoff state
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, closed]
+    branches: [main]
+    paths:
+      - docs/exec-plans/active/handoffs/receipts/*.json
+  workflow_dispatch:
+    inputs:
+      receipt_path:
+        description: Receipt already merged to main; retries durable Issue notification only
+        required: true
+        type: string
+
+permissions:
+  contents: read
+  pull-requests: read
+
+concurrency:
+  group: producer-handoff-state-${{ github.event.pull_request.number || inputs.receipt_path }}
+  cancel-in-progress: false
+
+jobs:
+  validate-state-pr:
+    name: Validate state-only PR
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.action != 'closed' &&
+      startsWith(github.head_ref, 'automation/producer-handoff/')
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      validation_status: ${{ steps.validate.outputs.status }}
+      request_path: ${{ steps.paths.outputs.request_path }}
+      state_path: ${{ steps.paths.outputs.state_path }}
+      receipt_path: ${{ steps.paths.outputs.receipt_path }}
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Read state-only changed files
+        id: files
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const fs = require('fs');
+            const path = require('path');
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              per_page: 100
+            });
+            fs.writeFileSync(path.join(process.env.RUNNER_TEMP, 'producer-changed-files.json'), JSON.stringify(files.map(file => ({
+              filename: file.filename,
+              status: file.status
+            }))));
+            const receipts = files.filter(file => /^docs\/exec-plans\/active\/handoffs\/receipts\/[^/]+[.]json$/.test(file.filename));
+            if (receipts.length !== 1) {
+              core.setFailed(`Expected exactly one receipt; found ${receipts.length}.`);
+              return;
+            }
+            core.setOutput('receipt_path', receipts[0].filename);
+      - name: Resolve immutable request and base state
+        id: paths
+        shell: pwsh
+        env:
+          RECEIPT_PATH: ${{ steps.files.outputs.receipt_path }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          $receipt = Get-Content -LiteralPath $env:RECEIPT_PATH -Raw -Encoding utf8 | ConvertFrom-Json
+          $requestPath = [string]$receipt.requestPath
+          $statePath = 'docs/exec-plans/active/handoffs/laptop-trigger-state.json'
+          $baseStatePath = Join-Path $env:RUNNER_TEMP 'producer-base-state.json'
+          $content = @(git show "$($env:BASE_SHA):$statePath")
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to read producer state from PR base.' }
+          [IO.File]::WriteAllLines($baseStatePath, $content, [Text.UTF8Encoding]::new($false))
+          "request_path=$requestPath" >> $env:GITHUB_OUTPUT
+          "state_path=$statePath" >> $env:GITHUB_OUTPUT
+          "receipt_path=$env:RECEIPT_PATH" >> $env:GITHUB_OUTPUT
+      - name: Validate target-scoped optimistic lock
+        id: validate
+        shell: pwsh
+        env:
+          REQUEST_PATH: ${{ steps.paths.outputs.request_path }}
+          STATE_PATH: ${{ steps.paths.outputs.state_path }}
+          RECEIPT_PATH: ${{ steps.paths.outputs.receipt_path }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          $trustedEngine = Join-Path $env:RUNNER_TEMP 'trusted-producer-handoff.ps1'
+          $trustedPolicy = Join-Path $env:RUNNER_TEMP 'trusted-producer-handoff-policy.json'
+          $engineContent = @(git show "$($env:BASE_SHA):scripts/producer-handoff.ps1")
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to load trusted producer engine from the PR base.' }
+          [IO.File]::WriteAllLines($trustedEngine, $engineContent, [Text.UTF8Encoding]::new($false))
+          $policyContent = @(git show "$($env:BASE_SHA):.github/producer-handoff-policy.json")
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to load trusted producer policy from the PR base.' }
+          [IO.File]::WriteAllLines($trustedPolicy, $policyContent, [Text.UTF8Encoding]::new($false))
+          $result = & $trustedEngine -Mode ValidateStatePr `
+            -RequestPath $env:REQUEST_PATH `
+            -RepositoryRoot $env:GITHUB_WORKSPACE `
+            -PolicyPath $trustedPolicy `
+            -BaseStatePath (Join-Path $env:RUNNER_TEMP 'producer-base-state.json') `
+            -HeadStatePath $env:STATE_PATH `
+            -ReceiptPath $env:RECEIPT_PATH `
+            -ChangedFilesJson (Join-Path $env:RUNNER_TEMP 'producer-changed-files.json') `
+            -BaseSha $env:BASE_SHA `
+            -Json | ConvertFrom-Json
+          "status=$($result.status)" >> $env:GITHUB_OUTPUT
+          $result | ConvertTo-Json -Compress
+
+  rebuild-once:
+    name: Rebuild after unrelated main advance
+    needs: validate-state-pr
+    if: >-
+      needs.validate-state-pr.outputs.validation_status == 'rebuild-required' &&
+      vars.TOOLING_PRODUCER_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: tooling-producer
+    permissions:
+      contents: read
+    steps:
+      - name: Mint repository-scoped App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          app-id: ${{ vars.TOOLING_PRODUCER_APP_ID }}
+          private-key: ${{ secrets.TOOLING_PRODUCER_APP_PRIVATE_KEY }}
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          fetch-depth: 0
+          token: ${{ steps.app-token.outputs.token }}
+      - name: Rebuild against latest main exactly once
+        shell: pwsh
+        env:
+          REQUEST_PATH: ${{ needs.validate-state-pr.outputs.request_path }}
+          STATE_PATH: ${{ needs.validate-state-pr.outputs.state_path }}
+          RECEIPT_PATH: ${{ needs.validate-state-pr.outputs.receipt_path }}
+          HEAD_REF: ${{ github.head_ref }}
+        run: |
+          if ($env:HEAD_REF -notmatch '^automation/producer-handoff/[a-z0-9._-]+/[0-9a-f]{12}$') {
+            throw 'Automation branch name is invalid.'
+          }
+          git fetch origin main
+          $trustedEngine = Join-Path $env:RUNNER_TEMP 'trusted-producer-handoff.ps1'
+          $trustedPolicy = Join-Path $env:RUNNER_TEMP 'trusted-producer-handoff-policy.json'
+          $engineContent = @(git show 'origin/main:scripts/producer-handoff.ps1')
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to load trusted producer engine from main.' }
+          [IO.File]::WriteAllLines($trustedEngine, $engineContent, [Text.UTF8Encoding]::new($false))
+          $policyContent = @(git show 'origin/main:.github/producer-handoff-policy.json')
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to load trusted producer policy from main.' }
+          [IO.File]::WriteAllLines($trustedPolicy, $policyContent, [Text.UTF8Encoding]::new($false))
+          $baseStatePath = Join-Path $env:RUNNER_TEMP 'producer-latest-main-state.json'
+          $content = @(git show "origin/main:$env:STATE_PATH")
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to read latest producer state.' }
+          [IO.File]::WriteAllLines($baseStatePath, $content, [Text.UTF8Encoding]::new($false))
+          git merge --no-commit --no-ff origin/main
+          if ($LASTEXITCODE -ne 0) {
+            $conflicts = @(git ls-files -u | ForEach-Object { ($_ -split "`t", 2)[1] } | Sort-Object -Unique)
+            if ($conflicts.Count -ne 1 -or $conflicts[0] -ne $env:STATE_PATH) {
+              throw "Automatic rebuild encountered a non-state conflict: $($conflicts -join ', ')."
+            }
+          }
+          & $trustedEngine -Mode RebuildState `
+            -RequestPath $env:REQUEST_PATH `
+            -RepositoryRoot $env:GITHUB_WORKSPACE `
+            -PolicyPath $trustedPolicy `
+            -BaseStatePath $baseStatePath `
+            -HeadStatePath $env:STATE_PATH `
+            -ReceiptPath $env:RECEIPT_PATH `
+            -Json
+          git config user.name 'tooling-producer[bot]'
+          git config user.email '41898282+github-actions[bot]@users.noreply.github.com'
+          git add -- $env:STATE_PATH $env:RECEIPT_PATH
+          git commit -m 'chore(handoff): rebuild after unrelated main advance'
+          git push origin "HEAD:$env:HEAD_REF"
+
+  enable-auto-merge:
+    name: Enable state PR auto-merge
+    needs: validate-state-pr
+    if: >-
+      needs.validate-state-pr.outputs.validation_status == 'passed' &&
+      vars.TOOLING_PRODUCER_ENABLED == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    environment: tooling-producer
+    permissions:
+      contents: read
+    steps:
+      - name: Mint repository-scoped App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          app-id: ${{ vars.TOOLING_PRODUCER_APP_ID }}
+          private-key: ${{ secrets.TOOLING_PRODUCER_APP_PRIVATE_KEY }}
+      - name: Wait for existing required checks through auto-merge
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ steps.app-token.outputs.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          gh pr merge $env:PR_NUMBER --repo $env:GITHUB_REPOSITORY --auto --merge --match-head-commit $env:HEAD_SHA
+
+  finalize-notification:
+    name: Publish durable receipt
+    if: >-
+      vars.TOOLING_PRODUCER_ENABLED == 'true' &&
+      (github.event_name == 'workflow_dispatch' ||
+       (github.event_name == 'pull_request' && github.event.action == 'closed' &&
+        github.event.pull_request.merged == true && startsWith(github.head_ref, 'automation/producer-handoff/')))
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    environment: tooling-producer
+    permissions:
+      contents: read
+      pull-requests: read
+    steps:
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262
+        with:
+          ref: main
+          fetch-depth: 0
+          persist-credentials: false
+      - name: Locate merged receipt
+        if: github.event_name == 'pull_request'
+        id: locate
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        with:
+          script: |
+            const files = await github.paginate(github.rest.pulls.listFiles, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              pull_number: context.issue.number,
+              per_page: 100
+            });
+            const receipts = files.filter(file => /^docs\/exec-plans\/active\/handoffs\/receipts\/[^/]+[.]json$/.test(file.filename));
+            if (receipts.length !== 1) {
+              core.setFailed(`Expected exactly one merged receipt; found ${receipts.length}.`);
+              return;
+            }
+            core.setOutput('receipt_path', receipts[0].filename);
+      - name: Validate merged Git state
+        id: finalize
+        shell: pwsh
+        env:
+          RECEIPT_PATH: ${{ steps.locate.outputs.receipt_path || inputs.receipt_path }}
+        run: |
+          $receipt = Get-Content -LiteralPath $env:RECEIPT_PATH -Raw -Encoding utf8 | ConvertFrom-Json
+          $requestPath = [string]$receipt.requestPath
+          $statePath = 'docs/exec-plans/active/handoffs/laptop-trigger-state.json'
+          $result = ./scripts/producer-handoff.ps1 -Mode Finalize `
+            -RequestPath $requestPath `
+            -StatePath $statePath `
+            -ReceiptPath $env:RECEIPT_PATH `
+            -Json | ConvertFrom-Json
+          $result | ConvertTo-Json -Depth 20 | Set-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'producer-finalize.json') -Encoding utf8
+      - name: Mint repository-scoped App token
+        id: app-token
+        uses: actions/create-github-app-token@bcd2ba49218906704ab6c1aa796996da409d3eb1
+        with:
+          app-id: ${{ vars.TOOLING_PRODUCER_APP_ID }}
+          private-key: ${{ secrets.TOOLING_PRODUCER_APP_PRIVATE_KEY }}
+      - name: Create or update idempotent Issue receipt
+        uses: actions/github-script@f28e40c7f34bde8b3046d885e986cb6290c5673b
+        env:
+          RESULT_PATH: ${{ runner.temp }}/producer-finalize.json
+        with:
+          github-token: ${{ steps.app-token.outputs.token }}
+          script: |
+            const fs = require('fs');
+            const result = JSON.parse(fs.readFileSync(process.env.RESULT_PATH, 'utf8'));
+            const issues = await github.paginate(github.rest.issues.listForRepo, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              state: 'open',
+              per_page: 100
+            });
+            let issue = issues.find(candidate => !candidate.pull_request && candidate.title === result.issueTitle);
+            if (!issue) {
+              const created = await github.rest.issues.create({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                title: result.issueTitle,
+                body: 'Durable producer handoff receipts. Git remains authoritative; consumers must still fetch and verify before ACK.'
+              });
+              issue = created.data;
+            }
+            const comments = await github.paginate(github.rest.issues.listComments, {
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: issue.number,
+              per_page: 100
+            });
+            const existing = comments.find(comment => comment.body && comment.body.includes(result.marker));
+            if (existing) {
+              if (existing.body !== result.body) {
+                await github.rest.issues.updateComment({
+                  owner: context.repo.owner,
+                  repo: context.repo.repo,
+                  comment_id: existing.id,
+                  body: result.body
+                });
+              }
+            } else {
+              await github.rest.issues.createComment({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: issue.number,
+                body: result.body
+              });
+            }

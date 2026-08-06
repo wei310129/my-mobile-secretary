@@ -30,7 +30,7 @@ function Invoke-AssertCommand {
 }
 
 $testId = [guid]::NewGuid().ToString('n')
-$stateRoot = Join-Path $scriptsRoot ".environment-worktree-test-state\$testId"
+$stateRoot = Join-Path ([IO.Path]::GetTempPath()) ("mms-ewr-" + $testId.Substring(0,8))
 $approvedRoot = Join-Path $repoRoot 'docs\exec-plans\evidence\development-environment'
 $customEvidenceRoot = Join-Path $approvedRoot "worktree-test-$testId"
 $evidenceName = 'automatic.json'

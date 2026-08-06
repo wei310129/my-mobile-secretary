@@ -5,8 +5,7 @@ $ErrorActionPreference='Stop'
 $scriptsRoot=Split-Path -Parent $PSScriptRoot
 . (Join-Path $scriptsRoot 'environment-common.ps1')
 $repoRoot=Split-Path -Parent $scriptsRoot
-$testBase=Join-Path $scriptsRoot '.environment-test-state'
-$testRoot=Join-Path $testBase ([guid]::NewGuid().ToString())
+$testRoot=Join-Path ([IO.Path]::GetTempPath()) ("mms-err-" + [guid]::NewGuid().ToString('n').Substring(0,8))
 $evidencePath=Join-Path $repoRoot ("docs\exec-plans\evidence\development-environment\test-fake-$([guid]::NewGuid().ToString('n')).json")
 [IO.Directory]::CreateDirectory($testRoot)|Out-Null
 try{

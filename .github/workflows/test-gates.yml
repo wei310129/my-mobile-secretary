@@ -2,6 +2,8 @@ name: Test gates
 
 on:
   pull_request:
+    # Draft PRs must enter the same required-check path when they become ready.
+    types: [opened, synchronize, reopened, ready_for_review]
   push:
     branches: [main]
   workflow_dispatch:
@@ -69,6 +71,71 @@ jobs:
             -ChangedFilesJson (Join-Path $env:RUNNER_TEMP 'changed-files.json') `
             -Json | ConvertFrom-Json
           "require_serial=$($result.requiresSerial.ToString().ToLowerInvariant())" >> $env:GITHUB_OUTPUT
+          $result | ConvertTo-Json -Compress
+      - name: Validate producer request manifest
+        shell: pwsh
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          $files = Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'changed-files.json') -Raw -Encoding utf8 | ConvertFrom-Json
+          $requests = @($files | Where-Object {
+            $_.filename -match '^docs/exec-plans/active/handoffs/requests/[^/]+[.]json$' -and $_.status -ne 'removed'
+          })
+          if ($requests.Count -eq 0) {
+            'No producer request manifest in this PR.'
+            exit 0
+          }
+          if ($requests.Count -ne 1 -or [string]$requests[0].status -ne 'added') {
+            throw 'A producer coordination PR must add exactly one request manifest.'
+          }
+          $trustedEngine = Join-Path $env:RUNNER_TEMP 'trusted-producer-handoff-request.ps1'
+          $trustedPolicy = Join-Path $env:RUNNER_TEMP 'trusted-producer-handoff-request-policy.json'
+          $engineContent = @(git show "$($env:BASE_SHA):scripts/producer-handoff.ps1")
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to load trusted producer engine from the PR base.' }
+          [IO.File]::WriteAllLines($trustedEngine, $engineContent, [Text.UTF8Encoding]::new($false))
+          $policyContent = @(git show "$($env:BASE_SHA):.github/producer-handoff-policy.json")
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to load trusted producer policy from the PR base.' }
+          [IO.File]::WriteAllLines($trustedPolicy, $policyContent, [Text.UTF8Encoding]::new($false))
+          & $trustedEngine -Mode ValidateRequest `
+            -RequestPath ([string]$requests[0].filename) `
+            -RepositoryRoot $env:GITHUB_WORKSPACE `
+            -PolicyPath $trustedPolicy `
+            -Json
+      - name: Validate producer handoff contract
+        if: startsWith(github.head_ref, 'automation/producer-handoff/')
+        shell: pwsh
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+        run: |
+          $trustedEngine = Join-Path $env:RUNNER_TEMP 'trusted-producer-handoff.ps1'
+          $trustedPolicy = Join-Path $env:RUNNER_TEMP 'trusted-producer-handoff-policy.json'
+          $engineContent = @(git show "$($env:BASE_SHA):scripts/producer-handoff.ps1")
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to load trusted producer engine from the PR base.' }
+          [IO.File]::WriteAllLines($trustedEngine, $engineContent, [Text.UTF8Encoding]::new($false))
+          $policyContent = @(git show "$($env:BASE_SHA):.github/producer-handoff-policy.json")
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to load trusted producer policy from the PR base.' }
+          [IO.File]::WriteAllLines($trustedPolicy, $policyContent, [Text.UTF8Encoding]::new($false))
+          $files = Get-Content -LiteralPath (Join-Path $env:RUNNER_TEMP 'changed-files.json') -Raw -Encoding utf8 | ConvertFrom-Json
+          $receipts = @($files | Where-Object { $_.filename -like 'docs/exec-plans/active/handoffs/receipts/*.json' })
+          if ($receipts.Count -ne 1) { throw "Expected exactly one producer receipt; found $($receipts.Count)." }
+          $receiptPath = [string]$receipts[0].filename
+          $receipt = Get-Content -LiteralPath $receiptPath -Raw -Encoding utf8 | ConvertFrom-Json
+          $statePath = 'docs/exec-plans/active/handoffs/laptop-trigger-state.json'
+          $baseStatePath = Join-Path $env:RUNNER_TEMP 'producer-base-state-policy.json'
+          $content = @(git show "$($env:BASE_SHA):$statePath")
+          if ($LASTEXITCODE -ne 0) { throw 'Unable to read producer state from PR base.' }
+          [IO.File]::WriteAllLines($baseStatePath, $content, [Text.UTF8Encoding]::new($false))
+          $result = & $trustedEngine -Mode ValidateStatePr `
+            -RequestPath ([string]$receipt.requestPath) `
+            -RepositoryRoot $env:GITHUB_WORKSPACE `
+            -PolicyPath $trustedPolicy `
+            -BaseStatePath $baseStatePath `
+            -HeadStatePath $statePath `
+            -ReceiptPath $receiptPath `
+            -ChangedFilesJson (Join-Path $env:RUNNER_TEMP 'changed-files.json') `
+            -BaseSha $env:BASE_SHA `
+            -Json | ConvertFrom-Json
+          if ($result.status -ne 'passed') { throw "Producer handoff contract requires '$($result.status)' before merge." }
           $result | ConvertTo-Json -Compress
 
   pr-risk-serial-regression:

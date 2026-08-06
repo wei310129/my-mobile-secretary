@@ -84,6 +84,42 @@ try {
     $toolingJava.ChangedFilesJson = $javaFiles
     Assert-Policy (Invoke-ExpectedFailure -Arguments $toolingJava -Pattern 'does not allow') 'tooling branch could modify Java'
 
+    $automationFiles = Write-ChangedFiles -Name 'producer-handoff.json' -Files @(
+        @{ filename = 'docs/exec-plans/active/handoffs/laptop-trigger-state.json'; status = 'modified' },
+        @{ filename = 'docs/exec-plans/active/handoffs/receipts/route-benchmark--111111111111.json'; status = 'added' }
+    )
+    $automation = $common.Clone()
+    $automation.HeadRef = 'automation/producer-handoff/tr-desktop-route-benchmark-start/111111111111'
+    $automation.ChangedFilesJson = $automationFiles
+    $automationResult = & $policyScript @automation | ConvertFrom-Json
+    Assert-Policy ($automationResult.branchPolicy -eq 'producer-handoff-state') 'producer handoff branch selected the wrong policy'
+
+    $automationMissingReceipt = $common.Clone()
+    $automationMissingReceipt.HeadRef = $automation.HeadRef
+    $automationMissingReceipt.ChangedFilesJson = Write-ChangedFiles -Name 'producer-handoff-missing-receipt.json' -Files @(
+        @{ filename = 'docs/exec-plans/active/handoffs/laptop-trigger-state.json'; status = 'modified' }
+    )
+    Assert-Policy (Invoke-ExpectedFailure -Arguments $automationMissingReceipt -Pattern 'exactly 2 changed files') 'producer handoff branch could omit its receipt'
+
+    $automationSource = $common.Clone()
+    $automationSource.HeadRef = $automation.HeadRef
+    $automationSource.ChangedFilesJson = Write-ChangedFiles -Name 'producer-handoff-source.json' -Files @(
+        @{ filename = 'docs/exec-plans/active/handoffs/laptop-trigger-state.json'; status = 'modified' },
+        @{ filename = 'src/main/java/Unsafe.java'; status = 'added' }
+    )
+    Assert-Policy (Invoke-ExpectedFailure -Arguments $automationSource -Pattern 'does not allow|forbids') 'producer handoff branch could modify source'
+
+    $laptopRequestFiles = Write-ChangedFiles -Name 'laptop-request.json' -Files @(
+        @{ filename = 'docs/exec-plans/active/handoffs/laptop-trigger-state.json'; status = 'modified' },
+        @{ filename = 'docs/exec-plans/active/handoffs/requests/route-benchmark-pilot.json'; status = 'added' },
+        @{ filename = 'docs/exec-plans/active/calendar-w11-h-two-machine-development-test-plan.md'; status = 'added' }
+    )
+    $laptopRequest = $common.Clone()
+    $laptopRequest.HeadRef = 'laptop/calendar-w11-h-coordination-state'
+    $laptopRequest.ChangedFilesJson = $laptopRequestFiles
+    $laptopRequestResult = & $policyScript @laptopRequest | ConvertFrom-Json
+    Assert-Policy ($laptopRequestResult.branchPolicy -eq 'laptop-state') 'laptop coordination branch could not add its request manifest'
+
     $laptopStateFiles = Write-ChangedFiles -Name 'laptop-state.json' -Files @(
         @{ filename = 'docs/exec-plans/active/handoffs/laptop-trigger-state.json'; status = 'modified' }
     )
@@ -106,6 +142,27 @@ try {
     $removedWorkflow = $common.Clone()
     $removedWorkflow.ChangedFilesJson = $removedWorkflowFiles
     Assert-Policy (Invoke-ExpectedFailure -Arguments $removedWorkflow -Pattern 'cannot be removed or renamed') 'sensitive workflow deletion was accepted'
+
+    $matchingRouteSha = '4444444444444444444444444444444444444444'
+    $laptopWithRoute = Get-Content -LiteralPath $laptopPath -Raw -Encoding utf8 | ConvertFrom-Json
+    $laptopWithRoute.triggers | Add-Member -NotePropertyName 'TR-DESKTOP-ROUTE-BENCHMARK-START' -NotePropertyValue ([pscustomobject]@{
+        status = 'READY'; publishedSha = $matchingRouteSha
+    })
+    [IO.File]::WriteAllText($laptopPath, ($laptopWithRoute | ConvertTo-Json -Depth 20), [Text.UTF8Encoding]::new($false))
+    $desktopPath = Join-Path $handoffRoot 'desktop-trigger-state.json'
+    $desktopWithRoute = Get-Content -LiteralPath $desktopPath -Raw -Encoding utf8 | ConvertFrom-Json
+    $desktopWithRoute.consumedLaptopTriggers | Add-Member -NotePropertyName 'TR-DESKTOP-ROUTE-BENCHMARK-START' -NotePropertyValue ([pscustomobject]@{
+        status = 'ACKNOWLEDGED'; publishedSha = $matchingRouteSha; acknowledgedOn = '2026-08-07'
+    })
+    [IO.File]::WriteAllText($desktopPath, ($desktopWithRoute | ConvertTo-Json -Depth 20), [Text.UTF8Encoding]::new($false))
+    $matchingRouteResult = & $policyScript @common | ConvertFrom-Json
+    Assert-Policy ($matchingRouteResult.status -eq 'passed') 'matching desktop route ACK was rejected'
+
+    $desktopWithRoute.consumedLaptopTriggers.'TR-DESKTOP-ROUTE-BENCHMARK-START'.publishedSha = '5555555555555555555555555555555555555555'
+    [IO.File]::WriteAllText($desktopPath, ($desktopWithRoute | ConvertTo-Json -Depth 20), [Text.UTF8Encoding]::new($false))
+    Assert-Policy (Invoke-ExpectedFailure -Arguments $common -Pattern 'publishedSha does not match producer state') 'desktop ACK accepted a mismatched producer SHA'
+    $desktopWithRoute.consumedLaptopTriggers.'TR-DESKTOP-ROUTE-BENCHMARK-START'.publishedSha = $matchingRouteSha
+    [IO.File]::WriteAllText($desktopPath, ($desktopWithRoute | ConvertTo-Json -Depth 20), [Text.UTF8Encoding]::new($false))
 
     $brokenLaptop = Get-Content -LiteralPath $laptopPath -Raw -Encoding utf8 | ConvertFrom-Json
     $brokenLaptop.triggers.'TR-SCHEMA-B3-DURABLE-GRANT'.status = 'READY'

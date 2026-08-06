@@ -37,6 +37,7 @@ Assert-Workflow ($stateWorkflow -notmatch 'git push origin HEAD:\$\{\{' -and
     $stateWorkflow -match 'git push origin "HEAD:\$env:HEAD_REF"') 'credentialed rebuild interpolates an untrusted branch expression into PowerShell'
 Assert-Workflow ($stateWorkflow -match "vars\.TOOLING_PRODUCER_ENABLED == 'true' &&[\s\S]+github\.event_name == 'workflow_dispatch'") 'durable finalizer bypasses the kill switch'
 Assert-Workflow ($producerPolicyText -match '"maxAutomaticRebuilds": 1') 'bounded rebuild contract is missing'
+Assert-Workflow ($testGates -match 'types:\s*\[opened, synchronize, reopened, ready_for_review\]') 'Test gates does not run when a draft PR becomes ready for review'
 Assert-Workflow ($testGates -match "startsWith\(github\.head_ref, 'automation/producer-handoff/'\)" -and
     $testGates -match 'ValidateStatePr') 'required Merge policy path does not validate producer state PRs'
 Assert-Workflow ($testGates -match 'Validate producer request manifest' -and

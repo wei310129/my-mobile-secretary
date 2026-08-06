@@ -3,6 +3,45 @@
 $MavenRepoRoot = Split-Path -Parent $PSScriptRoot
 $MavenWrapper = Join-Path $MavenRepoRoot 'mvnw.cmd'
 
+function Resolve-MavenGitDirectoryAnchor {
+    param([Parameter(Mandatory)][string]$RepoRoot)
+    $lines = @(& git -C $RepoRoot rev-parse --git-dir 2>$null)
+    if ($LASTEXITCODE -ne 0 -or [string]::IsNullOrWhiteSpace([string]($lines | Select-Object -First 1))) {
+        throw 'Maven worktree Git metadata could not be resolved.'
+    }
+    $gitDirectory = [IO.Path]::GetFullPath([string]($lines | Select-Object -First 1)).TrimEnd('\', '/')
+    if (-not (Test-Path -LiteralPath $gitDirectory -PathType Container)) {
+        throw 'Maven worktree Git metadata directory is unavailable.'
+    }
+    # git-commit-id-maven-plugin 9.x folds .git/worktrees/<name> back to the
+    # common .git directory. An existing child directory keeps its lookup on
+    # the per-worktree metadata directory without changing Git metadata.
+    $anchor = Join-Path $gitDirectory 'logs'
+    if (Test-Path -LiteralPath $anchor -PathType Container) {
+        return [IO.Path]::GetFullPath($anchor).TrimEnd('\', '/')
+    }
+    $parentName = [IO.Path]::GetFileName((Split-Path -Parent $gitDirectory))
+    if ([string]::Equals($parentName, 'worktrees', [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Linked worktree Git metadata has no safe Maven anchor directory.'
+    }
+    return $gitDirectory
+}
+
+function Invoke-WithMavenWorktreeGitContext {
+    param(
+        [Parameter(Mandatory)][string]$RepoRoot,
+        [Parameter(Mandatory)][scriptblock]$Runner
+    )
+    $previous = [Environment]::GetEnvironmentVariable('MMS_MAVEN_GIT_DIRECTORY', 'Process')
+    try {
+        $env:MMS_MAVEN_GIT_DIRECTORY = Resolve-MavenGitDirectoryAnchor -RepoRoot $RepoRoot
+        return & $Runner
+    } finally {
+        if ($null -eq $previous) { Remove-Item Env:MMS_MAVEN_GIT_DIRECTORY -ErrorAction SilentlyContinue }
+        else { $env:MMS_MAVEN_GIT_DIRECTORY = $previous }
+    }
+}
+
 function Add-MavenOutputArguments {
     param([Parameter(Mandatory)][string[]]$Arguments)
 

@@ -92,6 +92,12 @@ Codex policy 只核准這個 repository-owned entrypoint；裸 `mvnw.cmd` 沒有
 operation／receipt 只由同一 library 原子寫入固定 LOCALAPPDATA coordination v1 tree，resource key
 由 runner 所在 worktree 推導，不能由呼叫者指定。
 
+linked worktree 的 Maven version metadata 也由 runner 自動處理：它以 `git rev-parse --git-dir`
+驗證目前 worktree 的 Git metadata，將 plugin anchor 限定在該 metadata 的既有 `logs` 目錄，
+再透過 `MMS_MAVEN_GIT_DIRECTORY` 傳給 `git-commit-id-maven-plugin`。因此 `/actuator/info`
+的 SHA／commit count 不會誤讀 primary worktree；anchor 缺失時 Maven 會 fail closed，不需要手動
+設定環境變數，也不會修改 `.git` metadata。
+
 同一 project rules 以 `forbidden` 阻擋 `git reset`、`git clean`、會覆寫檔案的 `git checkout`、
 `git restore` 與 `git stash`。mixed-owner worktree 必須改用新 branch／獨立 worktree或經 review 的
 精確 patch，不得用會改寫、刪除或隱藏既有變更的指令處理。

@@ -20,6 +20,14 @@ foreach ($token in $forbiddenTokens) {
     Assert-DockerTest ($contents -notmatch [regex]::Escape($token)) "managed Docker helper contains forbidden token: $token"
 }
 
+Assert-DockerTest ($script:ManagedDockerDesktopPath -match '(?i)(?:Programs[\\/]DockerDesktop|Program Files[\\/]Docker[\\/]Docker)[\\/]Docker Desktop[.]exe$') 'Docker Desktop identity was not selected from a fixed canonical path'
+Assert-DockerTest ($script:ManagedDockerCliPath -match '(?i)(?:Programs[\\/]DockerDesktop|Program Files[\\/]Docker[\\/]Docker)[\\/]resources[\\/]bin[\\/]docker[.]exe$') 'Docker CLI identity was not selected from a fixed canonical path'
+$resolvedProjectRoot = Resolve-ManagedDockerProjectRoot -RepoRoot $repoRoot
+Assert-DockerTest ($resolvedProjectRoot -and (Test-Path -LiteralPath (Join-Path $resolvedProjectRoot '.git'))) 'managed Docker project root was not resolved from registered Git metadata'
+$unregisteredRejected = $false
+try { Resolve-ManagedDockerProjectRoot -RepoRoot (Join-Path $repoRoot 'scripts') | Out-Null } catch { $unregisteredRejected = $true }
+Assert-DockerTest $unregisteredRejected 'managed Docker accepted an unregistered or path-escaped target'
+
 if (-not $RunLive) {
     [pscustomobject]@{ status = 'passed'; assertions = $assertions; liveDocker = 'skipped'; resources = 'unchanged'; reason = 'live Docker lifecycle requires explicit -RunLive outside the sandbox' } |
         ConvertTo-Json -Compress

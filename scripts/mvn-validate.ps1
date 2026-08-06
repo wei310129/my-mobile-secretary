@@ -5,7 +5,9 @@
 
 . "$PSScriptRoot\_maven-quiet.ps1"
 
-$exitCode = Invoke-QuietMaven `
-    -Arguments @('-q', '-ntp', '-Dstyle.color=never', 'validate') `
-    -SuccessMessage 'Maven validate passed'
+$exitCode = Invoke-WithMavenWorktreeGitContext -RepoRoot $MavenRepoRoot -Runner {
+    Invoke-QuietMaven `
+        -Arguments @('-q', '-ntp', '-Dstyle.color=never', 'validate') `
+        -SuccessMessage 'Maven validate passed'
+}
 exit $exitCode

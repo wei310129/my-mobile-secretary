@@ -56,12 +56,14 @@ try {
     }
 
     $operation = if ($Clean) { 'Clean' } elseif ($MavenArguments -match 'test') { 'Test' } else { 'Build' }
-    $coordination = Invoke-CoordinatedMavenOperation `
-        -Application root `
-        -Worktree $repoRoot `
-        -Operation $operation `
-        -TimeoutSeconds $LockTimeoutSeconds `
-        -Runner { Invoke-QuietMaven -Arguments $mavenInvocationArguments.ToArray() -SuccessMessage 'Maven 成功' }
+    $coordination = Invoke-WithMavenWorktreeGitContext -RepoRoot $repoRoot -Runner {
+        Invoke-CoordinatedMavenOperation `
+            -Application root `
+            -Worktree $repoRoot `
+            -Operation $operation `
+            -TimeoutSeconds $LockTimeoutSeconds `
+            -Runner { Invoke-QuietMaven -Arguments $mavenInvocationArguments.ToArray() -SuccessMessage 'Maven 成功' }
+    }
     if ($coordination.Outcome -eq 'BUSY') {
         throw "等待 Maven 協調租約超過 $LockTimeoutSeconds 秒；另一個根專案 Maven writer 仍在執行。"
     }

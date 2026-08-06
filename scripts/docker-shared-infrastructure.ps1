@@ -142,10 +142,12 @@ function Ensure-ManagedDockerDaemon {
         if($caller.IsSandbox -or $env:AGENT_ASYNC_TOOL_REQUIRED -eq 'true'){
             return [pscustomobject]@{Outcome='BLOCKED';Classification='AGENT_ASYNC_TOOL_REQUIRED';Reason='Docker Desktop is not stable; a host managed launcher must be held by the agent monitor';Started=$false;StableSamples=$initial.StableSamples;Probe=$initial.Probe}
         }
-        $managedRoot = 'D:\my-project\my-mobile-secretary'
+        $currentRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot)).TrimEnd('\','/')
+        $managedRoot = $currentRoot
         $managedRootVariable = Get-Variable -Name ManagedDockerProjectRoot -ErrorAction SilentlyContinue
         if ($managedRootVariable -and $managedRootVariable.Value) { $managedRoot = [string]$managedRootVariable.Value }
-        $currentRoot = [IO.Path]::GetFullPath((Split-Path -Parent $PSScriptRoot)).TrimEnd('\','/')
+        $projectRootResolver = Get-Command Resolve-ManagedDockerProjectRoot -ErrorAction SilentlyContinue
+        if ($projectRootResolver) { $managedRoot = Resolve-ManagedDockerProjectRoot -RepoRoot $currentRoot }
         $managedRoot = [IO.Path]::GetFullPath($managedRoot).TrimEnd('\','/')
         $formalEntrypoint = Get-Command Invoke-ManagedDockerDesktop -ErrorAction SilentlyContinue
         $formalRootMatch = [string]::Equals($currentRoot,$managedRoot,[StringComparison]::OrdinalIgnoreCase) -or
@@ -229,7 +231,16 @@ function Test-SharedPublishedPortContract {
     param([Parameter(Mandatory)]$Container,[Parameter(Mandatory)]$Contract)
     $network=Get-DockerObjectProperty $Container 'NetworkSettings'
     $ports=Get-DockerObjectProperty $network 'Ports'
-    $mapping=Get-DockerObjectProperty $ports "$($Contract.ContainerPort)/$($Contract.Protocol)"
+    $portKey = "$($Contract.ContainerPort)/$($Contract.Protocol)"
+    $mapping=Get-DockerObjectProperty $ports $portKey
+    $hasNetworkMapping = @($mapping | Where-Object { $null -ne $_ }).Count -gt 0
+    if (-not $hasNetworkMapping -and [string](Get-DockerObjectProperty (Get-DockerObjectProperty $Container 'State') 'Status') -ne 'running') {
+        # Docker reports an empty NetworkSettings.Ports map for stopped containers. The
+        # immutable published-port contract remains available in HostConfig.PortBindings.
+        $hostConfig=Get-DockerObjectProperty $Container 'HostConfig'
+        $bindings=Get-DockerObjectProperty $hostConfig 'PortBindings'
+        $mapping=Get-DockerObjectProperty $bindings $portKey
+    }
     $matches=@($mapping|Where-Object{[string](Get-DockerObjectProperty $_ 'HostPort') -eq [string]$Contract.HostPort})
     if($matches.Count -eq 0){return [pscustomobject]@{Valid=$false;Reason="published port contract $($Contract.HostPort):$($Contract.ContainerPort)/$($Contract.Protocol) is missing"}}
     return [pscustomobject]@{Valid=$true;Reason=$null}

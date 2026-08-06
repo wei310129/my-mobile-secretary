@@ -6,6 +6,7 @@ param(
 
 $ErrorActionPreference = 'Stop'
 . "$PSScriptRoot\coordination-maven.ps1"
+. "$PSScriptRoot\_maven-quiet.ps1"
 
 $repoRoot = Split-Path -Parent $PSScriptRoot
 $mavenWrapper = Join-Path $repoRoot 'mvnw.cmd'
@@ -22,12 +23,14 @@ $mavenArguments = if ($Application -eq 'root') {
 }
 
 try {
-    $coordination = Invoke-CoordinatedMavenOperation -Application $Application -Worktree $worktree -Operation SpringBootRun -Runner {
-        Push-Location $repoRoot
-        try {
-            & $mavenWrapper @mavenArguments 2>&1 | ForEach-Object { Write-Host $_ }
-            return $LASTEXITCODE
-        } finally { Pop-Location }
+    $coordination = Invoke-WithMavenWorktreeGitContext -RepoRoot $repoRoot -Runner {
+        Invoke-CoordinatedMavenOperation -Application $Application -Worktree $worktree -Operation SpringBootRun -Runner {
+            Push-Location $repoRoot
+            try {
+                & $mavenWrapper @mavenArguments 2>&1 | ForEach-Object { Write-Host $_ }
+                return $LASTEXITCODE
+            } finally { Pop-Location }
+        }
     }
     if ($coordination.Outcome -eq 'BUSY') {
         Write-Error 'Maven runtime target is busy; start was not attempted.'

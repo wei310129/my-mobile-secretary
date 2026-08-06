@@ -1,0 +1,64 @@
+{
+    "schemaVersion":  2,
+    "releaseGate":  "tooling-docker-per-user-identity-20260805",
+    "mode":  "Automatic",
+    "outcome":  "PASS",
+    "machineAlias":  "tooling-host-20260806",
+    "reviewedAt":  "2026-08-06T05:38:20.4093809Z",
+    "contractFingerprint":  "e43874472f69f3f66d949f02",
+    "targetWorktree":  {
+                           "path":  "C:\\Users\\ADMIN\\IdeaProjects\\my-mobile-secretary\\var\\worktrees\\tooling-docker-per-user-identity-20260805",
+                           "worktreeId":  "9409ed6af027c87e31ebc6b3",
+                           "repoId":  "58827f126b78fc21c4023114",
+                           "primaryRoot":  "C:\\Users\\ADMIN\\IdeaProjects\\my-mobile-secretary",
+                           "commonDirectory":  "C:\\Users\\ADMIN\\IdeaProjects\\my-mobile-secretary\\.git",
+                           "branch":  "refs/heads/tooling/docker-desktop-per-user-identity-20260805",
+                           "head":  "b89c5a3d620088bcfee3c37fc6b9c2081c39c06c",
+                           "registered":  true
+                       },
+    "evidencePath":  "C:\\Users\\ADMIN\\IdeaProjects\\my-mobile-secretary\\var\\worktrees\\tooling-docker-per-user-identity-20260805\\docs\\exec-plans\\evidence\\development-environment\\tooling-docker-per-user-identity-20260805\\automatic.json",
+    "evidenceRoot":  "C:\\Users\\ADMIN\\IdeaProjects\\my-mobile-secretary\\var\\worktrees\\tooling-docker-per-user-identity-20260805\\docs\\exec-plans\\evidence\\development-environment\\tooling-docker-per-user-identity-20260805",
+    "capabilities":  [
+                         {
+                             "name":  "READ_ONLY",
+                             "state":  "MATCH",
+                             "ready":  true,
+                             "reason":  null
+                         },
+                         {
+                             "name":  "SOURCE_WRITE",
+                             "state":  "MATCH",
+                             "ready":  true,
+                             "reason":  null
+                         },
+                         {
+                             "name":  "MAVEN",
+                             "state":  "MATCH",
+                             "ready":  true,
+                             "reason":  null
+                         },
+                         {
+                             "name":  "DOCKER_TEST",
+                             "state":  "MATCH",
+                             "ready":  true,
+                             "reason":  null
+                         },
+                         {
+                             "name":  "DEV_RUNTIME",
+                             "state":  "MATCH",
+                             "ready":  true,
+                             "reason":  null
+                         },
+                         {
+                             "name":  "LINE_E2E",
+                             "state":  "MATCH",
+                             "ready":  true,
+                             "reason":  null
+                         }
+                     ],
+    "issues":  [
+
+               ],
+    "openCount":  0,
+    "policy":  "W11+ automatic hard gate"
+}

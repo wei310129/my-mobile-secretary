@@ -137,6 +137,19 @@ function Invoke-FakeEnsure {
 $assertions = 0
 try {
     Reset-FakeContainers
+    $stoppedPortFixture = $script:FakeDockerState.Containers['mms-postgres']
+    $stoppedPortFixture.NetworkSettings.Ports = [pscustomobject]@{}
+    $portBindings = [pscustomobject]@{}
+    $portBindings | Add-Member -MemberType NoteProperty -Name '5432/tcp' -Value @([pscustomobject]@{HostPort = '5432'})
+    $stoppedPortFixture | Add-Member -MemberType NoteProperty -Name HostConfig -Value ([pscustomobject]@{PortBindings = $portBindings}) -Force
+    $stoppedPortFixture.State.Status = 'exited'
+    $stoppedPortContract = Get-SharedContainerStatus (Get-SharedInfrastructureContracts -Name @('main-postgres') | Select-Object -First 1)
+    $assertions++
+    Assert-SharedTest $stoppedPortContract.ContractValid 'stopped container HostConfig port binding was not accepted as the immutable published-port contract'
+    $networkPorts = [pscustomobject]@{}
+    $networkPorts | Add-Member -MemberType NoteProperty -Name '5432/tcp' -Value @([pscustomobject]@{HostPort = '5432'})
+    $stoppedPortFixture.NetworkSettings.Ports = $networkPorts
+    $stoppedPortFixture.State.Status = 'running'
     $healthy = Invoke-FakeEnsure
     $assertions++
     Assert-SharedTest ($healthy.Outcome -eq 'READY' -and $healthy.Action -eq 'REUSED_HEALTHY') 'healthy shared containers were not reused'

@@ -2,6 +2,7 @@ Set-StrictMode -Version Latest
 
 . "$PSScriptRoot\coordination-common.ps1"
 . "$PSScriptRoot\docker-shared-infrastructure.ps1"
+. "$PSScriptRoot\managed-docker-desktop.ps1"
 
 $script:EnvironmentSchemaVersion = 2
 $script:EnvironmentCapabilityNames = @(

@@ -187,6 +187,11 @@
                 <configuration>
                     <verbose>false</verbose>
                     <offline>true</offline>
+                    <!-- Native Git must resolve the checked-out worktree HEAD; the default
+                         Java reader follows the common .git directory for linked worktrees. -->
+                    <useNativeGit>true</useNativeGit>
+                    <useNativeGitViaCommandLine>true</useNativeGitViaCommandLine>
+                    <dotGitDirectory>${env.MMS_MAVEN_GIT_DIRECTORY}</dotGitDirectory>
                     <abbrevLength>12</abbrevLength>
                     <commitIdGenerationMode>full</commitIdGenerationMode>
                     <failOnNoGitDirectory>true</failOnNoGitDirectory>

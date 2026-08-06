@@ -1,8 +1,115 @@
 Set-StrictMode -Version Latest
 
-$script:ManagedDockerDesktopPath = 'C:\Program Files\Docker\Docker\Docker Desktop.exe'
-$script:ManagedDockerCliPath = 'C:\Program Files\Docker\Docker\resources\bin\docker.exe'
-$script:ManagedDockerProjectRoot = 'D:\my-project\my-mobile-secretary'
+function Resolve-ManagedDockerGitLayout {
+    param([Parameter(Mandatory)][string]$RepoRoot)
+    $fullRoot = [IO.Path]::GetFullPath($RepoRoot).TrimEnd('\', '/')
+    if (-not (Test-Path -LiteralPath $fullRoot -PathType Container)) {
+        throw 'Managed Docker entrypoint target is not an existing directory.'
+    }
+    $dotGit = Join-Path $fullRoot '.git'
+    if (-not (Test-Path -LiteralPath $dotGit)) {
+        throw 'Managed Docker entrypoint target is not a Git worktree.'
+    }
+    $gitDirectory = $null
+    $dotGitItem = Get-Item -LiteralPath $dotGit -Force -ErrorAction Stop
+    if (($dotGitItem.Attributes -band [IO.FileAttributes]::ReparsePoint) -ne 0) {
+        throw 'Managed Docker entrypoint Git metadata is a reparse point.'
+    }
+    if ($dotGitItem.PSIsContainer) {
+        $gitDirectory = [IO.Path]::GetFullPath($dotGit)
+    } else {
+        $pointer = [IO.File]::ReadAllText($dotGit, [Text.Encoding]::UTF8).Trim()
+        if ($pointer -notmatch '^gitdir:\s*(?<path>[^\r\n]+)$') {
+            throw 'Managed Docker entrypoint Git worktree pointer is invalid.'
+        }
+        $gitPath = $Matches.path.Trim()
+        if (-not [IO.Path]::IsPathRooted($gitPath)) { $gitPath = Join-Path $fullRoot $gitPath }
+        $gitDirectory = [IO.Path]::GetFullPath($gitPath).TrimEnd('\', '/')
+    }
+    if (-not (Test-Path -LiteralPath $gitDirectory -PathType Container)) {
+        throw 'Managed Docker entrypoint Git directory is unavailable.'
+    }
+    $commonDirectory = $gitDirectory
+    $commonPointer = Join-Path $gitDirectory 'commondir'
+    if (Test-Path -LiteralPath $commonPointer -PathType Leaf) {
+        $commonPath = [IO.File]::ReadAllText($commonPointer, [Text.Encoding]::UTF8).Trim()
+        if ([string]::IsNullOrWhiteSpace($commonPath)) {
+            throw 'Managed Docker entrypoint Git common-dir pointer is blank.'
+        }
+        if (-not [IO.Path]::IsPathRooted($commonPath)) { $commonPath = Join-Path $gitDirectory $commonPath }
+        $commonDirectory = [IO.Path]::GetFullPath($commonPath).TrimEnd('\', '/')
+    }
+    if (-not (Test-Path -LiteralPath $commonDirectory -PathType Container) -or
+        [IO.Path]::GetFileName($commonDirectory) -cne '.git') {
+        throw 'Managed Docker entrypoint Git common-dir is not a repository .git directory.'
+    }
+    return [pscustomobject]@{
+        RepoRoot = $fullRoot
+        GitDirectory = $gitDirectory
+        CommonDirectory = $commonDirectory
+        PrimaryRoot = [IO.Path]::GetFullPath((Split-Path -Parent $commonDirectory)).TrimEnd('\', '/')
+    }
+}
+
+function Get-ManagedDockerRegisteredWorktreePaths {
+    param([Parameter(Mandatory)][string]$PrimaryRoot)
+    $lines = @(& git -C $PrimaryRoot worktree list --porcelain 2>$null)
+    if ($LASTEXITCODE -ne 0) {
+        throw 'Managed Docker entrypoint could not verify Git registered worktrees.'
+    }
+    $paths = [Collections.Generic.List[string]]::new()
+    foreach ($line in $lines) {
+        if ($line -match '^worktree\s+(?<path>.+)$') {
+            $candidate = [IO.Path]::GetFullPath($Matches.path.Trim()).TrimEnd('\', '/')
+            if ($paths -notcontains $candidate) { $paths.Add($candidate) }
+        }
+    }
+    return @($paths)
+}
+
+function Resolve-ManagedDockerProjectRoot {
+    param([Parameter(Mandatory)][string]$RepoRoot)
+    $target = Resolve-ManagedDockerGitLayout -RepoRoot $RepoRoot
+    $registered = @(Get-ManagedDockerRegisteredWorktreePaths -PrimaryRoot $target.PrimaryRoot)
+    if (@($registered | Where-Object { [string]::Equals($_, $target.RepoRoot, [StringComparison]::OrdinalIgnoreCase) }).Count -ne 1) {
+        throw 'Managed Docker entrypoint target is not a registered Git worktree.'
+    }
+    if (-not [string]::Equals($target.RepoRoot, $target.PrimaryRoot, [StringComparison]::OrdinalIgnoreCase) -and
+        -not $target.RepoRoot.StartsWith("$($target.PrimaryRoot)\var\worktrees\", [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Managed Docker entrypoint worktree is outside the approved var/worktrees directory.'
+    }
+    return $target.PrimaryRoot
+}
+
+function Resolve-ManagedDockerCanonicalPath {
+    param(
+        [Parameter(Mandatory)][string[]]$Candidates
+    )
+    foreach ($candidate in $Candidates) {
+        if (Test-Path -LiteralPath $candidate -PathType Leaf) {
+            return [IO.Path]::GetFullPath($candidate)
+        }
+    }
+    return [IO.Path]::GetFullPath($Candidates[0])
+}
+
+$localApplicationData = [Environment]::GetFolderPath([Environment+SpecialFolder]::LocalApplicationData)
+$desktopCandidates = [Collections.Generic.List[string]]::new()
+$cliCandidates = [Collections.Generic.List[string]]::new()
+if (-not [string]::IsNullOrWhiteSpace($localApplicationData)) {
+    $userDockerRoot = Join-Path $localApplicationData 'Programs\DockerDesktop'
+    $desktopCandidates.Add((Join-Path $userDockerRoot 'Docker Desktop.exe')) | Out-Null
+    $cliCandidates.Add((Join-Path $userDockerRoot 'resources\bin\docker.exe')) | Out-Null
+}
+$desktopCandidates.Add('C:\Program Files\Docker\Docker\Docker Desktop.exe') | Out-Null
+$cliCandidates.Add('C:\Program Files\Docker\Docker\resources\bin\docker.exe') | Out-Null
+
+# Docker Desktop supports both a per-user install and the machine-wide install.
+# Both paths are fixed allowlist entries; the selected file is still required to
+# be a real, Docker Inc-signed file and is fingerprinted before any lifecycle action.
+$script:ManagedDockerDesktopPath = Resolve-ManagedDockerCanonicalPath -Candidates @($desktopCandidates)
+$script:ManagedDockerCliPath = Resolve-ManagedDockerCanonicalPath -Candidates @($cliCandidates)
+$script:ManagedDockerProjectRoot = $null
 $script:ManagedDockerCapability = 'DOCKER_TEST'
 
 function Resolve-ManagedDockerFileIdentity {
@@ -40,17 +147,6 @@ function Resolve-ManagedDockerDesktopIdentity {
 
 function Resolve-ManagedDockerCliIdentity {
     $expected = [IO.Path]::GetFullPath($script:ManagedDockerCliPath)
-    $commands = @(Get-Command docker -CommandType Application -ErrorAction SilentlyContinue)
-    $matching = @($commands | Where-Object {
-        try { [string]::Equals([IO.Path]::GetFullPath([string]$_.Source), $expected, [StringComparison]::OrdinalIgnoreCase) }
-        catch { $false }
-    })
-    if ($matching.Count -eq 0) {
-        throw 'Docker CLI is unavailable at the allowlisted Docker installation path.'
-    }
-    if ($matching.Count -gt 1) {
-        throw 'Docker CLI has multiple matching allowlisted command entries; launch refused.'
-    }
     return Resolve-ManagedDockerFileIdentity -ExpectedPath $expected -Label 'Docker CLI'
 }
 
@@ -151,13 +247,8 @@ function Resolve-ManagedDockerStateRoot {
         [Parameter(Mandatory)][string]$RepoRoot,
         [AllowNull()][string]$StateRoot
     )
-    $primary = [IO.Path]::GetFullPath($script:ManagedDockerProjectRoot).TrimEnd('\')
     $repo = [IO.Path]::GetFullPath($RepoRoot).TrimEnd('\')
-    $isPrimary = [string]::Equals($repo, $primary, [StringComparison]::OrdinalIgnoreCase)
-    $isManagedWorktree = $repo.StartsWith("$primary\var\worktrees\", [StringComparison]::OrdinalIgnoreCase)
-    if (-not $isPrimary -and -not $isManagedWorktree) {
-        throw 'Managed Docker entrypoint is limited to this repository or var/worktrees descendants.'
-    }
+    $primary = Resolve-ManagedDockerProjectRoot -RepoRoot $repo
     if (-not (Test-Path -LiteralPath (Join-Path $repo 'scripts') -PathType Container)) {
         throw 'Managed Docker entrypoint must run from a repository-owned scripts directory.'
     }

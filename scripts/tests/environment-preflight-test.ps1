@@ -20,6 +20,9 @@ function New-FakeProbe {
     return [pscustomobject]@{State=$State;Ready=$Ready;Reason=$Reason;Version='fake'}
 }
 
+$environmentText = Get-Content -Raw -Encoding UTF8 -LiteralPath (Join-Path (Split-Path -Parent $PSScriptRoot) 'environment-common.ps1')
+Assert-EnvironmentTest ($environmentText.Contains('. "$PSScriptRoot\managed-docker-desktop.ps1"')) 'environment preflight does not load the managed Docker identity module'
+
 try {
     $ready = @{
         PowerShell=(New-FakeProbe);Git=(New-FakeProbe)

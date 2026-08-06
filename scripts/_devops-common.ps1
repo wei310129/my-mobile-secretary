@@ -36,6 +36,14 @@ function Assert-CommandAvailable {
     }
 }
 
+function Get-SafeChildExitCode {
+    param([Parameter(Mandatory)][bool]$Succeeded)
+    $variable = Get-Variable -Name LASTEXITCODE -ErrorAction SilentlyContinue
+    if ($variable) { return [int]$variable.Value }
+    if ($Succeeded) { return 0 }
+    return 1
+}
+
 function Ensure-LogsDir {
     if (-not (Test-Path $LogsDir)) {
         New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null
@@ -388,7 +396,8 @@ function Wait-ContainerHealthy {
     )
     $deadline = (Get-Date).AddSeconds($TimeoutSec)
     while ((Get-Date) -lt $deadline) {
-        $status = docker inspect -f "{{.State.Health.Status}}" $ContainerName 2>$null
+        $result = Invoke-SharedDockerCommand -Arguments @('inspect','-f','{{.State.Health.Status}}',$ContainerName)
+        $status = if ($result.ExitCode -eq 0) { $result.Output.Trim() } else { $null }
         if ($status -eq "healthy") { return $true }
         Start-Sleep -Seconds 2
     }
@@ -397,9 +406,9 @@ function Wait-ContainerHealthy {
 
 function Get-ContainerHealth {
     param([Parameter(Mandatory)][string]$ContainerName)
-    $status = docker inspect -f "{{.State.Health.Status}}" $ContainerName 2>$null
-    if ($LASTEXITCODE -ne 0) { return $null }
-    return $status
+    $result = Invoke-SharedDockerCommand -Arguments @('inspect','-f','{{.State.Health.Status}}',$ContainerName)
+    if ($result.ExitCode -ne 0) { return $null }
+    return $result.Output.Trim()
 }
 
 function Wait-TcpPort {
@@ -458,15 +467,12 @@ function Ensure-DockerDaemon {
 # Codex child process during an ordinary restart. Failure to inspect returns $null and never claims
 # that an execution is safe to interrupt.
 function Get-DispatcherLaneSnapshot {
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { return $null }
     if ((Get-ContainerHealth -ContainerName "mms-ai-dispatcher-postgres") -ne "healthy") {
         return $null
     }
-    $value = docker exec mms-ai-dispatcher-postgres `
-        psql -U ai_dispatcher -d ai_dispatcher -tA `
-        -c "SELECT state || '|' || COALESCE(active_run_id::text, '') FROM dispatcher_lane WHERE lane_key = 'CODEX_DEVELOPMENT';" 2>$null
-    if ($LASTEXITCODE -ne 0) { return $null }
-    $parts = (($value | Out-String).Trim()) -split '\|', 2
+    $result = Invoke-SharedDockerCommand -Arguments @('exec','mms-ai-dispatcher-postgres','psql','-U','ai_dispatcher','-d','ai_dispatcher','-tA','-c',"SELECT state || '|' || COALESCE(active_run_id::text, '') FROM dispatcher_lane WHERE lane_key = 'CODEX_DEVELOPMENT';")
+    if ($result.ExitCode -ne 0) { return $null }
+    $parts = $result.Output.Trim() -split '\|', 2
     if ($parts.Count -ne 2) { return $null }
     $state = $parts[0]
     $known = @("IDLE", "WAITING", "STARTING", "RUNNING", "RECOVERING", "PAUSED")
@@ -501,15 +507,12 @@ function Invoke-CoordinatorDispatcherDrainPreflight {
 }
 
 function Get-DispatcherSessionSnapshot {
-    if (-not (Get-Command docker -ErrorAction SilentlyContinue)) { return $null }
     if ((Get-ContainerHealth -ContainerName "mms-ai-dispatcher-postgres") -ne "healthy") {
         return $null
     }
-    $value = docker exec mms-ai-dispatcher-postgres `
-        psql -U ai_dispatcher -d ai_dispatcher -tA `
-        -c "SELECT status || '|' || COALESCE(external_session_id, '') FROM agent_session WHERE session_key = 'development-main';" 2>$null
-    if ($LASTEXITCODE -ne 0) { return $null }
-    $parts = (($value | Out-String).Trim()) -split '\|', 2
+    $result = Invoke-SharedDockerCommand -Arguments @('exec','mms-ai-dispatcher-postgres','psql','-U','ai_dispatcher','-d','ai_dispatcher','-tA','-c',"SELECT status || '|' || COALESCE(external_session_id, '') FROM agent_session WHERE session_key = 'development-main';")
+    if ($result.ExitCode -ne 0) { return $null }
+    $parts = $result.Output.Trim() -split '\|', 2
     if ($parts.Count -ne 2) { return $null }
     return [pscustomobject]@{
         Status            = $parts[0]

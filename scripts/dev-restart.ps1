@@ -11,12 +11,16 @@
 .PARAMETER SkipDispatcher
   Restarts only the main application and does not touch the AI Dispatcher.
 
+.PARAMETER NoNgrok
+  Preserves a local-only restart without starting ngrok or running the LINE webhook probe.
+
 .PARAMETER ArmDispatcher
   Restarts both applications with explicitly armed Dispatcher automation.
 #>
 param(
     [switch]$Full,
     [string]$Profile = "local",
+    [switch]$NoNgrok,
     [switch]$SkipDispatcher,
     [switch]$ArmDispatcher,
     [switch]$AllowDirtyWorktree
@@ -27,6 +31,7 @@ $script:DevVerboseOutput = $false
 Set-Location $RepoRoot
 
 $startParameters = @{ Profile = $Profile }
+if ($NoNgrok) { $startParameters["NoNgrok"] = $true }
 if ($SkipDispatcher) { $startParameters["SkipDispatcher"] = $true }
 if ($ArmDispatcher) {
     if ($SkipDispatcher) { throw "-SkipDispatcher cannot be combined with -ArmDispatcher." }
@@ -45,9 +50,10 @@ if ($Full) {
     Write-Host "=== Full restart ===" -ForegroundColor Cyan
     Write-Host "Shared persistent Docker infrastructure is preserved and revalidated by dev-start." -ForegroundColor DarkGray
     & "$PSScriptRoot\dev-stop.ps1"
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $stopExitCode = Get-SafeChildExitCode -Succeeded $?
+    if ($stopExitCode -ne 0) { exit $stopExitCode }
     & "$PSScriptRoot\dev-start.ps1" @startParameters
-    $childExitCode = $LASTEXITCODE
+    $childExitCode = Get-SafeChildExitCode -Succeeded $?
     if ($childExitCode -eq 0) { $lifecycleOutcome = 'READY' }
     exit $childExitCode
 }
@@ -101,7 +107,7 @@ if ($appPid) {
 }
 
 & "$PSScriptRoot\dev-start.ps1" @startParameters
-$childExitCode = $LASTEXITCODE
+$childExitCode = Get-SafeChildExitCode -Succeeded $?
 if ($childExitCode -eq 0) { $lifecycleOutcome = 'READY' }
 exit $childExitCode
 } finally {

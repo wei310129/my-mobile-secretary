@@ -6,6 +6,7 @@ param(
 )
 
 $ErrorActionPreference = 'Stop'
+. "$PSScriptRoot\_maven-quiet.ps1"
 
 if ($env:CI -ne 'true' -or $env:GITHUB_ACTIONS -ne 'true') {
     throw 'mvn-ci.ps1 is restricted to GitHub Actions ephemeral runners; use mvn-safe.ps1 locally.'
@@ -41,14 +42,22 @@ if ($ValidateOnly) {
     exit 0
 }
 
-Push-Location $repoRoot
+$previousMavenGitDirectory = [Environment]::GetEnvironmentVariable('MMS_MAVEN_GIT_DIRECTORY', 'Process')
 try {
-    if ($isWindowsPlatform) {
-        & $wrapper -B -ntp '-Dstyle.color=never' @MavenArguments
-    } else {
-        & bash $wrapper -B -ntp '-Dstyle.color=never' @MavenArguments
+    $env:MMS_MAVEN_GIT_DIRECTORY = Resolve-MavenGitDirectoryAnchor -RepoRoot $repoRoot
+    Push-Location $repoRoot
+    try {
+        if ($isWindowsPlatform) {
+            & $wrapper -B -ntp '-Dstyle.color=never' @MavenArguments
+        } else {
+            & bash $wrapper -B -ntp '-Dstyle.color=never' @MavenArguments
+        }
+        $exitCode = $LASTEXITCODE
+    } finally {
+        Pop-Location
     }
-    exit $LASTEXITCODE
 } finally {
-    Pop-Location
+    if ($null -eq $previousMavenGitDirectory) { Remove-Item Env:MMS_MAVEN_GIT_DIRECTORY -ErrorAction SilentlyContinue }
+    else { $env:MMS_MAVEN_GIT_DIRECTORY = $previousMavenGitDirectory }
 }
+exit $exitCode

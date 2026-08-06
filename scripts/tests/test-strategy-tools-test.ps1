@@ -13,8 +13,10 @@ function Assert-Tooling {
 }
 
 $summary = & $inventory -Mode Summary -ShardCount 3 -Json | ConvertFrom-Json
-Assert-Tooling ($summary.total -eq 384) 'test inventory did not cover all 384 existing test classes'
-Assert-Tooling ($summary.automated -eq 381) 'live tests were not precisely excluded from automated inventory'
+# The main branch added three place-catalog test classes in PR #24. Keep this
+# explicit baseline so inventory discovery regressions still fail closed.
+Assert-Tooling ($summary.total -eq 387) 'test inventory did not cover all 387 existing test classes'
+Assert-Tooling ($summary.automated -eq 384) 'live tests were not precisely excluded from automated inventory'
 Assert-Tooling ($summary.live -eq 3) 'live test classification is incorrect'
 Assert-Tooling ($summary.migration -eq 8) 'migration test classification is incorrect'
 Assert-Tooling ($summary.fast -gt 0 -and $summary.integration -gt 0) 'fast and integration lanes must not be empty'

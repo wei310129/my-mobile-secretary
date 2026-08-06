@@ -14,12 +14,14 @@ try {
     $spotlessArguments = @('-q', '-ntp', '-Dstyle.color=never')
     if ($SpotlessFiles) { $spotlessArguments += "-DspotlessFiles=$SpotlessFiles" }
     $spotlessArguments += 'spotless:apply'
-    $coordination = Invoke-CoordinatedMavenOperation `
-        -Application root `
-        -Worktree $repoRoot `
-        -Operation SpotlessApply `
-        -SourceWrite `
-        -Runner { Invoke-QuietMaven -Arguments $spotlessArguments -SuccessMessage 'Spotless import cleanup passed' }
+    $coordination = Invoke-WithMavenWorktreeGitContext -RepoRoot $repoRoot -Runner {
+        Invoke-CoordinatedMavenOperation `
+            -Application root `
+            -Worktree $repoRoot `
+            -Operation SpotlessApply `
+            -SourceWrite `
+            -Runner { Invoke-QuietMaven -Arguments $spotlessArguments -SuccessMessage 'Spotless import cleanup passed' }
+    }
     if ($coordination.Outcome -eq 'BUSY') {
         throw 'Spotless source-write claim is busy; another Maven writer or source mutation is active.'
     }

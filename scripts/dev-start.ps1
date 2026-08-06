@@ -41,6 +41,7 @@ if ($ArmDispatcher) {
     Disable-DispatcherAutomationEnvironment
 }
 Ensure-LogsDir
+Initialize-LocalApplicationSecretEnvironment
 $script:StartServiceGeneration = $null
 $script:StartServiceGenerationPublished = $false
 $script:StartNewNgrokPid = $null
@@ -158,7 +159,7 @@ if (-not $NoNgrok) {
         $ngrokArguments = @(
             "http",
             "--url=$($lineWebhookUri.Host)",
-            "$AppPort",
+            "http://localhost:$AppPort",
             "--log=stdout",
             "--log-level=warn"
         )

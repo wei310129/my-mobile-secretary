@@ -50,9 +50,10 @@ if ($Full) {
     Write-Host "=== Full restart ===" -ForegroundColor Cyan
     Write-Host "Shared persistent Docker infrastructure is preserved and revalidated by dev-start." -ForegroundColor DarkGray
     & "$PSScriptRoot\dev-stop.ps1"
-    if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+    $stopExitCode = Get-SafeChildExitCode -Succeeded $?
+    if ($stopExitCode -ne 0) { exit $stopExitCode }
     & "$PSScriptRoot\dev-start.ps1" @startParameters
-    $childExitCode = $LASTEXITCODE
+    $childExitCode = Get-SafeChildExitCode -Succeeded $?
     if ($childExitCode -eq 0) { $lifecycleOutcome = 'READY' }
     exit $childExitCode
 }
@@ -106,7 +107,7 @@ if ($appPid) {
 }
 
 & "$PSScriptRoot\dev-start.ps1" @startParameters
-$childExitCode = $LASTEXITCODE
+$childExitCode = Get-SafeChildExitCode -Succeeded $?
 if ($childExitCode -eq 0) { $lifecycleOutcome = 'READY' }
 exit $childExitCode
 } finally {

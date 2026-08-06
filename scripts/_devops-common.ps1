@@ -36,6 +36,13 @@ function Assert-CommandAvailable {
     }
 }
 
+function Get-SafeChildExitCode {
+    param([Parameter(Mandatory)][bool]$Succeeded)
+    $variable = Get-Variable -Name LASTEXITCODE -ErrorAction SilentlyContinue
+    if ($variable) { return [int]$variable.Value }
+    return if ($Succeeded) { 0 } else { 1 }
+}
+
 function Ensure-LogsDir {
     if (-not (Test-Path $LogsDir)) {
         New-Item -ItemType Directory -Path $LogsDir -Force | Out-Null

@@ -1,13 +1,9 @@
 {
   "schemaVersion": 1,
   "suiteId": "calendar-w11-h-route-benchmark",
-  "baseSha": "06d1470cbd3cea3c5229076659a5f303c0c89ff3",
-  "caseSetHash": "4dd1ce5fff7d1c17dc22ba277b1eaa9e8968a245d2d56ecd5743519dd4a66eda",
-  "providers": [
-    "TDX",
-    "GOOGLE_TRANSIT",
-    "GOOGLE_ROUTES"
-  ],
+  "baseSha": "a45fe8496259baa27f2085db865d0597f50a58b3",
+  "caseSetHash": "74efb2690754218529ed52204e1ed1710a7288ef3747c06757d9671746f34f8d",
+  "providers": ["TDX", "GOOGLE_TRANSIT", "GOOGLE_ROUTES"],
   "scenarioClasses": [
     "URBAN_BUS_AND_METRO",
     "HSR_INTERCITY",
@@ -20,46 +16,51 @@
     "WALKING",
     "OVERSEAS_ROUTE"
   ],
-  "sampleCount": 10,
-  "successRate": 0.1,
-  "latency": {
-    "medianMs": 788,
-    "p95Ms": 4406,
-    "slowestMs": 4406
-  },
+  "sampleCount": 4,
+  "successRate": 1.0,
+  "latency": {"sampleCount": 4, "medianMs": 1833, "p95Ms": 3886, "slowestMs": 3886},
+  "providerCounts": [
+    {"provider": "TDX", "queryCount": 4, "successCount": 4, "failureCount": 0, "unsupportedCount": 2},
+    {"provider": "GOOGLE_ROUTES_AND_TRANSIT", "queryCount": 0, "successCount": 0, "failureCount": 0, "notConfiguredCount": 10}
+  ],
   "freshness": {
-    "tdx": "UNAVAILABLE_IN_OBSERVED_RESPONSE",
-    "google": "NO_ROUTE_RESPONSE_HTTP_403",
+    "tdx": "UNVERIFIED_NO_PROVIDER_UPDATE_TIMESTAMP",
+    "google": "NOT_OBSERVED_NOT_CONFIGURED",
     "scheduledRealtimeDistinctionVerified": false
   },
   "costSummary": {
-    "tdx": "NO_REQUEST_COUNT_OR_DATA_VOLUME_FEE_PER_OFFICIAL_SERVICE_PAGE",
-    "google": "NOT_MEASURED_HTTP_403",
+    "tdx": "OFFICIAL_MAAS_PAGE_REPORTS_NO_REQUEST_COUNT_OR_DATA_VOLUME_CHARGE",
+    "google": "NO_QUERY",
     "measuredCurrencyAmount": null
   },
   "externalMutationCount": 0,
   "containsSecretsOrPersonalData": false,
-  "executionStatus": "COMPLETED_WITH_PROVIDER_LIMITATIONS",
+  "containsRawProviderPayload": false,
+  "executionStatus": "COMPLETED_EVIDENCE_INSUFFICIENT",
+  "providerFailures": [],
+  "unsupported": [
+    {"code": "TDX_ARRIVE_BY_UNSUPPORTED", "provider": "TDX", "count": 2}
+  ],
+  "notExecuted": [
+    {"code": "GOOGLE_ROUTES_NOT_CONFIGURED", "provider": "GOOGLE_ROUTES_AND_TRANSIT", "count": 10}
+  ],
   "blockers": [
     {
-      "code": "GOOGLE_HTTP_403",
+      "code": "GOOGLE_ROUTES_NOT_CONFIGURED",
       "provider": "GOOGLE_ROUTES_AND_TRANSIT",
-      "reason": "The configured credential could not access the Routes endpoint; API enablement, billing, or credential restrictions were not changed by this evidence-only lane."
-    },
-    {
-      "code": "TDX_RATE_LIMITED",
-      "provider": "TDX",
-      "reason": "Three later observations returned HTTP 429; no repeated retry loop was performed."
+      "reason": "No dedicated Google Routes credential was legally configured; the existing Places credential was not reused."
     },
     {
       "code": "TDX_ARRIVE_BY_UNSUPPORTED",
       "provider": "TDX",
-      "reason": "The documented and repository-integrated TDX MaaS request contract exposes departure time, not arrival-by time; the two ARRIVE_BY cases were not silently converted."
+      "reason": "Two ARRIVE_BY cases remain typed unsupported and were not converted to DEPART_AT."
     },
     {
       "code": "PROVIDER_FRESHNESS_UNVERIFIED",
-      "reason": "The observed TDX route response did not expose a provider update timestamp and Google returned no route response."
+      "provider": "TDX",
+      "reason": "Successful MaaS route responses exposed scheduled itineraries but no provider update timestamp or reliable scheduled-versus-real-time freshness signal."
     }
   ],
+  "tdxRateLimited": false,
   "conclusion": "INSUFFICIENT_EVIDENCE"
 }

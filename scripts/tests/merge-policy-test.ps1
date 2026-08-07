@@ -164,6 +164,22 @@ try {
     $desktopWithRoute.consumedLaptopTriggers.'TR-DESKTOP-ROUTE-BENCHMARK-START'.publishedSha = $matchingRouteSha
     [IO.File]::WriteAllText($desktopPath, ($desktopWithRoute | ConvertTo-Json -Depth 20), [Text.UTF8Encoding]::new($false))
 
+    $routeEvidenceFiles = Write-ChangedFiles -Name 'route-evidence.json' -Files @(
+        @{ filename = 'docs/exec-plans/evidence/calendar-w11-h/desktop-route-benchmark/cases.json'; status = 'added' },
+        @{ filename = 'docs/exec-plans/evidence/calendar-w11-h/desktop-route-benchmark/manifest.json'; status = 'added' }
+    )
+    $routeEvidence = $common.Clone()
+    $routeEvidence.HeadRef = 'desktop/calendar-w11-h-route-benchmark'
+    $routeEvidence.ChangedFilesJson = $routeEvidenceFiles
+    $routeEvidenceResult = & $policyScript @routeEvidence | ConvertFrom-Json
+    Assert-Policy ($routeEvidenceResult.branchPolicy -eq 'desktop-route-benchmark-evidence') 'route benchmark evidence branch selected the wrong policy'
+
+    $routeSource = $routeEvidence.Clone()
+    $routeSource.ChangedFilesJson = Write-ChangedFiles -Name 'route-source.json' -Files @(
+        @{ filename = 'src/main/java/Unsafe.java'; status = 'added' }
+    )
+    Assert-Policy (Invoke-ExpectedFailure -Arguments $routeSource -Pattern 'does not allow|forbids') 'route benchmark evidence branch could modify source'
+
     $brokenLaptop = Get-Content -LiteralPath $laptopPath -Raw -Encoding utf8 | ConvertFrom-Json
     $brokenLaptop.triggers.'TR-SCHEMA-B3-DURABLE-GRANT'.status = 'READY'
     $brokenLaptop.triggers.'TR-SCHEMA-B3-DURABLE-GRANT'.grantStatus = 'GRANTED_ONCE'

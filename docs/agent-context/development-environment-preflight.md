@@ -119,6 +119,8 @@ powershell -ExecutionPolicy Bypass -File .\scripts\assert-dev-environment-review
 W11 起把 `Mode` 改為 `Automatic`，並在合併後的 CI／release verification 使用 `-RequireTracked`。
 每台參與 release 的 active machine 各產生一份檔案；整合 gate 必須逐一用 `-MachineAlias` 與
 `-RequiredCapability` 驗證，不能拿筆電 evidence 代替桌電，也不能用 READ_ONLY 代替實際用過的 Maven／Docker。
+Tracked review evidence 只保存 opaque repository／worktree identity、branch／SHA 與 repository-relative
+evidence path；不得寫入 hostname、帳號、worktree absolute path、Git common directory 或 primary root。
 `-TargetWorktree` 必須是同一 Git common-dir 下已 registered 的 worktree；`EvidenceRoot` 與
 `EvidencePath` 會以 canonical path 驗證，只允許寫入該 target worktree 的
 `docs/exec-plans/evidence/development-environment`，path escape、跨 repository、未註冊 worktree

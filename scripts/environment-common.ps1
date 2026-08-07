@@ -846,9 +846,7 @@ function Assert-EnvironmentReviewDocument {
     if (-not $Review.PSObject.Properties['targetWorktree'] -or
             -not [bool]$Review.targetWorktree.registered -or
             $Review.targetWorktree.worktreeId -ne $targetIdentity.WorktreeId -or
-            $Review.targetWorktree.repoId -ne $targetIdentity.RepoId -or
-            -not [string]::Equals([string]$Review.targetWorktree.path,$targetIdentity.Path,[StringComparison]::OrdinalIgnoreCase) -or
-            -not [string]::Equals([string]$Review.targetWorktree.commonDirectory,$targetIdentity.CommonDirectory,[StringComparison]::OrdinalIgnoreCase)) {
+            $Review.targetWorktree.repoId -ne $targetIdentity.RepoId) {
         throw 'Environment review target worktree identity does not match the registered target.'
     }
     if ($StateRoot -and $MachineAlias) { Assert-EnvironmentMachineAlias -StateRoot $StateRoot -MachineAlias $MachineAlias | Out-Null }
@@ -862,7 +860,10 @@ function Assert-EnvironmentReviewDocument {
     if ($Review.PSObject.Properties['evidenceRoot']) { $reviewEvidencePaths += [string]$Review.evidenceRoot }
     if ($Review.PSObject.Properties['evidencePath']) { $reviewEvidencePaths += [string]$Review.evidencePath }
     foreach ($reviewEvidencePath in @($reviewEvidencePaths | Where-Object { $_ })) {
-        $resolvedReviewPath = [IO.Path]::GetFullPath($reviewEvidencePath)
+        if ([IO.Path]::IsPathRooted($reviewEvidencePath)) {
+            throw 'Environment review evidence paths must be repository-relative.'
+        }
+        $resolvedReviewPath = [IO.Path]::GetFullPath((Join-Path $targetIdentity.Path $reviewEvidencePath))
         if (-not [string]::Equals($resolvedReviewPath,$allowedRoot,[StringComparison]::OrdinalIgnoreCase) -and
             -not $resolvedReviewPath.StartsWith($allowed,[StringComparison]::OrdinalIgnoreCase)) {
             throw 'Environment review evidence escaped the target worktree approved directory.'

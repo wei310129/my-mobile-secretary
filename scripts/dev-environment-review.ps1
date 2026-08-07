@@ -98,6 +98,8 @@ if (Test-Path -LiteralPath $context.IssuesPath -PathType Container) {
 $openCapabilities = @($results | Where-Object { -not $_.capability.Ready })
 $openIssues = @($issueReviews | Where-Object { $_.classification -eq 'OPEN' })
 $outcome = if ($openCapabilities.Count -eq 0 -and $openIssues.Count -eq 0) { 'PASS' } else { 'BLOCKED' }
+$relativeEvidencePath = $resolvedEvidence.Substring($targetIdentity.Path.Length).TrimStart('\','/').Replace('\','/')
+$relativeEvidenceRoot = $resolvedEvidenceRoot.Substring($targetIdentity.Path.Length).TrimStart('\','/').Replace('\','/')
 $review = [ordered]@{
     schemaVersion=$script:EnvironmentSchemaVersion
     releaseGate=$ReleaseGate
@@ -107,12 +109,11 @@ $review = [ordered]@{
     reviewedAt=[datetime]::UtcNow.ToString('o')
     contractFingerprint=$currentContract.Fingerprint
     targetWorktree=[ordered]@{
-        path=$targetIdentity.Path; worktreeId=$targetIdentity.WorktreeId; repoId=$targetIdentity.RepoId
-        primaryRoot=$targetIdentity.PrimaryRoot; commonDirectory=$targetIdentity.CommonDirectory
+        worktreeId=$targetIdentity.WorktreeId; repoId=$targetIdentity.RepoId
         branch=$targetIdentity.Branch; head=$targetIdentity.Head; registered=[bool]$targetIdentity.Registered
     }
-    evidencePath=$resolvedEvidence
-    evidenceRoot=$resolvedEvidenceRoot
+    evidencePath=$relativeEvidencePath
+    evidenceRoot=$relativeEvidenceRoot
     capabilities=@($results|ForEach-Object{[ordered]@{name=$_.requestedCapability;state=$_.capability.State;ready=[bool]$_.capability.Ready;reason=$_.capability.Reason}})
     issues=@($issueReviews)
     openCount=$openCapabilities.Count+$openIssues.Count

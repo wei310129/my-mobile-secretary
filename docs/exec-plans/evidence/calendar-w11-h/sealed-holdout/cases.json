@@ -1,0 +1,43 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "calendar-w11-h-route-sealed-holdout",
+  "baseSha": "0cdca5425162374a40ada7772e531c1feca01f85",
+  "sealedBeforeExecution": true,
+  "containsSecretsOrPersonalData": false,
+  "cases": [
+    {
+      "caseId": "holdout-tdx-arrive-by-walking",
+      "provider": "TDX",
+      "originCoordinate": {"latitude": 24.9829, "longitude": 121.5414},
+      "destinationCoordinate": {"latitude": 25.0409, "longitude": 121.5679},
+      "mode": "TRANSIT",
+      "queryTimeRole": "ARRIVE_BY",
+      "timezone": "Asia/Taipei",
+      "requestTimeBucket": "WEEKDAY_MORNING",
+      "contract": {"firstMileMode": "WALKING_0", "lastMileMode": "WALKING_0"},
+      "passCriteria": ["TYPED_OUTCOME", "NATIVE_ARRIVAL_PARAMETER", "WALKING_ONLY_FIRST_LAST_MILE", "FRESHNESS_CLASSIFIED"]
+    },
+    {
+      "caseId": "holdout-google-driving",
+      "provider": "GOOGLE",
+      "originCoordinate": {"latitude": 25.0697, "longitude": 121.5525},
+      "destinationCoordinate": {"latitude": 25.0478, "longitude": 121.5170},
+      "mode": "DRIVE",
+      "queryTimeRole": "DEPART_AT",
+      "timezone": "Asia/Taipei",
+      "requestTimeBucket": "WEEKDAY_MIDDAY",
+      "passCriteria": ["TYPED_OUTCOME", "NO_FABRICATED_ROUTE", "LATENCY_RECORDED"]
+    },
+    {
+      "caseId": "holdout-google-overseas-depart-at",
+      "provider": "GOOGLE",
+      "originCoordinate": {"latitude": 35.6909, "longitude": 139.7003},
+      "destinationCoordinate": {"latitude": 35.5448, "longitude": 139.7680},
+      "mode": "TRANSIT",
+      "queryTimeRole": "DEPART_AT",
+      "timezone": "Asia/Tokyo",
+      "requestTimeBucket": "WEEKDAY_MORNING",
+      "passCriteria": ["TYPED_OUTCOME", "SCHEDULED_REALTIME_DISTINCTION", "NO_FABRICATED_ROUTE"]
+    }
+  ]
+}

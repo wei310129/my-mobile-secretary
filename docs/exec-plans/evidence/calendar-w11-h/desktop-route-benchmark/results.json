@@ -1,233 +1,156 @@
 {
   "schemaVersion": 1,
   "suiteId": "calendar-w11-h-route-benchmark",
-  "caseSetHash": "74efb2690754218529ed52204e1ed1710a7288ef3747c06757d9671746f34f8d",
-  "executionBaseSha": "a45fe8496259baa27f2085db865d0597f50a58b3",
-  "executedOn": "2026-08-07",
+  "caseSetHash": "29fcbdd2bc0c055317c14a3b779368128a38bd26cc0212762d63701b1c42b88b",
+  "executionBaseSha": "0cdca5425162374a40ada7772e531c1feca01f85",
+  "executedOn": "2026-08-08",
   "machineAlias": "desktop",
   "authorization": {
-    "scope": "READ_ONLY_PROVIDER_QUERIES",
-    "ordinaryApiCostAccepted": true,
+    "scope": "PROVIDER_SCOPED_ROUTE_QUERY_READ_ONLY",
+    "providers": ["TDX", "GOOGLE"],
+    "operationClass": "ROUTE_QUERY",
+    "allQueriesUsedFreshMatchingReceipts": true,
+    "receiptPathsPersisted": false,
     "externalMutationCountRequired": 0,
-    "externalMutationCount": 0,
-    "receipts": [
-      {
-        "provider": "TDX",
-        "operationClass": "ROUTE_QUERY",
-        "scope": "READ_ONLY",
-        "status": "FRESH_MATCH_AT_QUERY_TIME",
-        "maximumTtlMinutes": 15,
-        "receiptPathPersisted": false
-      }
-    ],
-    "unauthorizedScopesUsed": []
+    "externalMutationCount": 0
   },
   "preflight": {
-    "capability": "EXTERNAL_PROVIDER",
-    "caller": "sandbox",
-    "provider": "TDX",
-    "operationClass": "ROUTE_QUERY",
-    "scope": "READ_ONLY",
-    "state": "MATCH",
-    "ready": true,
-    "contractFingerprint": "855de50e9699b02fab6b427e"
+    "readOnly": {"state": "MATCH", "ready": true},
+    "tdxExternalProvider": {"state": "MATCH", "ready": true},
+    "googleExternalProvider": {"state": "MATCH", "ready": true}
   },
   "failureAudit": {
-    "priorExecutionBaseSha": "f27fdb1b39ff64d262c8b8301faba9b657c11354",
-    "priorExternalQueryCount": 10,
-    "priorSuccessCount": 1,
-    "priorNoRouteCount": 5,
-    "priorFailureCount": 4,
-    "priorFailureClasses": ["TDX_NO_ROUTE", "TDX_HTTP_429", "GOOGLE_HTTP_403", "TDX_UNSUPPORTED_TIME_ROLE"],
     "priorConclusion": "INSUFFICIENT_EVIDENCE",
-    "overwrittenAsPass": false
+    "findings": [
+      {
+        "code": "TDX_TIME_ROLE_CONTRACT_INCORRECT",
+        "priorClaim": "ARRIVE_BY_UNSUPPORTED",
+        "resolution": "TDX_OFFICIAL_SWAGGER_AND_LIVE_ARRIVAL_QUERIES_PROVE_NATIVE_SUPPORT"
+      },
+      {
+        "code": "TDX_FIRST_LAST_MILE_FENCE_MISSING",
+        "priorClaim": "GC_1_IMPLIED_WALKING",
+        "resolution": "EXPLICIT_FIRST_MILE_MODE_0_AND_LAST_MILE_MODE_0_REQUIRED"
+      },
+      {
+        "code": "TDX_FRESHNESS_UNCLASSIFIED",
+        "priorClaim": "UNVERIFIED",
+        "resolution": "SCHEDULED_ONLY; OFFICIAL MAAS SCHEMA AND RESPONSES HAVE NO UPDATE TIMESTAMP"
+      },
+      {
+        "code": "GOOGLE_NOT_CONFIGURED_STALE",
+        "priorClaim": "NO_DEDICATED_ROUTES_CREDENTIAL",
+        "resolution": "SCOPED_KEY_WITH_PLACES_AND_ROUTES RESTRICTIONS RETURNED HTTP_200_SMOKE"
+      },
+      {
+        "code": "EVIDENCE_CLIENT_EMPTY_ROUTE_PARSER",
+        "priorClaim": "REQUEST_FAILED",
+        "resolution": "HTTP_200_EMPTY_ROUTES_CLASSIFIED_AS_TYPED_NO_ROUTE"
+      }
+    ]
   },
   "summary": {
-    "externalQueryCount": 4,
-    "successCount": 4,
-    "noRouteCount": 0,
-    "failureCount": 0,
-    "unsupportedWithoutQueryCount": 2,
-    "notConfiguredWithoutQueryCount": 10,
-    "successRate": 1.0,
-    "latencyMs": {
-      "sampleCount": 4,
-      "median": 1833,
-      "p95NearestRank": 3886,
-      "slowest": 3886
-    }
+    "externalRouteQueryCount": 35,
+    "canonicalSampleCount": 22,
+    "canonicalSuccessCount": 20,
+    "canonicalTypedNoRouteCount": 2,
+    "canonicalSuccessRate": 0.9091,
+    "latency": {"sampleCount": 27, "medianMs": 621, "p95Ms": 3704, "slowestMs": 3833},
+    "holdoutQueryCount": 3,
+    "totalExternalRouteQueryCountIncludingHoldout": 38
   },
   "providerSummaries": [
     {
       "provider": "TDX",
-      "credentialConfigured": true,
-      "externalQueryCount": 4,
-      "successCount": 4,
-      "noRouteCount": 0,
-      "failureCount": 0,
-      "unsupportedWithoutQueryCount": 2,
+      "routeQueryCount": 18,
+      "eligibleColdWarmSampleCount": 12,
+      "eligibleSuccessCount": 12,
+      "policyRejectedAuditCount": 6,
+      "nativeArriveByVerified": true,
+      "walkingOnlyFirstLastMileVerified": true,
       "rateLimited": false,
-      "retryCount": 0,
-      "failureClasses": [],
-      "freshness": "UNVERIFIED_NO_PROVIDER_UPDATE_TIMESTAMP",
-      "scheduledRealtimeDistinction": "SCHEDULED_ITINERARY_PRESENT_REALTIME_NOT_DISTINGUISHABLE",
-      "costUnit": "OFFICIAL_MAAS_PAGE_REPORTS_NO_REQUEST_COUNT_OR_DATA_VOLUME_CHARGE"
+      "freshness": "SCHEDULED_ONLY_OFFICIAL_SCHEMA_HAS_NO_UPDATE_TIMESTAMP",
+      "latency": {"sampleCount": 12, "medianMs": 859, "p95Ms": 3833, "slowestMs": 3833}
     },
     {
       "provider": "GOOGLE_ROUTES_AND_TRANSIT",
-      "credentialConfigured": false,
-      "configurationEvidence": "NO_DEDICATED_GOOGLE_ROUTES_CREDENTIAL",
-      "externalQueryCount": 0,
-      "successCount": 0,
-      "failureCount": 0,
-      "notConfiguredWithoutQueryCount": 10,
-      "failureClasses": [],
-      "freshness": "NOT_OBSERVED",
-      "scheduledRealtimeDistinction": "NOT_OBSERVED",
-      "costUnit": "NO_QUERY"
+      "routeQueryCount": 17,
+      "canonicalCaseCount": 10,
+      "canonicalSuccessCount": 8,
+      "canonicalTypedNoRouteCount": 2,
+      "http400FailureAuditCount": 2,
+      "clientEvidenceParserFailureAuditCount": 5,
+      "configured": true,
+      "nativeArriveByVerified": true,
+      "rateLimited": false,
+      "freshness": "SCHEDULED_TRANSIT_NO_UPDATE_TIMESTAMP; TRAFFIC_AWARE_ROAD_REQUEST_TIME",
+      "latency": {"sampleCount": 15, "medianMs": 174, "p95Ms": 776, "slowestMs": 776}
     }
   ],
-  "observations": [
-    {
-      "caseId": "taipei-urban-transit",
-      "sampleIndex": 1,
-      "cacheState": "COLD",
-      "cacheEvidence": "DIRECT_UNCACHED_DISTINCT_QUERY",
-      "provider": "TDX",
-      "mode": "TRANSIT",
-      "queryTimeRole": "DEPART_AT",
-      "timezone": "Asia/Taipei",
-      "requestTimeBucket": "WEEKDAY_MORNING_PEAK",
-      "queryTimestampLocal": "2026-08-10T08:00:00",
-      "status": "SUCCESS",
-      "httpStatus": 200,
-      "latencyMs": 797,
-      "routeDurationSeconds": 1119,
-      "etaLocal": null,
-      "serviceTrip": null,
-      "walking": {"modeConstraint": "WALKING_ONLY", "segmentCount": null, "captureStatus": "NOT_CAPTURED_IN_SMOKE_SUMMARY"},
-      "transfers": null,
-      "scheduledRealtimeDistinction": "NOT_CAPTURED_IN_SMOKE_SUMMARY",
-      "freshness": "UNVERIFIED_NO_PROVIDER_UPDATE_TIMESTAMP",
-      "failureClass": null
-    },
-    {
-      "caseId": "taiwan-rail-intercity",
-      "sampleIndex": 1,
-      "cacheState": "COLD",
-      "cacheEvidence": "DIRECT_UNCACHED_DISTINCT_QUERY",
-      "provider": "TDX",
-      "mode": "TRANSIT",
-      "queryTimeRole": "DEPART_AT",
-      "timezone": "Asia/Taipei",
-      "requestTimeBucket": "WEEKEND_MORNING",
-      "queryTimestampLocal": "2026-08-09T08:00:00",
-      "status": "SUCCESS",
-      "httpStatus": 200,
-      "latencyMs": 3886,
-      "routeDurationSeconds": 8134,
-      "routeStartLocal": "2026-08-09T09:19:49",
-      "etaLocal": "2026-08-09T11:35:23",
-      "serviceTrip": {"mode": "TRA"},
-      "walking": {"modeConstraint": "WALKING_ONLY", "segmentCount": 2, "durationSeconds": null, "distanceMeters": null},
-      "transfers": 0,
-      "scheduledRealtimeDistinction": "SCHEDULED_ITINERARY_PRESENT_REALTIME_NOT_DISTINGUISHABLE",
-      "freshness": "UNVERIFIED_NO_PROVIDER_UPDATE_TIMESTAMP",
-      "failureClass": null
-    },
-    {
-      "caseId": "rural-bus-transfer",
-      "sampleIndex": 1,
-      "cacheState": "COLD",
-      "cacheEvidence": "DIRECT_UNCACHED_DISTINCT_QUERY",
-      "provider": "TDX",
-      "mode": "TRANSIT",
-      "queryTimeRole": "DEPART_AT",
-      "timezone": "Asia/Taipei",
-      "requestTimeBucket": "WEEKDAY_MIDDAY",
-      "queryTimestampLocal": "2026-08-10T12:00:00",
-      "status": "SUCCESS",
-      "httpStatus": 200,
-      "latencyMs": 2381,
-      "routeDurationSeconds": 2057,
-      "routeStartLocal": "2026-08-10T12:00:44",
-      "etaLocal": "2026-08-10T12:35:01",
-      "serviceTrip": {"mode": "HIGHWAY_BUS"},
-      "walking": {"modeConstraint": "WALKING_ONLY", "segmentCount": 2, "durationSeconds": null, "distanceMeters": null},
-      "transfers": 0,
-      "scheduledRealtimeDistinction": "SCHEDULED_ITINERARY_PRESENT_REALTIME_NOT_DISTINGUISHABLE",
-      "freshness": "UNVERIFIED_NO_PROVIDER_UPDATE_TIMESTAMP",
-      "failureClass": null
-    },
-    {
-      "caseId": "last-service-transfer",
-      "sampleIndex": 1,
-      "cacheState": "COLD",
-      "cacheEvidence": "DIRECT_UNCACHED_DISTINCT_QUERY",
-      "provider": "TDX",
-      "mode": "TRANSIT",
-      "queryTimeRole": "DEPART_AT",
-      "timezone": "Asia/Taipei",
-      "requestTimeBucket": "WEEKDAY_LATE_NIGHT",
-      "queryTimestampLocal": "2026-08-10T22:30:00",
-      "status": "SUCCESS",
-      "httpStatus": 200,
-      "latencyMs": 1285,
-      "routeDurationSeconds": 3187,
-      "routeStartLocal": "2026-08-10T22:37:01",
-      "etaLocal": "2026-08-10T23:30:08",
-      "serviceTrip": {"mode": "BUS"},
-      "walking": {"modeConstraint": "WALKING_ONLY", "segmentCount": 2, "durationSeconds": null, "distanceMeters": null},
-      "transfers": 0,
-      "scheduledRealtimeDistinction": "SCHEDULED_ITINERARY_PRESENT_REALTIME_NOT_DISTINGUISHABLE",
-      "freshness": "UNVERIFIED_NO_PROVIDER_UPDATE_TIMESTAMP",
-      "failureClass": null
-    }
+  "queries": [
+    {"queryId":"tdx-a01","caseId":"taipei-urban-transit","provider":"TDX","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_MORNING_PEAK","sampleTemperature":"COLD_AUDIT","status":"POLICY_REJECTED","latencyMs":1068,"routeDurationSeconds":525,"walkingMeters":null,"transferCount":null,"freshness":"UNVERIFIED","failureClass":"MISSING_EXPLICIT_WALKING_FENCE"},
+    {"queryId":"tdx-a02","caseId":"taiwan-rail-intercity","provider":"TDX","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKEND_MORNING","sampleTemperature":"COLD_AUDIT","status":"POLICY_REJECTED","latencyMs":4137,"routeDurationSeconds":8050,"walkingMeters":null,"transferCount":null,"freshness":"UNVERIFIED","failureClass":"MISSING_EXPLICIT_WALKING_FENCE"},
+    {"queryId":"tdx-a03","caseId":"rural-bus-transfer","provider":"TDX","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_MIDDAY","sampleTemperature":"COLD_AUDIT","status":"POLICY_REJECTED","latencyMs":804,"routeDurationSeconds":1827,"walkingMeters":null,"transferCount":null,"freshness":"UNVERIFIED","failureClass":"MISSING_EXPLICIT_WALKING_FENCE"},
+    {"queryId":"tdx-a04","caseId":"last-service-transfer","provider":"TDX","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_LATE_NIGHT","sampleTemperature":"COLD_AUDIT","status":"POLICY_REJECTED","latencyMs":942,"routeDurationSeconds":2831,"walkingMeters":null,"transferCount":null,"freshness":"UNVERIFIED","failureClass":"MISSING_EXPLICIT_WALKING_FENCE"},
+    {"queryId":"tdx-a05","caseId":"taipei-urban-transit","provider":"TDX","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_MORNING_PEAK","sampleTemperature":"WARM_AUDIT","status":"POLICY_REJECTED","latencyMs":986,"routeDurationSeconds":525,"walkingMeters":null,"transferCount":0,"freshness":"UNVERIFIED","failureClass":"MISSING_EXPLICIT_WALKING_FENCE"},
+    {"queryId":"tdx-a06","caseId":"taipei-urban-transit","provider":"TDX","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_MORNING_PEAK_0810","sampleTemperature":"WARM_VALIDATION","status":"POLICY_REJECTED","latencyMs":901,"routeDurationSeconds":525,"walkingMeters":null,"transferCount":0,"freshness":"UNVERIFIED","failureClass":"NON_WALKING_YOXI_FIRST_LAST_MILE_OBSERVED"},
+    {"queryId":"tdx-c01","caseId":"taipei-urban-transit","provider":"TDX","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_MORNING_PEAK","sampleTemperature":"COLD","status":"SUCCESS","latencyMs":724,"routeDurationSeconds":1119,"walkingMeters":null,"transferCount":0,"freshness":"SCHEDULED_ONLY_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"tdx-c02","caseId":"taiwan-high-speed-rail","provider":"TDX","mode":"TRANSIT","queryTimeRole":"ARRIVE_BY","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_AFTERNOON","sampleTemperature":"COLD","status":"SUCCESS","latencyMs":2031,"routeDurationSeconds":5691,"walkingMeters":null,"transferCount":0,"freshness":"SCHEDULED_ONLY_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"tdx-c03","caseId":"taiwan-rail-intercity","provider":"TDX","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKEND_MORNING","sampleTemperature":"COLD","status":"SUCCESS","latencyMs":3833,"routeDurationSeconds":8134,"walkingMeters":null,"transferCount":0,"freshness":"SCHEDULED_ONLY_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"tdx-c04","caseId":"rural-bus-transfer","provider":"TDX","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_MIDDAY","sampleTemperature":"COLD","status":"SUCCESS","latencyMs":782,"routeDurationSeconds":2057,"walkingMeters":null,"transferCount":0,"freshness":"SCHEDULED_ONLY_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"tdx-c05","caseId":"cross-county-bus","provider":"TDX","mode":"TRANSIT","queryTimeRole":"ARRIVE_BY","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_EVENING_PEAK","sampleTemperature":"COLD","status":"SUCCESS","latencyMs":831,"routeDurationSeconds":1043,"walkingMeters":null,"transferCount":0,"freshness":"SCHEDULED_ONLY_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"tdx-c06","caseId":"last-service-transfer","provider":"TDX","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_LATE_NIGHT","sampleTemperature":"COLD","status":"SUCCESS","latencyMs":796,"routeDurationSeconds":4200,"walkingMeters":null,"transferCount":0,"freshness":"SCHEDULED_ONLY_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"tdx-w01","caseId":"taipei-urban-transit","provider":"TDX","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_MORNING_PEAK","sampleTemperature":"WARM","status":"SUCCESS","latencyMs":884,"routeDurationSeconds":1119,"walkingMeters":290,"transferCount":0,"freshness":"SCHEDULED_ONLY_OFFICIAL_SCHEMA_HAS_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"tdx-w02","caseId":"taiwan-high-speed-rail","provider":"TDX","mode":"TRANSIT","queryTimeRole":"ARRIVE_BY","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_AFTERNOON","sampleTemperature":"WARM","status":"SUCCESS","latencyMs":2210,"routeDurationSeconds":5691,"walkingMeters":72,"transferCount":0,"freshness":"SCHEDULED_ONLY_OFFICIAL_SCHEMA_HAS_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"tdx-w03","caseId":"taiwan-rail-intercity","provider":"TDX","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKEND_MORNING","sampleTemperature":"WARM","status":"SUCCESS","latencyMs":3704,"routeDurationSeconds":8134,"walkingMeters":133,"transferCount":0,"freshness":"SCHEDULED_ONLY_OFFICIAL_SCHEMA_HAS_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"tdx-w04","caseId":"rural-bus-transfer","provider":"TDX","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_MIDDAY","sampleTemperature":"WARM","status":"SUCCESS","latencyMs":733,"routeDurationSeconds":2057,"walkingMeters":358,"transferCount":0,"freshness":"SCHEDULED_ONLY_OFFICIAL_SCHEMA_HAS_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"tdx-w05","caseId":"cross-county-bus","provider":"TDX","mode":"TRANSIT","queryTimeRole":"ARRIVE_BY","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_EVENING_PEAK","sampleTemperature":"WARM","status":"SUCCESS","latencyMs":834,"routeDurationSeconds":1043,"walkingMeters":284,"transferCount":0,"freshness":"SCHEDULED_ONLY_OFFICIAL_SCHEMA_HAS_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"tdx-w06","caseId":"last-service-transfer","provider":"TDX","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_LATE_NIGHT","sampleTemperature":"WARM","status":"SUCCESS","latencyMs":962,"routeDurationSeconds":4200,"walkingMeters":2168,"transferCount":0,"freshness":"SCHEDULED_ONLY_OFFICIAL_SCHEMA_HAS_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"google-01","caseId":"google-walking","provider":"GOOGLE_ROUTES","mode":"WALK","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKEND_AFTERNOON","sampleTemperature":"COLD_SMOKE","status":"SUCCESS","latencyMs":776,"routeDurationSeconds":1286,"walkingMeters":1409,"transferCount":null,"freshness":"NOT_APPLICABLE","failureClass":null},
+    {"queryId":"google-02","caseId":"taipei-urban-transit","provider":"GOOGLE_TRANSIT","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_MORNING_PEAK","sampleTemperature":"COLD","status":"SUCCESS","latencyMs":621,"routeDurationSeconds":1073,"walkingMeters":500,"transferCount":0,"freshness":"SCHEDULED_TIMES_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"google-03","caseId":"taiwan-high-speed-rail","provider":"GOOGLE_TRANSIT","mode":"TRANSIT","queryTimeRole":"ARRIVE_BY","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_AFTERNOON","sampleTemperature":"COLD_AUDIT","status":"CLIENT_EVIDENCE_PARSER_FAILED","latencyMs":204,"routeDurationSeconds":null,"walkingMeters":null,"transferCount":null,"freshness":"NOT_OBSERVED","failureClass":"EMPTY_ROUTE_ARRAY_NOT_HANDLED"},
+    {"queryId":"google-04","caseId":"taiwan-rail-intercity","provider":"GOOGLE_TRANSIT","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKEND_MORNING","sampleTemperature":"COLD","status":"SUCCESS","latencyMs":130,"routeDurationSeconds":9243,"walkingMeters":54,"transferCount":0,"freshness":"SCHEDULED_TIMES_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"google-05","caseId":"rural-bus-transfer","provider":"GOOGLE_TRANSIT","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_MIDDAY","sampleTemperature":"COLD","status":"SUCCESS","latencyMs":126,"routeDurationSeconds":3412,"walkingMeters":377,"transferCount":0,"freshness":"SCHEDULED_TIMES_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"google-06","caseId":"cross-county-bus","provider":"GOOGLE_TRANSIT","mode":"TRANSIT","queryTimeRole":"ARRIVE_BY","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_EVENING_PEAK","sampleTemperature":"COLD","status":"SUCCESS","latencyMs":174,"routeDurationSeconds":780,"walkingMeters":0,"transferCount":0,"freshness":"SCHEDULED_TIMES_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"google-07","caseId":"last-service-transfer","provider":"GOOGLE_TRANSIT","mode":"TRANSIT","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_LATE_NIGHT","sampleTemperature":"COLD","status":"SUCCESS","latencyMs":198,"routeDurationSeconds":3660,"walkingMeters":258,"transferCount":1,"freshness":"SCHEDULED_TIMES_NO_UPDATE_TIMESTAMP","failureClass":null},
+    {"queryId":"google-08","caseId":"google-motorcycle","provider":"GOOGLE_ROUTES","mode":"TWO_WHEELER","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_EVENING_PEAK","sampleTemperature":"COLD_AUDIT","status":"PROVIDER_FAILURE","latencyMs":145,"routeDurationSeconds":null,"walkingMeters":null,"transferCount":null,"freshness":"NOT_OBSERVED","failureClass":"HTTP_400_MISSING_TRAFFIC_AWARE_ROUTING_PREFERENCE"},
+    {"queryId":"google-09","caseId":"overseas-transit","provider":"GOOGLE_TRANSIT","mode":"TRANSIT","queryTimeRole":"ARRIVE_BY","timezone":"Asia/Tokyo","requestTimeBucket":"WEEKDAY_MORNING","sampleTemperature":"COLD_AUDIT","status":"CLIENT_EVIDENCE_PARSER_FAILED","latencyMs":168,"routeDurationSeconds":null,"walkingMeters":null,"transferCount":null,"freshness":"NOT_OBSERVED","failureClass":"EMPTY_ROUTE_ARRAY_NOT_HANDLED"},
+    {"queryId":"google-10","caseId":"taiwan-high-speed-rail","provider":"GOOGLE_TRANSIT","mode":"TRANSIT","queryTimeRole":"ARRIVE_BY","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_AFTERNOON","sampleTemperature":"WARM_AUDIT","status":"CLIENT_EVIDENCE_PARSER_FAILED","latencyMs":605,"routeDurationSeconds":null,"walkingMeters":null,"transferCount":null,"freshness":"NOT_OBSERVED","failureClass":"EMPTY_ROUTE_ARRAY_NOT_HANDLED"},
+    {"queryId":"google-11","caseId":"overseas-transit","provider":"GOOGLE_TRANSIT","mode":"TRANSIT","queryTimeRole":"ARRIVE_BY","timezone":"Asia/Tokyo","requestTimeBucket":"WEEKDAY_MORNING","sampleTemperature":"WARM_AUDIT","status":"CLIENT_EVIDENCE_PARSER_FAILED","latencyMs":46,"routeDurationSeconds":null,"walkingMeters":null,"transferCount":null,"freshness":"NOT_OBSERVED","failureClass":"EMPTY_ROUTE_ARRAY_NOT_HANDLED"},
+    {"queryId":"google-12","caseId":"google-motorcycle","provider":"GOOGLE_ROUTES","mode":"TWO_WHEELER","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_EVENING_PEAK","sampleTemperature":"WARM_AUDIT","status":"CLIENT_EVIDENCE_PARSER_FAILED","latencyMs":39,"routeDurationSeconds":null,"walkingMeters":null,"transferCount":null,"freshness":"NOT_OBSERVED","failureClass":"HTTP_ERROR_BODY_NOT_CAPTURED"},
+    {"queryId":"google-13","caseId":"google-driving-arrive-by","provider":"GOOGLE_ROUTES","mode":"DRIVE","queryTimeRole":"ARRIVE_BY","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_MORNING_PEAK","sampleTemperature":"COLD","status":"SUCCESS","latencyMs":69,"routeDurationSeconds":2268,"walkingMeters":null,"transferCount":null,"freshness":"TRAFFIC_AWARE_REQUEST_TIME","failureClass":null},
+    {"queryId":"google-14","caseId":"taiwan-high-speed-rail","provider":"GOOGLE_TRANSIT","mode":"TRANSIT","queryTimeRole":"ARRIVE_BY","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_AFTERNOON","sampleTemperature":"DIAGNOSTIC","status":"NO_ROUTE","latencyMs":null,"routeDurationSeconds":null,"walkingMeters":null,"transferCount":null,"freshness":"NOT_OBSERVED","failureClass":"GOOGLE_HTTP_200_EMPTY_ROUTES"},
+    {"queryId":"google-15","caseId":"overseas-transit","provider":"GOOGLE_TRANSIT","mode":"TRANSIT","queryTimeRole":"ARRIVE_BY","timezone":"Asia/Tokyo","requestTimeBucket":"WEEKDAY_MORNING","sampleTemperature":"DIAGNOSTIC","status":"NO_ROUTE","latencyMs":null,"routeDurationSeconds":null,"walkingMeters":null,"transferCount":null,"freshness":"NOT_OBSERVED","failureClass":"GOOGLE_HTTP_200_EMPTY_ROUTES"},
+    {"queryId":"google-16","caseId":"google-motorcycle","provider":"GOOGLE_ROUTES","mode":"TWO_WHEELER","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_EVENING_PEAK","sampleTemperature":"DIAGNOSTIC","status":"PROVIDER_FAILURE","latencyMs":447,"routeDurationSeconds":null,"walkingMeters":null,"transferCount":null,"freshness":"NOT_OBSERVED","failureClass":"INVALID_ARGUMENT_TRAFFIC_UNAWARE_TIMESTAMP"},
+    {"queryId":"google-17","caseId":"google-motorcycle","provider":"GOOGLE_ROUTES","mode":"TWO_WHEELER","queryTimeRole":"DEPART_AT","timezone":"Asia/Taipei","requestTimeBucket":"WEEKDAY_EVENING_PEAK","sampleTemperature":"REMEDIATED","status":"SUCCESS","latencyMs":476,"routeDurationSeconds":1547,"walkingMeters":null,"transferCount":null,"freshness":"TRAFFIC_AWARE_REQUEST_TIME","failureClass":null}
   ],
-  "unsupportedWithoutQuery": [
-    {
-      "caseId": "taiwan-high-speed-rail",
-      "provider": "TDX",
-      "queryTimeRole": "ARRIVE_BY",
-      "status": "UNSUPPORTED_TIME_ROLE",
-      "reason": "The official and repository-integrated MaaS route contract exposes depart but not arrival-by. The case was not converted to DEPART_AT."
-    },
-    {
-      "caseId": "cross-county-bus",
-      "provider": "TDX",
-      "queryTimeRole": "ARRIVE_BY",
-      "status": "UNSUPPORTED_TIME_ROLE",
-      "reason": "The official and repository-integrated MaaS route contract exposes depart but not arrival-by. The case was not converted to DEPART_AT."
-    }
+  "canonicalCaseOutcomes": [
+    {"caseId":"taipei-urban-transit","tdx":"SUCCESS","google":"SUCCESS"},
+    {"caseId":"taiwan-high-speed-rail","tdx":"SUCCESS","google":"NO_ROUTE"},
+    {"caseId":"taiwan-rail-intercity","tdx":"SUCCESS","google":"SUCCESS"},
+    {"caseId":"rural-bus-transfer","tdx":"SUCCESS","google":"SUCCESS"},
+    {"caseId":"cross-county-bus","tdx":"SUCCESS","google":"SUCCESS"},
+    {"caseId":"last-service-transfer","tdx":"SUCCESS","google":"SUCCESS"},
+    {"caseId":"google-driving-arrive-by","tdx":"NOT_APPLICABLE","google":"SUCCESS"},
+    {"caseId":"google-motorcycle","tdx":"NOT_APPLICABLE","google":"SUCCESS"},
+    {"caseId":"google-walking","tdx":"NOT_APPLICABLE","google":"SUCCESS"},
+    {"caseId":"overseas-transit","tdx":"NOT_APPLICABLE","google":"NO_ROUTE"}
   ],
-  "notExecuted": [
-    {
-      "provider": "GOOGLE_ROUTES_AND_TRANSIT",
-      "status": "NOT_CONFIGURED",
-      "caseIds": [
-        "taipei-urban-transit",
-        "taiwan-high-speed-rail",
-        "taiwan-rail-intercity",
-        "rural-bus-transfer",
-        "cross-county-bus",
-        "last-service-transfer",
-        "google-driving-arrive-by",
-        "google-motorcycle",
-        "google-walking",
-        "overseas-transit"
-      ],
-      "reason": "No dedicated Google Routes credential was legally configured. A Google Places credential was not reused or broadened, and no Google route query was sent."
-    }
-  ],
+  "costSummary": {
+    "googleRouteQueryCount": 17,
+    "tdxRouteQueryCount": 18,
+    "tdxAuthenticationCallCount": 5,
+    "exactProviderBillingAmount": "NOT_AVAILABLE",
+    "costClass": "ORDINARY_CONFIGURED_PROVIDER_API_COST_AUTHORIZED"
+  },
   "privacy": {
-    "anonymousPublicPlacesOnly": true,
     "containsSecretsOrPersonalData": false,
     "containsRawProviderPayload": false,
-    "containsReceiptPath": false,
-    "containsHostnameOrAccount": false,
+    "containsHostname": false,
+    "containsAccountName": false,
     "containsAbsolutePath": false,
-    "containsPrivateLineContent": false,
-    "containsWorkspaceActorMessageIdentifiers": false
+    "containsCredentialOrReceiptPath": false,
+    "containsPrivateMessageOrAddress": false
   },
-  "conclusion": "INSUFFICIENT_EVIDENCE"
+  "conclusion": "SCENARIO_ROUTING"
 }

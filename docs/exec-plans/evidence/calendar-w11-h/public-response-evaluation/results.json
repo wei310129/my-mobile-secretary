@@ -1,0 +1,42 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "calendar-w11-h-public-route-response-evaluation",
+  "executionBaseSha": "0cdca5425162374a40ada7772e531c1feca01f85",
+  "evaluatedAt": "2026-08-07T18:48:00Z",
+  "evaluationScope": "EVIDENCE_PRESENTATION_ONLY_NO_RUNTIME_CLAIM",
+  "caseCount": 5,
+  "passedCount": 5,
+  "failedCount": 0,
+  "results": [
+    {
+      "caseId": "scheduled-arrive-by",
+      "status": "PASS",
+      "publicResponse": "TDX 找到符合抵達時間的路線；目前證據是排定班次，供應商沒有提供可驗證的即時更新時間，因此不宣稱即時到站。"
+    },
+    {
+      "caseId": "typed-no-route",
+      "status": "PASS",
+      "publicResponse": "Google 此次沒有回傳符合條件的路線；我不會用直線距離或固定速度補出假的抵達時間。"
+    },
+    {
+      "caseId": "motorcycle-remediation",
+      "status": "PASS",
+      "publicResponse": "Google 機車路線查詢成功，約 25 分 47 秒、9.8 公里；這是查詢時的路線結果，實際交通仍可能變動。"
+    },
+    {
+      "caseId": "scenario-routing",
+      "status": "PASS",
+      "publicResponse": "臺灣大眾運輸案例可由 TDX 提供排定路線；Google 已驗證步行、開車、機車及部分大眾運輸案例。證據不足以宣稱任何供應商在所有情境都最快。"
+    },
+    {
+      "caseId": "cost-and-mutation",
+      "status": "PASS",
+      "publicResponse": "本輪只進行唯讀路線查詢，可能產生一般供應商 API 費用；沒有建立預訂、付款、取消、退款或行事曆異動。"
+    }
+  ],
+  "internalIdentifierLeakCount": 0,
+  "secretLeakCount": 0,
+  "absolutePathLeakCount": 0,
+  "externalMutationCount": 0,
+  "conclusion": "PASS"
+}

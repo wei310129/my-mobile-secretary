@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "suiteId": "calendar-w11-h-route-benchmark",
-  "baseSha": "a45fe8496259baa27f2085db865d0597f50a58b3",
+  "baseSha": "0cdca5425162374a40ada7772e531c1feca01f85",
   "containsSecretsOrPersonalData": false,
   "coordinatePolicy": "ANONYMOUS_PUBLIC_PLACE_WGS84",
   "cases": [
@@ -17,7 +17,7 @@
       "timezone": "Asia/Taipei",
       "requestTimeBucket": "WEEKDAY_MORNING_PEAK",
       "providerCandidates": ["TDX", "GOOGLE_TRANSIT"],
-      "tdxExecution": {"supported": true, "firstMileMode": "WALKING", "lastMileMode": "WALKING"}
+      "tdxExecution": {"supported": true, "timeParameter": "depart", "firstMileMode": "WALKING_0", "lastMileMode": "WALKING_0"}
     },
     {
       "caseId": "taiwan-high-speed-rail",
@@ -31,7 +31,7 @@
       "timezone": "Asia/Taipei",
       "requestTimeBucket": "WEEKDAY_AFTERNOON",
       "providerCandidates": ["TDX", "GOOGLE_TRANSIT"],
-      "tdxExecution": {"supported": false, "reason": "UNSUPPORTED_TIME_ROLE", "firstMileMode": "WALKING", "lastMileMode": "WALKING"}
+      "tdxExecution": {"supported": true, "timeParameter": "arrival", "firstMileMode": "WALKING_0", "lastMileMode": "WALKING_0"}
     },
     {
       "caseId": "taiwan-rail-intercity",
@@ -45,7 +45,7 @@
       "timezone": "Asia/Taipei",
       "requestTimeBucket": "WEEKEND_MORNING",
       "providerCandidates": ["TDX", "GOOGLE_TRANSIT"],
-      "tdxExecution": {"supported": true, "firstMileMode": "WALKING", "lastMileMode": "WALKING"}
+      "tdxExecution": {"supported": true, "timeParameter": "depart", "firstMileMode": "WALKING_0", "lastMileMode": "WALKING_0"}
     },
     {
       "caseId": "rural-bus-transfer",
@@ -59,7 +59,7 @@
       "timezone": "Asia/Taipei",
       "requestTimeBucket": "WEEKDAY_MIDDAY",
       "providerCandidates": ["TDX", "GOOGLE_TRANSIT"],
-      "tdxExecution": {"supported": true, "firstMileMode": "WALKING", "lastMileMode": "WALKING"}
+      "tdxExecution": {"supported": true, "timeParameter": "depart", "firstMileMode": "WALKING_0", "lastMileMode": "WALKING_0"}
     },
     {
       "caseId": "cross-county-bus",
@@ -73,7 +73,7 @@
       "timezone": "Asia/Taipei",
       "requestTimeBucket": "WEEKDAY_EVENING_PEAK",
       "providerCandidates": ["TDX", "GOOGLE_TRANSIT"],
-      "tdxExecution": {"supported": false, "reason": "UNSUPPORTED_TIME_ROLE", "firstMileMode": "WALKING", "lastMileMode": "WALKING"}
+      "tdxExecution": {"supported": true, "timeParameter": "arrival", "firstMileMode": "WALKING_0", "lastMileMode": "WALKING_0"}
     },
     {
       "caseId": "last-service-transfer",
@@ -87,7 +87,7 @@
       "timezone": "Asia/Taipei",
       "requestTimeBucket": "WEEKDAY_LATE_NIGHT",
       "providerCandidates": ["TDX", "GOOGLE_TRANSIT"],
-      "tdxExecution": {"supported": true, "firstMileMode": "WALKING", "lastMileMode": "WALKING"}
+      "tdxExecution": {"supported": true, "timeParameter": "depart", "firstMileMode": "WALKING_0", "lastMileMode": "WALKING_0"}
     },
     {
       "caseId": "google-driving-arrive-by",
@@ -100,7 +100,8 @@
       "queryTimeRole": "ARRIVE_BY",
       "timezone": "Asia/Taipei",
       "requestTimeBucket": "WEEKDAY_MORNING_PEAK",
-      "providerCandidates": ["GOOGLE_ROUTES"]
+      "providerCandidates": ["GOOGLE_ROUTES"],
+      "googleExecution": {"arrivalTimeSupported": true}
     },
     {
       "caseId": "google-motorcycle",
@@ -113,7 +114,8 @@
       "queryTimeRole": "DEPART_AT",
       "timezone": "Asia/Taipei",
       "requestTimeBucket": "WEEKDAY_EVENING_PEAK",
-      "providerCandidates": ["GOOGLE_ROUTES"]
+      "providerCandidates": ["GOOGLE_ROUTES"],
+      "googleExecution": {"routingPreference": "TRAFFIC_AWARE"}
     },
     {
       "caseId": "google-walking",

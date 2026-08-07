@@ -1,0 +1,17 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "calendar-w11-h-route-sealed-holdout",
+  "frozenBeforeExecution": true,
+  "allowedOutcomes": ["SUCCESS", "NO_ROUTE", "UNSUPPORTED", "RATE_LIMITED", "PROVIDER_FAILURE"],
+  "failureConditions": [
+    "TIME_ROLE_CHANGED",
+    "FIRST_OR_LAST_MILE_NOT_WALKING_FOR_TDX",
+    "UNCLASSIFIED_FRESHNESS",
+    "FABRICATED_DURATION_OR_ETA",
+    "RAW_PROVIDER_PAYLOAD_PERSISTED",
+    "SECRET_OR_PERSONAL_DATA_PERSISTED",
+    "EXTERNAL_MUTATION_OBSERVED"
+  ],
+  "repairAfterUnsealAllowed": false,
+  "externalMutationCountRequired": 0
+}

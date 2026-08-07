@@ -20,24 +20,45 @@
     "WALKING",
     "OVERSEAS_ROUTE"
   ],
-  "sampleCount": 0,
-  "successRate": null,
+  "sampleCount": 10,
+  "successRate": 0.1,
   "latency": {
-    "medianMs": null,
-    "p95Ms": null,
-    "slowestMs": null
+    "medianMs": 788,
+    "p95Ms": 4406,
+    "slowestMs": 4406
   },
-  "freshness": null,
-  "costSummary": null,
+  "freshness": {
+    "tdx": "UNAVAILABLE_IN_OBSERVED_RESPONSE",
+    "google": "NO_ROUTE_RESPONSE_HTTP_403",
+    "scheduledRealtimeDistinctionVerified": false
+  },
+  "costSummary": {
+    "tdx": "NO_REQUEST_COUNT_OR_DATA_VOLUME_FEE_PER_OFFICIAL_SERVICE_PAGE",
+    "google": "NOT_MEASURED_HTTP_403",
+    "measuredCurrencyAmount": null
+  },
   "externalMutationCount": 0,
   "containsSecretsOrPersonalData": false,
-  "executionStatus": "BLOCKED_EXTERNAL_AUTHORITY_RECEIPT_REQUIRED",
+  "executionStatus": "COMPLETED_WITH_PROVIDER_LIMITATIONS",
   "blockers": [
     {
-      "code": "EXTERNAL_AUTHORITY_RECEIPT_REQUIRED",
-      "capability": "EXTERNAL_PROVIDER",
-      "observedState": "UNKNOWN",
-      "reason": "The environment preflight requires an external authority receipt before provider queries."
+      "code": "GOOGLE_HTTP_403",
+      "provider": "GOOGLE_ROUTES_AND_TRANSIT",
+      "reason": "The configured credential could not access the Routes endpoint; API enablement, billing, or credential restrictions were not changed by this evidence-only lane."
+    },
+    {
+      "code": "TDX_RATE_LIMITED",
+      "provider": "TDX",
+      "reason": "Three later observations returned HTTP 429; no repeated retry loop was performed."
+    },
+    {
+      "code": "TDX_ARRIVE_BY_UNSUPPORTED",
+      "provider": "TDX",
+      "reason": "The documented and repository-integrated TDX MaaS request contract exposes departure time, not arrival-by time; the two ARRIVE_BY cases were not silently converted."
+    },
+    {
+      "code": "PROVIDER_FRESHNESS_UNVERIFIED",
+      "reason": "The observed TDX route response did not expose a provider update timestamp and Google returned no route response."
     }
   ],
   "conclusion": "INSUFFICIENT_EVIDENCE"

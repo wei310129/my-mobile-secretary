@@ -1,0 +1,25 @@
+{
+  "schemaVersion": 1,
+  "requestId": "route-benchmark-pilot",
+  "requestPath": "docs/exec-plans/active/handoffs/requests/route-benchmark-pilot.json",
+  "eventId": "TR-DESKTOP-ROUTE-BENCHMARK-START",
+  "producerLane": "laptop",
+  "consumerLane": "desktop",
+  "status": "READY",
+  "notification": "NOTIFY_AND_CONTINUE",
+  "publishedSha": "e96b991d2a4f54d4ae21cb4c1dc2c8b9fbbca2ce",
+  "publishedOn": "2026-08-07",
+  "productPr": "https://github.com/wei310129/my-mobile-secretary/pull/29",
+  "workflowRun": "https://github.com/wei310129/my-mobile-secretary/actions/runs/31137335225",
+  "evidence": {
+    "planPath": "docs/exec-plans/active/calendar-w11-h-two-machine-development-test-plan.md",
+    "gate": "W11-H coordination publication",
+    "contractValidator": "scripts/tests/producer-handoff-test.ps1"
+  },
+  "sourceStateFingerprint": "0d485012f05b3106aabcf4ec9a53cdda8ccd195bb716a2255ee930b73688fe6a",
+  "targetStateFingerprint": "8cbef11ece742e07947bd58887dfcd80145424529256ccef823a4adb81a4f7fd",
+  "rebuildCount": 0,
+  "resourceClaims": [],
+  "externalMutationCount": 0,
+  "consumerAction": "Desktop fetches origin/main, verifies the published SHA and allowlist, records ACK, then starts the W11-H route benchmark evidence lane."
+}

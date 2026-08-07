@@ -4,13 +4,13 @@
     "mode":  "Automatic",
     "outcome":  "PASS",
     "machineAlias":  "desktop",
-    "reviewedAt":  "2026-08-07T07:57:44.9981268Z",
+    "reviewedAt":  "2026-08-07T18:51:28.3684445Z",
     "contractFingerprint":  "855de50e9699b02fab6b427e",
     "targetWorktree":  {
                            "worktreeId":  "104e9fdb85800cf234605534",
                            "repoId":  "58827f126b78fc21c4023114",
                            "branch":  "refs/heads/desktop/calendar-w11-h-route-benchmark",
-                           "head":  "a45fe8496259baa27f2085db865d0597f50a58b3",
+                           "head":  "0cdca5425162374a40ada7772e531c1feca01f85",
                            "registered":  true
                        },
     "evidencePath":  "docs/exec-plans/evidence/development-environment/calendar-w11-desktop.json",

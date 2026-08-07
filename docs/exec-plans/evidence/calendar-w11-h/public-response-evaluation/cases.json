@@ -1,0 +1,14 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "calendar-w11-h-public-route-response-evaluation",
+  "baseSha": "0cdca5425162374a40ada7772e531c1feca01f85",
+  "evaluationScope": "EVIDENCE_PRESENTATION_ONLY_NO_RUNTIME_CLAIM",
+  "containsSecretsOrPersonalData": false,
+  "cases": [
+    {"caseId": "scheduled-arrive-by", "expected": ["SOURCE_NAMED", "SCHEDULED_ONLY_DISCLOSED", "NO_REALTIME_CLAIM"]},
+    {"caseId": "typed-no-route", "expected": ["NO_ROUTE_DISCLOSED", "NO_FABRICATED_DURATION"]},
+    {"caseId": "motorcycle-remediation", "expected": ["SUPPORTED_RESULT_DISCLOSED", "NO_INTERNAL_ERROR_LEAK"]},
+    {"caseId": "scenario-routing", "expected": ["NO_UNIVERSAL_FASTEST_CLAIM", "PROVIDER_BY_SCENARIO"]},
+    {"caseId": "cost-and-mutation", "expected": ["POSSIBLE_QUERY_COST_DISCLOSED", "ZERO_MUTATION_DISCLOSED"]}
+  ]
+}

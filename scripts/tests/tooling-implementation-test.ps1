@@ -20,6 +20,8 @@ $tests = @(
     'producer-handoff-test.ps1',
     'producer-handoff-workflow-test.ps1',
     'environment-preflight-test.ps1',
+    'environment-authority-receipt-test.ps1',
+    'environment-report-test.ps1',
     'environment-release-review-test.ps1',
     'shared-infrastructure-test.ps1',
     'environment-worktree-review-test.ps1',

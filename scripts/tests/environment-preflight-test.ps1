@@ -55,11 +55,18 @@ try {
     [IO.File]::WriteAllText((Join-Path $layoutCommon 'config'), "[remote `"origin`"]`n`turl = https://github.com/example/environment-test.git`n", [Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllText((Join-Path $layoutGitDirectory 'commondir'), '../..', [Text.UTF8Encoding]::new($false))
     [IO.File]::WriteAllText((Join-Path $layoutWorktree '.git'), "gitdir: $layoutGitDirectory", [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $layoutGitDirectory 'gitdir'), (Join-Path $layoutWorktree '.git'), [Text.UTF8Encoding]::new($false))
+    [IO.File]::WriteAllText((Join-Path $layoutGitDirectory 'HEAD'), 'ref: refs/heads/fixture', [Text.UTF8Encoding]::new($false))
+    [IO.Directory]::CreateDirectory((Join-Path $layoutCommon 'refs\heads')) | Out-Null
+    [IO.File]::WriteAllText((Join-Path $layoutCommon 'refs\heads\fixture'), ('a' * 40), [Text.UTF8Encoding]::new($false))
     $worktreeLayout = Get-EnvironmentGitLayout -RepoRoot $layoutWorktree
     Assert-EnvironmentTest ([string]::Equals($worktreeLayout.PrimaryRoot,$layoutPrimary,[StringComparison]::OrdinalIgnoreCase)) 'worktree layout did not resolve the primary root without spawning Git'
     $primaryIdentity = Get-EnvironmentRepositoryIdentity -RepoRoot $layoutPrimary
     $worktreeIdentity = Get-EnvironmentRepositoryIdentity -RepoRoot $layoutWorktree
     Assert-EnvironmentTest ($primaryIdentity.RepoId -eq $worktreeIdentity.RepoId) 'primary and linked worktree did not share a repository identity'
+    $registeredWithoutGit=@(Get-EnvironmentRegisteredWorktrees -AnchorWorktree $layoutWorktree)
+    $fixtureEntry=@($registeredWithoutGit|Where-Object{$_.Path -eq (Normalize-EnvironmentPath $layoutWorktree)})|Select-Object -First 1
+    Assert-EnvironmentTest ($fixtureEntry -and $fixtureEntry.Head -eq ('a' * 40) -and $fixtureEntry.Branch -eq 'refs/heads/fixture') 'linked worktree metadata was not resolved without spawning Git'
 
     $drift = @{} + $ready
     $drift.Java = [pscustomobject]@{State='COMPATIBLE_DRIFT';Ready=$true;Reason=$null;CandidateHome='C:\other';MavenReady=$true}
@@ -82,6 +89,30 @@ try {
         -MachineAlias test-laptop -ProbeOverrides $unknown -NoWrite
     Assert-EnvironmentTest ($unknownDocker.capability.State -eq 'UNKNOWN') 'unknown Docker state was incorrectly made actionable'
 
+    $savedReceipt=$env:MMS_EXTERNAL_AUTHORITY_RECEIPT;$savedProvider=$env:MMS_EXTERNAL_PROVIDER
+    $savedOperation=$env:MMS_EXTERNAL_OPERATION_CLASS;$savedScope=$env:MMS_EXTERNAL_AUTHORITY_SCOPE
+    try {
+        $env:MMS_EXTERNAL_AUTHORITY_RECEIPT='arbitrary-non-empty';$env:MMS_EXTERNAL_PROVIDER='TDX'
+        $env:MMS_EXTERNAL_OPERATION_CLASS='ROUTE_QUERY';$env:MMS_EXTERNAL_AUTHORITY_SCOPE='READ_ONLY'
+        $external = New-EnvironmentSnapshot -Capability EXTERNAL_PROVIDER -RepoRoot $repoRoot -StateRoot $testRoot `
+            -MachineAlias test-laptop -ProbeOverrides $ready -NoWrite
+        Assert-EnvironmentTest (-not $external.capability.Ready) 'arbitrary non-empty external authority receipt was accepted'
+        $issuedAuthority=New-EnvironmentExternalAuthorityReceipt -Provider TDX -OperationClass ROUTE_QUERY -Scope READ_ONLY `
+            -RepoRoot $repoRoot -StateRoot $testRoot -MachineAlias test-laptop
+        $env:MMS_EXTERNAL_AUTHORITY_RECEIPT=$issuedAuthority.Path
+        $externalReady=New-EnvironmentSnapshot -Capability EXTERNAL_PROVIDER -RepoRoot $repoRoot -StateRoot $testRoot `
+            -MachineAlias test-laptop -ProbeOverrides $ready
+        Assert-EnvironmentTest $externalReady.capability.Ready 'valid scoped external authority receipt did not satisfy preflight'
+        Assert-EnvironmentTest (Test-EnvironmentSnapshotFresh -Snapshot $externalReady -Capability EXTERNAL_PROVIDER `
+            -RepoRoot $repoRoot -StateRoot $testRoot -MachineAlias test-laptop) 'matching scoped external snapshot was not reusable within its fence'
+        $env:MMS_EXTERNAL_OPERATION_CLASS='BOOKING_CREATE';$env:MMS_EXTERNAL_PROVIDER='BOOKING';$env:MMS_EXTERNAL_AUTHORITY_SCOPE='MUTATION'
+        Assert-EnvironmentTest (-not (Test-EnvironmentSnapshotFresh -Snapshot $externalReady -Capability EXTERNAL_PROVIDER `
+            -RepoRoot $repoRoot -StateRoot $testRoot -MachineAlias test-laptop)) 'external snapshot was reused for a different provider operation'
+    } finally {
+        $env:MMS_EXTERNAL_AUTHORITY_RECEIPT=$savedReceipt;$env:MMS_EXTERNAL_PROVIDER=$savedProvider
+        $env:MMS_EXTERNAL_OPERATION_CLASS=$savedOperation;$env:MMS_EXTERNAL_AUTHORITY_SCOPE=$savedScope
+    }
+
     $oldJavaHome = $env:JAVA_HOME
     try {
         $env:JAVA_HOME = Join-Path $testRoot 'missing-jdk'
@@ -97,13 +128,13 @@ try {
         -RepoRoot $repoRoot -StateRoot $testRoot -MachineAlias test-laptop
     Assert-EnvironmentTest ($issue1.fingerprint -eq $issue2.fingerprint) 'issue fingerprint was not stable'
     Assert-EnvironmentTest ($issue2.occurrences -eq 2) 'issue occurrences were not deduplicated'
-    $accepted = Write-EnvironmentIssue -Code 'FAKE_ACCEPTED' -Capability READ_ONLY -Expected ready -Actual limited `
-        -Status ACCEPTED_LIMITATION -ResolutionEvidence 'bounded test limitation' `
+    $accepted = Write-EnvironmentIssue -Code 'ASYNC_AGENT_LAUNCH_REQUIRED' -Capability READ_ONLY -Expected ready -Actual limited `
+        -Status ACCEPTED_LIMITATION -LimitationPolicyCode SANDBOX_ASYNC_TOOL_REQUIRED `
         -RepoRoot $repoRoot -StateRoot $testRoot -MachineAlias test-laptop
-    $acceptedAgain = Write-EnvironmentIssue -Code 'FAKE_ACCEPTED' -Capability READ_ONLY -Expected ready -Actual limited `
+    $acceptedAgain = Write-EnvironmentIssue -Code 'ASYNC_AGENT_LAUNCH_REQUIRED' -Capability READ_ONLY -Expected ready -Actual limited `
         -RepoRoot $repoRoot -StateRoot $testRoot -MachineAlias test-laptop
     Assert-EnvironmentTest ($acceptedAgain.status -eq 'ACCEPTED_LIMITATION') 'deduped observation silently reopened an accepted limitation'
-    Assert-EnvironmentTest ($acceptedAgain.resolutionEvidence -eq $accepted.resolutionEvidence) 'accepted limitation lost its resolution evidence'
+    Assert-EnvironmentTest ($acceptedAgain.resolutionEvidence.policyCode -eq $accepted.resolutionEvidence.policyCode) 'accepted limitation lost its structured resolution evidence'
 
     $published = ConvertTo-PublishedEnvironmentSnapshot -Snapshot $maven
     $publishedJson = $published | ConvertTo-Json -Depth 10
@@ -111,10 +142,11 @@ try {
     Assert-EnvironmentTest ($published.machineAlias -eq 'test-laptop') 'published snapshot lost machine alias'
 
     $context = Get-EnvironmentStateContext -RepoRoot $repoRoot -StateRoot $testRoot -MachineAlias test-laptop
-    $expectedSnapshotName = "snapshot-$((Get-EnvironmentCallerContext).Kind).json"
+    $expectedSnapshotName = "snapshot-$((Get-EnvironmentCallerContext).Kind)-$($context.WorktreeId).json"
     Assert-EnvironmentTest ([IO.Path]::GetFileName($context.SnapshotPath) -eq $expectedSnapshotName) 'caller did not receive a caller-specific snapshot path'
-    $expectedMavenSnapshotName = "snapshot-$((Get-EnvironmentCallerContext).Kind)-maven.json"
+    $expectedMavenSnapshotName = "snapshot-$((Get-EnvironmentCallerContext).Kind)-maven-$($context.WorktreeId).json"
     Assert-EnvironmentTest ([IO.Path]::GetFileName((Get-EnvironmentSnapshotPath -Context $context -Capability MAVEN)) -eq $expectedMavenSnapshotName) 'capability did not receive an isolated snapshot path'
+    Assert-EnvironmentTest ((Get-EnvironmentSnapshotPath -Context $context -Capability MAVEN) -match [regex]::Escape($context.WorktreeId)) 'snapshot path was not fenced to the target worktree'
     Write-EnvironmentDemand -Context $context -Capability MAVEN -TtlMinutes 10
     $demand = Read-EnvironmentJson -Path (Get-EnvironmentDemandPath -Context $context -Capability MAVEN)
     Assert-EnvironmentTest ($demand.capability -eq 'MAVEN' -and [datetime]$demand.expiresAt -gt [datetime]::UtcNow) 'demand TTL was not durable'

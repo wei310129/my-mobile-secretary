@@ -203,13 +203,19 @@ if ($existingAppPid) {
     }
     $runningVersion = Get-RunningServiceVersion
     $checkoutVersion = Get-CheckoutServiceVersion
+    $runningVersion = Set-ServiceVersionContentIdentity -Version $runningVersion -Identity (Get-DevStateValue -State $previousState -Name 'runtimeContentIdentity')
     $versionComparison = Compare-ServiceVersion -Running $runningVersion -Checkout $checkoutVersion
-    if ($versionComparison.Status -ne "CURRENT") {
+    if ($versionComparison.Status -notin @("CURRENT","VERIFIED_DIRTY")) {
         throw "Existing main application version is $($versionComparison.Status) ($($runningVersion.VersionLabel)); use dev-restart.ps1 -SkipDispatcher. $($versionComparison.Reason)"
+    }
+    $runtimeContentIdentityForState=Get-DevStateValue -State $previousState -Name 'runtimeContentIdentity'
+    if(-not (Test-RuntimeContentGeneration -Identity $runtimeContentIdentityForState -ServiceGeneration ([string](Get-DevStateValue -State $previousState -Name 'serviceGeneration')))){
+        throw 'Existing main application runtime content receipt belongs to another service generation; use dev-restart.ps1 -SkipDispatcher.'
     }
     $appPid = $existingAppPid
     Write-DevProgress -Message "  Main application is already healthy and current (PID $appPid, version $($runningVersion.VersionLabel))." -ForegroundColor DarkGray
 } else {
+    $buildContentIdentity = Get-ProductionContentIdentity -RepoRoot $RepoRoot
     $launchFile = if (Test-CoordinationMavenEnabled) { Join-Path $PSScriptRoot 'coordinated-maven-run.ps1' } else { "$RepoRoot\mvnw.cmd" }
     $launchArguments = if (Test-CoordinationMavenEnabled) {
         @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $launchFile, '-Application', 'root', '-Profile', $Profile)
@@ -231,13 +237,20 @@ if ($existingAppPid) {
     }
     $runningVersion = Get-RunningServiceVersion
     $checkoutVersion = Get-CheckoutServiceVersion
+    $runningVersion = Set-ServiceVersionContentIdentity -Version $runningVersion -Identity $buildContentIdentity
     $versionComparison = Compare-ServiceVersion -Running $runningVersion -Checkout $checkoutVersion
-    if ($versionComparison.Status -notin @("CURRENT", "DIRTY")) {
+    if ($versionComparison.Status -notin @("CURRENT", "VERIFIED_DIRTY")) {
         Write-Host "Main application started but version verification is $($versionComparison.Status)." -ForegroundColor Red
         Stop-ProcessTree -ProcessId $appPid -Label "Spring Boot (unverifiable version)" -Port $AppPort
         exit 1
     }
     $versionColor = if ($versionComparison.Status -eq "CURRENT") { "Green" } else { "Yellow" }
+    $runtimeContentIdentityForState=[ordered]@{
+        schemaVersion=1; fingerprint=$checkoutVersion.ProductionContentFingerprint
+        head=$checkoutVersion.GitSha; worktreeId=$checkoutVersion.WorktreeId; repoId=$checkoutVersion.RepoId
+        gitDirectoryId=$buildContentIdentity.GitDirectoryId; observedAt=$buildContentIdentity.ObservedAt
+        serviceGeneration=if($script:StartServiceGeneration){$script:StartServiceGeneration.Generation}else{$null}
+    }
     Write-DevProgress -Message "  Main application is ready (PID $appPid, version $($runningVersion.VersionLabel), source=$($versionComparison.Status))." -ForegroundColor $versionColor
 }
 
@@ -370,6 +383,7 @@ $stateUpdates = @{
     serviceVersion = $runningVersion.VersionLabel
     serviceGitSha = $runningVersion.GitSha
     serviceSourceStatus = $versionComparison.Status
+    runtimeContentIdentity = $runtimeContentIdentityForState
 }
 if ($script:StartServiceGeneration) { $stateUpdates["serviceGeneration"] = $script:StartServiceGeneration.Generation; $stateUpdates["serviceLogDirectory"] = $script:StartServiceGeneration.LogDirectory }
 Write-DevState -Updates $stateUpdates

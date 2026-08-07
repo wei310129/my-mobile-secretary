@@ -15,6 +15,12 @@
 
 ## 已觀察案例與決策索引
 
+- 2026-08-07 Calendar W11 Automatic environment review closure：以 production-content fingerprint 取代
+  DIRTY allowlist；snapshot／issue 綁 caller、capability 與 registered worktree；正式 issue lifecycle
+  支援 `OPEN`、`FIXED`、`RESOLVED_BY_PROJECT_EVOLUTION`、`ACCEPTED_LIMITATION`；外部 provider 改用
+  issuer、TTL、repo/worktree/caller、operation/scope 與 nonce fenced receipt。Automatic review 只要求
+  本輪實際 capability。完成後由本條保留問題來源與決策索引，不列為待辦。
+
 - 2026-08-05 route-origin hardening 在 `DOCKER_TEST` preflight 遇到 Docker CLI/context/daemon
   caller block；agent 不能以一般升權方式啟動 Docker Desktop。處置決策是：新增
   `start-managed-docker-desktop.ps1`，固定 Docker Desktop／CLI allowlist與 Docker Inc signature，使用

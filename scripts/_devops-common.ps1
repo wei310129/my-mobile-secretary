@@ -156,6 +156,7 @@ function Get-CheckoutServiceVersion {
         if ($LASTEXITCODE -ne 0) { throw "git status --porcelain failed" }
         $dirty = $dirtyLines.Count -gt 0
         $shortGitSha = ([string]$gitSha).Substring(0, [Math]::Min(12, ([string]$gitSha).Length))
+        $contentIdentity = Get-ProductionContentIdentity -RepoRoot $RepoRoot
         return [pscustomobject]@{
             Available = $true
             BuildNumber = $buildNumber
@@ -164,12 +165,16 @@ function Get-CheckoutServiceVersion {
             ShortGitSha = $shortGitSha
             ChangeSummary = [string]$changeSummary
             Dirty = $dirty
+            ProductionContentFingerprint = $contentIdentity.Fingerprint
+            WorktreeId = $contentIdentity.WorktreeId
+            RepoId = $contentIdentity.RepoId
             Error = $null
         }
     } catch {
         return [pscustomobject]@{
             Available = $false; BuildNumber = $null; VersionLabel = $null; GitSha = $null
-            ShortGitSha = $null; ChangeSummary = $null; Dirty = $null; Error = $_.Exception.Message
+            ShortGitSha = $null; ChangeSummary = $null; Dirty = $null
+            ProductionContentFingerprint = $null; WorktreeId = $null; RepoId = $null; Error = $_.Exception.Message
         }
     }
 }
@@ -196,12 +201,16 @@ function Get-RunningServiceVersion {
             BuildTime = [string]$service.buildTime
             StartedAt = [string]$service.startedAt
             Error = $null
+            ProductionContentFingerprint = $null
+            WorktreeId = $null
+            RepoId = $null
         }
     } catch {
         return [pscustomobject]@{
             Available = $false; BuildNumber = $null; VersionLabel = $null; GitSha = $null
             ShortGitSha = $null; ChangeSummary = $null; Dirty = $null; CommitTime = $null
-            BuildTime = $null; StartedAt = $null; Error = $_.Exception.Message
+            BuildTime = $null; StartedAt = $null; ProductionContentFingerprint = $null
+            WorktreeId = $null; RepoId = $null; Error = $_.Exception.Message
         }
     }
 }
@@ -218,10 +227,95 @@ function Compare-ServiceVersion {
             [long]$Running.BuildNumber -ne [long]$Checkout.BuildNumber) {
         return [pscustomobject]@{ Status = "STALE"; Reason = "Running source identity differs from checkout HEAD." }
     }
+    $runningFingerprint = if ($Running.PSObject.Properties['ProductionContentFingerprint']) { [string]$Running.ProductionContentFingerprint } else { $null }
+    $checkoutFingerprint = if ($Checkout.PSObject.Properties['ProductionContentFingerprint']) { [string]$Checkout.ProductionContentFingerprint } else { $null }
+    $runningWorktreeId = if ($Running.PSObject.Properties['WorktreeId']) { [string]$Running.WorktreeId } else { $null }
+    $checkoutWorktreeId = if ($Checkout.PSObject.Properties['WorktreeId']) { [string]$Checkout.WorktreeId } else { $null }
+    if ([string]::IsNullOrWhiteSpace($runningFingerprint) -or [string]::IsNullOrWhiteSpace($checkoutFingerprint) -or
+            [string]::IsNullOrWhiteSpace($runningWorktreeId) -or [string]::IsNullOrWhiteSpace($checkoutWorktreeId)) {
+        return [pscustomobject]@{ Status = "UNKNOWN"; Reason = "Runtime content identity is unavailable; restart is required." }
+    }
+    if ($runningFingerprint -ne $checkoutFingerprint -or $runningWorktreeId -ne $checkoutWorktreeId) {
+        return [pscustomobject]@{ Status = "STALE"; Reason = "Running production content or worktree identity differs from the verified build input." }
+    }
     if ([bool]$Running.Dirty -or [bool]$Checkout.Dirty) {
-        return [pscustomobject]@{ Status = "DIRTY"; Reason = "Uncommitted content cannot be verified by Git SHA alone." }
+        return [pscustomobject]@{ Status = "VERIFIED_DIRTY"; Reason = "Dirty checkout production content matches the verified build input." }
     }
     return [pscustomobject]@{ Status = "CURRENT"; Reason = "Running source identity matches clean checkout HEAD." }
+}
+
+function Get-DevStateValue {
+    param([Parameter(Mandatory)]$State,[Parameter(Mandatory)][string]$Name)
+    $property=$State.PSObject.Properties[$Name]
+    if($property){return $property.Value}
+    return $null
+}
+
+function Get-ProductionContentIdentity {
+    param([string]$RepoRoot = $RepoRoot)
+    $resolvedRoot = [IO.Path]::GetFullPath($RepoRoot).TrimEnd('\','/')
+    $head = @(& git -C $resolvedRoot rev-parse HEAD 2>$null)
+    $headExit = $LASTEXITCODE
+    if ($headExit -ne 0 -or $head.Count -lt 1 -or [string]$head[0] -notmatch '^[0-9a-fA-F]{40}$') { throw 'production content HEAD could not be verified' }
+    $gitDirRaw = @(& git -C $resolvedRoot rev-parse --absolute-git-dir 2>$null)
+    $gitDirExit = $LASTEXITCODE
+    if ($gitDirExit -ne 0 -or $gitDirRaw.Count -lt 1) { throw 'worktree Git directory could not be verified' }
+    $commonDirRaw = @(& git -C $resolvedRoot rev-parse --path-format=absolute --git-common-dir 2>$null)
+    $commonDirExit = $LASTEXITCODE
+    if ($commonDirExit -ne 0 -or $commonDirRaw.Count -lt 1) { throw 'Git common directory could not be verified' }
+    $gitDirectory = [IO.Path]::GetFullPath([string]$gitDirRaw[0]).TrimEnd('\','/')
+    $commonDirectory = [IO.Path]::GetFullPath([string]$commonDirRaw[0]).TrimEnd('\','/')
+    $worktreeId = (Get-CoordinationHash ("$commonDirectory|$gitDirectory|$resolvedRoot".ToLowerInvariant())).Substring(0,24)
+    $repoId = (Get-CoordinationHash $commonDirectory.ToLowerInvariant()).Substring(0,24)
+    $pathspecs = @('pom.xml','.mvn','src/main','internal/ai-dispatcher/pom.xml','internal/ai-dispatcher/src/main')
+    $paths = @(& git -C $resolvedRoot ls-files --cached --others --exclude-standard -- @pathspecs 2>$null)
+    if ($LASTEXITCODE -ne 0) { throw 'production content inventory could not be verified' }
+    $entries = [Collections.Generic.List[string]]::new()
+    foreach ($relativePath in @($paths | Where-Object { -not [string]::IsNullOrWhiteSpace($_) } | Sort-Object -Unique)) {
+        $normalized = ([string]$relativePath).Replace('\','/')
+        $fullPath = Join-Path $resolvedRoot ([string]$relativePath)
+        $contentHash = if (Test-Path -LiteralPath $fullPath -PathType Leaf) { (Get-FileHash -LiteralPath $fullPath -Algorithm SHA256).Hash.ToLowerInvariant() } else { 'missing' }
+        $entries.Add("$normalized`0$contentHash")
+    }
+    $fingerprint = Get-CoordinationHash ((@("production-content-v1") + @($entries)) -join "`n")
+    return [pscustomobject]@{
+        SchemaVersion=1;Fingerprint=$fingerprint;Head=([string]$head[0]).ToLowerInvariant()
+        WorktreeId=$worktreeId;RepoId=$repoId;GitDirectoryId=(Get-CoordinationHash $gitDirectory.ToLowerInvariant()).Substring(0,24)
+        FileCount=$entries.Count;ObservedAt=[datetime]::UtcNow.ToString('o')
+    }
+}
+
+function Set-ServiceVersionContentIdentity {
+    param([Parameter(Mandatory)]$Version,[AllowNull()]$Identity)
+    foreach ($name in @('ProductionContentFingerprint','WorktreeId','RepoId')) {
+        $value = $null
+        if ($Identity) {
+            $sourceName = if ($name -eq 'ProductionContentFingerprint') { 'Fingerprint' } else { $name }
+            if ($Identity.PSObject.Properties[$sourceName]) { $value = $Identity.$sourceName }
+        }
+        $Version | Add-Member -NotePropertyName $name -NotePropertyValue $value -Force
+    }
+    return $Version
+}
+
+function Test-RuntimeContentGeneration {
+    param([AllowNull()]$Identity,[AllowNull()][string]$ServiceGeneration)
+    if(-not $Identity -or -not $Identity.PSObject.Properties['serviceGeneration'] -or [string]::IsNullOrWhiteSpace([string]$Identity.serviceGeneration)){return $false}
+    return [string]$Identity.serviceGeneration -eq [string]$ServiceGeneration
+}
+
+function Invoke-DevExternalLineProbe {
+    param([bool]$Requested,[bool]$Skipped,[bool]$NoNgrokRequired,[scriptblock]$Probe={Test-LineWebhookEndToEnd})
+    $required=$Requested -and -not $Skipped -and -not $NoNgrokRequired
+    if(-not $required){return [pscustomobject]@{Required=$false;Executed=$false;Success=$true;Result=$null}}
+    $result=& $Probe
+    return [pscustomobject]@{Required=$true;Executed=$true;Success=[bool]$result.Success;Result=$result}
+}
+
+function Get-DevStatusExitCode {
+    param([Parameter(Mandatory)][bool]$AllHealthy)
+    if($AllHealthy){return 0}
+    return 1
 }
 
 function Write-DevState {

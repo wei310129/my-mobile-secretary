@@ -1,7 +1,7 @@
 {
   "schemaVersion": 1,
   "ownerLane": "laptop",
-  "updatedOn": "2026-08-04",
+  "updatedOn": "2026-08-07",
   "humanAvailability": {
     "mode": "UNSPECIFIED",
     "timezone": "Asia/Taipei",
@@ -13,6 +13,26 @@
       "status": "PENDING",
       "publishedSha": null
     },
+    "TR-DESKTOP-ROUTE-BENCHMARK-START": {
+      "status": "BLOCKED",
+      "publishedSha": null,
+      "baseSha": "efddcdac05983add51b5163bc64e5402579bc01a",
+      "reason": "W11-H coordination plan, registry, producer state, and request are not yet Git-retrievable from origin/main.",
+      "allowedPaths": [
+        "docs/exec-plans/evidence/calendar-w11-h/desktop-route-benchmark/**",
+        "docs/exec-plans/evidence/calendar-w11-h/sealed-holdout/**",
+        "docs/exec-plans/evidence/calendar-w11-h/public-response-evaluation/**",
+        "docs/exec-plans/evidence/development-environment/calendar-w11-desktop.json"
+      ],
+      "forbiddenPaths": [
+        "src/**",
+        "pom.xml",
+        "scripts/**",
+        "src/main/resources/db/migration/**"
+      ],
+      "resourceClaims": [],
+      "externalMutationCountRequired": 0
+    },
     "TR-DESKTOP-B3-START": {
       "status": "READY",
       "publishedSha": "6219edcc9d6da08a410ebe38160c253316977d5b"
@@ -20,6 +40,15 @@
     "TR-CALENDAR-W10-MERGED": {
       "status": "READY",
       "publishedSha": "c4ade0b88d44457f5200a6849bbc10ea1516f692"
+    },
+    "TR-CALENDAR-W11-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null
+    },
+    "TR-MACHINE-LANE-SWAP-MERGED": {
+      "status": "PENDING",
+      "publishedSha": null,
+      "dualAckRequired": true
     },
     "TR-TRAVEL-3BB-MERGED": {
       "status": "PENDING",

@@ -56,6 +56,12 @@ Trigger 狀態固定為：
 跨機器新 lane 啟動、一次性 schema token、新產品決策、destructive／external authority 一律
 `HARD_YIELD`。一般同 lane 內部進度可用 `DURABLE_ONLY`；不確定時選較嚴格等級。
 
+唯一窄例外是已核准、無 production ownership 移交且不取得 source／Maven／Docker／DB／Flyway／
+LINE runtime claim 的 evidence-only lane。它仍須 producer Git READY 與 consumer ACK，但可用
+`NOTIFY_AND_CONTINUE`；需要 credential／付費額度擴張、external mutation 或任何 production/resource
+claim 時立即恢復 `HARD_YIELD`。目前只登錄 `TR-DESKTOP-ROUTE-BENCHMARK-START`，完整 allowlist 與
+zero-mutation contract 見 W11-H active plan。
+
 ## 4. 交接投遞協定
 
 Producer 必須依序完成：
@@ -91,10 +97,13 @@ preflight，回報 `BLOCKED` 後結束，不輪詢、不持有 branch／claim／
 | Event ID | Producer | READY 條件 | Consumer／動作 | 通知 |
 | --- | --- | --- | --- | --- |
 | `TR-DOCS-PUBLISHED` | 筆電 | 文件 checkpoint D 已進 `origin/main`，引用與 JSON 驗證通過 | 所有新 session 改讀雙機文件；不解鎖產品開發 | `DURABLE_ONLY` |
+| `TR-DESKTOP-ROUTE-BENCHMARK-START` | 筆電 | W11-H plan／registry／laptop state 已進同一 `origin/main`；base SHA、evidence allowlist、forbidden paths、空 resource claims 與 external mutation count=0 可驗證 | 桌電 ACK 後建立 `desktop/calendar-w11-h-route-benchmark`，只寫 W11-H evidence allowlist；筆電繼續 eligible production gate | `NOTIFY_AND_CONTINUE` |
 | `TR-DESKTOP-B3-START` | 筆電 | Checkpoint B／B2／V84 與必要依賴已合併；focused＋full regression 綠；`baseSha` 可取得 | 使用者啟動桌電；桌電建立 `desktop/booking-b3-core` | `HARD_YIELD` |
 | `TR-B3-CORE-MERGED` | 桌電 | B3-Core PR 已合併、main ancestry 與 focused/full gate 可驗證 | 桌電下一輪建立 `desktop/booking-b4-fake` | `HARD_YIELD` |
 | `TR-B4-FAKE-MERGED` | 桌電 | B4-Fake PR 已合併、9 組模式與 reconciliation/mutation-count gates 綠 | 若 schema token READY 做 B3-Durable；否則做 ADD Core | `HARD_YIELD` |
 | `TR-CALENDAR-W10-MERGED` | 筆電 | Calendar W10 PR 已合併、完整 gate 綠 | 解鎖 Travel 3B-B 的「可開始驗證」；只讓 B3-Durable schema 成為候選，不自動 grant | `HARD_YIELD` |
+| `TR-CALENDAR-W11-MERGED` | 筆電 | H1–H7、focused／neighbor／RLS／LINE／root、全新 24h／20 inbound monitoring 全綠；W11 產品 PR 與 matching state-only handoff 已在 `origin/main`；全部 claims 有 RELEASED receipt | 結束 W11 產品 gate 並更新中央文件；不得同一 receipt 自動切換 production ownership | `HARD_YIELD` |
+| `TR-MACHINE-LANE-SWAP-MERGED` | 筆電 role-swap owner | `TR-CALENDAR-W11-MERGED` 可驗證，role-swap state-only handoff 已合併，producer/consumer ownership 與 claims 清單完整 | 筆電與桌電分別 fetch matching SHA 並 ACK；雙端 ACK 後桌電才取得後續 Upstream／Integration production ownership | `HARD_YIELD` |
 | `TR-TRAVEL-3BB-MERGED` | 筆電 | Travel 3B-B 自己的 recurrence/copy/split propagation gate 已合併 | 後續 Travel 可繼續；不得冒稱 Wheels 6–7 PASS | `NOTIFY_AND_CONTINUE` |
 | `TR-SCHEMA-B3-DURABLE-GRANT` | 筆電 | W10 merged、schema lane 空閒、B3-Core/B4-Fake merged、當下 latest migration 已鎖定 | 桌電建立 `desktop/booking-b3-durable` | `HARD_YIELD` |
 | `TR-SCHEMA-B3-DURABLE-STALE` | 任一偵測者、筆電裁決 | reserved version 被 main 使用、base SHA 不再有效或 scope 改變 | 桌電不得跳號；筆電 revoke 並重發新 token | `HARD_YIELD` |

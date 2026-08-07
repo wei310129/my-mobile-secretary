@@ -14,10 +14,9 @@
       "publishedSha": null
     },
     "TR-DESKTOP-ROUTE-BENCHMARK-START": {
-      "status": "BLOCKED",
-      "publishedSha": null,
-      "baseSha": "efddcdac05983add51b5163bc64e5402579bc01a",
-      "reason": "W11-H coordination plan, registry, producer state, and request are not yet Git-retrievable from origin/main.",
+      "status": "READY",
+      "publishedSha": "e96b991d2a4f54d4ae21cb4c1dc2c8b9fbbca2ce",
+      "baseSha": "e96b991d2a4f54d4ae21cb4c1dc2c8b9fbbca2ce",
       "allowedPaths": [
         "docs/exec-plans/evidence/calendar-w11-h/desktop-route-benchmark/**",
         "docs/exec-plans/evidence/calendar-w11-h/sealed-holdout/**",

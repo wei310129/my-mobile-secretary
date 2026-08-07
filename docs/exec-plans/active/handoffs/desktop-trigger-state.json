@@ -1,8 +1,13 @@
 {
   "schemaVersion": 1,
   "ownerLane": "desktop",
-  "updatedOn": "2026-07-30",
+  "updatedOn": "2026-08-07",
   "consumedLaptopTriggers": {
+    "TR-DESKTOP-ROUTE-BENCHMARK-START": {
+      "status": "ACKNOWLEDGED",
+      "publishedSha": "e96b991d2a4f54d4ae21cb4c1dc2c8b9fbbca2ce",
+      "acknowledgedOn": "2026-08-07"
+    },
     "TR-DESKTOP-B3-START": {
       "status": "ACKNOWLEDGED",
       "publishedSha": "6219edcc9d6da08a410ebe38160c253316977d5b",

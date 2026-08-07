@@ -4,12 +4,19 @@ Set-StrictMode -Version Latest
 . "$PSScriptRoot\docker-shared-infrastructure.ps1"
 . "$PSScriptRoot\managed-docker-desktop.ps1"
 
-$script:EnvironmentSchemaVersion = 2
+$script:EnvironmentSchemaVersion = 3
 $script:EnvironmentCapabilityNames = @(
     'READ_ONLY', 'SOURCE_WRITE', 'MAVEN', 'DOCKER_TEST',
     'DEV_RUNTIME', 'LINE_E2E', 'EXTERNAL_PROVIDER'
 )
 $script:EnvironmentReadyStates = @('MATCH', 'COMPATIBLE_DRIFT')
+$script:ExternalAuthorityIssuer = 'MMS_USER_AUTHORITY_V1'
+$script:ExternalAuthorityOperationScopes = @{
+    'TDX|ROUTE_QUERY'='READ_ONLY'; 'GOOGLE|ROUTE_QUERY'='READ_ONLY'; 'LINE|CONNECTIVITY_PROBE'='READ_ONLY'
+    'BOOKING|AVAILABILITY_QUERY'='READ_ONLY'; 'BOOKING|INVENTORY_MUTATION'='MUTATION'
+    'BOOKING|BOOKING_CREATE'='MUTATION'; 'PAYMENT|PAYMENT'='MUTATION'
+    'BOOKING|CANCELLATION'='MUTATION'; 'BOOKING|REFUND'='MUTATION'
+}
 
 function ConvertTo-EnvironmentArgument {
     param([AllowEmptyString()][string]$Value)
@@ -121,21 +128,39 @@ function Normalize-EnvironmentPath {
 function Get-EnvironmentRegisteredWorktrees {
     param([string]$AnchorWorktree = (Split-Path -Parent $PSScriptRoot))
     $anchorLayout = Get-EnvironmentGitLayout -RepoRoot $AnchorWorktree
-    $lines = @(& git -C $anchorLayout.PrimaryRoot worktree list --porcelain 2>$null)
-    if ($LASTEXITCODE -ne 0) { throw 'Git registered worktree list could not be verified.' }
     $entries = [Collections.Generic.List[object]]::new()
-    $current = $null
-    foreach ($line in $lines) {
-        if ($line -match '^worktree\s+(?<path>.+)$') {
-            if ($current) { $entries.Add([pscustomobject]$current) }
-            $current = [ordered]@{ Path=(Normalize-EnvironmentPath $Matches.path.Trim()); Head=$null; Branch=$null }
-        } elseif ($current -and $line -match '^HEAD\s+(?<head>[0-9a-fA-F]{40})$') {
-            $current.Head = $Matches.head.ToLowerInvariant()
-        } elseif ($current -and $line -match '^branch\s+(?<branch>.+)$') {
-            $current.Branch = $Matches.branch
+    $commonDirectory=Normalize-EnvironmentPath $anchorLayout.CommonDirectory
+    $gitDirectories=[Collections.Generic.List[object]]::new()
+    $gitDirectories.Add([pscustomobject]@{Path=(Normalize-EnvironmentPath $anchorLayout.PrimaryRoot);GitDirectory=$commonDirectory})
+    $linkedRoot=Join-Path $commonDirectory 'worktrees'
+    if(Test-Path -LiteralPath $linkedRoot -PathType Container){
+        foreach($directory in @(Get-ChildItem -LiteralPath $linkedRoot -Directory)){
+            $gitdirPointer=Join-Path $directory.FullName 'gitdir'
+            if(-not (Test-Path -LiteralPath $gitdirPointer -PathType Leaf)){continue}
+            $dotGitPath=[IO.File]::ReadAllText($gitdirPointer,[Text.Encoding]::UTF8).Trim()
+            if(-not [IO.Path]::IsPathRooted($dotGitPath)){$dotGitPath=Join-Path $directory.FullName $dotGitPath}
+            $worktreePath=Split-Path -Parent ([IO.Path]::GetFullPath($dotGitPath))
+            $gitDirectories.Add([pscustomobject]@{Path=(Normalize-EnvironmentPath $worktreePath);GitDirectory=(Normalize-EnvironmentPath $directory.FullName)})
         }
     }
-    if ($current) { $entries.Add([pscustomobject]$current) }
+    foreach($candidate in $gitDirectories){
+        $headPath=Join-Path $candidate.GitDirectory 'HEAD'
+        if(-not (Test-Path -LiteralPath $headPath -PathType Leaf)){continue}
+        $headText=[IO.File]::ReadAllText($headPath,[Text.Encoding]::UTF8).Trim()
+        $branch=$null;$head=$null
+        if($headText -match '^ref:\s*(?<ref>refs/heads/[A-Za-z0-9._/-]+)$'){
+            $branch=$Matches.ref;$refPath=Join-Path $commonDirectory ($branch.Replace('/',[IO.Path]::DirectorySeparatorChar))
+            if(Test-Path -LiteralPath $refPath -PathType Leaf){$head=[IO.File]::ReadAllText($refPath,[Text.Encoding]::UTF8).Trim().ToLowerInvariant()}
+            else{
+                $packedRefs=Join-Path $commonDirectory 'packed-refs'
+                if(Test-Path -LiteralPath $packedRefs -PathType Leaf){
+                    $packed=@([IO.File]::ReadAllLines($packedRefs,[Text.Encoding]::UTF8)|Where-Object{$_ -match "^(?<sha>[0-9a-fA-F]{40})\s+$([regex]::Escape($branch))$"}|Select-Object -First 1)
+                    if($packed.Count -gt 0 -and $packed[0] -match '^(?<sha>[0-9a-fA-F]{40})'){$head=$Matches.sha.ToLowerInvariant()}
+                }
+            }
+        } elseif($headText -match '^[0-9a-fA-F]{40}$'){$head=$headText.ToLowerInvariant()}
+        $entries.Add([pscustomobject]@{Path=$candidate.Path;Head=$head;Branch=$branch})
+    }
     return @($entries)
 }
 
@@ -154,6 +179,7 @@ function Get-EnvironmentWorktreeIdentity {
     $worktreeId = (Get-CoordinationHash ("$common|$target")).Substring(0,24)
     return [pscustomobject]@{
         Path=$target; PrimaryRoot=(Normalize-EnvironmentPath $layout.PrimaryRoot); CommonDirectory=$common
+        GitDirectory=(Normalize-EnvironmentPath $layout.GitDirectory)
         Registered=($null -ne $entry); SameCommonDirectory=$sameCommon; RepoId=$repo.RepoId
         WorktreeId=$worktreeId; Head=if($entry){$entry.Head}else{$null}; Branch=if($entry){$entry.Branch}else{$null}
         IsPrimary=[string]::Equals($target,(Normalize-EnvironmentPath $layout.PrimaryRoot),[StringComparison]::OrdinalIgnoreCase)
@@ -254,18 +280,22 @@ function Get-EnvironmentStateContext {
         [string]$MachineAlias
     )
     $repository = Get-EnvironmentRepositoryIdentity -RepoRoot $RepoRoot
+    $worktree = Get-EnvironmentWorktreeIdentity -Worktree $RepoRoot -AnchorWorktree $RepoRoot
     $alias = Get-EnvironmentMachineAlias -StateRoot $StateRoot -MachineAlias $MachineAlias
     $machineRoot = Join-Path (Join-Path (Join-Path $StateRoot 'repos') $repository.RepoId) (Join-Path 'machines' $alias)
     $callerKind = (Get-EnvironmentCallerContext).Kind
     return [pscustomobject]@{
-        RepoRoot = $repository.RepoRoot; RepoId = $repository.RepoId; MachineAlias = $alias; CallerKind=$callerKind
+        RepoRoot = $repository.RepoRoot; RepoId = $repository.RepoId; WorktreeId=$worktree.WorktreeId
+        GitDirectoryId=(Get-CoordinationHash $worktree.GitDirectory.ToLowerInvariant()).Substring(0,24)
+        MachineAlias = $alias; CallerKind=$callerKind
         StateRoot = $StateRoot; MachineRoot = $machineRoot
-        SnapshotPath = Join-Path $machineRoot "snapshot-$callerKind.json"
+        SnapshotPath = Join-Path $machineRoot "snapshot-$callerKind-$($worktree.WorktreeId).json"
         DemandsPath = Join-Path $machineRoot 'demands'
         DemandPath = Join-Path $machineRoot 'demand.json'
         IssuesPath = Join-Path $machineRoot 'issues'
         ReviewsPath = Join-Path $machineRoot 'reviews'
         ReceiptsPath = Join-Path $machineRoot 'receipts'
+        AuthorityReceiptsPath = Join-Path $machineRoot 'authority-receipts'
         GitHubConfigPath = Join-Path $machineRoot 'github.json'
     }
 }
@@ -276,7 +306,7 @@ function Get-EnvironmentSnapshotPath {
         [Parameter(Mandatory)][ValidateSet('READ_ONLY','SOURCE_WRITE','MAVEN','DOCKER_TEST','DEV_RUNTIME','LINE_E2E','EXTERNAL_PROVIDER')][string]$Capability,
         [string]$CallerKind = $Context.CallerKind
     )
-    return Join-Path $Context.MachineRoot ("snapshot-{0}-{1}.json" -f $CallerKind,$Capability.ToLowerInvariant())
+    return Join-Path $Context.MachineRoot ("snapshot-{0}-{1}-{2}.json" -f $CallerKind,$Capability.ToLowerInvariant(),$Context.WorktreeId)
 }
 
 function Get-EnvironmentDemandPath {
@@ -285,7 +315,7 @@ function Get-EnvironmentDemandPath {
         [Parameter(Mandatory)][ValidateSet('READ_ONLY','SOURCE_WRITE','MAVEN','DOCKER_TEST','DEV_RUNTIME','LINE_E2E','EXTERNAL_PROVIDER')][string]$Capability,
         [string]$CallerKind = $Context.CallerKind
     )
-    return Join-Path $Context.DemandsPath ("demand-{0}-{1}.json" -f $CallerKind,$Capability.ToLowerInvariant())
+    return Join-Path $Context.DemandsPath ("demand-{0}-{1}-{2}.json" -f $CallerKind,$Capability.ToLowerInvariant(),$Context.WorktreeId)
 }
 
 function Get-EnvironmentMavenVersion {
@@ -465,6 +495,101 @@ function Get-EnvironmentCallerContext {
     }
 }
 
+function Get-EnvironmentExternalAuthorityFingerprint {
+    param([Parameter(Mandatory)]$Receipt)
+    $canonical = @(
+        [string]$Receipt.schemaVersion,[string]$Receipt.issuer,[string]$Receipt.issuedAt,[string]$Receipt.expiresAt,
+        [string]$Receipt.repoId,[string]$Receipt.worktreeId,[string]$Receipt.callerKind,[string]$Receipt.capability,
+        [string]$Receipt.provider,[string]$Receipt.operationClass,[string]$Receipt.scope,[string]$Receipt.nonce,
+        [string]$Receipt.contractFingerprint
+    ) -join '|'
+    return Get-CoordinationHash $canonical
+}
+
+function Assert-EnvironmentExternalOperation {
+    param(
+        [Parameter(Mandatory)][ValidateSet('TDX','GOOGLE','LINE','BOOKING','PAYMENT')][string]$Provider,
+        [Parameter(Mandatory)][ValidateSet('ROUTE_QUERY','CONNECTIVITY_PROBE','AVAILABILITY_QUERY','INVENTORY_MUTATION','BOOKING_CREATE','PAYMENT','CANCELLATION','REFUND')][string]$OperationClass,
+        [Parameter(Mandatory)][ValidateSet('READ_ONLY','MUTATION')][string]$Scope
+    )
+    $key = "$Provider|$OperationClass"
+    if (-not $script:ExternalAuthorityOperationScopes.ContainsKey($key)) { throw 'provider and operation class are not an approved external authority combination' }
+    if ($script:ExternalAuthorityOperationScopes[$key] -ne $Scope) { throw 'external authority scope does not match the approved operation class' }
+}
+
+function New-EnvironmentExternalAuthorityReceipt {
+    param(
+        [Parameter(Mandatory)][ValidateSet('TDX','GOOGLE','LINE','BOOKING','PAYMENT')][string]$Provider,
+        [Parameter(Mandatory)][ValidateSet('ROUTE_QUERY','CONNECTIVITY_PROBE','AVAILABILITY_QUERY','INVENTORY_MUTATION','BOOKING_CREATE','PAYMENT','CANCELLATION','REFUND')][string]$OperationClass,
+        [Parameter(Mandatory)][ValidateSet('READ_ONLY','MUTATION')][string]$Scope,
+        [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),[string]$StateRoot = (Get-EnvironmentDefaultRoot),[string]$MachineAlias,
+        [ValidateSet('host','sandbox')][string]$CallerKind = (Get-EnvironmentCallerContext).Kind,
+        [datetime]$IssuedAt = [datetime]::UtcNow,[ValidateRange(1,15)][int]$TtlMinutes = 5
+    )
+    Assert-EnvironmentExternalOperation -Provider $Provider -OperationClass $OperationClass -Scope $Scope
+    $context = Get-EnvironmentStateContext -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $MachineAlias
+    $contract = Get-EnvironmentContract -RepoRoot $RepoRoot
+    $nonce = [guid]::NewGuid().ToString('n')
+    $receipt = [ordered]@{
+        schemaVersion=$script:EnvironmentSchemaVersion;issuer=$script:ExternalAuthorityIssuer
+        issuedAt=$IssuedAt.ToUniversalTime().ToString('o');expiresAt=$IssuedAt.ToUniversalTime().AddMinutes($TtlMinutes).ToString('o')
+        repoId=$context.RepoId;worktreeId=$context.WorktreeId;callerKind=$CallerKind;capability='EXTERNAL_PROVIDER'
+        provider=$Provider;operationClass=$OperationClass;scope=$Scope;nonce=$nonce
+        contractFingerprint=$contract.Fingerprint
+    }
+    $receipt.receiptFingerprint = Get-EnvironmentExternalAuthorityFingerprint -Receipt ([pscustomobject]$receipt)
+    [IO.Directory]::CreateDirectory($context.AuthorityReceiptsPath) | Out-Null
+    $path = Join-Path $context.AuthorityReceiptsPath "$nonce.json"
+    Write-CoordinationJsonAtomic -Path $path -Document $receipt
+    return [pscustomobject]@{Path=$path;Receipt=[pscustomobject]$receipt;ReceiptId=$nonce}
+}
+
+function Test-EnvironmentExternalAuthorityReceipt {
+    param(
+        [Parameter(Mandatory)][string]$ReceiptPath,
+        [Parameter(Mandatory)][ValidateSet('TDX','GOOGLE','LINE','BOOKING','PAYMENT')][string]$Provider,
+        [Parameter(Mandatory)][ValidateSet('ROUTE_QUERY','CONNECTIVITY_PROBE','AVAILABILITY_QUERY','INVENTORY_MUTATION','BOOKING_CREATE','PAYMENT','CANCELLATION','REFUND')][string]$OperationClass,
+        [Parameter(Mandatory)][ValidateSet('READ_ONLY','MUTATION')][string]$Scope,
+        [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),[string]$StateRoot = (Get-EnvironmentDefaultRoot),[string]$MachineAlias,
+        [ValidateSet('host','sandbox')][string]$CallerKind = (Get-EnvironmentCallerContext).Kind
+    )
+    try {
+        Assert-EnvironmentExternalOperation -Provider $Provider -OperationClass $OperationClass -Scope $Scope
+        $context = Get-EnvironmentStateContext -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $MachineAlias
+        $allowed = [IO.Path]::GetFullPath($context.AuthorityReceiptsPath).TrimEnd('\','/') + [IO.Path]::DirectorySeparatorChar
+        $resolved = [IO.Path]::GetFullPath($ReceiptPath)
+        if (-not $resolved.StartsWith($allowed,[StringComparison]::OrdinalIgnoreCase)) { throw 'authority receipt escaped the approved state root' }
+        $receipt = Read-EnvironmentJson -Path $resolved
+        if (-not $receipt) { throw 'authority receipt is missing' }
+        if ([int]$receipt.schemaVersion -ne $script:EnvironmentSchemaVersion) { throw 'authority receipt schema is unsupported' }
+        if ($receipt.issuer -ne $script:ExternalAuthorityIssuer) { throw 'authority receipt issuer is invalid' }
+        if ($receipt.nonce -notmatch '^[0-9a-f]{32}$' -or [IO.Path]::GetFileNameWithoutExtension($resolved) -ne $receipt.nonce) { throw 'authority receipt nonce fencing is invalid' }
+        $issuedAt = [DateTimeOffset]::Parse([string]$receipt.issuedAt); $expiresAt = [DateTimeOffset]::Parse([string]$receipt.expiresAt)
+        $authorityNow = [DateTimeOffset]::UtcNow
+        if ($issuedAt -gt $authorityNow.AddMinutes(2) -or $expiresAt -le $authorityNow -or $expiresAt -gt $issuedAt.AddMinutes(15)) { throw 'authority receipt lifetime is invalid or expired' }
+        if ($receipt.repoId -ne $context.RepoId -or $receipt.worktreeId -ne $context.WorktreeId) { throw 'authority receipt repository or worktree fence does not match' }
+        if ($receipt.callerKind -ne $CallerKind -or $receipt.capability -ne 'EXTERNAL_PROVIDER') { throw 'authority receipt caller or capability fence does not match' }
+        if ($receipt.provider -ne $Provider -or $receipt.operationClass -ne $OperationClass -or $receipt.scope -ne $Scope) { throw 'authority receipt provider, operation, or scope does not match' }
+        if ($receipt.contractFingerprint -ne (Get-EnvironmentContract -RepoRoot $RepoRoot).Fingerprint) { throw 'authority receipt contract is stale' }
+        $fingerprint = Get-EnvironmentExternalAuthorityFingerprint -Receipt $receipt
+        if ($receipt.receiptFingerprint -ne $fingerprint) { throw 'authority receipt fingerprint is invalid' }
+        return [pscustomobject]@{State='MATCH';Ready=$true;Reason=$null;ReceiptFingerprint=$fingerprint;Provider=$Provider;OperationClass=$OperationClass;Scope=$Scope}
+    } catch {
+        return [pscustomobject]@{State='UNKNOWN';Ready=$false;Reason=$_.Exception.Message;ReceiptFingerprint=$null;Provider=$Provider;OperationClass=$OperationClass;Scope=$Scope}
+    }
+}
+
+function Get-EnvironmentExternalAuthorityProbe {
+    param([string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),[string]$StateRoot = (Get-EnvironmentDefaultRoot),[string]$MachineAlias)
+    $path=[string]$env:MMS_EXTERNAL_AUTHORITY_RECEIPT;$provider=[string]$env:MMS_EXTERNAL_PROVIDER
+    $operation=[string]$env:MMS_EXTERNAL_OPERATION_CLASS;$scope=[string]$env:MMS_EXTERNAL_AUTHORITY_SCOPE
+    if ([string]::IsNullOrWhiteSpace($path) -or [string]::IsNullOrWhiteSpace($provider) -or [string]::IsNullOrWhiteSpace($operation) -or [string]::IsNullOrWhiteSpace($scope)) {
+        return [pscustomobject]@{State='UNKNOWN';Ready=$false;Reason='scoped external authority receipt, provider, operation class, and scope are required'}
+    }
+    try { return Test-EnvironmentExternalAuthorityReceipt -ReceiptPath $path -Provider $provider -OperationClass $operation -Scope $scope -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $MachineAlias }
+    catch { return [pscustomobject]@{State='UNKNOWN';Ready=$false;Reason=$_.Exception.Message} }
+}
+
 function Get-EnvironmentDockerProbe {
     param([switch]$RequireDaemon,[switch]$RequireSharedContainers)
     $probe = Get-ManagedDockerReadinessProbe
@@ -532,11 +657,7 @@ function Resolve-EnvironmentCapabilityState {
     if ($Capability -in @('MAVEN','DOCKER_TEST','DEV_RUNTIME','LINE_E2E')) { $required.Add($Probes.Java) }
     if ($Capability -in @('DOCKER_TEST','DEV_RUNTIME','LINE_E2E')) { $required.Add($Probes.Docker) }
     if ($Capability -in @('DEV_RUNTIME','LINE_E2E')) { $required.Add($Probes.Runtime) }
-    if ($Capability -eq 'EXTERNAL_PROVIDER') {
-        if (-not $env:MMS_EXTERNAL_AUTHORITY_RECEIPT) {
-            return [pscustomobject]@{ State = 'UNKNOWN'; Ready = $false; Reason = 'external authority receipt is required' }
-        }
-    }
+    if ($Capability -eq 'EXTERNAL_PROVIDER') { $required.Add($Probes.ExternalAuthority) }
     $blocked = @($required | Where-Object { -not $_.Ready })
     if ($blocked.Count -gt 0) {
         $knownClassifications = @(
@@ -615,7 +736,8 @@ function Test-EnvironmentSnapshotFresh {
     param(
         [AllowNull()]$Snapshot,
         [string]$Capability,
-        [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot)
+        [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),
+        [string]$CallerKind = (Get-EnvironmentCallerContext).Kind,[string]$StateRoot=(Get-EnvironmentDefaultRoot),[string]$MachineAlias
     )
     if (-not $Snapshot -or -not $Snapshot.expiresAt) { return $false }
     if (-not $Snapshot.PSObject.Properties['schemaVersion'] -or
@@ -626,6 +748,15 @@ function Test-EnvironmentSnapshotFresh {
             $Snapshot.contract.Fingerprint -ne $currentContract.Fingerprint) { return $false }
     if ([datetime]$Snapshot.expiresAt -le [datetime]::UtcNow) { return $false }
     if ($Capability -and $Snapshot.requestedCapability -ne $Capability) { return $false }
+    $identity = Get-EnvironmentWorktreeIdentity -Worktree $RepoRoot -AnchorWorktree $RepoRoot
+    if (-not $Snapshot.PSObject.Properties['worktreeId'] -or $Snapshot.worktreeId -ne $identity.WorktreeId) { return $false }
+    if (-not $Snapshot.PSObject.Properties['repoId'] -or $Snapshot.repoId -ne $identity.RepoId) { return $false }
+    if (-not $Snapshot.PSObject.Properties['caller'] -or $Snapshot.caller.Kind -ne $CallerKind) { return $false }
+    if ($Capability -eq 'EXTERNAL_PROVIDER') {
+        $authority = Get-EnvironmentExternalAuthorityProbe -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $MachineAlias
+        if (-not $authority.Ready -or -not $Snapshot.probes.PSObject.Properties['ExternalAuthority'] -or
+                $Snapshot.probes.ExternalAuthority.ReceiptFingerprint -ne $authority.ReceiptFingerprint) { return $false }
+    }
     return $true
 }
 
@@ -645,17 +776,20 @@ function New-EnvironmentSnapshot {
     $needsJava = $Capability -in @('MAVEN','DOCKER_TEST','DEV_RUNTIME','LINE_E2E')
     $needsDocker = $Capability -in @('DOCKER_TEST','DEV_RUNTIME','LINE_E2E')
     $needsRuntime = $Capability -in @('DEV_RUNTIME','LINE_E2E')
+    $needsExternalAuthority = $Capability -eq 'EXTERNAL_PROVIDER'
     $probes = [ordered]@{
         PowerShell = if ($ProbeOverrides -and $ProbeOverrides.ContainsKey('PowerShell')) { $ProbeOverrides.PowerShell } else { Get-EnvironmentPowerShellProbe }
         Git = if ($ProbeOverrides -and $ProbeOverrides.ContainsKey('Git')) { $ProbeOverrides.Git } else { Get-EnvironmentGitProbe -RepoRoot $RepoRoot }
         Java = if ($ProbeOverrides -and $ProbeOverrides.ContainsKey('Java')) { $ProbeOverrides.Java } elseif ($needsJava) { Get-EnvironmentJavaProbe -RepoRoot $RepoRoot } else { [pscustomobject]@{ State='UNKNOWN';Ready=$false;Reason='not probed for requested capability' } }
         Docker = if ($ProbeOverrides -and $ProbeOverrides.ContainsKey('Docker')) { $ProbeOverrides.Docker } elseif ($needsDocker) { Get-EnvironmentDockerProbe -RequireDaemon -RequireSharedContainers } else { [pscustomobject]@{ State='UNKNOWN';Ready=$false;Reason='not probed for requested capability' } }
         Runtime = if ($ProbeOverrides -and $ProbeOverrides.ContainsKey('Runtime')) { $ProbeOverrides.Runtime } elseif ($needsRuntime) { Get-EnvironmentRuntimeProbe } else { [pscustomobject]@{ State='UNKNOWN';Ready=$false;Reason='not probed for requested capability' } }
+        ExternalAuthority = if ($ProbeOverrides -and $ProbeOverrides.ContainsKey('ExternalAuthority')) { $ProbeOverrides.ExternalAuthority } elseif ($needsExternalAuthority) { Get-EnvironmentExternalAuthorityProbe -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $MachineAlias } else { [pscustomobject]@{State='UNKNOWN';Ready=$false;Reason='not probed for requested capability'} }
     }
     $capabilityState = Resolve-EnvironmentCapabilityState -Capability $Capability -Probes ([pscustomobject]$probes)
     $contract = Get-EnvironmentContract -RepoRoot $RepoRoot
     $snapshot = [ordered]@{
-        schemaVersion = $script:EnvironmentSchemaVersion; repoId = $context.RepoId; machineAlias = $context.MachineAlias
+        schemaVersion = $script:EnvironmentSchemaVersion; repoId = $context.RepoId; worktreeId=$context.WorktreeId
+        gitDirectoryId=$context.GitDirectoryId; machineAlias = $context.MachineAlias
         sequence = $sequence; observedAt = [datetime]::UtcNow.ToString('o')
         expiresAt = [datetime]::UtcNow.AddMinutes($contract.SnapshotTtlMinutes).ToString('o')
         requestedCapability = $Capability; caller = Get-EnvironmentCallerContext
@@ -684,7 +818,7 @@ function Invoke-EnvironmentPreflight {
     $capabilitySnapshotPath = Get-EnvironmentSnapshotPath -Context $context -Capability $Capability
     if (-not $SkipDemandWrite) { Write-EnvironmentDemand -Context $context -Capability $Capability }
     $cached = Read-EnvironmentJson -Path $capabilitySnapshotPath
-    if (-not $RequireFresh -and (Test-EnvironmentSnapshotFresh -Snapshot $cached -Capability $Capability)) {
+    if (-not $RequireFresh -and (Test-EnvironmentSnapshotFresh -Snapshot $cached -Capability $Capability -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $MachineAlias)) {
         if ($ApplyProcessJava -and $Capability -in @('MAVEN','DOCKER_TEST','DEV_RUNTIME','LINE_E2E') -and
                 $cached.probes.Java.CandidateHome) {
             $env:JAVA_HOME = [string]$cached.probes.Java.CandidateHome
@@ -699,7 +833,7 @@ function Invoke-EnvironmentPreflight {
             return [pscustomobject]@{ schemaVersion=$script:EnvironmentSchemaVersion;requestedCapability=$Capability;capability=[pscustomobject]@{State='UNKNOWN';Ready=$false;Reason='environment preflight is BUSY'} }
         }
         $cached = Read-EnvironmentJson -Path $capabilitySnapshotPath
-        if (-not $RequireFresh -and (Test-EnvironmentSnapshotFresh -Snapshot $cached -Capability $Capability)) {
+        if (-not $RequireFresh -and (Test-EnvironmentSnapshotFresh -Snapshot $cached -Capability $Capability -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $MachineAlias)) {
             if ($ApplyProcessJava -and $Capability -in @('MAVEN','DOCKER_TEST','DEV_RUNTIME','LINE_E2E') -and
                     $cached.probes.Java.CandidateHome) {
                 $env:JAVA_HOME = [string]$cached.probes.Java.CandidateHome
@@ -762,10 +896,15 @@ function ConvertTo-PublishedEnvironmentSnapshot {
     param([Parameter(Mandatory)]$Snapshot)
     return [ordered]@{
         schemaVersion = $Snapshot.schemaVersion; machineAlias = $Snapshot.machineAlias; sequence = $Snapshot.sequence
+        repoId=$Snapshot.repoId;worktreeId=$Snapshot.worktreeId;callerKind=$Snapshot.caller.Kind
         observedAt = $Snapshot.observedAt; expiresAt = [datetime]::UtcNow.AddMinutes(30).ToString('o')
-        requestedCapability = $Snapshot.requestedCapability; callerKind = $Snapshot.caller.Kind
+        requestedCapability = $Snapshot.requestedCapability
         capability = [ordered]@{ state=$Snapshot.capability.State; ready=[bool]$Snapshot.capability.Ready; reason=$Snapshot.capability.Reason }
         contractFingerprint = $Snapshot.contract.Fingerprint
+        authority = if($Snapshot.requestedCapability -eq 'EXTERNAL_PROVIDER' -and $Snapshot.probes.ExternalAuthority.Ready){[ordered]@{
+            provider=$Snapshot.probes.ExternalAuthority.Provider;operationClass=$Snapshot.probes.ExternalAuthority.OperationClass
+            scope=$Snapshot.probes.ExternalAuthority.Scope;receiptFingerprint=$Snapshot.probes.ExternalAuthority.ReceiptFingerprint
+        }}else{$null}
         tools = [ordered]@{
             git = $Snapshot.probes.Git.Version
             javaState = $Snapshot.probes.Java.State
@@ -777,8 +916,33 @@ function ConvertTo-PublishedEnvironmentSnapshot {
 }
 
 function Get-EnvironmentIssueFingerprint {
-    param([Parameter(Mandatory)][string]$Code, [Parameter(Mandatory)][string]$Capability, [string]$CallerKind)
-    return (Get-CoordinationHash ("$Code|$Capability|$CallerKind".ToLowerInvariant())).Substring(0, 24)
+    param([Parameter(Mandatory)][string]$Code, [Parameter(Mandatory)][string]$Capability, [string]$CallerKind,[string]$WorktreeId)
+    return (Get-CoordinationHash ("$Code|$Capability|$CallerKind|$WorktreeId".ToLowerInvariant())).Substring(0, 24)
+}
+
+function Assert-EnvironmentIssueCode {
+    param([Parameter(Mandatory)][string]$Code)
+    if($Code -notmatch '^[A-Z][A-Z0-9_]{2,63}$'){throw 'environment issue code must be a typed uppercase identifier'}
+    return $Code
+}
+
+function ConvertTo-EnvironmentPrivateText {
+    param([AllowNull()][string]$Value,[string]$RepoRoot=(Split-Path -Parent $PSScriptRoot))
+    if($null -eq $Value){return $null}
+    $sanitized=[string]$Value
+    foreach($privateValue in @($RepoRoot,(Get-EnvironmentGitLayout -RepoRoot $RepoRoot).PrimaryRoot,[Environment]::UserName,[Environment]::MachineName,$env:COMPUTERNAME) | Where-Object{-not [string]::IsNullOrWhiteSpace([string]$_)}){
+        $sanitized=$sanitized -replace [regex]::Escape([string]$privateValue),'<private>'
+    }
+    $sanitized=$sanitized -replace '(?i)\b(token|password|secret|api[-_]?key|authorization)\s*[:=]\s*[^\s;]+','$1=<redacted>'
+    $sanitized=$sanitized -replace '(?i)https?://[^\s]+','<url>'
+    $sanitized=$sanitized -replace '(?i)(?<![A-Za-z0-9_])[A-Z]:[\\/][^\r\n;]+','<absolute-path>'
+    if($sanitized.Length -gt 1000){$sanitized=$sanitized.Substring(0,1000)}
+    return $sanitized
+}
+
+function Test-EnvironmentAcceptedLimitationPolicy {
+    param([Parameter(Mandatory)][string]$Code,[Parameter(Mandatory)][string]$PolicyCode)
+    return ($Code -eq 'ASYNC_AGENT_LAUNCH_REQUIRED' -and $PolicyCode -eq 'SANDBOX_ASYNC_TOOL_REQUIRED')
 }
 
 function Write-EnvironmentIssue {
@@ -788,36 +952,95 @@ function Write-EnvironmentIssue {
         [Parameter(Mandatory)][string]$Expected,
         [Parameter(Mandatory)][string]$Actual,
         [ValidateSet('MANUAL','CAPABILITY','JAVA_HOME')][string]$RecheckKind = 'MANUAL',
-        [ValidateSet('OPEN','ACCEPTED_LIMITATION')][string]$Status = 'OPEN',
-        [string]$ResolutionEvidence,
+        [ValidateSet('OPEN','FIXED','RESOLVED_BY_PROJECT_EVOLUTION','ACCEPTED_LIMITATION')][string]$Status = 'OPEN',
+        [AllowNull()]$ResolutionEvidence,[string]$LimitationPolicyCode,
         [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),
         [string]$StateRoot = (Get-EnvironmentDefaultRoot),
         [string]$MachineAlias
     )
+    Assert-EnvironmentIssueCode -Code $Code | Out-Null
     $context = Get-EnvironmentStateContext -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $MachineAlias
     $caller = Get-EnvironmentCallerContext
-    $fingerprint = Get-EnvironmentIssueFingerprint -Code $Code -Capability $Capability -CallerKind $caller.Kind
+    $fingerprint = Get-EnvironmentIssueFingerprint -Code $Code -Capability $Capability -CallerKind $caller.Kind -WorktreeId $context.WorktreeId
     $path = Join-Path $context.IssuesPath "$fingerprint.json"
     $existing = Read-EnvironmentJson -Path $path
     $now = [datetime]::UtcNow.ToString('o')
     $contract = Get-EnvironmentContract -RepoRoot $RepoRoot
-    $effectiveStatus = if ($existing -and $existing.status -eq 'ACCEPTED_LIMITATION' -and $Status -eq 'OPEN') {
+    if($Status -eq 'ACCEPTED_LIMITATION'){
+        if(-not (Test-EnvironmentAcceptedLimitationPolicy -Code $Code -PolicyCode $LimitationPolicyCode)){throw 'accepted limitation policy is not approved for this typed issue'}
+        $ResolutionEvidence=[pscustomobject]@{kind='ACCEPTED_LIMITATION';policyCode=$LimitationPolicyCode;resolvedAt=$now;callerKind=$caller.Kind;capability=$Capability;worktreeId=$context.WorktreeId;contractFingerprint=(Get-EnvironmentContract -RepoRoot $RepoRoot).Fingerprint}
+    } elseif($Status -ne 'OPEN') { throw 'FIXED and RESOLVED_BY_PROJECT_EVOLUTION must use Resolve-EnvironmentIssue with verified evidence' }
+    $effectiveStatus = if ($existing -and $existing.status -eq 'ACCEPTED_LIMITATION' -and $Status -eq 'OPEN' -and
+            $existing.contractFingerprint -eq (Get-EnvironmentContract -RepoRoot $RepoRoot).Fingerprint) {
         'ACCEPTED_LIMITATION'
     } else { $Status }
-    $effectiveResolution = if (-not [string]::IsNullOrWhiteSpace($ResolutionEvidence)) {
+    $effectiveResolution = if ($effectiveStatus -eq 'OPEN') {
+        $null
+    } elseif ($null -ne $ResolutionEvidence) {
         $ResolutionEvidence
     } elseif ($existing -and $existing.PSObject.Properties['resolutionEvidence']) {
         $existing.resolutionEvidence
     } else { $null }
     $issue = [ordered]@{
         schemaVersion=$script:EnvironmentSchemaVersion;fingerprint=$fingerprint;code=$Code;capability=$Capability
+        repoId=$context.RepoId;worktreeId=$context.WorktreeId
         callerKind=$caller.Kind;firstSeen=if($existing){$existing.firstSeen}else{$now};lastSeen=$now
-        occurrences=if($existing){[int]$existing.occurrences+1}else{1};expected=$Expected;actual=$Actual
+        occurrences=if($existing){[int]$existing.occurrences+1}else{1}
+        expected=(ConvertTo-EnvironmentPrivateText -Value $Expected -RepoRoot $RepoRoot)
+        actual=(ConvertTo-EnvironmentPrivateText -Value $Actual -RepoRoot $RepoRoot)
         contractFingerprint=$contract.Fingerprint;recheckKind=$RecheckKind;status=$effectiveStatus
         resolutionEvidence=$effectiveResolution
     }
     Write-CoordinationJsonAtomic -Path $path -Document $issue
     return [pscustomobject]$issue
+}
+
+function Resolve-EnvironmentIssue {
+    param(
+        [Parameter(Mandatory)][string]$Code,
+        [Parameter(Mandatory)][ValidateSet('READ_ONLY','SOURCE_WRITE','MAVEN','DOCKER_TEST','DEV_RUNTIME','LINE_E2E','EXTERNAL_PROVIDER')][string]$Capability,
+        [Parameter(Mandatory)][ValidateSet('FIXED','RESOLVED_BY_PROJECT_EVOLUTION','ACCEPTED_LIMITATION')][string]$Status,
+        [string]$LimitationPolicyCode,[AllowNull()]$Snapshot,[ValidateSet('host','sandbox')][string]$CallerKind=(Get-EnvironmentCallerContext).Kind,
+        [string]$RepoRoot=(Split-Path -Parent $PSScriptRoot),[string]$StateRoot=(Get-EnvironmentDefaultRoot),[string]$MachineAlias
+    )
+    Assert-EnvironmentIssueCode -Code $Code | Out-Null
+    $context=Get-EnvironmentStateContext -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $MachineAlias
+    $fingerprint=Get-EnvironmentIssueFingerprint -Code $Code -Capability $Capability -CallerKind $CallerKind -WorktreeId $context.WorktreeId
+    $path=Join-Path $context.IssuesPath "$fingerprint.json";$issue=Read-EnvironmentJson -Path $path
+    if(-not $issue){throw 'matching typed environment issue does not exist'}
+    $contract=Get-EnvironmentContract -RepoRoot $RepoRoot
+    if($Status -eq 'ACCEPTED_LIMITATION'){
+        if(-not (Test-EnvironmentAcceptedLimitationPolicy -Code $Code -PolicyCode $LimitationPolicyCode)){throw 'accepted limitation policy is not approved for this typed issue'}
+        $evidence=[ordered]@{kind='ACCEPTED_LIMITATION';policyCode=$LimitationPolicyCode;resolvedAt=[datetime]::UtcNow.ToString('o');callerKind=$CallerKind;capability=$Capability;worktreeId=$context.WorktreeId;contractFingerprint=$contract.Fingerprint}
+    } else {
+        if(-not $Snapshot){$Snapshot=Read-EnvironmentJson -Path (Get-EnvironmentSnapshotPath -Context $context -Capability $Capability -CallerKind $CallerKind)}
+        if(-not (Test-EnvironmentSnapshotFresh -Snapshot $Snapshot -Capability $Capability -RepoRoot $RepoRoot -CallerKind $CallerKind -StateRoot $StateRoot -MachineAlias $MachineAlias) -or -not [bool]$Snapshot.capability.Ready){throw 'matching fresh ready caller/capability snapshot is required for resolution'}
+        if($Snapshot.worktreeId -ne $context.WorktreeId){throw 'resolution snapshot belongs to another worktree'}
+        if($Status -eq 'FIXED' -and $issue.contractFingerprint -ne $contract.Fingerprint){throw 'changed contract requires RESOLVED_BY_PROJECT_EVOLUTION'}
+        if($Status -eq 'RESOLVED_BY_PROJECT_EVOLUTION' -and $issue.contractFingerprint -eq $contract.Fingerprint){throw 'project-evolution resolution requires a changed contract fingerprint'}
+        $evidence=[ordered]@{kind=$Status;resolvedAt=[datetime]::UtcNow.ToString('o');snapshotSequence=$Snapshot.sequence;state=$Snapshot.capability.State;callerKind=$CallerKind;capability=$Capability;worktreeId=$context.WorktreeId;contractFingerprint=$contract.Fingerprint}
+    }
+    $issue.status=$Status;$issue.resolutionEvidence=[pscustomobject]$evidence;$issue.lastSeen=[datetime]::UtcNow.ToString('o')
+    Write-CoordinationJsonAtomic -Path $path -Document $issue
+    return $issue
+}
+
+function Test-EnvironmentIssueResolutionEvidence {
+    param([Parameter(Mandatory)]$Issue,[Parameter(Mandatory)]$Context,[string]$RepoRoot=(Split-Path -Parent $PSScriptRoot))
+    if(-not $Issue.PSObject.Properties['schemaVersion'] -or [int]$Issue.schemaVersion -ne $script:EnvironmentSchemaVersion -or
+            $Issue.status -eq 'OPEN' -or -not $Issue.PSObject.Properties['resolutionEvidence'] -or -not $Issue.resolutionEvidence){return $false}
+    $evidence=$Issue.resolutionEvidence;$contract=Get-EnvironmentContract -RepoRoot $RepoRoot
+    $expectedFingerprint=Get-EnvironmentIssueFingerprint -Code $Issue.code -Capability $Issue.capability -CallerKind $Issue.callerKind -WorktreeId $Context.WorktreeId
+    if($Issue.fingerprint -ne $expectedFingerprint -or $Issue.repoId -ne $Context.RepoId -or $Issue.worktreeId -ne $Context.WorktreeId){return $false}
+    if($evidence.kind -ne $Issue.status -or $evidence.callerKind -ne $Issue.callerKind -or $evidence.capability -ne $Issue.capability -or
+            $evidence.worktreeId -ne $Context.WorktreeId -or $evidence.contractFingerprint -ne $contract.Fingerprint){return $false}
+    if(-not $evidence.PSObject.Properties['resolvedAt'] -or [DateTimeOffset]::Parse([string]$evidence.resolvedAt) -gt [DateTimeOffset]::UtcNow.AddMinutes(2)){return $false}
+    if($Issue.status -in @('FIXED','ACCEPTED_LIMITATION') -and $Issue.contractFingerprint -ne $contract.Fingerprint){return $false}
+    if($Issue.status -eq 'RESOLVED_BY_PROJECT_EVOLUTION' -and $Issue.contractFingerprint -eq $contract.Fingerprint){return $false}
+    if($Issue.status -eq 'ACCEPTED_LIMITATION'){
+        return [bool](Test-EnvironmentAcceptedLimitationPolicy -Code $Issue.code -PolicyCode ([string]$evidence.policyCode))
+    }
+    return $Issue.status -in @('FIXED','RESOLVED_BY_PROJECT_EVOLUTION') -and [long]$evidence.snapshotSequence -gt 0 -and $evidence.state -in $script:EnvironmentReadyStates
 }
 
 function Assert-EnvironmentReviewDocument {

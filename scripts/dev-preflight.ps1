@@ -6,7 +6,11 @@ param(
     [switch]$RequireFresh,
     [switch]$Json,
     [string]$StateRoot,
-    [string]$MachineAlias
+    [string]$MachineAlias,
+    [ValidateSet('TDX','GOOGLE','LINE','BOOKING','PAYMENT')][string]$ExternalProvider,
+    [ValidateSet('ROUTE_QUERY','CONNECTIVITY_PROBE','AVAILABILITY_QUERY','INVENTORY_MUTATION','BOOKING_CREATE','PAYMENT','CANCELLATION','REFUND')][string]$ExternalOperationClass,
+    [ValidateSet('READ_ONLY','MUTATION')][string]$ExternalScope,
+    [string]$AuthorityReceipt
 )
 
 $ErrorActionPreference = 'Stop'
@@ -16,6 +20,13 @@ $repoRoot = Split-Path -Parent $PSScriptRoot
 $environmentLayout = Get-EnvironmentGitLayout -RepoRoot $repoRoot
 $allowedStateRoot = Join-Path $environmentLayout.PrimaryRoot 'var\environment-state\v1'
 Assert-ProjectEnvironmentStateRoot -StateRoot $StateRoot -AllowedRoot $allowedStateRoot
+if ($ExternalProvider -or $ExternalOperationClass -or $ExternalScope -or $AuthorityReceipt) {
+    if ($Capability -ne 'EXTERNAL_PROVIDER' -or -not $ExternalProvider -or -not $ExternalOperationClass -or -not $ExternalScope -or -not $AuthorityReceipt) {
+        throw 'external provider preflight requires EXTERNAL_PROVIDER plus provider, operation class, scope, and authority receipt together'
+    }
+    $env:MMS_EXTERNAL_PROVIDER=$ExternalProvider;$env:MMS_EXTERNAL_OPERATION_CLASS=$ExternalOperationClass
+    $env:MMS_EXTERNAL_AUTHORITY_SCOPE=$ExternalScope;$env:MMS_EXTERNAL_AUTHORITY_RECEIPT=$AuthorityReceipt
+}
 $arguments = @{ Capability=$Capability; RepoRoot=$repoRoot }
 if ($StateRoot) { $arguments.StateRoot = $StateRoot }
 if ($MachineAlias) { $arguments.MachineAlias = $MachineAlias }
@@ -28,7 +39,7 @@ try {
         $context = Get-EnvironmentStateContext @contextArguments
         Write-EnvironmentDemand -Context $context -Capability $Capability
         $cachedSnapshot = Read-EnvironmentJson -Path (Get-EnvironmentSnapshotPath -Context $context -Capability $Capability)
-        $snapshot = if (-not $RequireFresh -and (Test-EnvironmentSnapshotFresh -Snapshot $cachedSnapshot -Capability $Capability -RepoRoot $repoRoot)) {
+        $snapshot = if (-not $RequireFresh -and (Test-EnvironmentSnapshotFresh -Snapshot $cachedSnapshot -Capability $Capability -RepoRoot $repoRoot -StateRoot $context.StateRoot -MachineAlias $context.MachineAlias)) {
             $cachedSnapshot
         } else { $null }
         $asyncLauncher = $null
@@ -44,8 +55,7 @@ try {
                 Write-EnvironmentIssue -Code 'ASYNC_AGENT_LAUNCH_REQUIRED' -Capability $Capability `
                     -Expected 'the caller can keep a detached monitor alive after preflight exits' `
                     -Actual 'Codex sandbox child lifetime is not durable after the parent tool process exits' `
-                    -Status ACCEPTED_LIMITATION `
-                    -ResolutionEvidence 'agent must run dev-environment-monitor.ps1 with its asynchronous tool execution and continue read-only work' `
+                    -Status ACCEPTED_LIMITATION -LimitationPolicyCode SANDBOX_ASYNC_TOOL_REQUIRED `
                     -RepoRoot $repoRoot -StateRoot $context.StateRoot -MachineAlias $context.MachineAlias | Out-Null
             } else {
                 Start-Process -FilePath powershell.exe -ArgumentList $monitorArguments -WindowStyle Hidden | Out-Null

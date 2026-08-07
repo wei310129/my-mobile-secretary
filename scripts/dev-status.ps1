@@ -76,8 +76,15 @@ if ($appPortPid) {
     $health = try { (Invoke-RestMethod -Uri "http://localhost:$AppPort/actuator/health" -TimeoutSec 3).status } catch { "no response" }
     $managed = Test-ManagedProcess -ProcessId $appPortPid -Kind "SpringBoot"
     $runningVersion = Get-RunningServiceVersion
+    $runtimeIdentity = Get-DevStateValue -State $state -Name 'runtimeContentIdentity'
+    $runningVersion = Set-ServiceVersionContentIdentity -Version $runningVersion -Identity $runtimeIdentity
     $versionComparison = Compare-ServiceVersion -Running $runningVersion -Checkout $checkoutVersion
-    $color = if ($health -eq "UP" -and $managed -and $versionComparison.Status -eq "CURRENT") { "Green" } else { "Yellow" }
+    $verifiedSource = $versionComparison.Status -in @('CURRENT','VERIFIED_DIRTY')
+    if ($verifiedSource) {
+        $verifiedSource = Test-RuntimeContentGeneration -Identity $runtimeIdentity -ServiceGeneration ([string](Get-DevStateValue -State $state -Name 'serviceGeneration'))
+        if (-not $verifiedSource) { $versionComparison = [pscustomobject]@{Status='STALE';Reason='runtime content receipt generation does not match the active service generation'} }
+    }
+    $color = if ($health -eq "UP" -and $managed -and $verifiedSource) { "Green" } else { "Yellow" }
     Add-StatusDetail -Message "Spring Boot:    running (PID $appPortPid, health=$health, managed=$managed)" -ForegroundColor $color
     $runningLabel = if ($runningVersion.Available) { $runningVersion.VersionLabel } else { "unavailable" }
     Add-StatusDetail -Message "  running version: $runningLabel ($($versionComparison.Status))" -ForegroundColor $color
@@ -88,7 +95,7 @@ if ($appPortPid) {
     } elseif ($runningVersion.Error) {
         Add-StatusDetail -Message "  version error:   $($runningVersion.Error)" -ForegroundColor Yellow
     }
-    if ($health -ne "UP" -or -not $managed -or $versionComparison.Status -ne "CURRENT") { $allHealthy = $false }
+    if ($health -ne "UP" -or -not $managed -or -not $verifiedSource) { $allHealthy = $false }
 } else {
     Add-StatusDetail -Message "Spring Boot:    not running" -ForegroundColor DarkGray
     $allHealthy = $false
@@ -152,9 +159,10 @@ if ($ngrokPortPid) {
     if (-not $NoNgrokRequired) { $allHealthy = $false }
 }
 
-if ($ExternalLineProbe -and -not $SkipLineWebhookTest -and -not $NoNgrokRequired) {
+$lineProbeStatus=Invoke-DevExternalLineProbe -Requested ([bool]$ExternalLineProbe) -Skipped ([bool]$SkipLineWebhookTest) -NoNgrokRequired ([bool]$NoNgrokRequired)
+if ($lineProbeStatus.Required) {
     Add-StatusDetail -Message "LINE webhook:   official end-to-end test executed" -ForegroundColor DarkGray
-    $lineTest = Test-LineWebhookEndToEnd
+    $lineTest = $lineProbeStatus.Result
     if ($lineTest.Success) {
         Add-StatusDetail -Message "LINE webhook:   connected (LINE -> ngrok -> Spring Boot)" -ForegroundColor Green
     } else {
@@ -183,12 +191,14 @@ if (-not $RequireDispatcher) {
 }
 
 if ($VerboseOutput -or -not $allHealthy) { Show-StatusDetails }
-if (-not $allHealthy) {
+$statusExitCode=Get-DevStatusExitCode -AllHealthy $allHealthy
+if ($statusExitCode -ne 0) {
     Write-Host "Development environment unhealthy; inspect the layer details above." -ForegroundColor Red
-    exit 1
+    exit $statusExitCode
 }
 $dispatcherSummary = if ($dispatcherHealthy) { "dispatcher=healthy" } else { "dispatcher=optional-unavailable" }
 $lineSummary = if ($ExternalLineProbe -and -not $SkipLineWebhookTest -and -not $NoNgrokRequired) { "LINE=connected" } else { "LINE=skipped" }
 $versionSummary = if ($runningVersion) { $runningVersion.VersionLabel } else { "unknown" }
-Write-Host "Development environment healthy: main=UP; version=$versionSummary; source=CURRENT; Postgres=healthy; Redis=healthy; $dispatcherSummary; $lineSummary." -ForegroundColor Green
+$sourceSummary = if($versionComparison){$versionComparison.Status}else{'UNKNOWN'}
+Write-Host "Development environment healthy: main=UP; version=$versionSummary; source=$sourceSummary; Postgres=healthy; Redis=healthy; $dispatcherSummary; $lineSummary." -ForegroundColor Green
 exit 0

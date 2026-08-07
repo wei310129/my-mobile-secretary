@@ -62,18 +62,21 @@ $issueReviews = [Collections.Generic.List[object]]::new()
 if (Test-Path -LiteralPath $context.IssuesPath -PathType Container) {
     foreach ($file in @(Get-ChildItem -LiteralPath $context.IssuesPath -Filter *.json -File)) {
         $issue = Read-EnvironmentJson -Path $file.FullName
+        if(-not $issue.PSObject.Properties['worktreeId'] -or $issue.worktreeId -ne $targetIdentity.WorktreeId){continue}
+        if($capabilityNames -notcontains [string]$issue.capability){continue}
         $current = if ($issue.callerKind -eq $currentCallerKind) {
             @($results | Where-Object { $_.requestedCapability -eq $issue.capability } | Select-Object -First 1)
         } else {
             $callerSnapshotPath = Get-EnvironmentSnapshotPath -Context $context -Capability $issue.capability -CallerKind $issue.callerKind
             $callerSnapshot = Read-EnvironmentJson -Path $callerSnapshotPath
             if ($callerSnapshot -and $callerSnapshot.caller.Kind -eq $issue.callerKind -and
-                    (Test-EnvironmentSnapshotFresh -Snapshot $callerSnapshot -Capability $issue.capability -RepoRoot $targetIdentity.Path)) {
+                    $callerSnapshot.worktreeId -eq $targetIdentity.WorktreeId -and
+                    (Test-EnvironmentSnapshotFresh -Snapshot $callerSnapshot -Capability $issue.capability -RepoRoot $targetIdentity.Path -CallerKind $issue.callerKind -StateRoot $context.StateRoot -MachineAlias $context.MachineAlias)) {
                 @($callerSnapshot)
             } else { @() }
         }
         $current = @($current)
-        $classification = 'OPEN'
+        $classification = if(Test-EnvironmentIssueResolutionEvidence -Issue $issue -Context $context -RepoRoot $targetIdentity.Path){[string]$issue.status}else{'OPEN'}
         $recheckKind = if ($issue.PSObject.Properties['recheckKind']) { [string]$issue.recheckKind } else { 'MANUAL' }
         $recheckReady = $false
         if ($current.Count -gt 0 -and $recheckKind -eq 'CAPABILITY') {
@@ -83,10 +86,11 @@ if (Test-Path -LiteralPath $context.IssuesPath -PathType Container) {
             $persistentReady = $current[0].probes.Java.PSObject.Properties['PersistentConfigurationReady'] -and [bool]$current[0].probes.Java.PersistentConfigurationReady
             $recheckReady = [bool]$current[0].probes.Java.Ready -and (-not $processRepairApplied -or $persistentReady)
         }
-        if ($recheckKind -in @('CAPABILITY','JAVA_HOME') -and $recheckReady) {
+        if ($classification -eq 'OPEN' -and $recheckKind -in @('CAPABILITY','JAVA_HOME') -and $recheckReady) {
             $classification = if ($issue.contractFingerprint -ne $currentContract.Fingerprint) { 'RESOLVED_BY_PROJECT_EVOLUTION' } else { 'FIXED' }
-        } elseif ($issue.status -eq 'ACCEPTED_LIMITATION') {
-            $classification = 'ACCEPTED_LIMITATION'
+            Resolve-EnvironmentIssue -Code $issue.code -Capability $issue.capability -Status $classification `
+                -CallerKind $issue.callerKind -Snapshot $current[0] -RepoRoot $targetIdentity.Path `
+                -StateRoot $context.StateRoot -MachineAlias $context.MachineAlias | Out-Null
         }
         $issueReviews.Add([pscustomobject]@{
             fingerprint=$issue.fingerprint; code=$issue.code; capability=$issue.capability

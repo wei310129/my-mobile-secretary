@@ -102,6 +102,24 @@ powershell -ExecutionPolicy Bypass -File .\scripts\install-dev-environment-monit
 `RESOLVED_BY_PROJECT_EVOLUTION` 或 `ACCEPTED_LIMITATION`；自然消失的問題也必須
 附重新驗證證據。
 
+issue fingerprint 綁定 typed uppercase code、capability、caller 與 registered worktree。`FIXED` 與
+`RESOLVED_BY_PROJECT_EVOLUTION` 只能由 matching caller/capability/worktree 的 fresh ready snapshot
+產生結構化 resolution evidence；不能用 host snapshot 代替 sandbox。`ACCEPTED_LIMITATION` 只能使用
+tooling allowlist 內的 policy code，普通 observation 不會靜默重開，但 contract 演進後必須重新審查。
+正式入口範例：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-environment-report.ps1 `
+  -Code PREFLIGHT_CALLER_ACCESS_DENIED -Capability DOCKER_TEST `
+  -Expected 'matching caller is ready' -Actual 'caller probe denied' -RecheckKind CAPABILITY
+
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-environment-report.ps1 `
+  -Code ENVIRONMENT_MONITOR_FAILED -Capability READ_ONLY -Resolve -ResolutionStatus FIXED
+```
+
+report 會遮蔽 hostname、帳號、absolute path、URL 與 credential-like 值；參數組合不完整、任意 issue
+code、任意 limitation 文字與 mismatched caller evidence 都 fail closed。
+
 Calendar W10 closure 使用 `Manual` review；Calendar W11 起每個 major release／wheel closure 使用
 `Automatic` review，缺少新鮮、零 open blocker 且 contract fingerprint 相符的 evidence 就不得標
 `PASS`／`MERGED`：
@@ -119,12 +137,20 @@ powershell -ExecutionPolicy Bypass -File .\scripts\assert-dev-environment-review
 W11 起把 `Mode` 改為 `Automatic`，並在合併後的 CI／release verification 使用 `-RequireTracked`。
 每台參與 release 的 active machine 各產生一份檔案；整合 gate 必須逐一用 `-MachineAlias` 與
 `-RequiredCapability` 驗證，不能拿筆電 evidence 代替桌電，也不能用 READ_ONLY 代替實際用過的 Maven／Docker。
+Automatic review 只納入本輪 `-Capability` 明列且實際使用的 capability；歷史 EXTERNAL_PROVIDER 或
+Docker probe 不得迫使未使用它們的一般 release session 取得新權限，但同一 worktree、本輪 required
+capability 的未解 issue 仍會 fail closed。
 Tracked review evidence 只保存 opaque repository／worktree identity、branch／SHA 與 repository-relative
 evidence path；不得寫入 hostname、帳號、worktree absolute path、Git common directory 或 primary root。
 `-TargetWorktree` 必須是同一 Git common-dir 下已 registered 的 worktree；`EvidenceRoot` 與
 `EvidencePath` 會以 canonical path 驗證，只允許寫入該 target worktree 的
 `docs/exec-plans/evidence/development-environment`，path escape、跨 repository、未註冊 worktree
 與 machine alias 不符一律 fail closed。root evidence 不得冒充 consumer worktree evidence。
+`EXTERNAL_PROVIDER` 使用正式短效 authority receipt。receipt 至少綁 issuer、issuedAt/expiresAt、
+repository/worktree、caller、capability、provider、operation class、READ_ONLY/MUTATION scope、nonce
+與 contract fingerprint；TDX/Google read-only route receipt 絕不涵蓋 Calendar mutation、booking、
+payment、cancellation 或 refund。
+
 ## Context 壓縮提醒點
 
 - tooling implementation regression gate 完成且沒有未定位失敗時，才適合壓縮 context；續作摘要必須保留已驗證的 shared-container contract、managed lifecycle、worktree evidence ownership、測試結果、尚未取得的 live receipts 與下一個提交／發布步驟。

@@ -57,7 +57,7 @@ try {
     if ($StateRoot) { $invokeArguments.StateRoot = $StateRoot }
     if ($MachineAlias) { $invokeArguments.MachineAlias = $MachineAlias }
     $cached = Read-EnvironmentJson -Path (Get-EnvironmentSnapshotPath -Context $context -Capability $Capability)
-    $cachedFresh = Test-EnvironmentSnapshotFresh -Snapshot $cached -Capability $Capability -RepoRoot $repoRoot
+    $cachedFresh = Test-EnvironmentSnapshotFresh -Snapshot $cached -Capability $Capability -RepoRoot $repoRoot -StateRoot $context.StateRoot -MachineAlias $context.MachineAlias
     $cachedRepairPending = $cachedFresh -and $cached.probes.Java.PSObject.Properties['PersistentRepairEligible'] -and
         [bool]$cached.probes.Java.PersistentRepairEligible
     $cachedDockerRepairPending = $cachedFresh -and $AllowSafeRepair -and
@@ -125,6 +125,7 @@ try {
     try {
         Write-EnvironmentIssue -Code 'ENVIRONMENT_MONITOR_FAILED' -Capability 'READ_ONLY' `
             -Expected 'monitor completes within its bounded probe budget' -Actual $_.Exception.Message `
+            -RecheckKind CAPABILITY `
             -RepoRoot $repoRoot -StateRoot $context.StateRoot -MachineAlias $context.MachineAlias | Out-Null
     } catch { }
     Write-Host ("Environment monitor failed: {0}" -f $_.Exception.Message)

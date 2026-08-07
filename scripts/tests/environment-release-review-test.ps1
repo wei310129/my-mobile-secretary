@@ -11,7 +11,13 @@ $evidencePath=Join-Path $repoRoot ("docs\exec-plans\evidence\development-environ
 try{
     Write-EnvironmentIssue -Code 'EVOLVED_FAKE' -Capability READ_ONLY -Expected ready -Actual blocked -RecheckKind CAPABILITY `
         -RepoRoot $repoRoot -StateRoot $testRoot -MachineAlias test-laptop|Out-Null
+    $evolutionIssue=Write-EnvironmentIssue -Code 'PROJECT_EVOLUTION_FAKE' -Capability READ_ONLY -Expected ready -Actual blocked -RecheckKind CAPABILITY `
+        -RepoRoot $repoRoot -StateRoot $testRoot -MachineAlias test-laptop
+    $externalUnused=Write-EnvironmentIssue -Code 'UNUSED_EXTERNAL_FAKE' -Capability EXTERNAL_PROVIDER -Expected scoped -Actual blocked -RecheckKind CAPABILITY `
+        -RepoRoot $repoRoot -StateRoot $testRoot -MachineAlias test-laptop
     $context=Get-EnvironmentStateContext -RepoRoot $repoRoot -StateRoot $testRoot -MachineAlias test-laptop
+    $evolutionIssue.contractFingerprint='previous-contract'
+    Write-CoordinationJsonAtomic -Path (Join-Path $context.IssuesPath "$($evolutionIssue.fingerprint).json") -Document $evolutionIssue
     $otherCaller=if((Get-EnvironmentCallerContext).Kind -eq 'host'){'sandbox'}else{'host'}
     $readyProbe=[pscustomobject]@{State='MATCH';Ready=$true;Reason=$null;Version='fake'}
     $crossSnapshot=New-EnvironmentSnapshot -Capability READ_ONLY -RepoRoot $repoRoot -StateRoot $testRoot `
@@ -19,9 +25,10 @@ try{
     $crossSnapshot.caller.Kind=$otherCaller
     Write-CoordinationJsonAtomic -Path (Get-EnvironmentSnapshotPath -Context $context -Capability READ_ONLY -CallerKind $otherCaller) -Document $crossSnapshot
     $contract=Get-EnvironmentContract -RepoRoot $repoRoot
-    $crossFingerprint=Get-EnvironmentIssueFingerprint -Code 'CROSS_CALLER_FAKE' -Capability READ_ONLY -CallerKind $otherCaller
+    $crossFingerprint=Get-EnvironmentIssueFingerprint -Code 'CROSS_CALLER_FAKE' -Capability READ_ONLY -CallerKind $otherCaller -WorktreeId $context.WorktreeId
     Write-CoordinationJsonAtomic -Path (Join-Path $context.IssuesPath "$crossFingerprint.json") -Document ([ordered]@{
         schemaVersion=$script:EnvironmentSchemaVersion;fingerprint=$crossFingerprint;code='CROSS_CALLER_FAKE';capability='READ_ONLY'
+        repoId=$context.RepoId;worktreeId=$context.WorktreeId
         callerKind=$otherCaller;firstSeen=[datetime]::UtcNow.ToString('o');lastSeen=[datetime]::UtcNow.ToString('o')
         occurrences=1;expected='ready';actual='blocked';contractFingerprint=$contract.Fingerprint
         recheckKind='CAPABILITY';status='OPEN';resolutionEvidence=$null
@@ -34,6 +41,10 @@ try{
     if($review.outcome -ne 'PASS'){throw 'ready capability did not produce PASS review'}
     if(@($review.issues|Where-Object{$_.code -eq 'EVOLVED_FAKE' -and $_.classification -eq 'FIXED'}).Count -ne 1){throw 'resolved issue was not classified FIXED'}
     if(@($review.issues|Where-Object{$_.code -eq 'CROSS_CALLER_FAKE' -and $_.classification -eq 'FIXED'}).Count -ne 1){throw 'matching cross-caller snapshot was not rechecked'}
+    if(@($review.issues|Where-Object{$_.code -eq 'PROJECT_EVOLUTION_FAKE' -and $_.classification -eq 'RESOLVED_BY_PROJECT_EVOLUTION'}).Count -ne 1){throw 'changed contract was not resolved with project-evolution evidence'}
+    if(@($review.issues|Where-Object{$_.code -eq 'UNUSED_EXTERNAL_FAKE'}).Count -ne 0){throw 'unused external-provider history was forced into the current review'}
+    $resolvedEvolution=Read-EnvironmentJson -Path (Join-Path $context.IssuesPath "$($evolutionIssue.fingerprint).json")
+    if($resolvedEvolution.status -ne 'RESOLVED_BY_PROJECT_EVOLUTION' -or $resolvedEvolution.resolutionEvidence.kind -ne 'RESOLVED_BY_PROJECT_EVOLUTION'){throw 'project-evolution resolution was not durably audited'}
     if(-not(Test-Path -LiteralPath (Join-Path $context.ReviewsPath 'fake-gate.json'))){throw 'review receipt was not durable'}
     $validation=Assert-EnvironmentReviewDocument -Review $review -ReleaseGate fake-gate -Mode Automatic -RepoRoot $repoRoot `
         -TargetWorktree $repoRoot -AnchorWorktree $repoRoot -EvidenceRoot (Split-Path -Parent $evidencePath) `
@@ -49,7 +60,7 @@ try{
     $staleRejected=$false
     try{Assert-EnvironmentReviewDocument -Review $review -ReleaseGate fake-gate -Mode Automatic -RepoRoot $repoRoot|Out-Null}catch{$staleRejected=$true}
     if(-not $staleRejected){throw 'review document validator accepted stale contract evidence'}
-    [pscustomobject]@{status='passed';assertions=8;livePaths='skipped'}|ConvertTo-Json -Compress
+    [pscustomobject]@{status='passed';assertions=11;livePaths='skipped'}|ConvertTo-Json -Compress
 }finally{
     if(Test-Path -LiteralPath $testRoot){Remove-Item -LiteralPath $testRoot -Recurse -Force}
     if(Test-Path -LiteralPath $evidencePath){Remove-Item -LiteralPath $evidencePath -Force}

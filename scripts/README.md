@@ -34,6 +34,12 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev-stop.ps1
 可在啟動加 `-NoNgrok`。若本機允許執行 PowerShell 腳本，也可在 `scripts` 目錄直接使用
 `.\dev-restart.ps1`。
 
+`dev-start.ps1` 會把本次 build input 的 production-content fingerprint、HEAD、registered worktree
+identity 與 service generation 寫入 ignored runtime state。`dev-status.ps1` 重新計算相同 fingerprint：
+dirty worktree 只在內容完全相符時回報 `VERIFIED_DIRTY`；build 後變更 `src/main`、主 `pom.xml` 或
+Dispatcher production input 會回報 `STALE`，純文件變更不會誤判 runtime stale。缺少 receipt、跨
+worktree、跨 generation 或舊 runtime metadata 一律要求 restart，不以 `DIRTY` allowlist 放行。
+
 Docker Desktop 的受限入口與環境 preflight：
 
 ```powershell
@@ -47,6 +53,22 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev-preflight.ps1 -Capability
 只寫入 `var\environment-state\v1`，coordination receipt只寫入既有 LOCALAPPDATA coordination v1
 root。Codex policy 只允許上述精確 project entrypoint，不允許任意 `Start-Process`、exe、arguments、
 Docker CLI destructive command或 Docker 資料資源清理。
+
+外部 provider capability 必須先由本輪明確授權產生最長 15 分鐘的 scoped receipt，再把 receipt 路徑、
+provider、operation class 與 scope 一起傳給 `dev-preflight.ps1`。receipt 綁定 issuer、repository、
+registered worktree、caller、contract fingerprint 與 nonce；任一欄位不符即拒絕。例：
+
+```powershell
+powershell -ExecutionPolicy Bypass -File .\scripts\new-external-authority-receipt.ps1 `
+  -Provider TDX -OperationClass ROUTE_QUERY -Scope READ_ONLY -UserAuthorizedThisTurn -Json
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-preflight.ps1 -Capability EXTERNAL_PROVIDER `
+  -ExternalProvider TDX -ExternalOperationClass ROUTE_QUERY -ExternalScope READ_ONLY `
+  -AuthorityReceipt <receipt-path> -RequireFresh
+```
+
+TDX／Google route query、LINE connectivity 與 Booking availability 是 `READ_ONLY`；inventory mutation、
+booking creation、payment、cancellation 與 refund 是獨立 `MUTATION` operation。read-only receipt 不可
+授權任何 mutation，也不可跨 caller 或 worktree 重用。
 
 一般啟動與重啟會明確關閉 development feed、Dispatcher scheduler 與 Codex CLI adapter；
 目前只啟動 Dispatcher 服務做健康檢查，不會自動開發。當 Dispatcher lane 處於 `STARTING`、

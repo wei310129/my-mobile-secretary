@@ -16,7 +16,7 @@
     "TR-DESKTOP-ROUTE-BENCHMARK-START": {
       "status": "BLOCKED",
       "publishedSha": null,
-      "baseSha": "e5a1a42a092f72e49bb773423501c655cb388c77",
+      "baseSha": "efddcdac05983add51b5163bc64e5402579bc01a",
       "reason": "W11-H coordination plan, registry, producer state, and request are not yet Git-retrievable from origin/main.",
       "allowedPaths": [
         "docs/exec-plans/evidence/calendar-w11-h/desktop-route-benchmark/**",

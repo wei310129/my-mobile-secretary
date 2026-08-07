@@ -1,6 +1,6 @@
 # Calendar W11-H 雙機併行開發與測試計畫
 
-> 狀態：`APPROVED_ACTIVE_PREPARATION_BLOCKED_PENDING_COORDINATION_PUBLISH`
+> 狀態：`APPROVED_ACTIVE_EVIDENCE_MERGED_RELEASE_BLOCKED`
 >
 > 使用者拍板：2026-08-01
 >
@@ -25,12 +25,30 @@ sealed holdout 與黑箱公開回覆／latency evidence，不執行 Maven、Dock
 ```json
 {
   "observedOn": "2026-08-07",
-  "observedOriginMain": "efddcdac05983add51b5163bc64e5402579bc01a",
+  "observedOriginMain": "0a755910d4cb781c58d0ff249cfe5a712cf63061",
   "coordinationTrigger": "TR-DESKTOP-ROUTE-BENCHMARK-START",
-  "coordinationStatus": "BLOCKED_NEEDS_PUBLISH",
+  "coordinationStatus": "ACKNOWLEDGED",
+  "coordinationPublishedSha": "e96b991d2a4f54d4ae21cb4c1dc2c8b9fbbca2ce",
+  "desktopAckMergeSha": "06d1470cbd3cea3c5229076659a5f303c0c89ff3",
+  "evidencePolicyMergeSha": "f27fdb1b39ff64d262c8b8301faba9b657c11354",
+  "routeBenchmarkMergeSha": "0a755910d4cb781c58d0ff249cfe5a712cf63061",
+  "routeBenchmarkConclusion": "INSUFFICIENT_EVIDENCE",
+  "desktopAutomaticEnvironmentReview": "BLOCKED",
+  "desktopAutomaticEnvironmentOpenBlockerCount": 5,
+  "w11ReleaseTrigger": "PENDING",
   "externalMutationCount": 0
 }
 ```
+
+Coordination 已完成，不是目前 W11 blocker：producer state-only PR #30、desktop ACK PR #33、evidence
+policy PR #34 與 route benchmark evidence PR #35 都已合併。桌電 evidence lane 的最新結論為
+`INSUFFICIENT_EVIDENCE`，不是 `PASS`：10 次 read-only provider query 只有 1 次成功，Google Routes／
+Transit 回 HTTP 403，TDX 出現 `NO_ROUTE`、HTTP 429、未支援 `ARRIVE_BY`，provider freshness 也未驗證。
+
+Desktop `calendar-w11` Automatic environment review 同樣仍為 `BLOCKED`，共有 5 個既有 open issue：
+`LINE_E2E` 的 daemon-not-ready／action-required、`DEV_RUNTIME` 的 daemon-not-ready／action-required，
+以及 `DOCKER_TEST` daemon-not-ready。Evidence-only lane 不得為了關閉這些 issue 擴張到 Maven、Docker、
+runtime 或 LINE claim；必須由具備對應 ownership／capability 的 lane 重新驗證並產生新鮮 evidence。
 
 Calendar Wheels 0–10 與 matching W10 handoff 已發布。本文件不把 W11-H 核准冒充 H1–H7 PASS；
 桌電 evidence lane 可在 coordination READY／ACK 後先行，筆電仍須逐 gate 完成 production 內容。
@@ -213,8 +231,13 @@ substitute 冒充。
 - 只有 ownership 單一、測試綠且 evidence 完整的 stable gate 才提交；混合 ownership 不標 PASS。
 - Context 壓縮候選：coordination READY/ACK、H4 PASS、evidence merged、H6 PASS、H7 PASS、W11
   monitoring closure；實際時機仍由 agent 依決策與驗證狀態判斷。
-- Wheels 0–10 與 W10 durable handoff 已發布；W11 H1–H7、provider benchmark、LINE/24h monitoring
-  與 release closure 均尚未以本計畫驗證。
-- 目前 coordination contract 尚未進 `origin/main`，桌電不能開始。
+- Wheels 0–10 與 W10 durable handoff 已發布；W11 H1–H7、LINE／24h monitoring 與 release closure
+  仍須由筆電逐項形成可合併證據，本文件尚未宣稱它們 PASS。
+- Coordination、desktop ACK 與 route benchmark evidence 已進 `origin/main`；桌電 evidence-only lane
+  已完成本輪交付，不再是 W11 的啟動 blocker。
+- Route benchmark 已執行但結論為 `INSUFFICIENT_EVIDENCE`；Google 403、TDX 429／`NO_ROUTE`／
+  `ARRIVE_BY` 限制與 freshness 缺口尚未滿足 release hard gate。
+- Desktop Automatic environment review 仍因 5 個既有 `LINE_E2E`／`DEV_RUNTIME`／`DOCKER_TEST`
+  open issue 為 `BLOCKED`；`TR-CALENDAR-W11-MERGED` 維持 `PENDING`。
 - Credential、quota、計價與資料授權需桌電 preflight；secret 不進 repo。
 - 證據不足時結論必須是 `INSUFFICIENT_EVIDENCE`。

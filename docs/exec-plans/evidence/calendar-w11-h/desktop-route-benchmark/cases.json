@@ -1,0 +1,118 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "calendar-w11-h-route-benchmark",
+  "baseSha": "06d1470cbd3cea3c5229076659a5f303c0c89ff3",
+  "containsSecretsOrPersonalData": false,
+  "cases": [
+    {
+      "caseId": "taipei-urban-transit",
+      "scenarioClass": "URBAN_BUS_AND_METRO",
+      "origin": "Taipei Main Station",
+      "destination": "Taipei City Hall",
+      "mode": "TRANSIT",
+      "queryTimeRole": "DEPART_AT",
+      "timezone": "Asia/Taipei",
+      "requestTimeBucket": "WEEKDAY_MORNING_PEAK",
+      "providerCandidates": ["TDX", "GOOGLE_TRANSIT"]
+    },
+    {
+      "caseId": "taiwan-high-speed-rail",
+      "scenarioClass": "HSR_INTERCITY",
+      "origin": "Taipei HSR Station",
+      "destination": "Zuoying HSR Station",
+      "mode": "TRANSIT",
+      "queryTimeRole": "ARRIVE_BY",
+      "timezone": "Asia/Taipei",
+      "requestTimeBucket": "WEEKDAY_AFTERNOON",
+      "providerCandidates": ["TDX", "GOOGLE_TRANSIT"]
+    },
+    {
+      "caseId": "taiwan-rail-intercity",
+      "scenarioClass": "RAIL_INTERCITY",
+      "origin": "Taipei Railway Station",
+      "destination": "Hualien Railway Station",
+      "mode": "TRANSIT",
+      "queryTimeRole": "DEPART_AT",
+      "timezone": "Asia/Taipei",
+      "requestTimeBucket": "WEEKEND_MORNING",
+      "providerCandidates": ["TDX", "GOOGLE_TRANSIT"]
+    },
+    {
+      "caseId": "rural-bus-transfer",
+      "scenarioClass": "RURAL_BUS",
+      "origin": "Puli Bus Station",
+      "destination": "Sun Moon Lake Shuishe Visitor Center",
+      "mode": "TRANSIT",
+      "queryTimeRole": "DEPART_AT",
+      "timezone": "Asia/Taipei",
+      "requestTimeBucket": "WEEKDAY_MIDDAY",
+      "providerCandidates": ["TDX", "GOOGLE_TRANSIT"]
+    },
+    {
+      "caseId": "cross-county-bus",
+      "scenarioClass": "CROSS_COUNTY_BUS",
+      "origin": "Taichung Station",
+      "destination": "Changhua Station",
+      "mode": "TRANSIT",
+      "queryTimeRole": "ARRIVE_BY",
+      "timezone": "Asia/Taipei",
+      "requestTimeBucket": "WEEKDAY_EVENING_PEAK",
+      "providerCandidates": ["TDX", "GOOGLE_TRANSIT"]
+    },
+    {
+      "caseId": "last-service-transfer",
+      "scenarioClass": "LAST_SERVICE_AND_TRANSFER",
+      "origin": "Banqiao Station",
+      "destination": "Tamsui Station",
+      "mode": "TRANSIT",
+      "queryTimeRole": "DEPART_AT",
+      "timezone": "Asia/Taipei",
+      "requestTimeBucket": "WEEKDAY_LATE_NIGHT",
+      "providerCandidates": ["TDX", "GOOGLE_TRANSIT"]
+    },
+    {
+      "caseId": "google-driving-arrive-by",
+      "scenarioClass": "DRIVING_ARRIVE_BY",
+      "origin": "Taipei Main Station",
+      "destination": "Taiwan Taoyuan International Airport Terminal 1",
+      "mode": "DRIVING",
+      "queryTimeRole": "ARRIVE_BY",
+      "timezone": "Asia/Taipei",
+      "requestTimeBucket": "WEEKDAY_MORNING_PEAK",
+      "providerCandidates": ["GOOGLE_ROUTES"]
+    },
+    {
+      "caseId": "google-motorcycle",
+      "scenarioClass": "MOTORCYCLE",
+      "origin": "Taipei Main Station",
+      "destination": "Nangang Station",
+      "mode": "MOTORCYCLE",
+      "queryTimeRole": "DEPART_AT",
+      "timezone": "Asia/Taipei",
+      "requestTimeBucket": "WEEKDAY_EVENING_PEAK",
+      "providerCandidates": ["GOOGLE_ROUTES"]
+    },
+    {
+      "caseId": "google-walking",
+      "scenarioClass": "WALKING",
+      "origin": "Taipei Main Station",
+      "destination": "Ximending",
+      "mode": "WALKING",
+      "queryTimeRole": "DEPART_AT",
+      "timezone": "Asia/Taipei",
+      "requestTimeBucket": "WEEKEND_AFTERNOON",
+      "providerCandidates": ["GOOGLE_ROUTES"]
+    },
+    {
+      "caseId": "overseas-transit",
+      "scenarioClass": "OVERSEAS_ROUTE",
+      "origin": "Shinjuku Station",
+      "destination": "Haneda Airport Terminal 3",
+      "mode": "TRANSIT",
+      "queryTimeRole": "ARRIVE_BY",
+      "timezone": "Asia/Tokyo",
+      "requestTimeBucket": "WEEKDAY_MORNING",
+      "providerCandidates": ["GOOGLE_TRANSIT"]
+    }
+  ]
+}

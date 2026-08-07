@@ -1,0 +1,102 @@
+{
+    "schemaVersion":  2,
+    "releaseGate":  "calendar-w11",
+    "mode":  "Automatic",
+    "outcome":  "BLOCKED",
+    "machineAlias":  "desktop",
+    "reviewedAt":  "2026-08-07T03:48:43.1290195Z",
+    "contractFingerprint":  "e43874472f69f3f66d949f02",
+    "targetWorktree":  {
+                           "worktreeId":  "104e9fdb85800cf234605534",
+                           "repoId":  "58827f126b78fc21c4023114",
+                           "branch":  "refs/heads/desktop/calendar-w11-h-route-benchmark",
+                           "head":  "ea9690bd062604787bfdbec28fc408409fb8303d",
+                           "registered":  true
+                       },
+    "evidencePath":  "docs/exec-plans/evidence/development-environment/calendar-w11-desktop.json",
+    "evidenceRoot":  "docs/exec-plans/evidence/development-environment",
+    "capabilities":  [
+                         {
+                             "name":  "READ_ONLY",
+                             "state":  "MATCH",
+                             "ready":  true,
+                             "reason":  null
+                         }
+                     ],
+    "issues":  [
+                   {
+                       "fingerprint":  "0b19f5680c051bb199a0c6b6",
+                       "code":  "PREFLIGHT_DAEMON_NOT_READY",
+                       "capability":  "LINE_E2E",
+                       "classification":  "OPEN",
+                       "lastSeen":  "2026-08-05T14:37:10.5702378Z",
+                       "evidence":  "matching sandbox caller recheck required"
+                   },
+                   {
+                       "fingerprint":  "3ea816af7c233478b8b9e1d5",
+                       "code":  "PREFLIGHT_ACTION_REQUIRED",
+                       "capability":  "LINE_E2E",
+                       "classification":  "OPEN",
+                       "lastSeen":  "2026-08-06T11:02:44.6326740Z",
+                       "evidence":  "matching host caller recheck required"
+                   },
+                   {
+                       "fingerprint":  "435cfa0874028e895a16fad1",
+                       "code":  "PREFLIGHT_ACTION_REQUIRED",
+                       "capability":  "DEV_RUNTIME",
+                       "classification":  "OPEN",
+                       "lastSeen":  "2026-08-06T11:02:33.2736505Z",
+                       "evidence":  "matching host caller recheck required"
+                   },
+                   {
+                       "fingerprint":  "5686b1046cb89475c780031b",
+                       "code":  "PREFLIGHT_UNKNOWN",
+                       "capability":  "EXTERNAL_PROVIDER",
+                       "classification":  "FIXED",
+                       "lastSeen":  "2026-08-07T02:39:53.3250524Z",
+                       "evidence":  "MATCH"
+                   },
+                   {
+                       "fingerprint":  "6c58e3d4c9dfe66002a5f2e1",
+                       "code":  "ASYNC_AGENT_LAUNCH_REQUIRED",
+                       "capability":  "SOURCE_WRITE",
+                       "classification":  "ACCEPTED_LIMITATION",
+                       "lastSeen":  "2026-08-07T01:49:51.9875658Z",
+                       "evidence":  "agent must run dev-environment-monitor.ps1 with its asynchronous tool execution and continue read-only work"
+                   },
+                   {
+                       "fingerprint":  "8842e605e4a1a09a1c2d7393",
+                       "code":  "PREFLIGHT_DAEMON_NOT_READY",
+                       "capability":  "DEV_RUNTIME",
+                       "classification":  "OPEN",
+                       "lastSeen":  "2026-08-05T14:37:00.4294514Z",
+                       "evidence":  "matching sandbox caller recheck required"
+                   },
+                   {
+                       "fingerprint":  "8f03d01046dd7b40d8e7aae9",
+                       "code":  "ASYNC_AGENT_LAUNCH_REQUIRED",
+                       "capability":  "EXTERNAL_PROVIDER",
+                       "classification":  "ACCEPTED_LIMITATION",
+                       "lastSeen":  "2026-08-07T02:39:44.3803992Z",
+                       "evidence":  "agent must run dev-environment-monitor.ps1 with its asynchronous tool execution and continue read-only work"
+                   },
+                   {
+                       "fingerprint":  "92009e52e7a03d455f0ed0a0",
+                       "code":  "PREFLIGHT_DAEMON_NOT_READY",
+                       "capability":  "DOCKER_TEST",
+                       "classification":  "OPEN",
+                       "lastSeen":  "2026-08-05T14:41:54.7492163Z",
+                       "evidence":  "matching sandbox caller recheck required"
+                   },
+                   {
+                       "fingerprint":  "aed7ed40d0857e9781ab2ab6",
+                       "code":  "ASYNC_AGENT_LAUNCH_REQUIRED",
+                       "capability":  "READ_ONLY",
+                       "classification":  "ACCEPTED_LIMITATION",
+                       "lastSeen":  "2026-08-07T01:49:45.4040176Z",
+                       "evidence":  "agent must run dev-environment-monitor.ps1 with its asynchronous tool execution and continue read-only work"
+                   }
+               ],
+    "openCount":  5,
+    "policy":  "W11+ automatic hard gate"
+}

@@ -1,0 +1,44 @@
+{
+  "schemaVersion": 1,
+  "suiteId": "calendar-w11-h-route-benchmark",
+  "baseSha": "06d1470cbd3cea3c5229076659a5f303c0c89ff3",
+  "caseSetHash": "4dd1ce5fff7d1c17dc22ba277b1eaa9e8968a245d2d56ecd5743519dd4a66eda",
+  "providers": [
+    "TDX",
+    "GOOGLE_TRANSIT",
+    "GOOGLE_ROUTES"
+  ],
+  "scenarioClasses": [
+    "URBAN_BUS_AND_METRO",
+    "HSR_INTERCITY",
+    "RAIL_INTERCITY",
+    "RURAL_BUS",
+    "CROSS_COUNTY_BUS",
+    "LAST_SERVICE_AND_TRANSFER",
+    "DRIVING_ARRIVE_BY",
+    "MOTORCYCLE",
+    "WALKING",
+    "OVERSEAS_ROUTE"
+  ],
+  "sampleCount": 0,
+  "successRate": null,
+  "latency": {
+    "medianMs": null,
+    "p95Ms": null,
+    "slowestMs": null
+  },
+  "freshness": null,
+  "costSummary": null,
+  "externalMutationCount": 0,
+  "containsSecretsOrPersonalData": false,
+  "executionStatus": "BLOCKED_EXTERNAL_AUTHORITY_RECEIPT_REQUIRED",
+  "blockers": [
+    {
+      "code": "EXTERNAL_AUTHORITY_RECEIPT_REQUIRED",
+      "capability": "EXTERNAL_PROVIDER",
+      "observedState": "UNKNOWN",
+      "reason": "The environment preflight requires an external authority receipt before provider queries."
+    }
+  ],
+  "conclusion": "INSUFFICIENT_EVIDENCE"
+}

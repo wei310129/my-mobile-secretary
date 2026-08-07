@@ -217,6 +217,22 @@ foreach ($property in $desktopState.consumedLaptopTriggers.PSObject.Properties) 
     }
 }
 
+if ($branchPolicy.PSObject.Properties['requiredConsumerTrigger']) {
+    $requiredTriggerId = [string]$branchPolicy.requiredConsumerTrigger
+    $producerProperty = $laptopState.triggers.PSObject.Properties[$requiredTriggerId]
+    $consumerProperty = $desktopState.consumedLaptopTriggers.PSObject.Properties[$requiredTriggerId]
+    if ($null -eq $producerProperty -or $null -eq $consumerProperty) {
+        Fail-Policy "Branch policy '$($branchPolicy.name)' requires acknowledged trigger '$requiredTriggerId'."
+    }
+    $producerTrigger = $producerProperty.Value
+    $consumerTrigger = $consumerProperty.Value
+    if ([string]$producerTrigger.status -notin @('READY', 'CONSUMED') -or
+            [string]$consumerTrigger.status -notin $activeConsumerStatuses -or
+            [string]$producerTrigger.publishedSha -ne [string]$consumerTrigger.publishedSha) {
+        Fail-Policy "Branch policy '$($branchPolicy.name)' requires a matching active ACK for '$requiredTriggerId'."
+    }
+}
+
 foreach ($consumption in $policy.oneTimeTriggerConsumptions) {
     $producer = $laptopState.triggers.PSObject.Properties[[string]$consumption.producerTrigger].Value
     $consumer = $desktopState.gates.PSObject.Properties[[string]$consumption.consumerGate].Value

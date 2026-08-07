@@ -78,6 +78,24 @@
       ]
     },
     {
+      "name": "desktop-route-benchmark-evidence",
+      "branchRegex": "^desktop/calendar-w11-h-route-benchmark$",
+      "allowedPaths": [
+        "docs/exec-plans/evidence/calendar-w11-h/desktop-route-benchmark/**",
+        "docs/exec-plans/evidence/calendar-w11-h/sealed-holdout/**",
+        "docs/exec-plans/evidence/calendar-w11-h/public-response-evaluation/**",
+        "docs/exec-plans/evidence/development-environment/calendar-w11-desktop.json"
+      ],
+      "forbiddenPaths": [
+        ".github/**",
+        "scripts/**",
+        "pom.xml",
+        "src/**",
+        "docs/exec-plans/active/handoffs/**"
+      ],
+      "requiredConsumerTrigger": "TR-DESKTOP-ROUTE-BENCHMARK-START"
+    },
+    {
       "name": "desktop-booking-durable",
       "branchRegex": "^desktop/booking-b3-durable$",
       "allowedPaths": [

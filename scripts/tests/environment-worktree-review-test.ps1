@@ -56,11 +56,16 @@ try {
     $assertions++
     Assert-ReviewTest ($review.outcome -eq 'PASS' -and $review.openCount -eq 0 -and
         $review.targetWorktree.worktreeId -eq $identity.WorktreeId -and
-        [string]::Equals([string]$review.targetWorktree.path,$identity.Path,[StringComparison]::OrdinalIgnoreCase)) 'Automatic review did not record the verified target worktree identity'
+        $review.targetWorktree.repoId -eq $identity.RepoId) 'Automatic review did not record the verified target worktree identity'
     $assertions++
-    Assert-ReviewTest ([string]::Equals([IO.Path]::GetFullPath($review.evidencePath),[IO.Path]::GetFullPath($evidencePath),[StringComparison]::OrdinalIgnoreCase)) 'Automatic review wrote an unexpected evidence path'
+    Assert-ReviewTest ([string]::Equals([string]$review.evidencePath,$relativeEvidence.Replace('\','/'),[StringComparison]::Ordinal)) 'Automatic review wrote an unexpected evidence path'
     $assertions++
     Assert-ReviewTest (Test-Path -LiteralPath $evidencePath -PathType Leaf) 'Automatic review evidence was not written to the target worktree'
+    $assertions++
+    $serializedReview = $review | ConvertTo-Json -Depth 12
+    Assert-ReviewTest (-not $serializedReview.Contains($identity.Path) -and
+        -not $serializedReview.Contains($identity.PrimaryRoot) -and
+        -not $serializedReview.Contains($identity.CommonDirectory)) 'Tracked review evidence exposed a local absolute path'
 
     $validAssert = Invoke-AssertCommand -Arguments @(
         '-ReleaseGate',$gate,'-Mode','Automatic','-MachineAlias','test-laptop','-TargetWorktree',$repoRoot,

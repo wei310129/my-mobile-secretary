@@ -12,26 +12,46 @@
 
 目前主要互動入口是 LINE Bot 與 REST API；原生 iOS 客戶端仍在規劃中。後端是一個 Spring Boot 應用，使用 PostgreSQL/PostGIS 保存業務資料、Redis 處理快取與延遲提醒，並透過 Spring AI 串接 Anthropic 模型。
 
-```text
-LINE Bot / REST API / 未來 iOS App
-                │
-                ▼
-┌──────────────────────────────────────────────┐
-│ Spring Boot 3.5 / Java 21 模組化單體          │
-│                                              │
-│ API / Webhook                                │
-│      ▼                                       │
-│ Application Service / Intent Handler         │
-│      ▼                                       │
-│ Domain Rules / Planner / State Machine       │
-│      │                │                      │
-│      ├── Spring Events ──► Outbox / 通知      │
-│      └── Integration Adapters ─► 外部服務     │
-└───────────────┬──────────────────┬───────────┘
-                │                  │
-                ▼                  ▼
-       PostgreSQL + PostGIS       Redis
-       Flyway / JPA / RLS         快取 / 延遲提醒
+```mermaid
+flowchart TB
+    subgraph clients["互動與感測端"]
+        LINE["LINE Bot<br/>目前主要入口"]
+        REST["REST API"]
+        IOS["iOS App<br/>規劃中"]
+    end
+
+    subgraph runtime["產品 Runtime：Spring Boot 3.5 / Java 21 模組化單體"]
+        WEB["Protocol Layer<br/>API / Webhook / Validation"]
+        APP["Application Layer<br/>Use Cases / IntentHandler"]
+        DOMAIN["Domain Layer<br/>Planner / Calendar / Reminder / State Machine"]
+        EVENTS["Spring Events<br/>LifeRecord / Tag Graph"]
+        OUTBOX["Notification Outbox"]
+        ADAPTERS["Integration Adapters"]
+
+        WEB --> APP --> DOMAIN
+        DOMAIN --> EVENTS --> OUTBOX
+        DOMAIN --> ADAPTERS
+    end
+
+    LLM["Spring AI + Anthropic<br/>理解 / Structured Output / 表達"]
+    DB[("PostgreSQL 16 + PostGIS<br/>Flyway / JPA / RLS")]
+    REDIS[("Redis 7<br/>快取 / 延遲提醒")]
+    EXTERNAL["外部服務<br/>LINE / TDX / 氣象署 / Places / Provider APIs"]
+    DELIVERY["通知通道<br/>LINE / Windows Toast / Server Log"]
+
+    LINE --> WEB
+    REST --> WEB
+    IOS --> WEB
+    APP -->|"語言理解請求"| LLM
+    LLM -->|"結構化結果；不直接執行業務"| APP
+    DOMAIN --> DB
+    DOMAIN --> REDIS
+    ADAPTERS --> EXTERNAL
+    OUTBOX --> DELIVERY
+
+    subgraph development["開發自動化；不屬於產品 Runtime"]
+        DISPATCHER["internal/ai-dispatcher<br/>獨立 Build / Database / Lifecycle"]
+    end
 ```
 
 ### 核心架構原則

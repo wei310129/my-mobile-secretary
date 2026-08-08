@@ -2,6 +2,13 @@
 
 ## Calendar W11 ngrok managed lifecycle
 
+- 2026-08-08 PR #46 後 live retest 證實此 host 的 WMI `Win32_Process` 對同 caller 永遠落入
+  `LIMITED_NATIVE`，不是短暫 readiness。查詢層現將 WMI unavailable 與 process not-found 分開，並以
+  Windows process handle 的 exact image path、command line、PID、creation time 作為受限替代來源。
+  兩個 exact source 同時可用時必須 consensus；不一致、native access denied 或 incomplete identity
+  均 fail closed。替代來源不直接授權或簽 receipt，仍由 worktree／port／command／generation／replay
+  contract 驗證，且 failure evidence 不保存 webhook host、raw command 或 absolute executable path。
+
 - 2026-08-08 live gate 證實 `Start-Process` 回傳新 ngrok PID 後，WMI 可能先回傳尚無
   `ExecutablePath`／`CommandLine` 的有限 snapshot。managed ownership publication 現改為短時、固定上限輪詢；
   只接受 exact executable、完整 command、registered worktree、application port 與 start-time window，並以

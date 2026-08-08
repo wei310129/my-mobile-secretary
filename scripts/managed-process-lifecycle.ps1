@@ -32,7 +32,7 @@ function Get-ManagedComponentDefinition {
     }
 }
 
-function Get-ManagedProcessQueryResult {
+function Get-WmiManagedProcessQueryResult {
     param(
         [Parameter(Mandatory)][int]$ProcessId,
         [ValidateRange(100,3000)][int]$TimeoutMilliseconds = 3000
@@ -52,33 +52,227 @@ function Get-ManagedProcessQueryResult {
             Snapshot=[pscustomobject]@{
                 ProcessId=[int]$item.ProcessId; ParentProcessId=[int]$item.ParentProcessId
                 Name=[string]$item.Name; ExecutablePath=[string]$item.ExecutablePath
-                CommandLine=[string]$item.CommandLine; StartedAtUtc=$startedAt
+                CommandLine=[string]$item.CommandLine; StartedAtUtc=$startedAt;QueryKind='WMI_EXACT'
             }
         }
     } catch {
-        $managementReason = $_.Exception.Message
-        $native = $null
-        try {
-            $native = [Diagnostics.Process]::GetProcessById($ProcessId)
-            return [pscustomobject]@{
-                Outcome='READY'
-                Snapshot=[pscustomobject]@{
-                    ProcessId=$native.Id;ParentProcessId=0;Name="$($native.ProcessName).exe"
-                    ExecutablePath=$null;CommandLine=$null;StartedAtUtc=$native.StartTime.ToUniversalTime()
-                    QueryKind='LIMITED_NATIVE';ManagementReason=$managementReason
-                }
-            }
-        } catch [ArgumentException] {
-            return [pscustomobject]@{Outcome='NOT_FOUND';Snapshot=$null}
-        } catch {
-            return [pscustomobject]@{Outcome='UNKNOWN';Snapshot=$null;Reason="$managementReason; native query: $($_.Exception.Message)"}
-        } finally {
-            if ($native) { $native.Dispose() }
-        }
+        return [pscustomobject]@{Outcome='UNAVAILABLE';Snapshot=$null;ReasonCode='WMI_QUERY_UNAVAILABLE'}
     } finally {
         foreach ($item in $items) { if ($item -is [IDisposable]) { $item.Dispose() } }
         if ($searcher) { $searcher.Dispose() }
     }
+}
+
+function Initialize-NativeManagedProcessIdentityType {
+    if ('Mms.Tooling.NativeProcessIdentity' -as [type]) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.IO;
+using System.Runtime.InteropServices;
+using System.Text;
+
+namespace Mms.Tooling {
+    public sealed class NativeProcessSnapshot {
+        public int ProcessId { get; set; }
+        public string ExecutablePath { get; set; }
+        public string CommandLine { get; set; }
+        public DateTime StartedAtUtc { get; set; }
+    }
+
+    public static class NativeProcessIdentity {
+        private const uint PROCESS_QUERY_LIMITED_INFORMATION = 0x1000;
+        private const int ProcessCommandLineInformation = 60;
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct FILETIME {
+            public uint Low;
+            public uint High;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct UNICODE_STRING {
+            public ushort Length;
+            public ushort MaximumLength;
+            public IntPtr Buffer;
+        }
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        private static extern IntPtr OpenProcess(uint access, bool inheritHandle, int processId);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CloseHandle(IntPtr handle);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool QueryFullProcessImageName(IntPtr process, int flags, StringBuilder path, ref int size);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool GetProcessTimes(IntPtr process, out FILETIME creation, out FILETIME exit, out FILETIME kernel, out FILETIME user);
+
+        [DllImport("ntdll.dll")]
+        private static extern int NtQueryInformationProcess(IntPtr process, int informationClass, IntPtr information, int informationLength, out int returnLength);
+
+        public static NativeProcessSnapshot Query(int processId) {
+            IntPtr process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, processId);
+            if (process == IntPtr.Zero) { throw new Win32Exception(Marshal.GetLastWin32Error()); }
+            IntPtr buffer = IntPtr.Zero;
+            try {
+                StringBuilder image = new StringBuilder(32768);
+                int imageLength = image.Capacity;
+                if (!QueryFullProcessImageName(process, 0, image, ref imageLength)) {
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                }
+
+                FILETIME creation;
+                FILETIME exit;
+                FILETIME kernel;
+                FILETIME user;
+                if (!GetProcessTimes(process, out creation, out exit, out kernel, out user)) {
+                    throw new Win32Exception(Marshal.GetLastWin32Error());
+                }
+                long creationTicks = ((long)creation.High << 32) | creation.Low;
+
+                int required;
+                NtQueryInformationProcess(process, ProcessCommandLineInformation, IntPtr.Zero, 0, out required);
+                if (required <= 0 || required > 1048576) {
+                    throw new InvalidOperationException("Native command line size is invalid.");
+                }
+                buffer = Marshal.AllocHGlobal(required);
+                int status = NtQueryInformationProcess(process, ProcessCommandLineInformation, buffer, required, out required);
+                if (status < 0) { throw new InvalidOperationException("Native command line query failed."); }
+                UNICODE_STRING command = (UNICODE_STRING)Marshal.PtrToStructure(buffer, typeof(UNICODE_STRING));
+                if (command.Buffer == IntPtr.Zero || command.Length == 0 || command.Length > command.MaximumLength) {
+                    throw new InvalidOperationException("Native command line identity is incomplete.");
+                }
+
+                return new NativeProcessSnapshot {
+                    ProcessId = processId,
+                    ExecutablePath = image.ToString(),
+                    CommandLine = Marshal.PtrToStringUni(command.Buffer, command.Length / 2),
+                    StartedAtUtc = DateTime.FromFileTimeUtc(creationTicks)
+                };
+            } finally {
+                if (buffer != IntPtr.Zero) { Marshal.FreeHGlobal(buffer); }
+                CloseHandle(process);
+            }
+        }
+    }
+}
+'@
+}
+
+function Get-NativeManagedProcessQueryResult {
+    param([Parameter(Mandatory)][int]$ProcessId)
+    if ($env:OS -ne 'Windows_NT') {
+        return [pscustomobject]@{Outcome='UNAVAILABLE';Snapshot=$null;ReasonCode='NATIVE_PLATFORM_UNSUPPORTED'}
+    }
+    try {
+        Initialize-NativeManagedProcessIdentityType
+        $native = [Mms.Tooling.NativeProcessIdentity]::Query($ProcessId)
+        return [pscustomobject]@{
+            Outcome='READY'
+            Snapshot=[pscustomobject]@{
+                ProcessId=[int]$native.ProcessId;ParentProcessId=0
+                Name=[IO.Path]::GetFileName([string]$native.ExecutablePath)
+                ExecutablePath=[string]$native.ExecutablePath;CommandLine=[string]$native.CommandLine
+                StartedAtUtc=([datetime]$native.StartedAtUtc).ToUniversalTime();QueryKind='NATIVE_EXACT'
+            }
+        }
+    } catch {
+        $process = $null
+        try {
+            $process = [Diagnostics.Process]::GetProcessById($ProcessId)
+            return [pscustomobject]@{Outcome='UNAVAILABLE';Snapshot=$null;ReasonCode='NATIVE_EXACT_QUERY_UNAVAILABLE'}
+        } catch [ArgumentException] {
+            return [pscustomobject]@{Outcome='NOT_FOUND';Snapshot=$null}
+        } catch {
+            return [pscustomobject]@{Outcome='UNAVAILABLE';Snapshot=$null;ReasonCode='NATIVE_EXACT_QUERY_UNAVAILABLE'}
+        } finally {
+            if ($process) { $process.Dispose() }
+        }
+    }
+}
+
+function Test-ManagedProcessSnapshotComplete {
+    param([AllowNull()]$Snapshot)
+    return $null -ne $Snapshot -and [int]$Snapshot.ProcessId -gt 0 -and
+        -not [string]::IsNullOrWhiteSpace([string]$Snapshot.Name) -and
+        -not [string]::IsNullOrWhiteSpace([string]$Snapshot.ExecutablePath) -and
+        -not [string]::IsNullOrWhiteSpace([string]$Snapshot.CommandLine) -and $null -ne $Snapshot.StartedAtUtc
+}
+
+function Copy-ManagedProcessSnapshot {
+    param([Parameter(Mandatory)]$Snapshot, [Parameter(Mandatory)][string]$QueryKind)
+    return [pscustomobject]@{
+        ProcessId=[int]$Snapshot.ProcessId;ParentProcessId=[int]$Snapshot.ParentProcessId
+        Name=[string]$Snapshot.Name;ExecutablePath=[string]$Snapshot.ExecutablePath
+        CommandLine=[string]$Snapshot.CommandLine;StartedAtUtc=([datetime]$Snapshot.StartedAtUtc).ToUniversalTime()
+        QueryKind=$QueryKind
+    }
+}
+
+function Test-ManagedProcessSnapshotConsensus {
+    param([Parameter(Mandatory)]$Left, [Parameter(Mandatory)]$Right)
+    if ([int]$Left.ProcessId -ne [int]$Right.ProcessId) { return $false }
+    if (-not [string]::Equals([IO.Path]::GetFullPath([string]$Left.ExecutablePath),
+            [IO.Path]::GetFullPath([string]$Right.ExecutablePath), [StringComparison]::OrdinalIgnoreCase)) { return $false }
+    if (-not [string]::Equals(([string]$Left.CommandLine).Trim(), ([string]$Right.CommandLine).Trim(),
+            [StringComparison]::Ordinal)) { return $false }
+    $leftStart = [datetimeoffset]$Left.StartedAtUtc
+    $rightStart = [datetimeoffset]$Right.StartedAtUtc
+    return [Math]::Abs(($leftStart.ToUniversalTime() - $rightStart.ToUniversalTime()).TotalSeconds) -le 1
+}
+
+function Get-ManagedProcessQueryResult {
+    param(
+        [Parameter(Mandatory)][int]$ProcessId,
+        [ValidateRange(100,3000)][int]$TimeoutMilliseconds = 3000,
+        [scriptblock]$WmiQuery = { param($id,$timeout) Get-WmiManagedProcessQueryResult -ProcessId $id -TimeoutMilliseconds $timeout },
+        [scriptblock]$NativeQuery = { param($id) Get-NativeManagedProcessQueryResult -ProcessId $id }
+    )
+    $wmi = & $WmiQuery $ProcessId $TimeoutMilliseconds
+    $native = & $NativeQuery $ProcessId
+    $wmiExact = $wmi -and $wmi.Outcome -eq 'READY' -and (Test-ManagedProcessSnapshotComplete $wmi.Snapshot)
+    $nativeExact = $native -and $native.Outcome -eq 'READY' -and (Test-ManagedProcessSnapshotComplete $native.Snapshot)
+
+    if ($wmiExact) {
+        if ($nativeExact) {
+            if (-not (Test-ManagedProcessSnapshotConsensus -Left $wmi.Snapshot -Right $native.Snapshot)) {
+                return [pscustomobject]@{Outcome='UNKNOWN';Snapshot=$null;ReasonCode='PROCESS_IDENTITY_SOURCE_MISMATCH'}
+            }
+            return [pscustomobject]@{Outcome='READY';Snapshot=(Copy-ManagedProcessSnapshot $wmi.Snapshot 'WMI_NATIVE_CONSENSUS')}
+        }
+        if ($native -and $native.Outcome -eq 'NOT_FOUND') {
+            return [pscustomobject]@{Outcome='UNKNOWN';Snapshot=$null;ReasonCode='PROCESS_IDENTITY_SOURCE_MISMATCH'}
+        }
+        return [pscustomobject]@{Outcome='READY';Snapshot=(Copy-ManagedProcessSnapshot $wmi.Snapshot 'WMI_EXACT')}
+    }
+
+    if ($nativeExact) {
+        if ($wmi -and $wmi.Outcome -eq 'NOT_FOUND') {
+            return [pscustomobject]@{Outcome='UNKNOWN';Snapshot=$null;ReasonCode='PROCESS_IDENTITY_SOURCE_MISMATCH'}
+        }
+        if ($wmi -and $wmi.Outcome -eq 'READY' -and $wmi.Snapshot -and
+                [int]$wmi.Snapshot.ProcessId -ne [int]$native.Snapshot.ProcessId) {
+            return [pscustomobject]@{Outcome='UNKNOWN';Snapshot=$null;ReasonCode='PROCESS_IDENTITY_SOURCE_MISMATCH'}
+        }
+        return [pscustomobject]@{Outcome='READY';Snapshot=(Copy-ManagedProcessSnapshot $native.Snapshot 'NATIVE_EXACT')}
+    }
+
+    if ($wmi -and $wmi.Outcome -eq 'NOT_FOUND' -and $native -and $native.Outcome -eq 'NOT_FOUND') {
+        return [pscustomobject]@{Outcome='NOT_FOUND';Snapshot=$null}
+    }
+    if ($native -and $native.Outcome -eq 'NOT_FOUND' -and $wmi -and
+            $wmi.Outcome -in @('UNAVAILABLE','UNKNOWN')) {
+        return [pscustomobject]@{Outcome='NOT_FOUND';Snapshot=$null}
+    }
+    if (($wmi -and $wmi.Outcome -eq 'READY') -xor ($native -and $native.Outcome -eq 'READY')) {
+        return [pscustomobject]@{Outcome='UNKNOWN';Snapshot=$null;ReasonCode='PROCESS_IDENTITY_INCOMPLETE'}
+    }
+    return [pscustomobject]@{Outcome='UNKNOWN';Snapshot=$null;ReasonCode='PROCESS_IDENTITY_UNAVAILABLE'}
 }
 
 function Get-ManagedCoordinationOperations {

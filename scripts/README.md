@@ -124,6 +124,13 @@ command、不同 executable、PID reuse、重複發布及未明列的 wrapper／
 receipt 只保存不可逆 executable／sanitized-command contract fingerprint，不保存 webhook host 或 raw command。
 receipt 發布失敗仍由 `dev-start.ps1` rollback 本輪新啟動 PID，並回傳 nonzero。
 
+若 `Win32_Process` 在目前 caller context 不可用，WMI 會明確分類為 `UNAVAILABLE`，不再偽裝成
+只有 PID/name/start time 的 ready snapshot。Windows 會改由同 caller 的 process handle 使用
+`QueryFullProcessImageName`、`GetProcessTimes` 與 `NtQueryInformationProcess(ProcessCommandLineInformation)`
+取得 exact image path、creation time 與 command line；此來源仍須通過相同 ngrok publication contract。
+WMI 與 native source 都有完整資料時必須一致，否則回 `PROCESS_IDENTITY_SOURCE_MISMATCH` 並 fail closed。
+錯誤結果只保留 typed reason code，不輸出 executable path、command line 或 webhook host。
+
 ## Maven 安全執行
 
 根專案的編譯與測試使用 `mvn-safe.ps1`，它會取得跨 PowerShell 程序的 Maven 鎖、整理子程序

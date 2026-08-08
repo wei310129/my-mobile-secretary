@@ -131,6 +131,13 @@ receipt 發布失敗仍由 `dev-start.ps1` rollback 本輪新啟動 PID，並回
 WMI 與 native source 都有完整資料時必須一致，否則回 `PROCESS_IDENTITY_SOURCE_MISMATCH` 並 fail closed。
 錯誤結果只保留 typed reason code，不輸出 executable path、command line 或 webhook host。
 
+managed process replay scan 允許 coordination `receipts` 目錄保留沒有 `action` 的合法舊 schema與其他
+receipt type，不會刪除、改寫或把它們當成 process replay。任何宣稱 `action=managed-process-start` 的
+receipt 則必須先通過完整 typed schema：component、正整數 PID、可解析的 process start time、worktree與
+resource 缺一不可，且欄位型別必須精確；invalid JSON或 malformed managed receipt一律 fail closed。
+只有 component、PID與 start time全部吻合才判定 exact generation replay。ownership read使用同一 validator，
+錯誤只回傳固定分類，不輸出 receipt內容或本機路徑。
+
 ## Maven 安全執行
 
 根專案的編譯與測試使用 `mvn-safe.ps1`，它會取得跨 PowerShell 程序的 Maven 鎖、整理子程序

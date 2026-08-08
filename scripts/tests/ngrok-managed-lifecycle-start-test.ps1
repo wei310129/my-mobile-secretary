@@ -50,9 +50,23 @@ function Invoke-NgrokReceipt($SnapshotResults, [int]$ProcessId = 701, [string]$T
     return [pscustomobject]@{Receipt=$receipt;Delays=$delays}
 }
 
+function Write-TestReceipt([Collections.IDictionary]$Document) {
+    Write-CoordinationReceipt -StateRoot $stateRoot -Receipt $Document
+    return Join-Path (Join-Path $stateRoot 'receipts') "$($Document.operationId).json"
+}
+
+function New-ReadyNgrokResult([int]$Id, [datetimeoffset]$StartedAt, [string]$Command) {
+    return [pscustomobject]@{Outcome='READY';Snapshot=(New-NgrokSnapshot -Id $Id `
+        -ExecutablePath $expectedExecutable -CommandLine $Command -StartedAt $StartedAt)}
+}
+
 try {
     [IO.Directory]::CreateDirectory($worktree) | Out-Null
     [IO.File]::WriteAllText((Join-Path $worktree '.git'), 'gitdir: fake', [Text.UTF8Encoding]::new($false))
+    Write-CoordinationReceipt -StateRoot $stateRoot -Receipt ([ordered]@{
+        operationId=[guid]::NewGuid().ToString();outcome='READY';capability='READ_ONLY'
+        disposition='legacy non-managed coordination evidence'
+    })
     $command = '"C:\tools\ngrok.exe" ' + ($expectedArguments -join ' ')
     $ready = [pscustomobject]@{Outcome='READY';Snapshot=(New-NgrokSnapshot -Id 701 `
         -ExecutablePath $expectedExecutable -CommandLine $command -StartedAt $launchObservedAt.AddMilliseconds(80))}
@@ -65,6 +79,83 @@ try {
     $receiptText = [IO.File]::ReadAllText($receiptPath, [Text.Encoding]::UTF8)
     Assert-NgrokStart ($receiptText -notmatch 'safe\.example' -and $receiptText -notmatch 'CommandLine') `
         'the ownership receipt persisted webhook host or raw process command data'
+
+    $ngrokDefinition = Get-ManagedComponentDefinition -Component Ngrok -Worktree $worktree
+    $missingFieldId = [guid]::NewGuid().ToString()
+    $missingFieldPath = Write-TestReceipt ([ordered]@{
+        operationId=$missingFieldId;outcome='READY';action='managed-process-start';component='Ngrok'
+        processId=711;processStartedAt=$launchObservedAt.ToString('o');worktree=$worktree
+    })
+    $missingFieldRejected = $false
+    try { Invoke-NgrokReceipt @(New-ReadyNgrokResult 711 $launchObservedAt $command) -ProcessId 711 | Out-Null }
+    catch { $missingFieldRejected = $_.Exception.Message -match 'required typed evidence' }
+    Assert-NgrokStart $missingFieldRejected 'a managed-process-start receipt missing required evidence did not fail closed'
+    Remove-Item -LiteralPath $missingFieldPath -Force
+
+    $wrongTypeId = [guid]::NewGuid().ToString()
+    $wrongTypePath = Write-TestReceipt ([ordered]@{
+        operationId=$wrongTypeId;outcome='READY';action='managed-process-start';component='Ngrok'
+        processId='712';processStartedAt=$launchObservedAt.ToString('o');worktree=$worktree
+        resource=$ngrokDefinition.Resource
+    })
+    $wrongTypeRejected = $false
+    try { Invoke-NgrokReceipt @(New-ReadyNgrokResult 712 $launchObservedAt $command) -ProcessId 712 | Out-Null }
+    catch { $wrongTypeRejected = $_.Exception.Message -match 'process id type' }
+    Assert-NgrokStart $wrongTypeRejected 'a managed-process-start receipt with a string PID did not fail closed'
+    Remove-Item -LiteralPath $wrongTypePath -Force
+
+    $wrongActionTypeId = [guid]::NewGuid().ToString()
+    $wrongActionTypePath = Write-TestReceipt ([ordered]@{
+        operationId=$wrongActionTypeId;outcome='READY';action=@('managed-process-start','unexpected')
+        component='Ngrok';processId=713;processStartedAt=$launchObservedAt.ToString('o')
+        worktree=$worktree;resource=$ngrokDefinition.Resource
+    })
+    $wrongActionTypeRejected = $false
+    try { Invoke-NgrokReceipt @(New-ReadyNgrokResult 713 $launchObservedAt $command) -ProcessId 713 | Out-Null }
+    catch { $wrongActionTypeRejected = $_.Exception.Message -match 'action type' }
+    Assert-NgrokStart $wrongActionTypeRejected 'a coordination receipt with a non-string action did not fail closed'
+    Remove-Item -LiteralPath $wrongActionTypePath -Force
+
+    $invalidJsonId = [guid]::NewGuid().ToString()
+    $invalidJsonPath = Join-Path (Join-Path $stateRoot 'receipts') "$invalidJsonId.json"
+    [IO.File]::WriteAllText($invalidJsonPath, '{ invalid SECRET_LOCAL_PATH', [Text.UTF8Encoding]::new($false))
+    $invalidJsonError = $null
+    try { Invoke-NgrokReceipt @(New-ReadyNgrokResult 714 $launchObservedAt $command) -ProcessId 714 | Out-Null }
+    catch { $invalidJsonError = $_.Exception.Message }
+    Assert-NgrokStart ($invalidJsonError -match 'invalid coordination evidence' -and
+            $invalidJsonError -notmatch 'SECRET_LOCAL_PATH' -and $invalidJsonError -notmatch [regex]::Escape($root)) `
+        'invalid JSON did not block with a privacy-safe error'
+    Remove-Item -LiteralPath $invalidJsonPath -Force
+
+    $wrongComponentPath = Write-TestReceipt ([ordered]@{
+        operationId=[guid]::NewGuid().ToString();outcome='READY';action='managed-process-start';component='SpringBoot'
+        processId=715;processStartedAt=$launchObservedAt.ToString('o');worktree=$worktree;resource='managed/spring'
+    })
+    $wrongComponent = Invoke-NgrokReceipt @(New-ReadyNgrokResult 715 $launchObservedAt $command) -ProcessId 715
+    Assert-NgrokStart ($wrongComponent.Receipt.ProcessId -eq 715) `
+        'a valid receipt for another component was misclassified as an ngrok replay'
+
+    $wrongPidPath = Write-TestReceipt ([ordered]@{
+        operationId=[guid]::NewGuid().ToString();outcome='READY';action='managed-process-start';component='Ngrok'
+        processId=999;processStartedAt=$launchObservedAt.ToString('o');worktree=$worktree;resource=$ngrokDefinition.Resource
+    })
+    $wrongPid = Invoke-NgrokReceipt @(New-ReadyNgrokResult 716 $launchObservedAt $command) -ProcessId 716
+    Assert-NgrokStart ($wrongPid.Receipt.ProcessId -eq 716) `
+        'a valid receipt for another PID was misclassified as an exact process replay'
+
+    $wrongStartPath = Write-TestReceipt ([ordered]@{
+        operationId=[guid]::NewGuid().ToString();outcome='READY';action='managed-process-start';component='Ngrok'
+        processId=717;processStartedAt=$launchObservedAt.AddMinutes(-1).ToString('o')
+        worktree=$worktree;resource=$ngrokDefinition.Resource
+    })
+    $wrongStart = Invoke-NgrokReceipt @(New-ReadyNgrokResult 717 $launchObservedAt $command) -ProcessId 717
+    Assert-NgrokStart ($wrongStart.Receipt.ProcessId -eq 717) `
+        'a valid receipt for an older process generation was misclassified as an exact replay'
+
+    foreach ($unrelatedPath in @($wrongComponentPath,$wrongPidPath,$wrongStartPath)) {
+        Assert-NgrokStart (Test-Path -LiteralPath $unrelatedPath -PathType Leaf) `
+            'replay inspection mutated unrelated retained coordination evidence'
+    }
 
     $limited = [pscustomobject]@{Outcome='READY';Snapshot=(New-NgrokSnapshot -Id 702 `
         -ExecutablePath $null -CommandLine $null -StartedAt $launchObservedAt.AddMilliseconds(50))}

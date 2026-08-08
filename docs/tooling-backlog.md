@@ -2,6 +2,12 @@
 
 ## Calendar W11 ngrok managed lifecycle
 
+- 2026-08-08 PR #47 後 live retest跨過 native exact identity，但 shared coordination receipt目錄中的合法
+  舊 schema沒有 `action`，replay scan在 StrictMode直接解參照而中止。managed ownership read與 replay scan
+  現共用 typed schema validator：舊／非 managed evidence安全略過且保留；宣稱 managed-process-start卻缺欄位、
+  型別錯誤或 JSON無效者 fail closed；只有 exact component／PID／process generation才拒絕 replay，錯誤不洩漏
+  receipt內容或本機路徑。
+
 - 2026-08-08 PR #46 後 live retest 證實此 host 的 WMI `Win32_Process` 對同 caller 永遠落入
   `LIMITED_NATIVE`，不是短暫 readiness。查詢層現將 WMI unavailable 與 process not-found 分開，並以
   Windows process handle 的 exact image path、command line、PID、creation time 作為受限替代來源。

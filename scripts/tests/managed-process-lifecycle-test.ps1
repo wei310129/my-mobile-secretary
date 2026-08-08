@@ -16,9 +16,11 @@ $stateFile = Join-Path $worktree 'scripts\.dev-state.json'
 $started = [datetime]::UtcNow.AddMinutes(-5)
 $processes = @{}
 $stopCalls = [Collections.Generic.List[string]]::new()
+$assertions = 0
 
 function Assert-Managed([bool]$Condition, [string]$Message) {
     if (-not $Condition) { throw $Message }
+    $script:assertions++
 }
 
 function New-FakeSnapshot([int]$Id, [string]$CommandLine, [datetime]$StartedAt, [string]$Name = 'powershell.exe') {
@@ -73,6 +75,51 @@ try {
     }
 
     $initialState = [IO.File]::ReadAllText($stateFile, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    $validOwnership = Read-ManagedOwnershipReceipt -State $initialState -Definition $ngrokDefinition `
+        -StateRoot $stateRoot -Worktree $worktree -ProcessId 200
+    Assert-Managed ($validOwnership.action -eq 'managed-process-start' -and $validOwnership.processId -eq 200) `
+        'a complete typed managed ownership receipt was rejected'
+
+    $legacyReceiptId = [guid]::NewGuid().ToString()
+    Write-CoordinationReceipt -StateRoot $stateRoot -Receipt ([ordered]@{
+        operationId=$legacyReceiptId;outcome='READY';capability='READ_ONLY';disposition='legacy evidence'
+    })
+    $legacyReadError = $null
+    try {
+        Read-ManagedOwnershipReceipt -State ([pscustomobject]@{ngrokOwnershipReceiptId=$legacyReceiptId}) `
+            -Definition $ngrokDefinition -StateRoot $stateRoot -Worktree $worktree -ProcessId 200 | Out-Null
+    } catch { $legacyReadError = $_.Exception.Message }
+    Assert-Managed ($legacyReadError -match 'invalid typed schema' -and $legacyReadError -notmatch "property 'action'") `
+        'a state pointer to non-managed evidence did not fail with a typed schema error'
+
+    $missingReceiptId = [guid]::NewGuid().ToString()
+    Write-CoordinationReceipt -StateRoot $stateRoot -Receipt ([ordered]@{
+        operationId=$missingReceiptId;outcome='READY';action='managed-process-start';component='Ngrok'
+        processId=200;processStartedAt=$started.ToString('o');worktree=$worktree
+    })
+    $missingReadError = $null
+    try {
+        Read-ManagedOwnershipReceipt -State ([pscustomobject]@{ngrokOwnershipReceiptId=$missingReceiptId}) `
+            -Definition $ngrokDefinition -StateRoot $stateRoot -Worktree $worktree -ProcessId 200 | Out-Null
+    } catch { $missingReadError = $_.Exception.Message }
+    Assert-Managed ($missingReadError -match 'required typed evidence') `
+        'a referenced managed ownership receipt missing resource evidence did not fail closed'
+
+    $typedReceiptId = [guid]::NewGuid().ToString()
+    Write-CoordinationReceipt -StateRoot $stateRoot -Receipt ([ordered]@{
+        operationId=$typedReceiptId;outcome='READY';action='managed-process-start';component='Ngrok'
+        processId=@(200,201);processStartedAt=$started.ToString('o');worktree=$worktree
+        resource=$ngrokDefinition.Resource;privateValue='DO_NOT_DISCLOSE'
+    })
+    $typedReadError = $null
+    try {
+        Read-ManagedOwnershipReceipt -State ([pscustomobject]@{ngrokOwnershipReceiptId=$typedReceiptId}) `
+            -Definition $ngrokDefinition -StateRoot $stateRoot -Worktree $worktree -ProcessId 200 | Out-Null
+    } catch { $typedReadError = $_.Exception.Message }
+    Assert-Managed ($typedReadError -match 'process id type' -and $typedReadError -notmatch 'DO_NOT_DISCLOSE' -and
+            $typedReadError -notmatch [regex]::Escape($root)) `
+        'malformed referenced ownership evidence did not fail with a privacy-safe typed error'
+
     $lostPortProof = Get-ManagedProcessOwnershipProof -Worktree $worktree -Component SpringBoot `
         -State $initialState -StateRoot $stateRoot -ProcessQuery $query -OperationDocuments @($springOperation)
     Assert-Managed ($lostPortProof.Outcome -eq 'READY' -and $lostPortProof.ProcessPresent) `
@@ -151,7 +198,7 @@ try {
     catch { $unsafeRejected = $true }
     Assert-Managed $unsafeRejected 'cross-project Maven file selection was not rejected'
 
-    [pscustomobject]@{status='passed';assertions=12;liveProcesses='fake';coordinationEvidence='retained'} | ConvertTo-Json -Compress
+    [pscustomobject]@{status='passed';assertions=$assertions;liveProcesses='fake';coordinationEvidence='retained'} | ConvertTo-Json -Compress
 } finally {
     if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
 }

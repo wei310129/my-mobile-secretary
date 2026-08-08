@@ -417,6 +417,62 @@ function Test-ManagedEvidenceStartTime {
     return $delta -ge -5 -and $delta -le 120
 }
 
+function ConvertTo-ManagedProcessStartReceipt {
+    param(
+        [Parameter(Mandatory)]$Receipt,
+        [switch]$AllowNonManaged
+    )
+    if ($Receipt -isnot [pscustomobject]) {
+        throw 'Managed process coordination receipt has an invalid document shape.'
+    }
+    $actionProperty = $Receipt.PSObject.Properties['action']
+    if (-not $actionProperty) {
+        if ($AllowNonManaged) { return $null }
+        throw 'Managed process ownership receipt has an invalid typed schema.'
+    }
+    if ($actionProperty.Value -isnot [string]) {
+        throw 'Managed process coordination receipt has an invalid action type.'
+    }
+    if ([string]$actionProperty.Value -ne 'managed-process-start') {
+        if ($AllowNonManaged) { return $null }
+        throw 'Managed process ownership receipt has an invalid typed schema.'
+    }
+
+    $values = @{}
+    foreach ($name in @('component','processStartedAt','worktree','resource')) {
+        $property = $Receipt.PSObject.Properties[$name]
+        if (-not $property -or $property.Value -isnot [string] -or
+                [string]::IsNullOrWhiteSpace([string]$property.Value)) {
+            throw 'Managed process start receipt is missing required typed evidence.'
+        }
+        $values[$name] = [string]$property.Value
+    }
+    if ($values.component -notin @('SpringBoot','Dispatcher','Ngrok')) {
+        throw 'Managed process start receipt has an invalid component type.'
+    }
+
+    $processIdProperty = $Receipt.PSObject.Properties['processId']
+    $integerTypes = @([byte],[sbyte],[int16],[uint16],[int32],[uint32],[int64],[uint64])
+    if (-not $processIdProperty -or $null -eq $processIdProperty.Value -or
+            $processIdProperty.Value.GetType() -notin $integerTypes) {
+        throw 'Managed process start receipt has an invalid process id type.'
+    }
+    $validatedProcessId = [long]$processIdProperty.Value
+    if ($validatedProcessId -le 0 -or $validatedProcessId -gt [int]::MaxValue) {
+        throw 'Managed process start receipt has an invalid process id.'
+    }
+
+    $validatedStart = [datetimeoffset]::MinValue
+    if (-not [datetimeoffset]::TryParse($values.processStartedAt, [ref]$validatedStart)) {
+        throw 'Managed process start receipt has invalid start-time evidence.'
+    }
+    return [pscustomobject]@{
+        Document=$Receipt;Action='managed-process-start';Component=$values.component
+        ProcessId=[int]$validatedProcessId;ProcessStartedAt=$validatedStart
+        Worktree=$values.worktree;Resource=$values.resource
+    }
+}
+
 function Read-ManagedOwnershipReceipt {
     param(
         [Parameter(Mandatory)]$State,
@@ -433,11 +489,11 @@ function Read-ManagedOwnershipReceipt {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'Managed process ownership receipt is missing.' }
     try { $receipt = [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8) | ConvertFrom-Json }
     catch { throw 'Managed process ownership receipt is invalid.' }
+    $typedReceipt = ConvertTo-ManagedProcessStartReceipt -Receipt $receipt
     $normalized = [IO.Path]::GetFullPath($Worktree).TrimEnd('\')
-    if ($receipt.action -ne 'managed-process-start' -or $receipt.component -ne $Definition.Component -or
-            [int]$receipt.processId -ne $ProcessId -or
-            -not [string]::Equals([string]$receipt.worktree, $normalized, [StringComparison]::OrdinalIgnoreCase) -or
-            -not [string]::Equals([string]$receipt.resource, $Definition.Resource, [StringComparison]::OrdinalIgnoreCase)) {
+    if ($typedReceipt.Component -ne $Definition.Component -or $typedReceipt.ProcessId -ne $ProcessId -or
+            -not [string]::Equals($typedReceipt.Worktree, $normalized, [StringComparison]::OrdinalIgnoreCase) -or
+            -not [string]::Equals($typedReceipt.Resource, $Definition.Resource, [StringComparison]::OrdinalIgnoreCase)) {
         throw 'Managed process ownership receipt does not match the requested worktree and component.'
     }
     $receipt | Add-Member -NotePropertyName EvidencePath -NotePropertyValue $path -Force
@@ -456,13 +512,10 @@ function Assert-NoManagedStartReceiptReplay {
     foreach ($file in @(Get-ChildItem -LiteralPath $directory -Filter '*.json' -File -ErrorAction Stop)) {
         try { $receipt = [IO.File]::ReadAllText($file.FullName, [Text.Encoding]::UTF8) | ConvertFrom-Json }
         catch { throw 'Managed process receipt replay fencing found invalid coordination evidence.' }
-        if ($receipt.action -eq 'managed-process-start' -and $receipt.component -eq $Component -and
-                [int]$receipt.processId -eq $ProcessId) {
-            $recordedStart = [datetimeoffset]::MinValue
-            if (-not [datetimeoffset]::TryParse([string]$receipt.processStartedAt, [ref]$recordedStart)) {
-                throw 'Managed process receipt replay fencing found invalid start-time evidence.'
-            }
-            if ([Math]::Abs(($recordedStart.ToUniversalTime() - $ProcessStartedAt.ToUniversalTime()).TotalMilliseconds) -lt 1) {
+        $typedReceipt = ConvertTo-ManagedProcessStartReceipt -Receipt $receipt -AllowNonManaged
+        if ($typedReceipt -and $typedReceipt.Component -eq $Component -and
+                $typedReceipt.ProcessId -eq $ProcessId) {
+            if ([Math]::Abs(($typedReceipt.ProcessStartedAt.ToUniversalTime() - $ProcessStartedAt.ToUniversalTime()).TotalMilliseconds) -lt 1) {
                 throw 'Managed process ownership for this exact process generation was already published.'
             }
         }

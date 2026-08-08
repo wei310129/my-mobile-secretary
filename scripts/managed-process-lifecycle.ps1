@@ -33,13 +33,16 @@ function Get-ManagedComponentDefinition {
 }
 
 function Get-ManagedProcessQueryResult {
-    param([Parameter(Mandatory)][int]$ProcessId)
+    param(
+        [Parameter(Mandatory)][int]$ProcessId,
+        [ValidateRange(100,3000)][int]$TimeoutMilliseconds = 3000
+    )
     $searcher = $null
     $items = @()
     try {
         $query = "SELECT ProcessId,ParentProcessId,Name,ExecutablePath,CommandLine,CreationDate FROM Win32_Process WHERE ProcessId=$ProcessId"
         $searcher = [System.Management.ManagementObjectSearcher]::new($query)
-        $searcher.Options.Timeout = [TimeSpan]::FromSeconds(3)
+        $searcher.Options.Timeout = [TimeSpan]::FromMilliseconds($TimeoutMilliseconds)
         $items = @($searcher.Get())
         if ($items.Count -eq 0) { return [pscustomobject]@{Outcome='NOT_FOUND';Snapshot=$null} }
         $item = $items[0]
@@ -95,12 +98,98 @@ function Get-ManagedCoordinationOperations {
     return ,$documents.ToArray()
 }
 
+function Get-ManagedTextFingerprint {
+    param([Parameter(Mandatory)][string]$Value)
+    $sha = [Security.Cryptography.SHA256]::Create()
+    try {
+        return ([BitConverter]::ToString($sha.ComputeHash([Text.Encoding]::UTF8.GetBytes($Value))) -replace '-', '').ToLowerInvariant()
+    } finally {
+        $sha.Dispose()
+    }
+}
+
+function Get-ManagedNgrokCommandContract {
+    param(
+        [Parameter(Mandatory)]$Snapshot,
+        [Parameter(Mandatory)][string]$Worktree,
+        [Parameter(Mandatory)][ValidateRange(1,65535)][int]$ExpectedPort,
+        [string]$ExpectedExecutablePath,
+        [string[]]$ExpectedArguments,
+        [Nullable[datetimeoffset]]$LaunchObservedAtUtc
+    )
+    if ([int]$Snapshot.ProcessId -le 0 -or [string]::IsNullOrWhiteSpace([string]$Snapshot.Name) -or
+            [string]::IsNullOrWhiteSpace([string]$Snapshot.ExecutablePath) -or
+            [string]::IsNullOrWhiteSpace([string]$Snapshot.CommandLine) -or -not $Snapshot.StartedAtUtc) {
+        return [pscustomobject]@{Outcome='PENDING';Reason='The process snapshot is not complete.'}
+    }
+    $worktreePath = [IO.Path]::GetFullPath($Worktree).TrimEnd('\')
+    if (-not (Test-Path -LiteralPath (Join-Path $worktreePath '.git'))) {
+        return [pscustomobject]@{Outcome='REJECTED';Reason='The worktree identity is not registered.'}
+    }
+    $actualExecutable = [IO.Path]::GetFullPath([string]$Snapshot.ExecutablePath).TrimEnd('\')
+    $actualName = [IO.Path]::GetFileName($actualExecutable)
+    if (-not [string]::Equals([string]$Snapshot.Name, $actualName, [StringComparison]::OrdinalIgnoreCase) -or
+            -not [string]::Equals($actualName, 'ngrok.exe', [StringComparison]::OrdinalIgnoreCase)) {
+        return [pscustomobject]@{Outcome='REJECTED';Reason='The process executable identity is not ngrok.exe.'}
+    }
+    if ($ExpectedExecutablePath) {
+        $expectedExecutable = [IO.Path]::GetFullPath($ExpectedExecutablePath).TrimEnd('\')
+        if (-not [string]::Equals($actualExecutable, $expectedExecutable, [StringComparison]::OrdinalIgnoreCase)) {
+            return [pscustomobject]@{Outcome='REJECTED';Reason='The process executable path does not match the launched executable.'}
+        }
+    }
+    if ($null -ne $LaunchObservedAtUtc) {
+        $processStartedAt = [datetimeoffset]$Snapshot.StartedAtUtc
+        $observedLaunch = [datetimeoffset]$LaunchObservedAtUtc
+        $delta = ($processStartedAt.ToUniversalTime() - $observedLaunch.ToUniversalTime()).TotalSeconds
+        if ($delta -lt -2 -or $delta -gt 30) {
+            return [pscustomobject]@{Outcome='REJECTED';Reason='The process start time does not match the observed launch window.'}
+        }
+    }
+
+    $rawCommand = ([string]$Snapshot.CommandLine).Trim()
+    $argumentText = $null
+    $quotedExecutable = '"' + $actualExecutable + '"'
+    $executablePrefixes = @($quotedExecutable, $actualExecutable, $actualName)
+    foreach ($prefix in $executablePrefixes) {
+        if ($rawCommand.Length -gt $prefix.Length -and
+                $rawCommand.StartsWith($prefix, [StringComparison]::OrdinalIgnoreCase) -and
+                [char]::IsWhiteSpace($rawCommand[$prefix.Length])) {
+            $argumentText = $rawCommand.Substring($prefix.Length).Trim()
+            break
+        }
+    }
+    if ([string]::IsNullOrWhiteSpace($argumentText)) {
+        return [pscustomobject]@{Outcome='REJECTED';Reason='The process command executable does not match its inspected executable path.'}
+    }
+    $arguments = @($argumentText -split '\s+' | Where-Object { $_ })
+    $target = "http://localhost:$ExpectedPort"
+    $shapeMatches = $arguments.Count -eq 5 -and $arguments[0] -eq 'http' -and
+        $arguments[1] -match '^--url=[^\s=]+$' -and $arguments[2] -eq $target -and
+        $arguments[3] -eq '--log=stdout' -and $arguments[4] -eq '--log-level=warn'
+    if (-not $shapeMatches) {
+        return [pscustomobject]@{Outcome='REJECTED';Reason='The process command does not match the bounded ngrok lifecycle arguments.'}
+    }
+    if ($null -ne $ExpectedArguments) {
+        $expectedArgumentText = (@($ExpectedArguments) -join ' ').Trim()
+        if (-not [string]::Equals($argumentText, $expectedArgumentText, [StringComparison]::Ordinal)) {
+            return [pscustomobject]@{Outcome='REJECTED';Reason='The process command does not exactly match the launched arguments.'}
+        }
+    }
+    $executableFingerprint = Get-ManagedTextFingerprint $actualExecutable.ToLowerInvariant()
+    $safeContract = "ngrok-v1|$executableFingerprint|$($worktreePath.ToLowerInvariant())|port=$ExpectedPort|http|url=redacted|target=localhost|log=stdout|level=warn"
+    return [pscustomobject]@{
+        Outcome='READY';Reason=$null;ExecutableFingerprint=$executableFingerprint
+        CommandContractFingerprint=(Get-ManagedTextFingerprint $safeContract)
+    }
+}
+
 function Test-ManagedProcessCommand {
     param(
         [Parameter(Mandatory)]$Snapshot,
         [Parameter(Mandatory)][string]$Worktree,
         [Parameter(Mandatory)][ValidateSet('SpringBoot','Dispatcher','Ngrok')][string]$Component,
-        [switch]$TrustedReceipt,
+        [AllowNull()]$OwnershipReceipt,
         [switch]$ExactActiveCoordinationProof
     )
     $rawCommand = ([string]$Snapshot.CommandLine).ToLowerInvariant()
@@ -108,7 +197,14 @@ function Test-ManagedProcessCommand {
     $worktreeToken = [IO.Path]::GetFullPath($Worktree).TrimEnd('\').ToLowerInvariant()
     $name = ([string]$Snapshot.Name).ToLowerInvariant()
     if ($Component -eq 'Ngrok') {
-        return $TrustedReceipt -and $name -like 'ngrok*' -and $rawCommand -match 'http://localhost:8080'
+        if (-not $OwnershipReceipt -or -not $OwnershipReceipt.PSObject.Properties['executableFingerprint'] -or
+                -not $OwnershipReceipt.PSObject.Properties['commandContractFingerprint'] -or
+                -not $OwnershipReceipt.PSObject.Properties['appPort']) { return $false }
+        $contract = Get-ManagedNgrokCommandContract -Snapshot $Snapshot -Worktree $Worktree `
+            -ExpectedPort ([int]$OwnershipReceipt.appPort)
+        return $contract.Outcome -eq 'READY' -and
+            $contract.ExecutableFingerprint -eq [string]$OwnershipReceipt.executableFingerprint -and
+            $contract.CommandContractFingerprint -eq [string]$OwnershipReceipt.commandContractFingerprint
     }
     if ([string]::IsNullOrWhiteSpace($rawCommand)) {
         return $ExactActiveCoordinationProof -and $name -in @('powershell.exe','pwsh.exe','cmd.exe','java.exe')
@@ -154,27 +250,96 @@ function Read-ManagedOwnershipReceipt {
     return $receipt
 }
 
+function Assert-NoManagedStartReceiptReplay {
+    param(
+        [Parameter(Mandatory)][string]$StateRoot,
+        [Parameter(Mandatory)][string]$Component,
+        [Parameter(Mandatory)][int]$ProcessId,
+        [Parameter(Mandatory)][datetimeoffset]$ProcessStartedAt
+    )
+    $directory = Join-Path $StateRoot 'receipts'
+    if (-not (Test-Path -LiteralPath $directory -PathType Container)) { return }
+    foreach ($file in @(Get-ChildItem -LiteralPath $directory -Filter '*.json' -File -ErrorAction Stop)) {
+        try { $receipt = [IO.File]::ReadAllText($file.FullName, [Text.Encoding]::UTF8) | ConvertFrom-Json }
+        catch { throw 'Managed process receipt replay fencing found invalid coordination evidence.' }
+        if ($receipt.action -eq 'managed-process-start' -and $receipt.component -eq $Component -and
+                [int]$receipt.processId -eq $ProcessId) {
+            $recordedStart = [datetimeoffset]::MinValue
+            if (-not [datetimeoffset]::TryParse([string]$receipt.processStartedAt, [ref]$recordedStart)) {
+                throw 'Managed process receipt replay fencing found invalid start-time evidence.'
+            }
+            if ([Math]::Abs(($recordedStart.ToUniversalTime() - $ProcessStartedAt.ToUniversalTime()).TotalMilliseconds) -lt 1) {
+                throw 'Managed process ownership for this exact process generation was already published.'
+            }
+        }
+    }
+}
+
 function New-ManagedProcessOwnershipReceipt {
     param(
         [Parameter(Mandatory)][string]$Worktree,
         [Parameter(Mandatory)][ValidateSet('SpringBoot','Dispatcher','Ngrok')][string]$Component,
         [Parameter(Mandatory)][int]$ProcessId,
-        [string]$StateRoot = (Get-CoordinationDefaultRoot)
+        [string]$StateRoot = (Get-CoordinationDefaultRoot),
+        [string]$ExpectedExecutablePath,
+        [string[]]$ExpectedArguments,
+        [ValidateRange(1,65535)][int]$ExpectedPort = 8080,
+        [Nullable[datetimeoffset]]$LaunchObservedAtUtc,
+        [scriptblock]$ProcessQuery = { param($id) Get-ManagedProcessQueryResult -ProcessId $id -TimeoutMilliseconds 500 },
+        [scriptblock]$DelayAdapter = { param($milliseconds) Start-Sleep -Milliseconds $milliseconds },
+        [ValidateRange(50,5000)][int]$SnapshotTimeoutMilliseconds = 1500,
+        [switch]$PassThru
     )
-    $query = Get-ManagedProcessQueryResult -ProcessId $ProcessId
-    if ($query.Outcome -ne 'READY') { throw 'Managed process start time could not be recorded; ownership is not publishable.' }
     $definition = Get-ManagedComponentDefinition -Component $Component -Worktree $Worktree
-    if ($Component -eq 'Ngrok' -and -not (Test-ManagedProcessCommand -Snapshot $query.Snapshot `
-            -Worktree $Worktree -Component $Component -TrustedReceipt)) {
-        throw 'The launched ngrok command did not match the repository lifecycle contract.'
+    if ($Component -eq 'Ngrok' -and ([string]::IsNullOrWhiteSpace($ExpectedExecutablePath) -or
+            $null -eq $ExpectedArguments -or $ExpectedArguments.Count -eq 0 -or
+            $null -eq $LaunchObservedAtUtc)) {
+        throw 'Ngrok ownership publication requires the exact executable, arguments and observed launch time.'
     }
+    $query = $null
+    $launchContract = $null
+    $pollMilliseconds = 100
+    $maximumAttempts = [Math]::Max(1, [Math]::Ceiling($SnapshotTimeoutMilliseconds / [double]$pollMilliseconds) + 1)
+    for ($attempt = 1; $attempt -le $maximumAttempts; $attempt++) {
+        $query = & $ProcessQuery $ProcessId
+        if ($Component -ne 'Ngrok') {
+            if ($query -and $query.Outcome -eq 'READY') { break }
+        } elseif ($query -and $query.Outcome -eq 'READY') {
+            if ([int]$query.Snapshot.ProcessId -ne $ProcessId) {
+                throw 'Process inspection returned a different PID than the launched process.'
+            }
+            $launchContract = Get-ManagedNgrokCommandContract -Snapshot $query.Snapshot -Worktree $Worktree `
+                -ExpectedPort $ExpectedPort -ExpectedExecutablePath $ExpectedExecutablePath `
+                -ExpectedArguments $ExpectedArguments -LaunchObservedAtUtc $LaunchObservedAtUtc
+            if ($launchContract.Outcome -eq 'READY') { break }
+            if ($launchContract.Outcome -eq 'REJECTED') {
+                throw 'The launched ngrok process did not match the bounded repository lifecycle contract.'
+            }
+        }
+        if ($attempt -lt $maximumAttempts) { & $DelayAdapter $pollMilliseconds }
+    }
+    if (-not $query -or $query.Outcome -ne 'READY' -or
+            ($Component -eq 'Ngrok' -and (-not $launchContract -or $launchContract.Outcome -ne 'READY'))) {
+        throw 'Managed process identity snapshot was not ready within the bounded publication window.'
+    }
+    Assert-NoManagedStartReceiptReplay -StateRoot $StateRoot -Component $Component -ProcessId $ProcessId `
+        -ProcessStartedAt ([datetimeoffset]$query.Snapshot.StartedAtUtc)
     $receiptId = [guid]::NewGuid().ToString()
-    Write-CoordinationReceipt -StateRoot $StateRoot -Receipt ([ordered]@{
+    $receiptDocument = [ordered]@{
         operationId=$receiptId;outcome='READY';action='managed-process-start';component=$Component
         processId=$ProcessId;processStartedAt=([datetimeoffset]$query.Snapshot.StartedAtUtc).ToString('o')
         worktree=[IO.Path]::GetFullPath($Worktree).TrimEnd('\');resource=$definition.Resource
         disposition='managed-runtime; evidence-retained'
-    })
+    }
+    if ($Component -eq 'Ngrok') {
+        $receiptDocument['appPort'] = $ExpectedPort
+        $receiptDocument['executableFingerprint'] = $launchContract.ExecutableFingerprint
+        $receiptDocument['commandContractFingerprint'] = $launchContract.CommandContractFingerprint
+    }
+    Write-CoordinationReceipt -StateRoot $StateRoot -Receipt $receiptDocument
+    if ($PassThru) {
+        return [pscustomobject]@{ReceiptId=$receiptId;ProcessId=$ProcessId;Snapshot=$query.Snapshot}
+    }
     return $receiptId
 }
 
@@ -236,7 +401,7 @@ function Get-ManagedProcessOwnershipProof {
     }
     $exactActiveOperation = $operation -and $operation.status -eq 'ACTIVE'
     if (-not (Test-ManagedProcessCommand -Snapshot $snapshot -Worktree $Worktree -Component $Component `
-            -TrustedReceipt:$trustedReceipt -ExactActiveCoordinationProof:$exactActiveOperation)) {
+            -OwnershipReceipt $receipt -ExactActiveCoordinationProof:$exactActiveOperation)) {
         return [pscustomobject]@{Outcome='BLOCKED';Reason='Process command does not match the managed component and exact worktree.';Definition=$definition;ProcessId=$processId}
     }
 

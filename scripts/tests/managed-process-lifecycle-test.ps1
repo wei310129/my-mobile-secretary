@@ -46,10 +46,16 @@ try {
 
     $ngrokDefinition = Get-ManagedComponentDefinition -Component Ngrok -Worktree $worktree
     $ngrokReceiptId = [guid]::NewGuid().ToString()
+    $ngrokSnapshot = New-FakeSnapshot -Id 200 -Name 'ngrok.exe' `
+        -CommandLine 'ngrok http --domain safe.example http://localhost:8080' -StartedAt $started
+    $ngrokSnapshot.CommandLine = '"C:\fake\ngrok.exe" http --url=safe.example.invalid http://localhost:8080 --log=stdout --log-level=warn'
+    $ngrokContract = Get-ManagedNgrokCommandContract -Snapshot $ngrokSnapshot -Worktree $worktree -ExpectedPort 8080
     Write-CoordinationReceipt -StateRoot $stateRoot -Receipt ([ordered]@{
         operationId=$ngrokReceiptId;outcome='READY';action='managed-process-start';component='Ngrok'
         processId=200;processStartedAt=$started.ToString('o');worktree=[IO.Path]::GetFullPath($worktree).TrimEnd('\')
-        resource=$ngrokDefinition.Resource;disposition='managed-runtime'
+        resource=$ngrokDefinition.Resource;disposition='managed-runtime';appPort=8080
+        executableFingerprint=$ngrokContract.ExecutableFingerprint
+        commandContractFingerprint=$ngrokContract.CommandContractFingerprint
     })
     Write-CoordinationJsonAtomic -Path $stateFile -Document ([ordered]@{
         springBootPid=100;springBootOwnershipReceiptId=$null;dispatcherPid=$null
@@ -59,8 +65,7 @@ try {
     $processes[100] = New-FakeSnapshot -Id 100 `
         -CommandLine "powershell -File $worktree\scripts\coordinated-maven-run.ps1 -Application root" `
         -StartedAt $started
-    $processes[200] = New-FakeSnapshot -Id 200 -Name 'ngrok.exe' `
-        -CommandLine 'ngrok http --domain safe.example http://localhost:8080' -StartedAt $started
+    $processes[200] = $ngrokSnapshot
     $query = {
         param($id)
         if ($processes.ContainsKey([int]$id)) { return [pscustomobject]@{Outcome='READY';Snapshot=$processes[[int]$id]} }

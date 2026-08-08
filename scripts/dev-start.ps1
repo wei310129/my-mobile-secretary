@@ -388,6 +388,15 @@ $stateUpdates = @{
 if ($script:StartServiceGeneration) { $stateUpdates["serviceGeneration"] = $script:StartServiceGeneration.Generation; $stateUpdates["serviceLogDirectory"] = $script:StartServiceGeneration.LogDirectory }
 Write-DevState -Updates $stateUpdates
 $script:StartServiceGenerationPublished = $true
+$managedGeneration=[string]$stateUpdates.serviceGeneration
+if([string]::IsNullOrWhiteSpace($managedGeneration)){$managedGeneration=[string](Get-DevStateValue -State (Read-DevState) -Name 'serviceGeneration')}
+if([string]::IsNullOrWhiteSpace($managedGeneration)){throw 'managed runtime operation completed without a service generation fence'}
+Publish-EnvironmentManagedOperationReceipt -Capability DEV_RUNTIME -Operation RUNTIME_START `
+    -Generation $managedGeneration -RepoRoot $RepoRoot|Out-Null
+if(-not $NoNgrok){
+    Publish-EnvironmentManagedOperationReceipt -Capability LINE_E2E -Operation LINE_CONNECTIVITY_PROBE `
+        -Generation $managedGeneration -RepoRoot $RepoRoot|Out-Null
+}
 
 $dispatcherSummary = if ($SkipDispatcher) { "dispatcher=skipped" } elseif ($dispatcherPid) { "dispatcher=$automationMode" } else { "dispatcher=unavailable" }
 $lineSummary = if ($NoNgrok) { "LINE=skipped" } else { "LINE=connected" }

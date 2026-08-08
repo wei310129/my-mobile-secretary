@@ -4,13 +4,18 @@ Set-StrictMode -Version Latest
 . "$PSScriptRoot\docker-shared-infrastructure.ps1"
 . "$PSScriptRoot\managed-docker-desktop.ps1"
 
-$script:EnvironmentSchemaVersion = 3
+$script:EnvironmentSchemaVersion = 4
 $script:EnvironmentCapabilityNames = @(
     'READ_ONLY', 'SOURCE_WRITE', 'MAVEN', 'DOCKER_TEST',
     'DEV_RUNTIME', 'LINE_E2E', 'EXTERNAL_PROVIDER'
 )
 $script:EnvironmentReadyStates = @('MATCH', 'COMPATIBLE_DRIFT')
 $script:ExternalAuthorityIssuer = 'MMS_USER_AUTHORITY_V1'
+$script:ManagedOperationIssuer = 'MMS_MANAGED_OPERATION_V1'
+$script:ManagedOperationCapabilities = @{
+    'DEV_RUNTIME'='RUNTIME_START'
+    'LINE_E2E'='LINE_CONNECTIVITY_PROBE'
+}
 $script:ExternalAuthorityOperationScopes = @{
     'TDX|ROUTE_QUERY'='READ_ONLY'; 'GOOGLE|ROUTE_QUERY'='READ_ONLY'; 'LINE|CONNECTIVITY_PROBE'='READ_ONLY'
     'BOOKING|AVAILABILITY_QUERY'='READ_ONLY'; 'BOOKING|INVENTORY_MUTATION'='MUTATION'
@@ -296,6 +301,7 @@ function Get-EnvironmentStateContext {
         ReviewsPath = Join-Path $machineRoot 'reviews'
         ReceiptsPath = Join-Path $machineRoot 'receipts'
         AuthorityReceiptsPath = Join-Path $machineRoot 'authority-receipts'
+        ManagedOperationReceiptsPath = Join-Path $machineRoot 'managed-operation-receipts'
         GitHubConfigPath = Join-Path $machineRoot 'github.json'
     }
 }
@@ -504,6 +510,129 @@ function Get-EnvironmentExternalAuthorityFingerprint {
         [string]$Receipt.contractFingerprint
     ) -join '|'
     return Get-CoordinationHash $canonical
+}
+
+function Get-EnvironmentManagedOperationFingerprint {
+    param([Parameter(Mandatory)]$Receipt)
+    $canonical=@(
+        [string]$Receipt.schemaVersion,[string]$Receipt.issuer,[string]$Receipt.issuedAt,[string]$Receipt.expiresAt,
+        [string]$Receipt.repoId,[string]$Receipt.worktreeId,[string]$Receipt.gitDirectoryId,[string]$Receipt.machineAlias,
+        [string]$Receipt.capability,[string]$Receipt.operation,[string]$Receipt.generation,
+        [string]$Receipt.operationCallerKind,[string]$Receipt.contractFingerprint,[string]$Receipt.snapshotSequence,
+        [string]$Receipt.nonce,[string]$Receipt.authorityClass
+    ) -join '|'
+    return Get-CoordinationHash $canonical
+}
+
+function Assert-EnvironmentManagedOperation {
+    param([Parameter(Mandatory)][string]$Capability,[Parameter(Mandatory)][string]$Operation)
+    if(-not $script:ManagedOperationCapabilities.ContainsKey($Capability) -or
+            $script:ManagedOperationCapabilities[$Capability] -ne $Operation){
+        throw 'managed operation receipt supports only the exact runtime or LINE observation operation'
+    }
+}
+
+function New-EnvironmentManagedOperationReceipt {
+    param(
+        [Parameter(Mandatory)][ValidateSet('DEV_RUNTIME','LINE_E2E')][string]$Capability,
+        [Parameter(Mandatory)][ValidateSet('RUNTIME_START','LINE_CONNECTIVITY_PROBE')][string]$Operation,
+        [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]{1,128}$')][string]$Generation,
+        [Parameter(Mandatory)]$Snapshot,
+        [string]$RepoRoot=(Split-Path -Parent $PSScriptRoot),[string]$StateRoot=(Get-EnvironmentDefaultRoot),[string]$MachineAlias,
+        [ValidateRange(1,15)][int]$TtlMinutes=15
+    )
+    Assert-EnvironmentManagedOperation -Capability $Capability -Operation $Operation
+    $caller=Get-EnvironmentCallerContext
+    if($caller.Kind -ne 'host'){throw 'only the managed host operation caller may issue this receipt'}
+    $context=Get-EnvironmentStateContext -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $MachineAlias
+    if(-not(Test-EnvironmentSnapshotFresh -Snapshot $Snapshot -Capability $Capability -RepoRoot $RepoRoot `
+            -CallerKind host -StateRoot $StateRoot -MachineAlias $context.MachineAlias) -or -not [bool]$Snapshot.capability.Ready){
+        throw 'managed operation receipt requires a fresh ready host snapshot for the same capability'
+    }
+    if($Snapshot.repoId -ne $context.RepoId -or $Snapshot.worktreeId -ne $context.WorktreeId -or
+            $Snapshot.gitDirectoryId -ne $context.GitDirectoryId){throw 'managed operation snapshot repository or worktree fence does not match'}
+    $now=[DateTimeOffset]::UtcNow;$nonce=[guid]::NewGuid().ToString('n')
+    $receipt=[ordered]@{
+        schemaVersion=$script:EnvironmentSchemaVersion;issuer=$script:ManagedOperationIssuer
+        issuedAt=$now.ToString('o');expiresAt=$now.AddMinutes($TtlMinutes).ToString('o')
+        repoId=$context.RepoId;worktreeId=$context.WorktreeId;gitDirectoryId=$context.GitDirectoryId;machineAlias=$context.MachineAlias
+        capability=$Capability;operation=$Operation;generation=$Generation;operationCallerKind='host'
+        contractFingerprint=(Get-EnvironmentContract -RepoRoot $RepoRoot).Fingerprint;snapshotSequence=[long]$Snapshot.sequence
+        nonce=$nonce;authorityClass='REVIEW_OBSERVATION_ONLY'
+    }
+    $receipt.receiptFingerprint=Get-EnvironmentManagedOperationFingerprint -Receipt ([pscustomobject]$receipt)
+    [IO.Directory]::CreateDirectory($context.ManagedOperationReceiptsPath)|Out-Null
+    $path=Join-Path $context.ManagedOperationReceiptsPath "$nonce.json"
+    Write-CoordinationJsonAtomic -Path $path -Document $receipt
+    return [pscustomobject]@{Path=$path;Receipt=[pscustomobject]$receipt;ReceiptId=$nonce}
+}
+
+function Test-EnvironmentManagedOperationReceipt {
+    param(
+        [Parameter(Mandatory)][string]$ReceiptPath,[Parameter(Mandatory)][string]$Capability,
+        [Parameter(Mandatory)][string]$Operation,[Parameter(Mandatory)][string]$Generation,
+        [string]$RepoRoot=(Split-Path -Parent $PSScriptRoot),[string]$StateRoot=(Get-EnvironmentDefaultRoot),[string]$MachineAlias
+    )
+    try {
+        Assert-EnvironmentManagedOperation -Capability $Capability -Operation $Operation
+        $context=Get-EnvironmentStateContext -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $MachineAlias
+        $allowed=[IO.Path]::GetFullPath($context.ManagedOperationReceiptsPath).TrimEnd('\','/')+[IO.Path]::DirectorySeparatorChar
+        $resolved=[IO.Path]::GetFullPath($ReceiptPath)
+        if(-not $resolved.StartsWith($allowed,[StringComparison]::OrdinalIgnoreCase)){throw 'managed operation receipt escaped the approved state root'}
+        $receipt=Read-EnvironmentJson -Path $resolved
+        if(-not $receipt){throw 'managed operation receipt is missing'}
+        if([int]$receipt.schemaVersion -ne $script:EnvironmentSchemaVersion -or $receipt.issuer -ne $script:ManagedOperationIssuer){throw 'managed operation issuer or schema is invalid'}
+        if($receipt.nonce -notmatch '^[0-9a-f]{32}$' -or [IO.Path]::GetFileNameWithoutExtension($resolved) -ne $receipt.nonce){throw 'managed operation nonce fencing is invalid'}
+        $now=[DateTimeOffset]::UtcNow;$issued=[DateTimeOffset]::Parse([string]$receipt.issuedAt);$expires=[DateTimeOffset]::Parse([string]$receipt.expiresAt)
+        if($issued -gt $now.AddMinutes(2) -or $expires -le $now -or $expires -gt $issued.AddMinutes(15)){throw 'managed operation receipt lifetime is invalid or expired'}
+        if($receipt.repoId -ne $context.RepoId -or $receipt.worktreeId -ne $context.WorktreeId -or
+                $receipt.gitDirectoryId -ne $context.GitDirectoryId -or $receipt.machineAlias -ne $context.MachineAlias){throw 'managed operation repository, worktree, or machine fence does not match'}
+        if($receipt.capability -ne $Capability -or $receipt.operation -ne $Operation -or $receipt.generation -ne $Generation){throw 'managed operation capability, operation, or generation fence does not match'}
+        if($receipt.operationCallerKind -ne 'host' -or $receipt.authorityClass -ne 'REVIEW_OBSERVATION_ONLY'){throw 'managed operation caller or authority class is invalid'}
+        if([long]$receipt.snapshotSequence -le 0 -or $receipt.contractFingerprint -ne (Get-EnvironmentContract -RepoRoot $RepoRoot).Fingerprint){throw 'managed operation snapshot or contract fence is stale'}
+        if($receipt.receiptFingerprint -ne (Get-EnvironmentManagedOperationFingerprint -Receipt $receipt)){throw 'managed operation receipt fingerprint is invalid'}
+        return [pscustomobject]@{Ready=$true;Reason=$null;Receipt=$receipt;ReceiptFingerprint=$receipt.receiptFingerprint}
+    } catch {return [pscustomobject]@{Ready=$false;Reason=$_.Exception.Message;Receipt=$null;ReceiptFingerprint=$null}}
+}
+
+function Get-EnvironmentActiveServiceGeneration {
+    param([string]$RepoRoot=(Split-Path -Parent $PSScriptRoot))
+    $state=Read-EnvironmentJson -Path (Join-Path $RepoRoot 'scripts\.dev-state.json')
+    if(-not $state -or -not $state.PSObject.Properties['serviceGeneration']){return $null}
+    $generation=[string]$state.serviceGeneration
+    if($generation -notmatch '^[A-Za-z0-9._-]{1,128}$'){return $null}
+    return $generation
+}
+
+function Find-EnvironmentManagedOperationReceipt {
+    param(
+        [Parameter(Mandatory)][string]$Capability,[Parameter(Mandatory)][string]$Operation,
+        [Parameter(Mandatory)][string]$Generation,[string]$RepoRoot=(Split-Path -Parent $PSScriptRoot),
+        [string]$StateRoot=(Get-EnvironmentDefaultRoot),[string]$MachineAlias
+    )
+    $context=Get-EnvironmentStateContext -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $MachineAlias
+    if(-not(Test-Path -LiteralPath $context.ManagedOperationReceiptsPath -PathType Container)){return $null}
+    foreach($file in @(Get-ChildItem -LiteralPath $context.ManagedOperationReceiptsPath -Filter *.json -File|Sort-Object LastWriteTimeUtc -Descending)){
+        $result=Test-EnvironmentManagedOperationReceipt -ReceiptPath $file.FullName -Capability $Capability -Operation $Operation `
+            -Generation $Generation -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $context.MachineAlias
+        if($result.Ready){return [pscustomobject]@{Path=$file.FullName;Validation=$result}}
+    }
+    return $null
+}
+
+function Publish-EnvironmentManagedOperationReceipt {
+    param(
+        [Parameter(Mandatory)][ValidateSet('DEV_RUNTIME','LINE_E2E')][string]$Capability,
+        [Parameter(Mandatory)][ValidateSet('RUNTIME_START','LINE_CONNECTIVITY_PROBE')][string]$Operation,
+        [Parameter(Mandatory)][string]$Generation,[string]$RepoRoot=(Split-Path -Parent $PSScriptRoot),
+        [string]$StateRoot=(Get-EnvironmentDefaultRoot),[string]$MachineAlias
+    )
+    if((Get-EnvironmentCallerContext).Kind -ne 'host'){throw 'managed lifecycle evidence must be published by the host operation caller'}
+    $snapshot=Invoke-EnvironmentPreflight -Capability $Capability -RepoRoot $RepoRoot -StateRoot $StateRoot `
+        -MachineAlias $MachineAlias -RequireFresh -ApplyProcessJava -SkipDemandWrite
+    if(-not [bool]$snapshot.capability.Ready){throw "managed $Capability operation completed without a matching ready host snapshot"}
+    return New-EnvironmentManagedOperationReceipt -Capability $Capability -Operation $Operation -Generation $Generation `
+        -Snapshot $snapshot -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $MachineAlias
 }
 
 function Assert-EnvironmentExternalOperation {
@@ -951,7 +1080,8 @@ function Write-EnvironmentIssue {
         [Parameter(Mandatory)][ValidateSet('READ_ONLY','SOURCE_WRITE','MAVEN','DOCKER_TEST','DEV_RUNTIME','LINE_E2E','EXTERNAL_PROVIDER')][string]$Capability,
         [Parameter(Mandatory)][string]$Expected,
         [Parameter(Mandatory)][string]$Actual,
-        [ValidateSet('MANUAL','CAPABILITY','JAVA_HOME')][string]$RecheckKind = 'MANUAL',
+        [ValidateSet('MANUAL','CAPABILITY','JAVA_HOME','MANAGED_OPERATION')][string]$RecheckKind = 'MANUAL',
+        [ValidateSet('PROBE_ONLY','OPERATION_PARTICIPANT')][string]$Participation = 'PROBE_ONLY',
         [ValidateSet('OPEN','FIXED','RESOLVED_BY_PROJECT_EVOLUTION','ACCEPTED_LIMITATION')][string]$Status = 'OPEN',
         [AllowNull()]$ResolutionEvidence,[string]$LimitationPolicyCode,
         [string]$RepoRoot = (Split-Path -Parent $PSScriptRoot),
@@ -988,11 +1118,47 @@ function Write-EnvironmentIssue {
         occurrences=if($existing){[int]$existing.occurrences+1}else{1}
         expected=(ConvertTo-EnvironmentPrivateText -Value $Expected -RepoRoot $RepoRoot)
         actual=(ConvertTo-EnvironmentPrivateText -Value $Actual -RepoRoot $RepoRoot)
-        contractFingerprint=$contract.Fingerprint;recheckKind=$RecheckKind;status=$effectiveStatus
+        contractFingerprint=$contract.Fingerprint;recheckKind=$RecheckKind;participation=$Participation;status=$effectiveStatus
         resolutionEvidence=$effectiveResolution
     }
     Write-CoordinationJsonAtomic -Path $path -Document $issue
     return [pscustomobject]$issue
+}
+
+function Resolve-EnvironmentIssueByManagedOperation {
+    param(
+        [Parameter(Mandatory)]$Issue,[Parameter(Mandatory)][string]$ReceiptPath,[Parameter(Mandatory)][string]$Generation,
+        [string]$RepoRoot=(Split-Path -Parent $PSScriptRoot),[string]$StateRoot=(Get-EnvironmentDefaultRoot),[string]$MachineAlias
+    )
+    $context=Get-EnvironmentStateContext -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $MachineAlias
+    $participation=if($Issue.PSObject.Properties['participation']){[string]$Issue.participation}elseif([string]$Issue.code -like 'PREFLIGHT_*'){'PROBE_ONLY'}else{'OPERATION_PARTICIPANT'}
+    if($participation -ne 'PROBE_ONLY'){throw 'a caller that participated in the resource operation still requires matching caller evidence'}
+    if($Issue.code -notin @('PREFLIGHT_CALLER_ACCESS_DENIED','PREFLIGHT_HOST_READY_CALLER_BLOCKED')){throw 'managed operation supersession is not approved for this typed issue'}
+    if(-not $script:ManagedOperationCapabilities.ContainsKey([string]$Issue.capability)){throw 'managed operation supersession is not available for this capability'}
+    $expectedFingerprint=Get-EnvironmentIssueFingerprint -Code $Issue.code -Capability $Issue.capability -CallerKind $Issue.callerKind -WorktreeId $context.WorktreeId
+    if($Issue.fingerprint -ne $expectedFingerprint -or $Issue.repoId -ne $context.RepoId -or $Issue.worktreeId -ne $context.WorktreeId){throw 'managed operation issue identity does not match'}
+    $path=Join-Path $context.IssuesPath "$expectedFingerprint.json";$persisted=Read-EnvironmentJson -Path $path
+    if(-not $persisted -or $persisted.status -ne 'OPEN'){throw 'matching OPEN typed environment issue does not exist'}
+    $operation=$script:ManagedOperationCapabilities[[string]$Issue.capability]
+    $validation=Test-EnvironmentManagedOperationReceipt -ReceiptPath $ReceiptPath -Capability $Issue.capability -Operation $operation `
+        -Generation $Generation -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $context.MachineAlias
+    if(-not $validation.Ready){throw "managed operation receipt was rejected: $($validation.Reason)"}
+    $contract=Get-EnvironmentContract -RepoRoot $RepoRoot;$now=[DateTimeOffset]::UtcNow.ToString('o')
+    $originalContract=[string]$persisted.contractFingerprint
+    $persisted.schemaVersion=$script:EnvironmentSchemaVersion
+    if(-not $persisted.PSObject.Properties['observationContractFingerprint']){$persisted|Add-Member -NotePropertyName observationContractFingerprint -NotePropertyValue $originalContract}
+    $persisted.contractFingerprint=$contract.Fingerprint;$persisted.participation='PROBE_ONLY';$persisted.recheckKind='MANAGED_OPERATION'
+    $persisted.status='FIXED';$persisted.lastSeen=$now
+    $persisted.resolutionEvidence=[pscustomobject][ordered]@{
+        kind='FIXED';resolutionKind='MANAGED_OPERATION_SUPERSESSION';resolvedAt=$now
+        callerKind=[string]$Issue.callerKind;issueCallerKind=[string]$Issue.callerKind;operationCallerKind='host'
+        capability=[string]$Issue.capability;operation=$operation;generation=$Generation
+        worktreeId=$context.WorktreeId;contractFingerprint=$contract.Fingerprint
+        snapshotSequence=[long]$validation.Receipt.snapshotSequence;state='MATCH';receiptFingerprint=$validation.ReceiptFingerprint
+        authorityClass='REVIEW_OBSERVATION_ONLY'
+    }
+    Write-CoordinationJsonAtomic -Path $path -Document $persisted
+    return $persisted
 }
 
 function Resolve-EnvironmentIssue {
@@ -1039,6 +1205,14 @@ function Test-EnvironmentIssueResolutionEvidence {
     if($Issue.status -eq 'RESOLVED_BY_PROJECT_EVOLUTION' -and $Issue.contractFingerprint -eq $contract.Fingerprint){return $false}
     if($Issue.status -eq 'ACCEPTED_LIMITATION'){
         return [bool](Test-EnvironmentAcceptedLimitationPolicy -Code $Issue.code -PolicyCode ([string]$evidence.policyCode))
+    }
+    if($evidence.PSObject.Properties['resolutionKind'] -and $evidence.resolutionKind -eq 'MANAGED_OPERATION_SUPERSESSION'){
+        return $Issue.status -eq 'FIXED' -and $Issue.participation -eq 'PROBE_ONLY' -and
+            $Issue.code -in @('PREFLIGHT_CALLER_ACCESS_DENIED','PREFLIGHT_HOST_READY_CALLER_BLOCKED') -and
+            $evidence.issueCallerKind -eq $Issue.callerKind -and $evidence.operationCallerKind -eq 'host' -and
+            $evidence.operation -eq $script:ManagedOperationCapabilities[[string]$Issue.capability] -and
+            $evidence.generation -match '^[A-Za-z0-9._-]{1,128}$' -and
+            $evidence.receiptFingerprint -match '^[0-9a-f]{64}$' -and $evidence.authorityClass -eq 'REVIEW_OBSERVATION_ONLY'
     }
     return $Issue.status -in @('FIXED','RESOLVED_BY_PROJECT_EVOLUTION') -and [long]$evidence.snapshotSequence -gt 0 -and $evidence.state -in $script:EnvironmentReadyStates
 }

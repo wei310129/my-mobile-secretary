@@ -58,6 +58,7 @@ foreach ($name in $capabilityNames) {
 
 $currentContract = Get-EnvironmentContract -RepoRoot $targetIdentity.Path
 $currentCallerKind = (Get-EnvironmentCallerContext).Kind
+$activeServiceGeneration = Get-EnvironmentActiveServiceGeneration -RepoRoot $targetIdentity.Path
 $issueReviews = [Collections.Generic.List[object]]::new()
 if (Test-Path -LiteralPath $context.IssuesPath -PathType Container) {
     foreach ($file in @(Get-ChildItem -LiteralPath $context.IssuesPath -Filter *.json -File)) {
@@ -78,6 +79,21 @@ if (Test-Path -LiteralPath $context.IssuesPath -PathType Container) {
         $current = @($current)
         $classification = if(Test-EnvironmentIssueResolutionEvidence -Issue $issue -Context $context -RepoRoot $targetIdentity.Path){[string]$issue.status}else{'OPEN'}
         $recheckKind = if ($issue.PSObject.Properties['recheckKind']) { [string]$issue.recheckKind } else { 'MANUAL' }
+        $participation = if($issue.PSObject.Properties['participation']){[string]$issue.participation}elseif([string]$issue.code -like 'PREFLIGHT_*'){'PROBE_ONLY'}else{'OPERATION_PARTICIPANT'}
+        $managedEvidence=$null
+        $managedEligible=$classification -eq 'OPEN' -and $participation -eq 'PROBE_ONLY' -and
+            $issue.code -in @('PREFLIGHT_CALLER_ACCESS_DENIED','PREFLIGHT_HOST_READY_CALLER_BLOCKED') -and
+            $script:ManagedOperationCapabilities.ContainsKey([string]$issue.capability) -and $activeServiceGeneration
+        if($managedEligible){
+            $operation=$script:ManagedOperationCapabilities[[string]$issue.capability]
+            $managedEvidence=Find-EnvironmentManagedOperationReceipt -Capability $issue.capability -Operation $operation `
+                -Generation $activeServiceGeneration -RepoRoot $targetIdentity.Path -StateRoot $context.StateRoot -MachineAlias $context.MachineAlias
+            if($managedEvidence){
+                $issue=Resolve-EnvironmentIssueByManagedOperation -Issue $issue -ReceiptPath $managedEvidence.Path `
+                    -Generation $activeServiceGeneration -RepoRoot $targetIdentity.Path -StateRoot $context.StateRoot -MachineAlias $context.MachineAlias
+                $classification='FIXED';$recheckKind='MANAGED_OPERATION'
+            }
+        }
         $recheckReady = $false
         if ($current.Count -gt 0 -and $recheckKind -eq 'CAPABILITY') {
             $recheckReady = [bool]$current[0].capability.Ready
@@ -94,8 +110,8 @@ if (Test-Path -LiteralPath $context.IssuesPath -PathType Container) {
         }
         $issueReviews.Add([pscustomobject]@{
             fingerprint=$issue.fingerprint; code=$issue.code; capability=$issue.capability
-            classification=$classification; lastSeen=$issue.lastSeen
-            evidence=if($classification -eq 'ACCEPTED_LIMITATION'){$issue.resolutionEvidence}elseif($current.Count -gt 0){$current[0].capability.State}else{"matching $($issue.callerKind) caller recheck required"}
+            classification=$classification; participation=$participation; lastSeen=$issue.lastSeen
+            evidence=if($classification -eq 'ACCEPTED_LIMITATION'){$issue.resolutionEvidence}elseif($managedEvidence){[ordered]@{kind='MANAGED_OPERATION_SUPERSESSION';operationCaller='host';issueCaller=$issue.callerKind;capability=$issue.capability;generation=$activeServiceGeneration;receiptFingerprint=$managedEvidence.Validation.ReceiptFingerprint}}elseif($current.Count -gt 0){$current[0].capability.State}else{"matching $($issue.callerKind) caller recheck required"}
         })
     }
 }

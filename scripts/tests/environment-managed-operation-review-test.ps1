@@ -20,16 +20,29 @@ try {
         -MachineAlias test-laptop -ProbeOverrides $overrides
     $hostLine=New-EnvironmentSnapshot -Capability LINE_E2E -RepoRoot $repoRoot -StateRoot $stateRoot `
         -MachineAlias test-laptop -ProbeOverrides $overrides
+    $hostDocker=New-EnvironmentSnapshot -Capability DOCKER_TEST -RepoRoot $repoRoot -StateRoot $stateRoot `
+        -MachineAlias test-laptop -ProbeOverrides $overrides
     $runtimeReceipt=New-EnvironmentManagedOperationReceipt -Capability DEV_RUNTIME -Operation RUNTIME_START `
         -Generation generation-a -Snapshot $hostRuntime -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop
     $lineReceipt=New-EnvironmentManagedOperationReceipt -Capability LINE_E2E -Operation LINE_CONNECTIVITY_PROBE `
         -Generation generation-a -Snapshot $hostLine -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop
+    $dockerReceipt=New-EnvironmentManagedOperationReceipt -Capability DOCKER_TEST -Operation DOCKER_SHARED_INFRASTRUCTURE_READY `
+        -Generation generation-a -Snapshot $hostDocker -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop
     Assert-ManagedOperation ((Test-EnvironmentManagedOperationReceipt -ReceiptPath $runtimeReceipt.Path -Capability DEV_RUNTIME `
         -Operation RUNTIME_START -Generation generation-a -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop).Ready) `
         'valid host managed runtime receipt was rejected'
     Assert-ManagedOperation ((Test-EnvironmentManagedOperationReceipt -ReceiptPath $lineReceipt.Path -Capability LINE_E2E `
         -Operation LINE_CONNECTIVITY_PROBE -Generation generation-a -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop).Ready) `
         'valid host managed LINE receipt was rejected'
+    Assert-ManagedOperation ((Test-EnvironmentManagedOperationReceipt -ReceiptPath $dockerReceipt.Path -Capability DOCKER_TEST `
+        -Operation DOCKER_SHARED_INFRASTRUCTURE_READY -Generation generation-a -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop).Ready) `
+        'valid host managed Docker/shared-infrastructure receipt was rejected'
+    $contractWithDocker=(Get-EnvironmentContract -RepoRoot $repoRoot).Fingerprint
+    $dockerOperation=$script:ManagedOperationCapabilities['DOCKER_TEST']
+    $script:ManagedOperationCapabilities.Remove('DOCKER_TEST')
+    try {$contractWithoutDocker=(Get-EnvironmentContract -RepoRoot $repoRoot).Fingerprint}
+    finally {$script:ManagedOperationCapabilities['DOCKER_TEST']=$dockerOperation}
+    Assert-ManagedOperation ($contractWithDocker -ne $contractWithoutDocker) 'Docker managed operation was not bound into the contract fingerprint'
     $primaryRoot=(Get-EnvironmentGitLayout -RepoRoot $repoRoot).PrimaryRoot
     $crossWorktree=Test-EnvironmentManagedOperationReceipt -ReceiptPath $runtimeReceipt.Path -Capability DEV_RUNTIME `
         -Operation RUNTIME_START -Generation generation-a -RepoRoot $primaryRoot -StateRoot $stateRoot -MachineAlias test-laptop
@@ -53,6 +66,39 @@ try {
     $context=Get-EnvironmentStateContext -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop
     Assert-ManagedOperation (Test-EnvironmentIssueResolutionEvidence -Issue $resolved -Context $context -RepoRoot $repoRoot) `
         'durable managed-operation resolution evidence was rejected'
+
+    $env:CODEX_SANDBOX='1'
+    try {
+        $dockerProbeIssue=Write-EnvironmentIssue -Code PREFLIGHT_CALLER_ACCESS_DENIED -Capability DOCKER_TEST `
+            -Expected ready -Actual denied -RecheckKind MANAGED_OPERATION -Participation PROBE_ONLY `
+            -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop
+    } finally {
+        if($null -eq $previousSandbox){Remove-Item Env:CODEX_SANDBOX -ErrorAction SilentlyContinue}else{$env:CODEX_SANDBOX=$previousSandbox}
+    }
+    $dockerResolved=Resolve-EnvironmentIssueByManagedOperation -Issue $dockerProbeIssue -ReceiptPath $dockerReceipt.Path `
+        -Generation generation-a -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop
+    Assert-ManagedOperation ($dockerResolved.status -eq 'FIXED' -and `
+        $dockerResolved.resolutionEvidence.operation -eq 'DOCKER_SHARED_INFRASTRUCTURE_READY') `
+        'probe-only Docker issue was not superseded by exact managed shared-infrastructure evidence'
+
+    $env:CODEX_SANDBOX='1'
+    try {
+        $dockerParticipant=Write-EnvironmentIssue -Code PREFLIGHT_CALLER_ACCESS_DENIED -Capability DOCKER_TEST `
+            -Expected ready -Actual denied -RecheckKind MANAGED_OPERATION -Participation OPERATION_PARTICIPANT `
+            -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop
+    } finally {
+        if($null -eq $previousSandbox){Remove-Item Env:CODEX_SANDBOX -ErrorAction SilentlyContinue}else{$env:CODEX_SANDBOX=$previousSandbox}
+    }
+    $dockerParticipantRejected=$false
+    try {Resolve-EnvironmentIssueByManagedOperation -Issue $dockerParticipant -ReceiptPath $dockerReceipt.Path `
+        -Generation generation-a -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop|Out-Null}catch{$dockerParticipantRejected=$true}
+    Assert-ManagedOperation $dockerParticipantRejected 'Docker operation participant was silently superseded by a host receipt'
+    $crossCapabilityDocker=Test-EnvironmentManagedOperationReceipt -ReceiptPath $dockerReceipt.Path -Capability DEV_RUNTIME `
+        -Operation RUNTIME_START -Generation generation-a -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop
+    Assert-ManagedOperation (-not $crossCapabilityDocker.Ready) 'Docker observation receipt unlocked runtime capability'
+    $preflightText=Get-Content -LiteralPath (Join-Path $scriptsRoot 'dev-preflight.ps1') -Raw -Encoding UTF8
+    Assert-ManagedOperation ($preflightText.Contains("@('DOCKER_TEST','DEV_RUNTIME','LINE_E2E')")) `
+        'DOCKER_TEST probe-only access denial was not routed to managed-operation recheck'
     $reviewText=Get-Content -LiteralPath (Join-Path $scriptsRoot 'dev-environment-review.ps1') -Raw -Encoding UTF8
     Assert-ManagedOperation ($reviewText.Contains('Get-EnvironmentActiveServiceGeneration')) 'Automatic review does not fence managed evidence to the active generation'
     Assert-ManagedOperation ($reviewText.Contains('Resolve-EnvironmentIssueByManagedOperation')) 'Automatic review does not use typed managed-operation resolution'

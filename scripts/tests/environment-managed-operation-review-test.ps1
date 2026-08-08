@@ -56,16 +56,54 @@ try {
     } finally {
         if($null -eq $previousSandbox){Remove-Item Env:CODEX_SANDBOX -ErrorAction SilentlyContinue}else{$env:CODEX_SANDBOX=$previousSandbox}
     }
-    $resolved=Resolve-EnvironmentIssueByManagedOperation -Issue $probeIssue -ReceiptPath $runtimeReceipt.Path `
+    $context=Get-EnvironmentStateContext -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop
+    $historicalDuplicate=Copy-Json $probeIssue
+    Write-CoordinationJsonAtomic -Path (Join-Path $context.IssuesPath "historical-$($probeIssue.fingerprint).json") -Document $historicalDuplicate
+    $openLedger=@(Get-EnvironmentIssueLedgerItems -Context $context -WorktreeId $context.WorktreeId -Capability @('DEV_RUNTIME'))
+    Assert-ManagedOperation ($openLedger.Count -eq 1 -and $openLedger[0].status -eq 'OPEN') `
+        'duplicate historical ledger entries were not collapsed to one canonical OPEN issue'
+    $resolved=Resolve-EnvironmentIssueByManagedOperation -Issue $openLedger[0] -ReceiptPath $runtimeReceipt.Path `
         -Generation generation-a -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop
     Assert-ManagedOperation ($resolved.status -eq 'FIXED') 'probe-only issue was not closed by matching managed operation'
     Assert-ManagedOperation ($resolved.resolutionEvidence.resolutionKind -eq 'MANAGED_OPERATION_SUPERSESSION') `
         'managed operation resolution was not typed'
     Assert-ManagedOperation ($resolved.resolutionEvidence.issueCallerKind -eq 'sandbox' -and `
         $resolved.resolutionEvidence.operationCallerKind -eq 'host') 'probe and operation callers were not independently audited'
-    $context=Get-EnvironmentStateContext -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop
     Assert-ManagedOperation (Test-EnvironmentIssueResolutionEvidence -Issue $resolved -Context $context -RepoRoot $repoRoot) `
         'durable managed-operation resolution evidence was rejected'
+    $firstResolution=Copy-Json $resolved
+    $idempotentResolution=Resolve-EnvironmentIssueByManagedOperation -Issue $historicalDuplicate -ReceiptPath $runtimeReceipt.Path `
+        -Generation generation-a -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop
+    Assert-ManagedOperation ($idempotentResolution.status -eq 'FIXED') `
+        'identical managed-operation resolution retry did not preserve the FIXED result'
+    Assert-ManagedOperation ($idempotentResolution.resolutionEvidence.resolvedAt -eq $firstResolution.resolutionEvidence.resolvedAt -and `
+        $idempotentResolution.lastSeen -eq $firstResolution.lastSeen -and `
+        $idempotentResolution.occurrences -eq $firstResolution.occurrences) `
+        'identical managed-operation resolution retry rewrote an already closed ledger item'
+    $closedLedger=@(Get-EnvironmentIssueLedgerItems -Context $context -WorktreeId $context.WorktreeId -Capability @('DEV_RUNTIME'))
+    Assert-ManagedOperation ($closedLedger.Count -eq 1 -and $closedLedger[0].status -eq 'FIXED') `
+        'duplicate historical ledger entries did not retain one canonical FIXED issue after rerun'
+    $idempotentReview=[pscustomobject][ordered]@{
+        schemaVersion=$script:EnvironmentSchemaVersion;outcome='PASS';openCount=0
+        issues=@($closedLedger|ForEach-Object{[pscustomobject]@{fingerprint=$_.fingerprint;classification=$_.status}})
+    }
+    Assert-ManagedOperation ($idempotentReview.schemaVersion -eq 4 -and $idempotentReview.outcome -eq 'PASS' -and `
+        $idempotentReview.openCount -eq 0 -and $idempotentReview.issues.Count -eq 1) `
+        'immediate identical rerun did not retain schema v4 PASS/openCount=0 semantics'
+    $wrongGenerationResolutionRejected=$false
+    try {Resolve-EnvironmentIssueByManagedOperation -Issue $historicalDuplicate -ReceiptPath $runtimeReceipt.Path `
+        -Generation generation-b -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop|Out-Null}catch{$wrongGenerationResolutionRejected=$true}
+    Assert-ManagedOperation $wrongGenerationResolutionRejected 'idempotent resolution accepted a receipt for the wrong generation'
+    $wrongCallerIssue=Copy-Json $historicalDuplicate;$wrongCallerIssue.callerKind='host'
+    $wrongCallerResolutionRejected=$false
+    try {Resolve-EnvironmentIssueByManagedOperation -Issue $wrongCallerIssue -ReceiptPath $runtimeReceipt.Path `
+        -Generation generation-a -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop|Out-Null}catch{$wrongCallerResolutionRejected=$true}
+    Assert-ManagedOperation $wrongCallerResolutionRejected 'idempotent resolution accepted a mismatched issue caller'
+    $wrongCapabilityIssue=Copy-Json $historicalDuplicate;$wrongCapabilityIssue.capability='LINE_E2E'
+    $wrongCapabilityResolutionRejected=$false
+    try {Resolve-EnvironmentIssueByManagedOperation -Issue $wrongCapabilityIssue -ReceiptPath $runtimeReceipt.Path `
+        -Generation generation-a -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop|Out-Null}catch{$wrongCapabilityResolutionRejected=$true}
+    Assert-ManagedOperation $wrongCapabilityResolutionRejected 'idempotent resolution accepted a mismatched issue capability'
 
     $env:CODEX_SANDBOX='1'
     try {
@@ -147,6 +185,10 @@ try {
     $badExpiry=Test-EnvironmentManagedOperationReceipt -ReceiptPath $runtimeReceipt.Path -Capability DEV_RUNTIME `
         -Operation RUNTIME_START -Generation generation-a -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop
     Assert-ManagedOperation (-not $badExpiry.Ready) 'expired managed operation receipt was accepted'
+    $expiredResolutionRejected=$false
+    try {Resolve-EnvironmentIssueByManagedOperation -Issue $historicalDuplicate -ReceiptPath $runtimeReceipt.Path `
+        -Generation generation-a -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop|Out-Null}catch{$expiredResolutionRejected=$true}
+    Assert-ManagedOperation $expiredResolutionRejected 'idempotent resolution accepted an expired managed operation receipt'
     Write-CoordinationJsonAtomic -Path $runtimeReceipt.Path -Document $document
 
     $arbitrary=Copy-Json $document;$arbitrary.operationCallerKind='sandbox';$arbitrary.receiptFingerprint=Get-EnvironmentManagedOperationFingerprint -Receipt $arbitrary
@@ -154,6 +196,10 @@ try {
     $badCaller=Test-EnvironmentManagedOperationReceipt -ReceiptPath $runtimeReceipt.Path -Capability DEV_RUNTIME `
         -Operation RUNTIME_START -Generation generation-a -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop
     Assert-ManagedOperation (-not $badCaller.Ready) 'sandbox caller forged a host managed operation receipt'
+    $forgedCallerResolutionRejected=$false
+    try {Resolve-EnvironmentIssueByManagedOperation -Issue $historicalDuplicate -ReceiptPath $runtimeReceipt.Path `
+        -Generation generation-a -RepoRoot $repoRoot -StateRoot $stateRoot -MachineAlias test-laptop|Out-Null}catch{$forgedCallerResolutionRejected=$true}
+    Assert-ManagedOperation $forgedCallerResolutionRejected 'idempotent resolution accepted a non-host operation caller receipt'
     Write-CoordinationJsonAtomic -Path $runtimeReceipt.Path -Document $document
 
     $wrongWorktree=Copy-Json $document;$wrongWorktree.worktreeId='wrong-worktree';$wrongWorktree.receiptFingerprint=Get-EnvironmentManagedOperationFingerprint -Receipt $wrongWorktree

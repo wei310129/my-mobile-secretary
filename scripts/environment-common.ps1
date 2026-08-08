@@ -1071,6 +1071,41 @@ function ConvertTo-EnvironmentPrivateText {
     return $sanitized
 }
 
+function Get-EnvironmentIssueLedgerItems {
+    param(
+        [Parameter(Mandatory)]$Context,
+        [Parameter(Mandatory)][string]$WorktreeId,
+        [Parameter(Mandatory)][string[]]$Capability
+    )
+    $items=[Collections.Generic.List[object]]::new()
+    $fingerprints=[Collections.Generic.HashSet[string]]::new([StringComparer]::OrdinalIgnoreCase)
+    if(-not(Test-Path -LiteralPath $Context.IssuesPath -PathType Container)){return @()}
+    foreach($file in @(Get-ChildItem -LiteralPath $Context.IssuesPath -Filter *.json -File)){
+        $issue=Read-EnvironmentJson -Path $file.FullName
+        if(-not $issue.PSObject.Properties['worktreeId'] -or $issue.worktreeId -ne $WorktreeId){continue}
+        if(-not $issue.PSObject.Properties['capability'] -or $Capability -notcontains [string]$issue.capability){continue}
+        foreach($property in @('fingerprint','code','repoId','callerKind')){
+            if(-not $issue.PSObject.Properties[$property]){throw 'environment issue ledger item is missing typed identity'}
+        }
+        $expectedFingerprint=Get-EnvironmentIssueFingerprint -Code $issue.code -Capability $issue.capability `
+            -CallerKind $issue.callerKind -WorktreeId $WorktreeId
+        if($issue.fingerprint -ne $expectedFingerprint -or $issue.repoId -ne $Context.RepoId){
+            throw 'environment issue ledger identity does not match its typed fingerprint'
+        }
+        if(-not $fingerprints.Add([string]$issue.fingerprint)){continue}
+        $canonicalPath=Join-Path $Context.IssuesPath "$expectedFingerprint.json"
+        $canonicalIssue=Read-EnvironmentJson -Path $canonicalPath
+        if(-not $canonicalIssue -or $canonicalIssue.fingerprint -ne $expectedFingerprint -or
+                $canonicalIssue.repoId -ne $Context.RepoId -or $canonicalIssue.worktreeId -ne $WorktreeId -or
+                $canonicalIssue.code -ne $issue.code -or $canonicalIssue.capability -ne $issue.capability -or
+                $canonicalIssue.callerKind -ne $issue.callerKind){
+            throw 'canonical environment issue ledger item is missing or has invalid identity'
+        }
+        $items.Add($canonicalIssue)
+    }
+    return @($items)
+}
+
 function Test-EnvironmentAcceptedLimitationPolicy {
     param([Parameter(Mandatory)][string]$Code,[Parameter(Mandatory)][string]$PolicyCode)
     return ($Code -eq 'ASYNC_AGENT_LAUNCH_REQUIRED' -and $PolicyCode -eq 'SANDBOX_ASYNC_TOOL_REQUIRED')
@@ -1140,11 +1175,22 @@ function Resolve-EnvironmentIssueByManagedOperation {
     $expectedFingerprint=Get-EnvironmentIssueFingerprint -Code $Issue.code -Capability $Issue.capability -CallerKind $Issue.callerKind -WorktreeId $context.WorktreeId
     if($Issue.fingerprint -ne $expectedFingerprint -or $Issue.repoId -ne $context.RepoId -or $Issue.worktreeId -ne $context.WorktreeId){throw 'managed operation issue identity does not match'}
     $path=Join-Path $context.IssuesPath "$expectedFingerprint.json";$persisted=Read-EnvironmentJson -Path $path
-    if(-not $persisted -or $persisted.status -ne 'OPEN'){throw 'matching OPEN typed environment issue does not exist'}
     $operation=$script:ManagedOperationCapabilities[[string]$Issue.capability]
     $validation=Test-EnvironmentManagedOperationReceipt -ReceiptPath $ReceiptPath -Capability $Issue.capability -Operation $operation `
         -Generation $Generation -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $context.MachineAlias
     if(-not $validation.Ready){throw "managed operation receipt was rejected: $($validation.Reason)"}
+    if(-not $persisted){throw 'matching OPEN typed environment issue does not exist'}
+    if($persisted.status -ne 'OPEN'){
+        $evidence=if($persisted.PSObject.Properties['resolutionEvidence']){$persisted.resolutionEvidence}else{$null}
+        $alreadyResolved=$persisted.status -eq 'FIXED' -and $evidence -and
+            (Test-EnvironmentIssueResolutionEvidence -Issue $persisted -Context $context -RepoRoot $RepoRoot) -and
+            $evidence.resolutionKind -eq 'MANAGED_OPERATION_SUPERSESSION' -and
+            $evidence.generation -eq $Generation -and $evidence.operation -eq $operation -and
+            $evidence.receiptFingerprint -eq $validation.ReceiptFingerprint -and
+            [long]$evidence.snapshotSequence -eq [long]$validation.Receipt.snapshotSequence
+        if($alreadyResolved){return $persisted}
+        throw 'matching OPEN typed environment issue does not exist'
+    }
     $contract=Get-EnvironmentContract -RepoRoot $RepoRoot;$now=[DateTimeOffset]::UtcNow.ToString('o')
     $originalContract=[string]$persisted.contractFingerprint
     $persisted.schemaVersion=$script:EnvironmentSchemaVersion

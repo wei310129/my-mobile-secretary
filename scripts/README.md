@@ -116,6 +116,14 @@ active operation，再委派正式 `Stop-ProcessTree`。它不接受任意 PID�
 啟動器輸出；ngrok 只記錄警告以上。Postgres 與 Redis 的 Docker 日誌各自限制為
 3 個 10 MB 檔案，避免長時間錯誤迴圈填滿 Docker Desktop 虛擬磁碟。
 
+新啟動 ngrok 的 ownership receipt 不會只相信 PID、process name 或尚未完成的 WMI snapshot。
+`dev-start.ps1` 會在 `Start-Process` 前記錄 launch time，並在最長 1.5 秒的 bounded window 內等待
+同一 PID 的 `ExecutablePath`、完整 `CommandLine` 與 start time 就緒。只有 exact `ngrok.exe`、本輪
+arguments、registered worktree、application port 與 launch window 全部相符時才發布 receipt；錯誤
+command、不同 executable、PID reuse、重複發布及未明列的 wrapper／child 都立即 fail closed。
+receipt 只保存不可逆 executable／sanitized-command contract fingerprint，不保存 webhook host 或 raw command。
+receipt 發布失敗仍由 `dev-start.ps1` rollback 本輪新啟動 PID，並回傳 nonzero。
+
 ## Maven 安全執行
 
 根專案的編譯與測試使用 `mvn-safe.ps1`，它會取得跨 PowerShell 程序的 Maven 鎖、整理子程序

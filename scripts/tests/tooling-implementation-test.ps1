@@ -10,6 +10,7 @@ $tests = @(
     'coordination-lifecycle-test.ps1',
     'coordination-maven-test.ps1',
     'managed-process-lifecycle-test.ps1',
+    'ngrok-managed-lifecycle-start-test.ps1',
     'worktree-secret-resolution-test.ps1',
     'maven-worktree-identity-test.ps1',
     'managed-docker-desktop-test.ps1',

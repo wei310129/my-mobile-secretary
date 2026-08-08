@@ -164,6 +164,7 @@ if (-not $NoNgrok) {
             "--log=stdout",
             "--log-level=warn"
         )
+        $ngrokLaunchObservedAt = [datetimeoffset]::UtcNow
         $proc = Start-Process -FilePath $ngrokExe `
             -ArgumentList $ngrokArguments `
             -WorkingDirectory $RepoRoot -WindowStyle Hidden -PassThru `
@@ -171,8 +172,12 @@ if (-not $NoNgrok) {
             -RedirectStandardError (Resolve-StartLogPath "ngrok.err.log")
         $ngrokPid = $proc.Id
         $script:StartNewNgrokPid = $ngrokPid
-        $ngrokOwnershipReceiptId = New-ManagedProcessOwnershipReceipt `
-            -Worktree $RepoRoot -Component Ngrok -ProcessId $ngrokPid
+        $ngrokOwnership = New-ManagedProcessOwnershipReceipt `
+            -Worktree $RepoRoot -Component Ngrok -ProcessId $ngrokPid `
+            -ExpectedExecutablePath $ngrokExe -ExpectedArguments $ngrokArguments `
+            -ExpectedPort $AppPort -LaunchObservedAtUtc $ngrokLaunchObservedAt -PassThru
+        $ngrokPid = $ngrokOwnership.ProcessId
+        $ngrokOwnershipReceiptId = $ngrokOwnership.ReceiptId
         $ngrokUrl = Get-NgrokPublicUrl -TimeoutSec 20
         if (-not $ngrokUrl) {
             Write-Host "ngrok did not expose a public URL. Check scripts\.logs\ngrok.err.log." -ForegroundColor Red

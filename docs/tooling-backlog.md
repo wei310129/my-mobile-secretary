@@ -1,5 +1,13 @@
 # Tooling backlog
 
+## Calendar W11 ngrok managed lifecycle
+
+- 2026-08-08 live gate 證實 `Start-Process` 回傳新 ngrok PID 後，WMI 可能先回傳尚無
+  `ExecutablePath`／`CommandLine` 的有限 snapshot。managed ownership publication 現改為短時、固定上限輪詢；
+  只接受 exact executable、完整 command、registered worktree、application port 與 start-time window，並以
+  process generation 防止 receipt replay。任意 PID/name、錯 command、不同 executable、未契約化 wrapper／child
+  仍拒絕；receipt 不保存 webhook host 或 raw command，失敗維持 nonzero 與 startup rollback。
+
 ## Spotless wrapper 錯誤回報
 
 - `scripts/spotless-apply.ps1` 的 catch 訊息含無效格式字串；當協調狀態寫入失敗時，原始例外會被 `FormatError` 蓋掉，且 `$exitCode` 未設定。工具專用 session 應修正錯誤格式與保證非零 exit code，並加失敗路徑 gate。

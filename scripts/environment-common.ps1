@@ -13,6 +13,7 @@ $script:EnvironmentReadyStates = @('MATCH', 'COMPATIBLE_DRIFT')
 $script:ExternalAuthorityIssuer = 'MMS_USER_AUTHORITY_V1'
 $script:ManagedOperationIssuer = 'MMS_MANAGED_OPERATION_V1'
 $script:ManagedOperationCapabilities = @{
+    'DOCKER_TEST'='DOCKER_SHARED_INFRASTRUCTURE_READY'
     'DEV_RUNTIME'='RUNTIME_START'
     'LINE_E2E'='LINE_CONNECTIVITY_PROBE'
 }
@@ -336,7 +337,8 @@ function Get-EnvironmentMavenVersion {
 function Get-EnvironmentContract {
     param([string]$RepoRoot = (Split-Path -Parent $PSScriptRoot))
     $mavenVersion = Get-EnvironmentMavenVersion -RepoRoot $RepoRoot
-    $fingerprint = Get-CoordinationHash ("java=21|maven=$mavenVersion|schema=$script:EnvironmentSchemaVersion")
+    $managedOperations=@($script:ManagedOperationCapabilities.GetEnumerator()|Sort-Object Key|ForEach-Object{"$($_.Key)=$($_.Value)"}) -join ','
+    $fingerprint = Get-CoordinationHash ("java=21|maven=$mavenVersion|schema=$script:EnvironmentSchemaVersion|managedOperations=$managedOperations")
     return [pscustomobject]@{
         SchemaVersion = $script:EnvironmentSchemaVersion
         JavaMajor = 21
@@ -528,14 +530,14 @@ function Assert-EnvironmentManagedOperation {
     param([Parameter(Mandatory)][string]$Capability,[Parameter(Mandatory)][string]$Operation)
     if(-not $script:ManagedOperationCapabilities.ContainsKey($Capability) -or
             $script:ManagedOperationCapabilities[$Capability] -ne $Operation){
-        throw 'managed operation receipt supports only the exact runtime or LINE observation operation'
+        throw 'managed operation receipt supports only an exact approved review-observation operation'
     }
 }
 
 function New-EnvironmentManagedOperationReceipt {
     param(
-        [Parameter(Mandatory)][ValidateSet('DEV_RUNTIME','LINE_E2E')][string]$Capability,
-        [Parameter(Mandatory)][ValidateSet('RUNTIME_START','LINE_CONNECTIVITY_PROBE')][string]$Operation,
+        [Parameter(Mandatory)][ValidateSet('DOCKER_TEST','DEV_RUNTIME','LINE_E2E')][string]$Capability,
+        [Parameter(Mandatory)][ValidateSet('DOCKER_SHARED_INFRASTRUCTURE_READY','RUNTIME_START','LINE_CONNECTIVITY_PROBE')][string]$Operation,
         [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]{1,128}$')][string]$Generation,
         [Parameter(Mandatory)]$Snapshot,
         [string]$RepoRoot=(Split-Path -Parent $PSScriptRoot),[string]$StateRoot=(Get-EnvironmentDefaultRoot),[string]$MachineAlias,
@@ -622,8 +624,8 @@ function Find-EnvironmentManagedOperationReceipt {
 
 function Publish-EnvironmentManagedOperationReceipt {
     param(
-        [Parameter(Mandatory)][ValidateSet('DEV_RUNTIME','LINE_E2E')][string]$Capability,
-        [Parameter(Mandatory)][ValidateSet('RUNTIME_START','LINE_CONNECTIVITY_PROBE')][string]$Operation,
+        [Parameter(Mandatory)][ValidateSet('DOCKER_TEST','DEV_RUNTIME','LINE_E2E')][string]$Capability,
+        [Parameter(Mandatory)][ValidateSet('DOCKER_SHARED_INFRASTRUCTURE_READY','RUNTIME_START','LINE_CONNECTIVITY_PROBE')][string]$Operation,
         [Parameter(Mandatory)][string]$Generation,[string]$RepoRoot=(Split-Path -Parent $PSScriptRoot),
         [string]$StateRoot=(Get-EnvironmentDefaultRoot),[string]$MachineAlias
     )

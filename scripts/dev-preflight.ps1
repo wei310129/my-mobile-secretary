@@ -74,7 +74,7 @@ try {
     }
     if (-not $Async -and -not $snapshot.capability.Ready) {
         $issueCode="PREFLIGHT_$($snapshot.capability.State)"
-        $managedProbeIssue=$Capability -in @('DEV_RUNTIME','LINE_E2E') -and
+        $managedProbeIssue=$Capability -in @('DOCKER_TEST','DEV_RUNTIME','LINE_E2E') -and
             $issueCode -in @('PREFLIGHT_CALLER_ACCESS_DENIED','PREFLIGHT_HOST_READY_CALLER_BLOCKED')
         $issueArguments = @{
             Code=$issueCode;Capability=$Capability

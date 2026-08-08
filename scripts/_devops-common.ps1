@@ -319,6 +319,38 @@ function Get-DevStatusExitCode {
     return 1
 }
 
+function Publish-DevStartManagedOperationReceipts {
+    param(
+        [Parameter(Mandatory)]$State,
+        [Parameter(Mandatory)]$SharedInfrastructureResult,
+        [Parameter(Mandatory)][bool]$LineReady,
+        [scriptblock]$Publisher
+    )
+    $generation=[string](Get-DevStateValue -State $State -Name 'serviceGeneration')
+    if($generation -notmatch '^[A-Za-z0-9._-]{1,128}$'){
+        throw 'managed runtime operation completed without a durable service generation fence'
+    }
+    if(-not $SharedInfrastructureResult -or $SharedInfrastructureResult.Outcome -ne 'READY'){
+        throw 'managed Docker/shared-infrastructure observation requires a verified READY result'
+    }
+    if(-not $Publisher){
+        $Publisher={
+            param($Capability,$Operation,$Generation)
+            Publish-EnvironmentManagedOperationReceipt -Capability $Capability -Operation $Operation `
+                -Generation $Generation -RepoRoot $RepoRoot
+        }
+    }
+    $operations=[Collections.Generic.List[object]]::new()
+    $operations.Add([pscustomobject]@{Capability='DOCKER_TEST';Operation='DOCKER_SHARED_INFRASTRUCTURE_READY'})
+    $operations.Add([pscustomobject]@{Capability='DEV_RUNTIME';Operation='RUNTIME_START'})
+    if($LineReady){$operations.Add([pscustomobject]@{Capability='LINE_E2E';Operation='LINE_CONNECTIVITY_PROBE'})}
+    $receipts=[Collections.Generic.List[object]]::new()
+    foreach($entry in $operations){
+        $receipts.Add((& $Publisher $entry.Capability $entry.Operation $generation))
+    }
+    return @($receipts)
+}
+
 function Write-DevState {
     param([Parameter(Mandatory)][hashtable]$Updates)
     $guard = New-CoordinationMutex "service-state/$StateFile"

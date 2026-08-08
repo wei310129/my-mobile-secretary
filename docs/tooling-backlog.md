@@ -15,6 +15,11 @@
 
 ## 已觀察案例與決策索引
 
+- 2026-08-08 Calendar W11 schema v4 live Docker/reuse closure：`DOCKER_TEST` 的 sandbox probe-only access
+  denial 由 exact `DOCKER_SHARED_INFRASTRUCTURE_READY` host observation receipt typed supersede；receipt 僅限
+  review，不授權 Docker mutation。另修復健康 runtime reuse 從 optional hashtable key 讀 generation 的
+  StrictMode 例外，並強制 receipt 發布失敗回傳 nonzero。
+
 - 2026-08-08 Calendar W11 caller-bound Automatic review closure：新增 managed operation caller
   participation contract。啟動前 sandbox probe-only access denial 可由 matching host-managed runtime／LINE
   operation receipt typed 地 supersede，保留 audit history；實際 operation participant 仍 fail closed。

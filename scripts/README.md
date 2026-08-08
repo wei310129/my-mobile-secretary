@@ -70,7 +70,8 @@ TDX／Google route query、LINE connectivity 與 Booking availability 是 `READ_
 booking creation、payment、cancellation 與 refund 是獨立 `MUTATION` operation。read-only receipt 不可
 授權任何 mutation，也不可跨 caller 或 worktree 重用。
 
-`dev-start.ps1` 成功發布 runtime generation 後，會為實際 host-managed `RUNTIME_START` 寫入短效
+`dev-start.ps1` 成功發布 runtime generation 後，會先為已驗證 READY 的 Docker/shared infrastructure 寫入
+`DOCKER_SHARED_INFRASTRUCTURE_READY` observation receipt，再為實際 host-managed `RUNTIME_START` 寫入短效
 operation participation receipt；官方 LINE probe 成功時另為 `LINE_CONNECTIVITY_PROBE` 寫入 receipt。
 `dev-status.ps1 -ExternalLineProbe` 只有 probe 成功才寫入 LINE receipt。這些 receipt 使用
 `MMS_MANAGED_OPERATION_V1`，綁定 repo／Git directory／registered worktree／machine alias／capability／
@@ -81,7 +82,11 @@ Automatic review 可用 matching receipt 關閉「只做啟動前 probe、未參
 `PREFLIGHT_CALLER_ACCESS_DENIED` 或 `PREFLIGHT_HOST_READY_CALLER_BLOCKED` 歷史 issue，同時保留 typed
 audit history。實際參與 operation 的 caller 必須由正式 report 標示
 `-Participation OPERATION_PARTICIPANT`，仍須自己的 ready evidence；host receipt 不會授權 sandbox
-mutation，也不能解鎖 `SOURCE_WRITE`、external provider、booking 或 payment。
+mutation，也不能解鎖 `SOURCE_WRITE`、其他 Docker operation、external provider、booking 或 payment。
+
+reuse 既有健康 runtime 時，generation 一律從已原子寫入的 `.dev-state.json` 讀取，不得以 StrictMode
+存取可能不存在的 `$stateUpdates.serviceGeneration`。任何 managed receipt 發布失敗都會保留已健康的
+resource，但 `dev-start.ps1` 必須回傳 nonzero，不能把缺 evidence 的啟動宣稱成功。
 
 一般啟動與重啟會明確關閉 development feed、Dispatcher scheduler 與 Codex CLI adapter；
 目前只啟動 Dispatcher 服務做健康檢查，不會自動開發。當 Dispatcher lane 處於 `STARTING`、

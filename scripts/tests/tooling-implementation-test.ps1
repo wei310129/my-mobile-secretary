@@ -14,6 +14,7 @@ $tests = @(
     'maven-worktree-identity-test.ps1',
     'managed-docker-desktop-test.ps1',
     'service-version-test.ps1',
+    'dev-start-managed-receipt-test.ps1',
     'test-strategy-tools-test.ps1',
     'merge-policy-test.ps1',
     'merge-pr-test.ps1',

@@ -73,10 +73,14 @@ try {
         $snapshot = Invoke-EnvironmentPreflight @arguments -RequireFresh:$RequireFresh -ApplyProcessJava
     }
     if (-not $Async -and -not $snapshot.capability.Ready) {
+        $issueCode="PREFLIGHT_$($snapshot.capability.State)"
+        $managedProbeIssue=$Capability -in @('DEV_RUNTIME','LINE_E2E') -and
+            $issueCode -in @('PREFLIGHT_CALLER_ACCESS_DENIED','PREFLIGHT_HOST_READY_CALLER_BLOCKED')
         $issueArguments = @{
-            Code="PREFLIGHT_$($snapshot.capability.State)";Capability=$Capability
+            Code=$issueCode;Capability=$Capability
             Expected='requested capability is ready for the current caller';Actual=[string]$snapshot.capability.Reason
-            RecheckKind='CAPABILITY';RepoRoot=$repoRoot
+            RecheckKind=if($managedProbeIssue){'MANAGED_OPERATION'}else{'CAPABILITY'}
+            Participation='PROBE_ONLY';RepoRoot=$repoRoot
         }
         if ($StateRoot) { $issueArguments.StateRoot=$StateRoot }
         if ($MachineAlias) { $issueArguments.MachineAlias=$MachineAlias }

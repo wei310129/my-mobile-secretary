@@ -120,6 +120,27 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev-environment-report.ps1 `
 report 會遮蔽 hostname、帳號、absolute path、URL 與 credential-like 值；參數組合不完整、任意 issue
 code、任意 limitation 文字與 mismatched caller evidence 都 fail closed。
 
+### Managed operation caller participation
+
+`DEV_RUNTIME` 與 `LINE_E2E` 額外區分 `PROBE_ONLY` 與 `OPERATION_PARTICIPANT`。sandbox 在啟動前進行
+capability probe，但沒有實際操作 Docker、runtime 或 LINE 時，`PREFLIGHT_CALLER_ACCESS_DENIED`／
+`PREFLIGHT_HOST_READY_CALLER_BLOCKED` 會保留為可稽核的 probe-only issue。其後若正式 managed host lifecycle
+完成同一 registered worktree 的 runtime start 或 LINE connectivity probe，可由短效
+`MMS_MANAGED_OPERATION_V1` receipt 將該 issue typed 地標為 `FIXED`，resolution kind 為
+`MANAGED_OPERATION_SUPERSESSION`；這不是 accepted limitation，也不是 host snapshot 冒充 sandbox readiness。
+
+receipt 綁定 repository、Git directory、registered worktree、machine alias、capability、operation、service
+generation、host operation caller、contract fingerprint、fresh host snapshot sequence、15 分鐘 expiry 與 nonce。
+restart／generation、worktree、capability、operation、contract 或 caller 任一不符即拒絕。receipt 的
+`authorityClass=REVIEW_OBSERVATION_ONLY`，只可用於 Automatic review issue resolution，不授權
+`SOURCE_WRITE`、external provider query、Calendar／Booking mutation、payment、cancellation 或 refund。
+
+若 caller 實際參與 resource operation，正式 report 必須使用
+`-Participation OPERATION_PARTICIPANT -RecheckKind MANAGED_OPERATION`；該 issue 仍要求 matching caller
+ready evidence，不能被另一 caller 的 managed receipt 關閉。舊 schema 的 typed `PREFLIGHT_*` issue 只在上述
+兩個 access-denied code 與 capability/operation 完全匹配時視為 probe-only，resolution 後仍保留原始 caller、
+occurrence 與 observation contract 供稽核。
+
 Calendar W10 closure 使用 `Manual` review；Calendar W11 起每個 major release／wheel closure 使用
 `Automatic` review，缺少新鮮、零 open blocker 且 contract fingerprint 相符的 evidence 就不得標
 `PASS`／`MERGED`：

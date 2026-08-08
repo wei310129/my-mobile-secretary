@@ -49,5 +49,12 @@ try{
     $serialized=$privacy.Output
     Assert-ReportTest (-not $serialized.Contains($repoRoot) -and -not $serialized.Contains([Environment]::UserName) -and -not $serialized.Contains([Environment]::MachineName)) 'report leaked private local identity'
     Assert-ReportTest (-not $serialized.Contains('secret-value')) 'report leaked credential-like content'
+    $participant=Invoke-Report @('-Code','PREFLIGHT_CALLER_ACCESS_DENIED','-Capability','DEV_RUNTIME','-Expected','host operation',
+        '-Actual','caller denied','-RecheckKind','MANAGED_OPERATION','-Participation','OPERATION_PARTICIPANT',
+        '-StateRoot',$stateRoot,'-MachineAlias','test-laptop','-Json')
+    Assert-ReportTest ($participant.ExitCode -eq 0) 'operation-participant issue report failed'
+    $participantIssue=$participant.Output|ConvertFrom-Json
+    Assert-ReportTest ($participantIssue.participation -eq 'OPERATION_PARTICIPANT' -and $participantIssue.recheckKind -eq 'MANAGED_OPERATION') `
+        'formal report did not preserve typed caller participation'
     [pscustomobject]@{status='passed';assertions=$assertions}|ConvertTo-Json -Compress
 }finally{if(Test-Path -LiteralPath $stateRoot){Remove-Item -LiteralPath $stateRoot -Recurse -Force}}

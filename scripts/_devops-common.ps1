@@ -15,6 +15,7 @@ $DispatcherComposeFile = Join-Path $DispatcherRoot "compose.yaml"
 . "$PSScriptRoot\docker-shared-infrastructure.ps1"
 . "$PSScriptRoot\managed-process-lifecycle.ps1"
 . "$PSScriptRoot\managed-docker-desktop.ps1"
+. "$PSScriptRoot\environment-common.ps1"
 
 function Write-DevProgress {
     param(

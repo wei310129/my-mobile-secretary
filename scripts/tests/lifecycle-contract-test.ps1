@@ -28,10 +28,15 @@ Assert-LifecycleTest $outsideRejected 'generation cleanup accepted a path outsid
 $startText = Get-Content -LiteralPath (Join-Path $scriptsRoot 'dev-start.ps1') -Raw -Encoding UTF8
 $lineFailure = $startText.IndexOf('if (-not $lineWebhookReady) { exit 1 }', [StringComparison]::Ordinal)
 $stateWrite = $startText.IndexOf('$stateUpdates = @{', [StringComparison]::Ordinal)
+$durableStateWrite = $startText.IndexOf('Write-DevState -Updates $stateUpdates', [StringComparison]::Ordinal)
 Assert-LifecycleTest ($lineFailure -ge 0 -and $stateWrite -gt $lineFailure) 'dev-start writes healthy state before final LINE failure gate'
 Assert-LifecycleTest ($startText.Contains('Remove-DevServiceGenerationIfUnpublished -Generation $script:StartServiceGeneration')) 'dev-start lacks unpublished generation rollback'
 Assert-LifecycleTest ($startText.Contains('$script:StartServiceGenerationPublished = $false')) 'dev-start lacks unpublished generation default'
 Assert-LifecycleTest ($startText.Contains('$previousState.PSObject.Properties[''dispatcherPid'']')) 'dev-start does not handle an absent Dispatcher state field under strict mode'
+Assert-LifecycleTest ($durableStateWrite -gt $stateWrite -and $startText.IndexOf('Publish-EnvironmentManagedOperationReceipt -Capability DEV_RUNTIME',[StringComparison]::Ordinal) -gt $durableStateWrite) 'dev-start publishes runtime participation before durable generation state'
+Assert-LifecycleTest ($startText.Contains('Publish-EnvironmentManagedOperationReceipt -Capability LINE_E2E')) 'dev-start does not publish successful LINE operation participation'
+$statusText=Get-Content -LiteralPath (Join-Path $scriptsRoot 'dev-status.ps1') -Raw -Encoding UTF8
+Assert-LifecycleTest ($statusText.Contains('Publish-EnvironmentManagedOperationReceipt -Capability LINE_E2E')) 'explicit LINE status probe does not publish managed operation participation'
 
 foreach ($name in @('dev-start.ps1','dev-restart.ps1','dev-stop.ps1')) {
     $text = Get-Content -LiteralPath (Join-Path $scriptsRoot $name) -Raw -Encoding UTF8
@@ -43,4 +48,4 @@ Assert-LifecycleTest ($restartText -notmatch '(?im)dev-stop\.ps1[^\r\n]*-Docker'
 Assert-LifecycleTest ($restartText.Contains('$startParameters["NoNgrok"] = $true')) 'restart cannot preserve a local-only NoNgrok decision'
 Assert-LifecycleTest ($restartText.Contains('Get-SafeChildExitCode')) 'restart reads an unset LASTEXITCODE under strict mode'
 
-[pscustomobject]@{status='passed';assertions=13;generationRollback='verified';sharedDockerLifecycle='no direct compose mutation'} | ConvertTo-Json -Compress
+[pscustomobject]@{status='passed';assertions=16;generationRollback='verified';sharedDockerLifecycle='no direct compose mutation'} | ConvertTo-Json -Compress

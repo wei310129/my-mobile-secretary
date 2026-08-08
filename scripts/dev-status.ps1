@@ -165,6 +165,10 @@ if ($lineProbeStatus.Required) {
     $lineTest = $lineProbeStatus.Result
     if ($lineTest.Success) {
         Add-StatusDetail -Message "LINE webhook:   connected (LINE -> ngrok -> Spring Boot)" -ForegroundColor Green
+        $probeGeneration=[string](Get-DevStateValue -State $state -Name 'serviceGeneration')
+        if([string]::IsNullOrWhiteSpace($probeGeneration)){throw 'LINE managed operation completed without a service generation fence'}
+        Publish-EnvironmentManagedOperationReceipt -Capability LINE_E2E -Operation LINE_CONNECTIVITY_PROBE `
+            -Generation $probeGeneration -RepoRoot $RepoRoot|Out-Null
     } else {
         Add-StatusDetail -Message "LINE webhook:   disconnected" -ForegroundColor Red
         if ($lineTest.Reason) { Add-StatusDetail -Message "  reason:       $($lineTest.Reason)" -ForegroundColor Yellow }

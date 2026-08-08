@@ -15,6 +15,13 @@
 
 ## 已觀察案例與決策索引
 
+- 2026-08-08 Calendar W11 caller-bound Automatic review closure：新增 managed operation caller
+  participation contract。啟動前 sandbox probe-only access denial 可由 matching host-managed runtime／LINE
+  operation receipt typed 地 supersede，保留 audit history；實際 operation participant 仍 fail closed。
+  receipt 綁定 repo、Git directory、registered worktree、machine alias、capability、operation、generation、
+  caller、contract、freshness 與 nonce，authority 僅限 review observation，不擴張 provider／booking／payment
+  或 mutation 權限。
+
 - 2026-08-07 Calendar W11 Automatic environment review closure：以 production-content fingerprint 取代
   DIRTY allowlist；snapshot／issue 綁 caller、capability 與 registered worktree；正式 issue lifecycle
   支援 `OPEN`、`FIXED`、`RESOLVED_BY_PROJECT_EVOLUTION`、`ACCEPTED_LIMITATION`；外部 provider 改用

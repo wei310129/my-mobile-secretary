@@ -145,6 +145,15 @@ ready evidence，不能被另一 caller 的 managed receipt 關閉。舊 schema 
 兩個 access-denied code 與 capability/operation 完全匹配時視為 probe-only，resolution 後仍保留原始 caller、
 occurrence 與 observation contract 供稽核。
 
+若 canonical probe-only issue 已由 managed supersession 標為 `FIXED`，但該 evidence 綁定較舊的
+contract／service generation，Automatic review 只可在 retained historical receipt、舊 resolution evidence
+與 canonical typed identity 全部通過歷史 authority validator 後，以本輪 fresh matching receipt 續期。
+續期會原子更新 current contract／generation／receipt evidence，保留
+`observationContractFingerprint` 與 managed resolution history；不刪歷史 receipt。同一 current receipt
+立即重跑是 no-op。舊 evidence 或新 receipt 的 repo、worktree、machine、caller、capability、operation、
+generation、contract、snapshot、freshness、authority class 任一不符，或 issue 不是核准 code／
+`PROBE_ONLY`，都維持 fail closed。
+
 Calendar W10 closure 使用 `Manual` review；Calendar W11 起每個 major release／wheel closure 使用
 `Automatic` review，缺少新鮮、零 open blocker 且 contract fingerprint 相符的 evidence 就不得標
 `PASS`／`MERGED`：

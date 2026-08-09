@@ -84,6 +84,12 @@ audit history。實際參與 operation 的 caller 必須由正式 report 標示
 `-Participation OPERATION_PARTICIPANT`，仍須自己的 ready evidence；host receipt 不會授權 sandbox
 mutation，也不能解鎖 `SOURCE_WRITE`、其他 Docker operation、external provider、booking 或 payment。
 
+同一 canonical issue 若已有舊 contract／generation 的 `FIXED` managed supersession，review 不會把它
+當成任意可覆寫資料。只有 retained historical receipt 與舊 typed evidence 先通過 repo／worktree／machine／
+caller／capability／operation／snapshot／authority validator，再由 current fresh receipt 通過完整 fence，
+才會原子續期 current evidence。原始 observation contract、resolution lineage 與歷史 receipt 都保留；
+同一 current receipt 重跑不重寫 ledger。tampered evidence、participant 或未核准 issue code 一律 fail closed。
+
 reuse 既有健康 runtime 時，generation 一律從已原子寫入的 `.dev-state.json` 讀取，不得以 StrictMode
 存取可能不存在的 `$stateUpdates.serviceGeneration`。任何 managed receipt 發布失敗都會保留已健康的
 resource，但 `dev-start.ps1` 必須回傳 nonzero，不能把缺 evidence 的啟動宣稱成功。

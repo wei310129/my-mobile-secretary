@@ -1162,6 +1162,96 @@ function Write-EnvironmentIssue {
     return [pscustomobject]$issue
 }
 
+function Test-EnvironmentHistoricalManagedOperationResolutionEvidence {
+    param(
+        [Parameter(Mandatory)]$Issue,
+        [Parameter(Mandatory)]$Context,
+        [string]$RepoRoot=(Split-Path -Parent $PSScriptRoot)
+    )
+    try {
+        foreach($property in @('schemaVersion','fingerprint','code','capability','repoId','worktreeId','callerKind',
+                'contractFingerprint','observationContractFingerprint','recheckKind','participation','status','resolutionEvidence')){
+            if(-not $Issue.PSObject.Properties[$property]){throw 'historical managed issue is missing required typed identity or audit fields'}
+        }
+        if([int]$Issue.schemaVersion -ne $script:EnvironmentSchemaVersion -or $Issue.status -ne 'FIXED' -or
+                $Issue.participation -ne 'PROBE_ONLY' -or $Issue.recheckKind -ne 'MANAGED_OPERATION'){
+            throw 'historical managed issue status, participation, or recheck kind is invalid'
+        }
+        if($Issue.code -notin @('PREFLIGHT_CALLER_ACCESS_DENIED','PREFLIGHT_HOST_READY_CALLER_BLOCKED') -or
+                -not $script:ManagedOperationCapabilities.ContainsKey([string]$Issue.capability)){
+            throw 'historical managed issue code or capability is not approved for supersession renewal'
+        }
+        $expectedFingerprint=Get-EnvironmentIssueFingerprint -Code $Issue.code -Capability $Issue.capability `
+            -CallerKind $Issue.callerKind -WorktreeId $Context.WorktreeId
+        if($Issue.fingerprint -ne $expectedFingerprint -or $Issue.repoId -ne $Context.RepoId -or
+                $Issue.worktreeId -ne $Context.WorktreeId){throw 'historical managed issue identity does not match its canonical ledger identity'}
+        if($Issue.contractFingerprint -notmatch '^[0-9a-f]{24}$' -or
+                $Issue.observationContractFingerprint -notmatch '^[0-9a-f]{24}$'){
+            throw 'historical managed issue contract lineage is invalid'
+        }
+
+        $evidence=$Issue.resolutionEvidence
+        foreach($property in @('kind','resolutionKind','resolvedAt','callerKind','issueCallerKind','operationCallerKind',
+                'capability','operation','generation','worktreeId','contractFingerprint','snapshotSequence','state',
+                'receiptFingerprint','authorityClass')){
+            if(-not $evidence.PSObject.Properties[$property]){throw 'historical managed resolution evidence is missing required authority fields'}
+        }
+        $operation=$script:ManagedOperationCapabilities[[string]$Issue.capability]
+        if($evidence.kind -ne 'FIXED' -or $evidence.resolutionKind -ne 'MANAGED_OPERATION_SUPERSESSION' -or
+                $evidence.callerKind -ne $Issue.callerKind -or $evidence.issueCallerKind -ne $Issue.callerKind -or
+                $evidence.operationCallerKind -ne 'host' -or $evidence.capability -ne $Issue.capability -or
+                $evidence.operation -ne $operation -or $evidence.generation -notmatch '^[A-Za-z0-9._-]{1,128}$' -or
+                $evidence.worktreeId -ne $Context.WorktreeId -or $evidence.contractFingerprint -ne $Issue.contractFingerprint -or
+                [long]$evidence.snapshotSequence -le 0 -or $evidence.state -ne 'MATCH' -or
+                $evidence.receiptFingerprint -notmatch '^[0-9a-f]{64}$' -or
+                $evidence.authorityClass -ne 'REVIEW_OBSERVATION_ONLY'){
+            throw 'historical managed resolution evidence violates its typed authority boundary'
+        }
+        $resolvedAt=[DateTimeOffset]::Parse([string]$evidence.resolvedAt)
+        if($resolvedAt -gt [DateTimeOffset]::UtcNow.AddMinutes(2)){throw 'historical managed resolution timestamp is invalid'}
+        if(-not(Test-Path -LiteralPath $Context.ManagedOperationReceiptsPath -PathType Container)){
+            throw 'historical managed operation receipt ledger is missing'
+        }
+
+        $matchingReceipt=$null
+        foreach($file in @(Get-ChildItem -LiteralPath $Context.ManagedOperationReceiptsPath -Filter *.json -File)){
+            $candidate=Read-EnvironmentJson -Path $file.FullName
+            if(-not $candidate -or -not $candidate.PSObject.Properties['receiptFingerprint'] -or
+                    $candidate.receiptFingerprint -ne $evidence.receiptFingerprint){continue}
+            foreach($property in @('schemaVersion','issuer','issuedAt','expiresAt','repoId','worktreeId','gitDirectoryId',
+                    'machineAlias','capability','operation','generation','operationCallerKind','contractFingerprint',
+                    'snapshotSequence','nonce','authorityClass','receiptFingerprint')){
+                if(-not $candidate.PSObject.Properties[$property]){throw 'historical managed operation receipt is missing required authority fields'}
+            }
+            $issued=[DateTimeOffset]::Parse([string]$candidate.issuedAt)
+            $expires=[DateTimeOffset]::Parse([string]$candidate.expiresAt)
+            if([int]$candidate.schemaVersion -ne $script:EnvironmentSchemaVersion -or
+                    $candidate.issuer -ne $script:ManagedOperationIssuer -or
+                    $candidate.nonce -notmatch '^[0-9a-f]{32}$' -or
+                    [IO.Path]::GetFileNameWithoutExtension($file.FullName) -ne $candidate.nonce -or
+                    $expires -le $issued -or $expires -gt $issued.AddMinutes(15) -or
+                    $issued -gt [DateTimeOffset]::UtcNow.AddMinutes(2) -or
+                    $resolvedAt -lt $issued.AddMinutes(-2) -or $resolvedAt -gt $expires.AddMinutes(2) -or
+                    $candidate.repoId -ne $Context.RepoId -or $candidate.worktreeId -ne $Context.WorktreeId -or
+                    $candidate.gitDirectoryId -ne $Context.GitDirectoryId -or $candidate.machineAlias -ne $Context.MachineAlias -or
+                    $candidate.capability -ne $Issue.capability -or $candidate.operation -ne $operation -or
+                    $candidate.generation -ne $evidence.generation -or $candidate.operationCallerKind -ne 'host' -or
+                    $candidate.contractFingerprint -ne $evidence.contractFingerprint -or
+                    [long]$candidate.snapshotSequence -ne [long]$evidence.snapshotSequence -or
+                    $candidate.authorityClass -ne 'REVIEW_OBSERVATION_ONLY' -or
+                    $candidate.receiptFingerprint -ne (Get-EnvironmentManagedOperationFingerprint -Receipt $candidate)){
+                throw 'historical managed operation receipt violates its typed authority boundary'
+            }
+            $matchingReceipt=$candidate
+            break
+        }
+        if(-not $matchingReceipt){throw 'matching historical managed operation receipt does not exist'}
+        return [pscustomobject]@{Ready=$true;Reason=$null;Receipt=$matchingReceipt}
+    } catch {
+        return [pscustomobject]@{Ready=$false;Reason=$_.Exception.Message;Receipt=$null}
+    }
+}
+
 function Resolve-EnvironmentIssueByManagedOperation {
     param(
         [Parameter(Mandatory)]$Issue,[Parameter(Mandatory)][string]$ReceiptPath,[Parameter(Mandatory)][string]$Generation,
@@ -1180,6 +1270,12 @@ function Resolve-EnvironmentIssueByManagedOperation {
         -Generation $Generation -RepoRoot $RepoRoot -StateRoot $StateRoot -MachineAlias $context.MachineAlias
     if(-not $validation.Ready){throw "managed operation receipt was rejected: $($validation.Reason)"}
     if(-not $persisted){throw 'matching OPEN typed environment issue does not exist'}
+    if($persisted.fingerprint -ne $expectedFingerprint -or $persisted.code -ne $Issue.code -or
+            $persisted.capability -ne $Issue.capability -or $persisted.callerKind -ne $Issue.callerKind -or
+            $persisted.repoId -ne $context.RepoId -or $persisted.worktreeId -ne $context.WorktreeId){
+        throw 'canonical managed operation issue identity does not match the requested typed issue'
+    }
+    $historicalEvidence=$null
     if($persisted.status -ne 'OPEN'){
         $evidence=if($persisted.PSObject.Properties['resolutionEvidence']){$persisted.resolutionEvidence}else{$null}
         $alreadyResolved=$persisted.status -eq 'FIXED' -and $evidence -and
@@ -1189,10 +1285,28 @@ function Resolve-EnvironmentIssueByManagedOperation {
             $evidence.receiptFingerprint -eq $validation.ReceiptFingerprint -and
             [long]$evidence.snapshotSequence -eq [long]$validation.Receipt.snapshotSequence
         if($alreadyResolved){return $persisted}
-        throw 'matching OPEN typed environment issue does not exist'
+        $historicalValidation=Test-EnvironmentHistoricalManagedOperationResolutionEvidence -Issue $persisted `
+            -Context $context -RepoRoot $RepoRoot
+        if(-not $historicalValidation.Ready){
+            throw "historical managed operation resolution evidence was rejected: $($historicalValidation.Reason)"
+        }
+        if($persisted.contractFingerprint -eq (Get-EnvironmentContract -RepoRoot $RepoRoot).Fingerprint){
+            throw 'historical managed operation renewal requires a changed current contract'
+        }
+        $historicalEvidence=$evidence
     }
     $contract=Get-EnvironmentContract -RepoRoot $RepoRoot;$now=[DateTimeOffset]::UtcNow.ToString('o')
     $originalContract=[string]$persisted.contractFingerprint
+    if($historicalEvidence){
+        $history=[Collections.Generic.List[object]]::new()
+        if($persisted.PSObject.Properties['managedOperationResolutionHistory']){
+            foreach($entry in @($persisted.managedOperationResolutionHistory)){$history.Add($entry)}
+        }
+        if(@($history|Where-Object{$_.receiptFingerprint -eq $historicalEvidence.receiptFingerprint}).Count -eq 0){
+            $history.Add($historicalEvidence)
+        }
+        $persisted|Add-Member -NotePropertyName managedOperationResolutionHistory -NotePropertyValue @($history) -Force
+    }
     $persisted.schemaVersion=$script:EnvironmentSchemaVersion
     if(-not $persisted.PSObject.Properties['observationContractFingerprint']){$persisted|Add-Member -NotePropertyName observationContractFingerprint -NotePropertyValue $originalContract}
     $persisted.contractFingerprint=$contract.Fingerprint;$persisted.participation='PROBE_ONLY';$persisted.recheckKind='MANAGED_OPERATION'
@@ -1204,6 +1318,12 @@ function Resolve-EnvironmentIssueByManagedOperation {
         worktreeId=$context.WorktreeId;contractFingerprint=$contract.Fingerprint
         snapshotSequence=[long]$validation.Receipt.snapshotSequence;state='MATCH';receiptFingerprint=$validation.ReceiptFingerprint
         authorityClass='REVIEW_OBSERVATION_ONLY'
+    }
+    if($historicalEvidence){
+        $persisted.resolutionEvidence|Add-Member -NotePropertyName supersedesReceiptFingerprint `
+            -NotePropertyValue ([string]$historicalEvidence.receiptFingerprint)
+        $persisted.resolutionEvidence|Add-Member -NotePropertyName supersedesContractFingerprint `
+            -NotePropertyValue ([string]$historicalEvidence.contractFingerprint)
     }
     Write-CoordinationJsonAtomic -Path $path -Document $persisted
     return $persisted

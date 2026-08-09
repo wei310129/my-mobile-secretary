@@ -60,11 +60,7 @@ $currentContract = Get-EnvironmentContract -RepoRoot $targetIdentity.Path
 $currentCallerKind = (Get-EnvironmentCallerContext).Kind
 $activeServiceGeneration = Get-EnvironmentActiveServiceGeneration -RepoRoot $targetIdentity.Path
 $issueReviews = [Collections.Generic.List[object]]::new()
-if (Test-Path -LiteralPath $context.IssuesPath -PathType Container) {
-    foreach ($file in @(Get-ChildItem -LiteralPath $context.IssuesPath -Filter *.json -File)) {
-        $issue = Read-EnvironmentJson -Path $file.FullName
-        if(-not $issue.PSObject.Properties['worktreeId'] -or $issue.worktreeId -ne $targetIdentity.WorktreeId){continue}
-        if($capabilityNames -notcontains [string]$issue.capability){continue}
+foreach ($issue in @(Get-EnvironmentIssueLedgerItems -Context $context -WorktreeId $targetIdentity.WorktreeId -Capability @($capabilityNames))) {
         $current = if ($issue.callerKind -eq $currentCallerKind) {
             @($results | Where-Object { $_.requestedCapability -eq $issue.capability } | Select-Object -First 1)
         } else {
@@ -113,7 +109,6 @@ if (Test-Path -LiteralPath $context.IssuesPath -PathType Container) {
             classification=$classification; participation=$participation; lastSeen=$issue.lastSeen
             evidence=if($classification -eq 'ACCEPTED_LIMITATION'){$issue.resolutionEvidence}elseif($managedEvidence){[ordered]@{kind='MANAGED_OPERATION_SUPERSESSION';operationCaller='host';issueCaller=$issue.callerKind;capability=$issue.capability;generation=$activeServiceGeneration;receiptFingerprint=$managedEvidence.Validation.ReceiptFingerprint}}elseif($current.Count -gt 0){$current[0].capability.State}else{"matching $($issue.callerKind) caller recheck required"}
         })
-    }
 }
 $openCapabilities = @($results | Where-Object { -not $_.capability.Ready })
 $openIssues = @($issueReviews | Where-Object { $_.classification -eq 'OPEN' })

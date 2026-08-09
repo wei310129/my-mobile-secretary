@@ -29,6 +29,14 @@
 
 ## 待處理
 
+- Codex host execution policy目前會拒絕 linked worktree 的精確低風險 `git fetch origin main` escalation，
+  因普通 sandbox無權寫 Git common-dir 的 `worktrees/<id>/FETCH_HEAD`，而 auto-review又禁止所有
+  `require_escalated`。此項已判定由 host policy owner負責；repo-local prefix rule無法同時表達 exact argv
+  termination、registered worktree／repo identity、immutable configured remote URL與 metadata-only write set，
+  且不得以wrapper或間接shell繞過。最小權限contract、policy-owner prompt及allow/deny acceptance matrix見
+  `docs/exec-plans/active/codex-git-fetch-execution-policy-follow-up.md`。完成host實作及Windows primary／linked
+  worktree矩陣前，本項維持待處理。
+
 - Producer handoff automation v1 已有獨立 tooling implementation，但在 laptop-owned coordination PR
   發布 `TR-DESKTOP-ROUTE-BENCHMARK-START` live contract、完成 GitHub App/environment 設定、dry-run、
   真實 state-only PR／Issue receipt 與 desktop fetch/ACK 前，不得視為完成或移除此項。Tooling branch

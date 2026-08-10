@@ -44,6 +44,15 @@
 
 ## 已觀察案例與決策索引
 
+- 2026-08-10 managed runtime false-success／orphan closure：Windows／WSL caller下的一般 `Start-Process`
+  child可能在父tool返回時被job回收，而舊 `dev-start` 仍在banner或曾健康後發布成功。managed launcher現以
+  Windows job breakaway＋handle allowlist啟動，只繼承worktree內的log handles；Spring Boot與ngrok都必須
+  通過exact PID／start time／command／worktree／generation ownership、bounded readiness、receipt publication
+  boundary及state publication後recheck，任一失敗即nonzero、revoke receipt並rollback本輪owned children/state。
+  status將 `CALLER_ACCESS_DENIED`、`UNKNOWN`、`DOWN` 分開；無ACTIVE operation但exact receipt仍成立時只發
+  30秒、component-scoped、single-use orphan stop authority。wrong PID/start/worktree/generation、competing owner、
+  expired/replayed authority均fail closed；正常stop使用exact descendant tree，不以taskkill作成功路徑。
+
 - 2026-08-08 Calendar W11 schema v4 live Docker/reuse closure：`DOCKER_TEST` 的 sandbox probe-only access
   denial 由 exact `DOCKER_SHARED_INFRASTRUCTURE_READY` host observation receipt typed supersede；receipt 僅限
   review，不授權 Docker mutation。另修復健康 runtime reuse 從 optional hashtable key 讀 generation 的

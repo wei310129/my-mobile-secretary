@@ -48,12 +48,13 @@ function Get-DevStateValue {
 
 $allHealthy = $true
 $mainSharedStatus = Get-SharedInfrastructureStatus -Name @('main-postgres','main-redis') -DockerStabilityWindowSeconds 1
-$dockerAvailable = $mainSharedStatus.Readiness -and $mainSharedStatus.Readiness.Outcome -eq 'READY'
+$infrastructureObservation = Get-DevInfrastructureObservation -Result $mainSharedStatus
+$dockerAvailable = $infrastructureObservation.State -eq 'UP'
 $sharedEntries = @{}
 foreach ($entry in @($mainSharedStatus.Containers)) { $sharedEntries[$entry.Contract.Name] = $entry }
 $dockerClassification = if ($mainSharedStatus.Classification) { $mainSharedStatus.Classification } else { 'DAEMON_NOT_READY' }
 if (-not $dockerAvailable) {
-    Add-StatusDetail -Message "Docker:         not ready ($dockerClassification)" -ForegroundColor Yellow
+    Add-StatusDetail -Message "Docker:         $($infrastructureObservation.State) ($dockerClassification)" -ForegroundColor Yellow
 }
 $checkoutVersion = Get-CheckoutServiceVersion
 $runningVersion = $null
@@ -64,17 +65,27 @@ $pgEntry = $sharedEntries['main-postgres']
 $redisEntry = $sharedEntries['main-redis']
 $pgStatus = if ($dockerAvailable -and $pgEntry) { $pgEntry.Health } else { $null }
 $redisStatus = if ($dockerAvailable -and $redisEntry) { $redisEntry.Health } else { $null }
-$pgDisplay = if ($pgStatus) { $pgStatus } else { "not running" }
-$redisDisplay = if ($redisStatus) { $redisStatus } else { "not running" }
+$pgDisplay = if ($pgStatus) { $pgStatus } elseif ($infrastructureObservation.State -eq 'DOWN') { 'not running (DOWN)' } else { $infrastructureObservation.State }
+$redisDisplay = if ($redisStatus) { $redisStatus } elseif ($infrastructureObservation.State -eq 'DOWN') { 'not running (DOWN)' } else { $infrastructureObservation.State }
 Add-StatusDetail -Message "Postgres:       $pgDisplay"
 Add-StatusDetail -Message "Redis:          $redisDisplay"
 if ($pgStatus -ne "healthy" -or $redisStatus -ne "healthy") { $allHealthy = $false }
 
-# Required main application.
-$appPortPid = Get-PortOwnerPid -Port $AppPort
-if ($appPortPid) {
+# Required main application. The durable launcher PID is authoritative; a port owner can be its Java child.
+$trackedAppPid = Get-DevStateValue -State $state -Name 'springBootPid'
+$appQuery = if ($trackedAppPid) { Get-ManagedProcessQueryResult -ProcessId ([int]$trackedAppPid) } else { $null }
+$appObservation = if ($trackedAppPid) {
+    Get-ManagedProcessObservation -QueryResult $appQuery
+} else {
+    $portObservation = Get-DevPortObservation -Port $AppPort
+    if ($portObservation.State -eq 'DOWN') { [pscustomobject]@{State='DOWN';ReasonCode='NO_TRACKED_PROCESS_OR_LISTENER'} }
+    elseif ($portObservation.State -eq 'CALLER_ACCESS_DENIED') { [pscustomobject]@{State='CALLER_ACCESS_DENIED';ReasonCode=$portObservation.ReasonCode} }
+    else { [pscustomobject]@{State='UNKNOWN';ReasonCode='UNTRACKED_OR_UNOBSERVABLE_LISTENER'} }
+}
+if ($appObservation.State -eq 'UP') {
+    $appPortPid = [int]$trackedAppPid
     $health = try { (Invoke-RestMethod -Uri "http://localhost:$AppPort/actuator/health" -TimeoutSec 3).status } catch { "no response" }
-    $managed = Test-ManagedProcess -ProcessId $appPortPid -Kind "SpringBoot"
+    $managed = try { Test-ManagedProcessCommand -Snapshot $appQuery.Snapshot -Worktree $RepoRoot -Component SpringBoot -ExactActiveCoordinationProof } catch { $false }
     $runningVersion = Get-RunningServiceVersion
     $runtimeIdentity = Get-DevStateValue -State $state -Name 'runtimeContentIdentity'
     $runningVersion = Set-ServiceVersionContentIdentity -Version $runningVersion -Identity $runtimeIdentity
@@ -96,8 +107,14 @@ if ($appPortPid) {
         Add-StatusDetail -Message "  version error:   $($runningVersion.Error)" -ForegroundColor Yellow
     }
     if ($health -ne "UP" -or -not $managed -or -not $verifiedSource) { $allHealthy = $false }
+    $springOwnership = Get-ManagedOrphanDiagnosis -Worktree $RepoRoot -Component SpringBoot -State $state
+    if ($springOwnership.Classification -like 'ORPHAN_*') {
+        Add-StatusDetail -Message "  ownership:      $($springOwnership.Classification) ($($springOwnership.ReasonCode))" -ForegroundColor Yellow
+        if ($springOwnership.Classification -ne 'ORPHAN_EXACT_RECONCILABLE') { $allHealthy = $false }
+    }
 } else {
-    Add-StatusDetail -Message "Spring Boot:    not running" -ForegroundColor DarkGray
+    $springDisplay = if ($appObservation.State -eq 'DOWN') { 'not running (DOWN)' } else { $appObservation.State }
+    Add-StatusDetail -Message "Spring Boot:    $springDisplay" -ForegroundColor $(if($appObservation.State -eq 'DOWN'){'DarkGray'}else{'Yellow'})
     $allHealthy = $false
 }
 $checkoutLabel = if ($checkoutVersion.Available) { $checkoutVersion.VersionLabel } else { "unavailable" }
@@ -148,14 +165,30 @@ if ($RequireDispatcher -and (-not $dispatcherDbHealthy -or -not $dispatcherHealt
     $allHealthy = $false
 }
 
-# ngrok requirement is controlled independently.
-$ngrokPortPid = Get-PortOwnerPid -Port $NgrokApiPort
-if ($ngrokPortPid) {
+# ngrok requirement is controlled independently and uses the durable tracked PID.
+$trackedNgrokPid = Get-DevStateValue -State $state -Name 'ngrokPid'
+$ngrokQuery = if ($trackedNgrokPid) { Get-ManagedProcessQueryResult -ProcessId ([int]$trackedNgrokPid) } else { $null }
+$ngrokObservation = if ($trackedNgrokPid) {
+    Get-ManagedProcessObservation -QueryResult $ngrokQuery
+} else {
+    $ngrokPortObservation = Get-DevPortObservation -Port $NgrokApiPort
+    if ($ngrokPortObservation.State -eq 'DOWN') { [pscustomobject]@{State='DOWN'} }
+    elseif ($ngrokPortObservation.State -eq 'CALLER_ACCESS_DENIED') { [pscustomobject]@{State='CALLER_ACCESS_DENIED'} }
+    else { [pscustomobject]@{State='UNKNOWN'} }
+}
+if ($ngrokObservation.State -eq 'UP') {
+    $ngrokPortPid = [int]$trackedNgrokPid
     $url = Get-NgrokPublicUrl -TimeoutSec 5
     Add-StatusDetail -Message "ngrok:          running (PID $ngrokPortPid)" -ForegroundColor Green
-    if ($url) { Add-StatusDetail -Message "  webhook:      $url/api/line/webhook" }
+    if ($url) { Add-StatusDetail -Message "  webhook:      configured HTTPS tunnel (endpoint redacted)" }
+    $ngrokOwnership = Get-ManagedOrphanDiagnosis -Worktree $RepoRoot -Component Ngrok -State $state
+    if ($ngrokOwnership.Classification -like 'ORPHAN_*') {
+        Add-StatusDetail -Message "  ownership:     $($ngrokOwnership.Classification) ($($ngrokOwnership.ReasonCode))" -ForegroundColor Yellow
+        if ($ngrokOwnership.Classification -ne 'ORPHAN_EXACT_RECONCILABLE') { $allHealthy = $false }
+    }
 } else {
-    Add-StatusDetail -Message "ngrok:          not running" -ForegroundColor DarkGray
+    $ngrokDisplay = if ($ngrokObservation.State -eq 'DOWN') { 'not running (DOWN)' } else { $ngrokObservation.State }
+    Add-StatusDetail -Message "ngrok:          $ngrokDisplay" -ForegroundColor $(if($ngrokObservation.State -eq 'DOWN'){'DarkGray'}else{'Yellow'})
     if (-not $NoNgrokRequired) { $allHealthy = $false }
 }
 

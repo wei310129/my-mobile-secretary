@@ -47,7 +47,8 @@ $dispatcherResult = Invoke-ManagedComponentStop -Worktree $RepoRoot -Component D
     if ($laneSnapshot.ActiveRunId) {
         throw "Dispatcher lane is $($laneSnapshot.State) with active run $($laneSnapshot.ActiveRunId); stop refused."
     }
-    Stop-ProcessTree -ProcessId $proof.ProcessId -Label $proof.Definition.Label -Port $proof.Definition.Port
+    Stop-ManagedExactProcessTree -RootProcessId $proof.ProcessId -ExpectedPort $proof.Definition.Port `
+        -PortObservationAdapter { param($port) Get-DevPortObservation -Port $port }
 }
 if ($dispatcherResult.Outcome -ne 'READY') { throw $dispatcherResult.Reason }
 if ($dispatcherResult.Disposition -eq 'ALREADY_STOPPED') {
@@ -57,7 +58,8 @@ if ($dispatcherResult.Disposition -eq 'ALREADY_STOPPED') {
 
 $springResult = Invoke-ManagedComponentStop -Worktree $RepoRoot -Component SpringBoot -StopAdapter {
     param($proof)
-    Stop-ProcessTree -ProcessId $proof.ProcessId -Label $proof.Definition.Label -Port $proof.Definition.Port
+    Stop-ManagedExactProcessTree -RootProcessId $proof.ProcessId -ExpectedPort $proof.Definition.Port `
+        -PortObservationAdapter { param($port) Get-DevPortObservation -Port $port }
 }
 if ($springResult.Outcome -ne 'READY') { throw $springResult.Reason }
 if ($springResult.Disposition -eq 'ALREADY_STOPPED') {
@@ -67,7 +69,8 @@ if ($springResult.Disposition -eq 'ALREADY_STOPPED') {
 
 $ngrokResult = Invoke-ManagedComponentStop -Worktree $RepoRoot -Component Ngrok -StopAdapter {
     param($proof)
-    Stop-ProcessTree -ProcessId $proof.ProcessId -Label $proof.Definition.Label -Port $proof.Definition.Port
+    Stop-ManagedExactProcessTree -RootProcessId $proof.ProcessId -ExpectedPort $proof.Definition.Port `
+        -PortObservationAdapter { param($port) Get-DevPortObservation -Port $port }
 }
 if ($ngrokResult.Outcome -ne 'READY') { throw $ngrokResult.Reason }
 if ($ngrokResult.Disposition -eq 'ALREADY_STOPPED') {
@@ -92,4 +95,3 @@ $lifecycleOutcome = 'READY'
 } finally {
     Exit-DevLifecycleCoordination -Operation $lifecycleLease -Action stop -Outcome $lifecycleOutcome
 }
-

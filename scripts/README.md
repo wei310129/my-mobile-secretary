@@ -34,6 +34,9 @@ powershell -ExecutionPolicy Bypass -File .\scripts\dev-stop.ps1
 可在啟動加 `-NoNgrok`。若本機允許執行 PowerShell 腳本，也可在 `scripts` 目錄直接使用
 `.\dev-restart.ps1`。
 
+`dev-restart.ps1` 會保留shared databases，但會讓Spring Boot與ngrok一起進入新的service generation；
+不重用舊generation的tunnel receipt。`-NoNgrok`會停止舊managed tunnel且不重新啟動。
+
 `dev-start.ps1` 會把本次 build input 的 production-content fingerprint、HEAD、registered worktree
 identity 與 service generation 寫入 ignored runtime state。`dev-status.ps1` 重新計算相同 fingerprint：
 dirty worktree 只在內容完全相符時回報 `VERIFIED_DIRTY`；build 後變更 `src/main`、主 `pom.xml` 或
@@ -105,6 +108,12 @@ resource，但 `dev-start.ps1` 必須回傳 nonzero，不能把缺 evidence 的�
 或 active coordination operation 全部吻合時才可停止；PID reuse、跨 worktree、另一個 active owner
 或 query 不可判定時一律 fail closed。
 
+沒有ACTIVE operation但仍有matching typed ownership receipt時，read-only診斷只會分類為
+`ORPHAN_EXACT_RECONCILABLE`；正式stop會再簽發最長30秒、component-scoped、single-use authority並立即
+重驗PID、creation time、command fingerprint、worktree與service generation。正常停止只終止已證明root的
+descendant tree，使用exact `Stop-Process`與bounded verification，不以`taskkill`作成功路徑；中途失聯可由
+保留的receipt、released operation與expected-PID state fence安全重播。
+
 Codex 需要處理另一個 `var\worktrees` worktree 的 stale managed process 時，只能使用不接受 PID 的
 受限入口：
 
@@ -115,7 +124,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\stop-managed-worktree-process
 ```
 
 此入口會先讀目標 worktree state／可信 receipt，核對同一 worktree 的 coordination resource與其他
-active operation，再委派正式 `Stop-ProcessTree`。它不接受任意 PID，也不清 log、DB、volume或舊 evidence。
+active operation，再委派正式exact managed process-tree stop。它不接受任意 PID，也不清 log、DB、volume或舊 evidence。
 
 本機 Spring Boot 應用日誌寫入 `scripts\.logs\spring-boot.log`，每個檔案最多 10 MB、
 保留 7 天且總量最多 100 MB。`spring-boot.out.log` / `spring-boot.err.log` 只保留 Maven
@@ -123,12 +132,15 @@ active operation，再委派正式 `Stop-ProcessTree`。它不接受任意 PID�
 3 個 10 MB 檔案，避免長時間錯誤迴圈填滿 Docker Desktop 虛擬磁碟。
 
 新啟動 ngrok 的 ownership receipt 不會只相信 PID、process name 或尚未完成的 WMI snapshot。
-`dev-start.ps1` 會在 `Start-Process` 前記錄 launch time，並在最長 1.5 秒的 bounded window 內等待
+`dev-start.ps1` 以Windows job breakaway與handle allowlist啟動managed child；child只繼承兩個worktree內
+log handles，不繼承Codex／WSL caller handles。啟動前記錄launch time，並在最長1.5秒的bounded window內等待
 同一 PID 的 `ExecutablePath`、完整 `CommandLine` 與 start time 就緒。只有 exact `ngrok.exe`、本輪
 arguments、registered worktree、application port 與 launch window 全部相符時才發布 receipt；錯誤
 command、不同 executable、PID reuse、重複發布及未明列的 wrapper／child 都立即 fail closed。
 receipt 只保存不可逆 executable／sanitized-command contract fingerprint，不保存 webhook host 或 raw command。
-receipt 發布失敗仍由 `dev-start.ps1` rollback 本輪新啟動 PID，並回傳 nonzero。
+Spring Boot另須bounded actuator readiness；ngrok須matching tunnel contract。兩者在receipt publication boundary
+及durable state write後都會重驗exact process與readiness；消失或不再ready會把receipt標為`REVOKED`，
+rollback本輪新啟動PID與generation state，並回傳nonzero。
 
 若 `Win32_Process` 在目前 caller context 不可用，WMI 會明確分類為 `UNAVAILABLE`，不再偽裝成
 只有 PID/name/start time 的 ready snapshot。Windows 會改由同 caller 的 process handle 使用
@@ -188,7 +200,7 @@ powershell -ExecutionPolicy Bypass -File .\scripts\mvn-safe.ps1 -Clean test
 powershell -ExecutionPolicy Bypass -File .\scripts\tests\tooling-implementation-test.ps1
 ```
 
-此 gate 會依序驗證 coordination、managed process、environment preflight/review、shared-container
+此 gate 會依序驗證 coordination、managed process durability／orphan／caller classification、environment preflight/review、shared-container
 contract、worktree evidence ownership 與 startup rollback；shared Docker 測試使用 fake adapter，
 不會刪除、重建或改動真實 container／volume。
 

@@ -49,6 +49,10 @@ Spring、PostgreSQL/PostGIS 與 Redis Testcontainers。
 
 - Coordinator kernel、Maven/lifecycle adapter 與 handoff 一律先跑各自的 fake/disposable PowerShell gate；不得以
   shared Compose、dev volume、Flyway history 或真實 LINE endpoint 作為 failure injection fixture。
+- Managed runtime lifecycle修改必須用controlled process fixtures覆蓋caller-return persistence、banner-only、
+  receipt/state publication後消失、`CALLER_ACCESS_DENIED`／`UNKNOWN`／`DOWN`、exact orphan reconcile、
+  interrupted stop replay與敏感資訊遮蔽。live fixture只可啟動無網路的短效process，跨caller確認後精確停止；
+  不得用Calendar worktree、真實LINE或產品mutation作證據。
 - Testcontainers integration 維持 serial；未完成 per-test infra 隔離前，不啟用 JUnit class/method parallel。
 - Dispatcher pause/drain、migration 與 protected management API 變更須跑最小 Dispatcher integration test；主應用與
   Dispatcher Maven target 不可在同一 worktree 同時寫入。

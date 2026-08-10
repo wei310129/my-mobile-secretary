@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-  Restarts the main application and AI Dispatcher. Databases and ngrok stay up by default.
+  Restarts the managed runtime generation. Databases stay up; ngrok is generation-bound and restarts with the application.
 
 .PARAMETER Full
   Restarts application processes and revalidates shared-persistent Docker infrastructure without stopping it.
@@ -80,8 +80,12 @@ if (-not $SkipDispatcher) {
         exit 2
     }
     if ($dispatcherPid) {
-        $stopResult = Stop-ProcessTree -ProcessId $dispatcherPid -Label "AI Dispatcher (old)" -Port $DispatcherPort
-        if (-not $stopResult.Success) { throw "Dispatcher stop verification failed; restart aborted." }
+        $dispatcherStop = Invoke-ManagedComponentStop -Worktree $RepoRoot -Component Dispatcher -StopAdapter {
+            param($proof)
+            Stop-ManagedExactProcessTree -RootProcessId $proof.ProcessId -ExpectedPort $proof.Definition.Port `
+                -PortObservationAdapter { param($port) Get-DevPortObservation -Port $port }
+        }
+        if ($dispatcherStop.Outcome -ne 'READY') { throw "Dispatcher stop verification failed; restart aborted: $($dispatcherStop.ReasonCode)" }
     } else {
         $dispatcherPortOwner = Get-PortOwnerPid -Port $DispatcherPort
         if ($dispatcherPortOwner) {
@@ -92,11 +96,22 @@ if (-not $SkipDispatcher) {
     }
 }
 
+$ngrokStop = Invoke-ManagedComponentStop -Worktree $RepoRoot -Component Ngrok -StopAdapter {
+    param($proof)
+    Stop-ManagedExactProcessTree -RootProcessId $proof.ProcessId -ExpectedPort $proof.Definition.Port `
+        -PortObservationAdapter { param($port) Get-DevPortObservation -Port $port }
+}
+if ($ngrokStop.Outcome -ne 'READY') { throw "ngrok stop verification failed; restart aborted: $($ngrokStop.ReasonCode)" }
+
 $appPid = Resolve-ManagedProcessId -TrackedProcessId $state.springBootPid `
     -Port $AppPort -Kind "SpringBoot"
 if ($appPid) {
-    $stopResult = Stop-ProcessTree -ProcessId $appPid -Label "Spring Boot (old)" -Port $AppPort
-    if (-not $stopResult.Success) { throw "Spring Boot stop verification failed; restart aborted." }
+    $springStop = Invoke-ManagedComponentStop -Worktree $RepoRoot -Component SpringBoot -StopAdapter {
+        param($proof)
+        Stop-ManagedExactProcessTree -RootProcessId $proof.ProcessId -ExpectedPort $proof.Definition.Port `
+            -PortObservationAdapter { param($port) Get-DevPortObservation -Port $port }
+    }
+    if ($springStop.Outcome -ne 'READY') { throw "Spring Boot stop verification failed; restart aborted: $($springStop.ReasonCode)" }
 } else {
     $appPortOwner = Get-PortOwnerPid -Port $AppPort
     if ($appPortOwner) {

@@ -52,16 +52,19 @@ try {
         -CommandLine 'ngrok http --domain safe.example http://localhost:8080' -StartedAt $started
     $ngrokSnapshot.CommandLine = '"C:\fake\ngrok.exe" http --url=safe.example.invalid http://localhost:8080 --log=stdout --log-level=warn'
     $ngrokContract = Get-ManagedNgrokCommandContract -Snapshot $ngrokSnapshot -Worktree $worktree -ExpectedPort 8080
-    Write-CoordinationReceipt -StateRoot $stateRoot -Receipt ([ordered]@{
+    $ngrokReceiptDocument = [ordered]@{
         operationId=$ngrokReceiptId;outcome='READY';action='managed-process-start';component='Ngrok'
         processId=200;processStartedAt=$started.ToString('o');worktree=[IO.Path]::GetFullPath($worktree).TrimEnd('\')
         resource=$ngrokDefinition.Resource;disposition='managed-runtime';appPort=8080
         executableFingerprint=$ngrokContract.ExecutableFingerprint
-        commandContractFingerprint=$ngrokContract.CommandContractFingerprint
-    })
+        commandContractFingerprint=$ngrokContract.CommandContractFingerprint;generation='generation-current'
+    }
+    $ngrokReceiptDocument['ownershipIdentityFingerprint'] = Get-ManagedProcessCommandFingerprint `
+        -Snapshot $ngrokSnapshot -Worktree $worktree -Component Ngrok -OwnershipReceipt ([pscustomobject]$ngrokReceiptDocument)
+    Write-CoordinationReceipt -StateRoot $stateRoot -Receipt $ngrokReceiptDocument
     Write-CoordinationJsonAtomic -Path $stateFile -Document ([ordered]@{
         springBootPid=100;springBootOwnershipReceiptId=$null;dispatcherPid=$null
-        ngrokPid=200;ngrokOwnershipReceiptId=$ngrokReceiptId;ngrokUrl='https://example.invalid'
+        ngrokPid=200;ngrokOwnershipReceiptId=$ngrokReceiptId;ngrokUrl='https://example.invalid';serviceGeneration='generation-current'
     })
 
     $processes[100] = New-FakeSnapshot -Id 100 `
@@ -144,6 +147,22 @@ try {
     Assert-Managed (-not $afterNgrokFailure.springBootPid -and $afterNgrokFailure.ngrokPid -eq 200) `
         'ngrok failure restored or retained already-released Spring ownership'
 
+    $ngrokReplay = Invoke-ManagedComponentStop -Worktree $worktree -Component Ngrok -StateRoot $stateRoot `
+        -ProcessQuery $query -OperationDocuments @($springOperation) -StopAdapter {
+            param($proof);$stopCalls.Add("replay:$($proof.ProcessId)");[pscustomobject]@{Success=$true}
+        }
+    Assert-Managed ($ngrokReplay.Outcome -eq 'READY' -and $ngrokReplay.Disposition -eq 'ORPHAN_EXACT_RECONCILE') `
+        'interrupted orphan stop did not replay through short-lived exact authority'
+    $afterNgrokReplay = [IO.File]::ReadAllText($stateFile, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    Assert-Managed (-not $afterNgrokReplay.ngrokPid -and -not $afterNgrokReplay.ngrokOwnershipReceiptId) `
+        'replayed orphan stop did not converge component state'
+    $ngrokReplayAgain = Invoke-ManagedComponentStop -Worktree $worktree -Component Ngrok -StateRoot $stateRoot `
+        -ProcessQuery $query -OperationDocuments @($springOperation) -StopAdapter {
+            param($proof);$stopCalls.Add('unexpected-ngrok-repeat');[pscustomobject]@{Success=$true}
+        }
+    Assert-Managed ($ngrokReplayAgain.Outcome -eq 'READY' -and -not $ngrokReplayAgain.Changed -and
+            -not ($stopCalls -contains 'unexpected-ngrok-repeat')) 'completed orphan stop was not idempotent'
+
     $secondSpring = Invoke-ManagedComponentStop -Worktree $worktree -Component SpringBoot -StateRoot $stateRoot `
         -ProcessQuery $query -OperationDocuments @($springOperation) -StopAdapter {
             param($proof);$stopCalls.Add('unexpected-repeat');[pscustomobject]@{Success=$true}
@@ -202,4 +221,3 @@ try {
 } finally {
     if (Test-Path -LiteralPath $root) { Remove-Item -LiteralPath $root -Recurse -Force }
 }
-

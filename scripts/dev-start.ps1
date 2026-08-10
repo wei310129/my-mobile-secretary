@@ -47,6 +47,8 @@ $script:StartServiceGenerationPublished = $false
 $script:StartNewNgrokPid = $null
 $script:StartNewAppPid = $null
 $script:StartNewDispatcherPid = $null
+$script:StartPreviousState = Read-DevState
+$script:StartStateWritten = $false
 function Resolve-StartLogPath {
     param([Parameter(Mandatory)][string]$Name)
     if ($null -eq $script:StartServiceGeneration) { $script:StartServiceGeneration = New-DevServiceGeneration }
@@ -101,6 +103,7 @@ Write-DevProgress -Message "  Main Postgres and Redis are healthy." -ForegroundC
 $ngrokUrl = $null
 $ngrokPid = $null
 $ngrokOwnershipReceiptId = $null
+$springBootOwnershipReceiptId = $null
 $lineWebhookConfiguration = $null
 if (-not $NoNgrok) {
     Write-DevProgress -Message "[2/6] Starting ngrok for the configured LINE webhook..." -ForegroundColor Yellow
@@ -131,10 +134,11 @@ if (-not $NoNgrok) {
         exit 1
     }
 
-    $existingNgrokPid = Resolve-ManagedProcessId -TrackedProcessId $null -Port $NgrokApiPort -Kind "Ngrok"
+    $previousNgrokState = Read-DevState
+    $trackedNgrokPid = if ($previousNgrokState.PSObject.Properties['ngrokPid']) { $previousNgrokState.ngrokPid } else { $null }
+    $existingNgrokPid = Resolve-ManagedProcessId -TrackedProcessId $trackedNgrokPid -Port $NgrokApiPort -Kind "Ngrok"
     if ($existingNgrokPid) {
         $ngrokPid = $existingNgrokPid
-        $previousNgrokState = Read-DevState
         if ($previousNgrokState.ngrokPid -eq $ngrokPid -and
                 $previousNgrokState.PSObject.Properties['ngrokOwnershipReceiptId']) {
             $ngrokOwnershipReceiptId = $previousNgrokState.ngrokOwnershipReceiptId
@@ -144,11 +148,7 @@ if (-not $NoNgrok) {
         if ($ngrokHost -eq $lineWebhookUri.Host) {
             Write-DevProgress -Message "  Reusing ngrok PID $ngrokPid for $ngrokHost." -ForegroundColor DarkGray
         } else {
-            Write-Host "  Existing ngrok host does not match LINE; restarting the managed tunnel." `
-                -ForegroundColor Yellow
-            Stop-ProcessTree -ProcessId $ngrokPid -Label "ngrok (wrong public host)"
-            $ngrokPid = $null
-            $ngrokUrl = $null
+            throw 'Existing managed ngrok tunnel does not match the configured LINE endpoint; use dev-restart.ps1.'
         }
     }
     if (-not $ngrokPid) {
@@ -164,21 +164,27 @@ if (-not $NoNgrok) {
             "--log=stdout",
             "--log-level=warn"
         )
-        $ngrokLaunchObservedAt = [datetimeoffset]::UtcNow
-        $proc = Start-Process -FilePath $ngrokExe `
-            -ArgumentList $ngrokArguments `
-            -WorkingDirectory $RepoRoot -WindowStyle Hidden -PassThru `
-            -RedirectStandardOutput (Resolve-StartLogPath "ngrok.out.log") `
-            -RedirectStandardError (Resolve-StartLogPath "ngrok.err.log")
-        $ngrokPid = $proc.Id
-        $script:StartNewNgrokPid = $ngrokPid
-        $ngrokOwnership = New-ManagedProcessOwnershipReceipt `
-            -Worktree $RepoRoot -Component Ngrok -ProcessId $ngrokPid `
-            -ExpectedExecutablePath $ngrokExe -ExpectedArguments $ngrokArguments `
-            -ExpectedPort $AppPort -LaunchObservedAtUtc $ngrokLaunchObservedAt -PassThru
+        if ($null -eq $script:StartServiceGeneration) { $script:StartServiceGeneration = New-DevServiceGeneration }
+        $ngrokOwnership = Start-ManagedDurableProcess `
+            -Worktree $RepoRoot -Component Ngrok -ExecutablePath $ngrokExe -Arguments $ngrokArguments `
+            -Generation $script:StartServiceGeneration.Generation -ExpectedPort $AppPort `
+            -StandardOutputPath (Resolve-StartLogPath "ngrok.out.log") `
+            -StandardErrorPath (Resolve-StartLogPath "ngrok.err.log") `
+            -FailureStopAdapter { param($id) Stop-ProcessTree -ProcessId $id -Label 'ngrok (startup rollback)' -Port $NgrokApiPort } `
+            -ReadinessProbe {
+                param($phase)
+                $timeout = if ($phase -eq 'BEFORE_PUBLICATION') { 20 } else { 5 }
+                $candidate = Get-NgrokPublicUrl -TimeoutSec $timeout
+                $ready = $false
+                if ($candidate) {
+                    try { $ready = ([uri]$candidate).Host -eq $lineWebhookUri.Host } catch { $ready = $false }
+                }
+                [pscustomobject]@{Ready=$ready;Code=if($ready){'TUNNEL_CONTRACT_MATCH'}else{'TUNNEL_CONTRACT_NOT_READY'}}
+            }
         $ngrokPid = $ngrokOwnership.ProcessId
+        $script:StartNewNgrokPid = $ngrokPid
         $ngrokOwnershipReceiptId = $ngrokOwnership.ReceiptId
-        $ngrokUrl = Get-NgrokPublicUrl -TimeoutSec 20
+        $ngrokUrl = Get-NgrokPublicUrl -TimeoutSec 5
         if (-not $ngrokUrl) {
             Write-Host "ngrok did not expose a public URL. Check scripts\.logs\ngrok.err.log." -ForegroundColor Red
             Stop-ProcessTree -ProcessId $ngrokPid -Label "ngrok (failed startup)"
@@ -197,9 +203,10 @@ if (-not $NoNgrok) {
 
 # 3) The main application is required and becomes healthy before any Dispatcher work.
 Write-DevProgress -Message "[3/6] Starting the main Spring Boot application..." -ForegroundColor Yellow
-$existingAppPid = Resolve-ManagedProcessId -TrackedProcessId $null -Port $AppPort -Kind "SpringBoot"
+$previousState = Read-DevState
+$trackedAppPid = if ($previousState.PSObject.Properties['springBootPid']) { $previousState.springBootPid } else { $null }
+$existingAppPid = Resolve-ManagedProcessId -TrackedProcessId $trackedAppPid -Port $AppPort -Kind "SpringBoot"
 if ($existingAppPid) {
-    $previousState = Read-DevState
     if ([bool]$previousState.dispatcherArmed -ne [bool]$ArmDispatcher) {
         throw "Existing main application mode differs from the requested mode; use dev-restart.ps1."
     }
@@ -219,6 +226,11 @@ if ($existingAppPid) {
         throw 'Existing main application runtime content receipt belongs to another service generation; use dev-restart.ps1 -SkipDispatcher.'
     }
     $appPid = $existingAppPid
+    $existingProof = Assert-ManagedRuntimeReceiptCurrent -Worktree $RepoRoot -Component SpringBoot `
+        -State $previousState -ReadinessProbe {
+            [pscustomobject]@{Ready=(Wait-HttpOk -Url "http://localhost:$AppPort/actuator/health" -TimeoutSec 5 -ProcessId $appPid);Code='ACTUATOR_REUSE_RECHECK'}
+        }
+    $springBootOwnershipReceiptId = $existingProof.ReceiptId
     Write-DevProgress -Message "  Main application is already healthy and current (PID $appPid, version $($runningVersion.VersionLabel))." -ForegroundColor DarkGray
 } else {
     $buildContentIdentity = Get-ProductionContentIdentity -RepoRoot $RepoRoot
@@ -229,18 +241,22 @@ if ($existingAppPid) {
         @('spring-boot:run', '-Dmaven.test.skip=true', "-Dspring-boot.run.profiles=$Profile")
     }
     $launchExecutable = if (Test-CoordinationMavenEnabled) { Join-Path $PSHOME 'powershell.exe' } else { $launchFile }
-    $proc = Start-Process -FilePath $launchExecutable `
-        -ArgumentList $launchArguments `
-        -WorkingDirectory $RepoRoot -WindowStyle Hidden -PassThru `
-        -RedirectStandardOutput (Resolve-StartLogPath "spring-boot.out.log") `
-        -RedirectStandardError (Resolve-StartLogPath "spring-boot.err.log")
-    $appPid = $proc.Id
+    if ($null -eq $script:StartServiceGeneration) { $script:StartServiceGeneration = New-DevServiceGeneration }
+    $appOwnership = Start-ManagedDurableProcess -Worktree $RepoRoot -Component SpringBoot `
+        -ExecutablePath $launchExecutable -Arguments $launchArguments `
+        -Generation $script:StartServiceGeneration.Generation -ExpectedPort $AppPort `
+        -StandardOutputPath (Resolve-StartLogPath "spring-boot.out.log") `
+        -StandardErrorPath (Resolve-StartLogPath "spring-boot.err.log") `
+        -FailureStopAdapter { param($id) Stop-ProcessTree -ProcessId $id -Label 'Spring Boot (startup rollback)' -Port $AppPort } `
+        -ReadinessProbe {
+            param($phase,$managedPid)
+            $timeout = if ($phase -eq 'BEFORE_PUBLICATION') { 240 } else { 5 }
+            $ready = Wait-HttpOk -Url "http://localhost:$AppPort/actuator/health" -TimeoutSec $timeout -ProcessId $managedPid
+            [pscustomobject]@{Ready=$ready;Code=if($ready){'ACTUATOR_UP'}else{'ACTUATOR_NOT_READY'}}
+        }
+    $appPid = $appOwnership.ProcessId
     $script:StartNewAppPid = $appPid
-    if (-not (Wait-HttpOk -Url "http://localhost:$AppPort/actuator/health" -TimeoutSec 240 -ProcessId $appPid)) {
-        Write-Host "Main health check failed. Check scripts\.logs\spring-boot.err.log." -ForegroundColor Red
-        Stop-ProcessTree -ProcessId $appPid -Label "Spring Boot (failed startup)"
-        exit 1
-    }
+    $springBootOwnershipReceiptId = $appOwnership.ReceiptId
     $runningVersion = Get-RunningServiceVersion
     $checkoutVersion = Get-CheckoutServiceVersion
     $runningVersion = Set-ServiceVersionContentIdentity -Version $runningVersion -Identity $buildContentIdentity
@@ -379,6 +395,7 @@ if ($ArmDispatcher -and -not $dispatcherPid) { exit 2 }
 
 $stateUpdates = @{
     springBootPid = $appPid
+    springBootOwnershipReceiptId = $springBootOwnershipReceiptId
     dispatcherPid = $dispatcherPid
     ngrokPid      = $ngrokPid
     ngrokOwnershipReceiptId = $ngrokOwnershipReceiptId
@@ -393,10 +410,24 @@ $stateUpdates = @{
 }
 if ($script:StartServiceGeneration) { $stateUpdates["serviceGeneration"] = $script:StartServiceGeneration.Generation; $stateUpdates["serviceLogDirectory"] = $script:StartServiceGeneration.LogDirectory }
 Write-DevState -Updates $stateUpdates
-$script:StartServiceGenerationPublished = $true
+$script:StartStateWritten = $true
 $durableState=Read-DevState
+Assert-ManagedRuntimeReceiptCurrent -Worktree $RepoRoot -Component SpringBoot -State $durableState `
+    -ReadinessProbe {
+        [pscustomobject]@{Ready=(Wait-HttpOk -Url "http://localhost:$AppPort/actuator/health" -TimeoutSec 5 -ProcessId $appPid);Code='ACTUATOR_POST_STATE_RECHECK'}
+    } | Out-Null
+if (-not $NoNgrok) {
+    Assert-ManagedRuntimeReceiptCurrent -Worktree $RepoRoot -Component Ngrok -State $durableState `
+        -ReadinessProbe {
+            $candidate = Get-NgrokPublicUrl -TimeoutSec 5
+            $ready = $false
+            if ($candidate) { try { $ready = ([uri]$candidate).Host -eq $lineWebhookUri.Host } catch { $ready = $false } }
+            [pscustomobject]@{Ready=$ready;Code='TUNNEL_POST_STATE_RECHECK'}
+        } | Out-Null
+}
 Publish-DevStartManagedOperationReceipts -State $durableState -SharedInfrastructureResult $sharedInfrastructureResult `
     -LineReady:(-not $NoNgrok)|Out-Null
+$script:StartServiceGenerationPublished = $true
 
 $dispatcherSummary = if ($SkipDispatcher) { "dispatcher=skipped" } elseif ($dispatcherPid) { "dispatcher=$automationMode" } else { "dispatcher=unavailable" }
 $lineSummary = if ($NoNgrok) { "LINE=skipped" } else { "LINE=connected" }
@@ -415,6 +446,15 @@ $lifecycleOutcome = 'READY'
         )) {
             if ($startedProcess.Pid) {
                 try { Stop-ProcessTree -ProcessId ([int]$startedProcess.Pid) -Label $startedProcess.Label -Port $startedProcess.Port | Out-Null } catch { }
+            }
+        }
+        if ($script:StartStateWritten -and $script:StartServiceGeneration) {
+            try {
+                Restore-DevStateAfterFailedStart -PreviousState $script:StartPreviousState `
+                    -ExpectedGeneration $script:StartServiceGeneration.Generation
+            } catch {
+                if (-not $devStartFailure) { $devStartFailure = $_ }
+                Write-Host 'Failed-start state reconciliation did not complete; ownership remains fail-closed.' -ForegroundColor Red
             }
         }
         Remove-DevServiceGenerationIfUnpublished -Generation $script:StartServiceGeneration

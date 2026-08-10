@@ -369,12 +369,78 @@ function Write-DevState {
     }
 }
 
+function Restore-DevStateAfterFailedStart {
+    param(
+        [Parameter(Mandatory)]$PreviousState,
+        [Parameter(Mandatory)][string]$ExpectedGeneration
+    )
+    $guard = New-CoordinationMutex "service-state/$StateFile"
+    $held = $false
+    try {
+        $held = Wait-CoordinationMutex -Mutex $guard -Deadline ([datetime]::UtcNow.AddSeconds(10))
+        if (-not $held) { throw 'Development state is BUSY; failed-start state was not reconciled.' }
+        $current = Read-DevState
+        $currentGeneration = if ($current.PSObject.Properties['serviceGeneration']) { [string]$current.serviceGeneration } else { $null }
+        if ($currentGeneration -ne $ExpectedGeneration) {
+            throw 'Development state generation changed after failed start; rollback refused.'
+        }
+        $restored = @{}
+        foreach ($property in $PreviousState.PSObject.Properties) { $restored[$property.Name] = $property.Value }
+        Write-CoordinationJsonAtomic -Path $StateFile -Document $restored
+    } finally {
+        if ($held) { $guard.ReleaseMutex() }
+        $guard.Dispose()
+    }
+}
+
 # 找監聽某 port 的行程 PID(狀態檔遺失或行程是上一輪殘留時的保底手段)。
 function Get-PortOwnerPid {
     param([Parameter(Mandatory)][int]$Port)
     $conn = Get-NetTCPConnection -LocalPort $Port -State Listen -ErrorAction SilentlyContinue |
             Select-Object -First 1 -ExpandProperty OwningProcess
     return $conn
+}
+
+function Get-DevPortObservation {
+    param(
+        [Parameter(Mandatory)][int]$Port,
+        [scriptblock]$QueryAdapter = {
+            param($targetPort)
+            try {
+                $owner = Get-NetTCPConnection -LocalPort $targetPort -State Listen -ErrorAction Stop |
+                    Select-Object -First 1 -ExpandProperty OwningProcess
+                if ($owner) { return [pscustomobject]@{Outcome='READY';ProcessId=[int]$owner} }
+                return [pscustomobject]@{Outcome='NOT_FOUND';ProcessId=$null}
+            } catch {
+                $denied = $_.Exception -is [UnauthorizedAccessException] -or
+                    $_.FullyQualifiedErrorId -match 'AccessDenied|UnauthorizedAccess'
+                return [pscustomobject]@{Outcome=if($denied){'CALLER_ACCESS_DENIED'}else{'UNKNOWN'};ProcessId=$null}
+            }
+        }
+    )
+    $result = & $QueryAdapter $Port
+    if (-not $result) { return [pscustomobject]@{State='UNKNOWN';ProcessId=$null;ReasonCode='PORT_QUERY_MISSING'} }
+    switch ([string]$result.Outcome) {
+        'READY' { return [pscustomobject]@{State='UP';ProcessId=[int]$result.ProcessId;ReasonCode=$null} }
+        'NOT_FOUND' { return [pscustomobject]@{State='DOWN';ProcessId=$null;ReasonCode='LISTENER_NOT_FOUND'} }
+        'CALLER_ACCESS_DENIED' { return [pscustomobject]@{State='CALLER_ACCESS_DENIED';ProcessId=$null;ReasonCode='PORT_QUERY_ACCESS_DENIED'} }
+        default { return [pscustomobject]@{State='UNKNOWN';ProcessId=$null;ReasonCode='PORT_STATE_UNKNOWN'} }
+    }
+}
+
+function Get-DevInfrastructureObservation {
+    param([AllowNull()]$Result)
+    if ($Result -and $Result.Readiness -and [string]$Result.Readiness.Outcome -eq 'READY') {
+        return [pscustomobject]@{State='UP';ReasonCode=$null}
+    }
+    $classification = if ($Result -and $Result.PSObject.Properties['Classification']) { [string]$Result.Classification } else { $null }
+    if ($classification -match 'CALLER_ACCESS_DENIED|HOST_READY_CALLER_BLOCKED') {
+        return [pscustomobject]@{State='CALLER_ACCESS_DENIED';ReasonCode='INFRASTRUCTURE_QUERY_ACCESS_DENIED'}
+    }
+    if ($classification -match 'NOT_READY|NOT_RUNNING|STOPPED|DAEMON_UNAVAILABLE') {
+        return [pscustomobject]@{State='DOWN';ReasonCode='INFRASTRUCTURE_PROVEN_DOWN'}
+    }
+    return [pscustomobject]@{State='UNKNOWN';ReasonCode='INFRASTRUCTURE_STATE_UNKNOWN'}
 }
 
 function Get-UnmanagedDevelopmentWriters {

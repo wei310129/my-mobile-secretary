@@ -204,6 +204,36 @@ function Read-CoordinationRegistry {
     catch { throw "Registry $Name is invalid; reconcile is BLOCKED. $($_.Exception.Message)" }
 }
 
+function Invoke-CoordinationAtomicMoveReplace {
+    param(
+        [Parameter(Mandatory)][string]$Source,
+        [Parameter(Mandatory)][string]$Destination
+    )
+    if ($env:OS -ne 'Windows_NT') { return $false }
+    if (-not ('Mms.Tooling.AtomicFileReplace' -as [type])) {
+        Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+
+namespace Mms.Tooling {
+    public static class AtomicFileReplace {
+        private const uint MOVEFILE_REPLACE_EXISTING = 0x1;
+        private const uint MOVEFILE_WRITE_THROUGH = 0x8;
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool MoveFileEx(string existingName, string newName, uint flags);
+
+        public static bool Replace(string source, string destination) {
+            return MoveFileEx(source, destination, MOVEFILE_REPLACE_EXISTING | MOVEFILE_WRITE_THROUGH);
+        }
+    }
+}
+'@
+    }
+    return [Mms.Tooling.AtomicFileReplace]::Replace($Source, $Destination)
+}
+
 function Write-CoordinationJsonAtomic {
     param([Parameter(Mandatory)][string]$Path, [Parameter(Mandatory)]$Document)
     $directory = Split-Path -Parent $Path
@@ -217,7 +247,11 @@ function Write-CoordinationJsonAtomic {
             $replaced = $false
             for ($attempt = 0; $attempt -lt 50 -and -not $replaced; $attempt++) {
                 try { [IO.File]::Replace($temporary, $Path, $previous); $replaced = $true }
-                catch [IO.IOException] { Start-Sleep -Milliseconds 10 }
+                catch [IO.IOException] {
+                    if (Invoke-CoordinationAtomicMoveReplace -Source $temporary -Destination $Path) {
+                        $replaced = $true
+                    } else { Start-Sleep -Milliseconds 10 }
+                }
             }
             if (-not $replaced) { throw "Atomic registry replace remained locked: $Path" }
         }

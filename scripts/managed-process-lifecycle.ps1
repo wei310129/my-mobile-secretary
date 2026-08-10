@@ -4,6 +4,190 @@ if (-not (Get-Command Write-CoordinationJsonAtomic -ErrorAction SilentlyContinue
     . "$PSScriptRoot\coordination-common.ps1"
 }
 
+function Initialize-WindowsDurableManagedProcessType {
+    if ('Mms.Tooling.DurableManagedProcess' -as [type]) { return }
+    Add-Type -TypeDefinition @'
+using System;
+using System.ComponentModel;
+using System.Runtime.InteropServices;
+using System.Text;
+
+namespace Mms.Tooling {
+    public static class DurableManagedProcess {
+        private const uint GENERIC_WRITE = 0x40000000;
+        private const uint FILE_SHARE_READ = 0x1;
+        private const uint FILE_SHARE_WRITE = 0x2;
+        private const uint CREATE_ALWAYS = 2;
+        private const uint FILE_ATTRIBUTE_NORMAL = 0x80;
+        private const uint STARTF_USESTDHANDLES = 0x100;
+        private const uint CREATE_BREAKAWAY_FROM_JOB = 0x01000000;
+        private const uint CREATE_NO_WINDOW = 0x08000000;
+        private const uint EXTENDED_STARTUPINFO_PRESENT = 0x00080000;
+        private static readonly IntPtr PROC_THREAD_ATTRIBUTE_HANDLE_LIST = new IntPtr(0x00020002);
+        private static readonly IntPtr INVALID_HANDLE_VALUE = new IntPtr(-1);
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct SECURITY_ATTRIBUTES {
+            public int Length;
+            public IntPtr SecurityDescriptor;
+            [MarshalAs(UnmanagedType.Bool)] public bool InheritHandle;
+        }
+
+        [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+        private struct STARTUPINFO {
+            public int cb;
+            public string reserved;
+            public string desktop;
+            public string title;
+            public uint x;
+            public uint y;
+            public uint xSize;
+            public uint ySize;
+            public uint xCountChars;
+            public uint yCountChars;
+            public uint fillAttribute;
+            public uint flags;
+            public ushort showWindow;
+            public ushort reserved2Length;
+            public IntPtr reserved2;
+            public IntPtr standardInput;
+            public IntPtr standardOutput;
+            public IntPtr standardError;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct PROCESS_INFORMATION {
+            public IntPtr process;
+            public IntPtr thread;
+            public int processId;
+            public int threadId;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct STARTUPINFOEX {
+            public STARTUPINFO startupInfo;
+            public IntPtr attributeList;
+        }
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        private static extern IntPtr CreateFile(string fileName, uint desiredAccess, uint shareMode,
+            ref SECURITY_ATTRIBUTES securityAttributes, uint creationDisposition, uint flags, IntPtr template);
+
+        [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CreateProcess(string applicationName, StringBuilder commandLine,
+            IntPtr processAttributes, IntPtr threadAttributes, bool inheritHandles, uint creationFlags,
+            IntPtr environment, string currentDirectory, ref STARTUPINFOEX startupInfo,
+            out PROCESS_INFORMATION processInformation);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool InitializeProcThreadAttributeList(IntPtr attributeList, int attributeCount,
+            int flags, ref IntPtr size);
+
+        [DllImport("kernel32.dll", SetLastError = true)]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool UpdateProcThreadAttribute(IntPtr attributeList, uint flags, IntPtr attribute,
+            IntPtr value, IntPtr size, IntPtr previousValue, IntPtr returnSize);
+
+        [DllImport("kernel32.dll")]
+        private static extern void DeleteProcThreadAttributeList(IntPtr attributeList);
+
+        [DllImport("kernel32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool CloseHandle(IntPtr handle);
+
+        public static int Launch(string executable, string commandLine, string workingDirectory,
+            string standardOutputPath, string standardErrorPath) {
+            SECURITY_ATTRIBUTES security = new SECURITY_ATTRIBUTES();
+            security.Length = Marshal.SizeOf(typeof(SECURITY_ATTRIBUTES));
+            security.InheritHandle = true;
+            IntPtr output = CreateFile(standardOutputPath, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                ref security, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, IntPtr.Zero);
+            if (output == INVALID_HANDLE_VALUE) { throw new Win32Exception(Marshal.GetLastWin32Error(), "Managed output log could not be opened."); }
+            IntPtr error = CreateFile(standardErrorPath, GENERIC_WRITE, FILE_SHARE_READ | FILE_SHARE_WRITE,
+                ref security, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, IntPtr.Zero);
+            if (error == INVALID_HANDLE_VALUE) {
+                CloseHandle(output);
+                throw new Win32Exception(Marshal.GetLastWin32Error(), "Managed error log could not be opened.");
+            }
+            PROCESS_INFORMATION information = new PROCESS_INFORMATION();
+            IntPtr attributeList = IntPtr.Zero;
+            IntPtr handleList = IntPtr.Zero;
+            try {
+                IntPtr attributeSize = IntPtr.Zero;
+                InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref attributeSize);
+                attributeList = Marshal.AllocHGlobal(attributeSize);
+                if (!InitializeProcThreadAttributeList(attributeList, 1, 0, ref attributeSize)) {
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "Managed handle allowlist initialization failed.");
+                }
+                handleList = Marshal.AllocHGlobal(IntPtr.Size * 2);
+                Marshal.WriteIntPtr(handleList, 0, output);
+                Marshal.WriteIntPtr(handleList, IntPtr.Size, error);
+                if (!UpdateProcThreadAttribute(attributeList, 0, PROC_THREAD_ATTRIBUTE_HANDLE_LIST,
+                        handleList, new IntPtr(IntPtr.Size * 2), IntPtr.Zero, IntPtr.Zero)) {
+                    throw new Win32Exception(Marshal.GetLastWin32Error(), "Managed handle allowlist update failed.");
+                }
+                STARTUPINFOEX startup = new STARTUPINFOEX();
+                startup.startupInfo.cb = Marshal.SizeOf(typeof(STARTUPINFOEX));
+                startup.startupInfo.flags = STARTF_USESTDHANDLES;
+                startup.startupInfo.standardOutput = output;
+                startup.startupInfo.standardError = error;
+                startup.startupInfo.standardInput = IntPtr.Zero;
+                startup.attributeList = attributeList;
+                bool created = CreateProcess(executable, new StringBuilder(commandLine), IntPtr.Zero, IntPtr.Zero,
+                    true, CREATE_BREAKAWAY_FROM_JOB | CREATE_NO_WINDOW | EXTENDED_STARTUPINFO_PRESENT, IntPtr.Zero, workingDirectory,
+                    ref startup, out information);
+                if (!created) { throw new Win32Exception(Marshal.GetLastWin32Error(), "Durable managed process launch failed."); }
+                return information.processId;
+            } finally {
+                if (information.thread != IntPtr.Zero) { CloseHandle(information.thread); }
+                if (information.process != IntPtr.Zero) { CloseHandle(information.process); }
+                if (attributeList != IntPtr.Zero) { DeleteProcThreadAttributeList(attributeList);Marshal.FreeHGlobal(attributeList); }
+                if (handleList != IntPtr.Zero) { Marshal.FreeHGlobal(handleList); }
+                CloseHandle(output);
+                CloseHandle(error);
+            }
+        }
+    }
+}
+'@
+}
+
+function ConvertTo-WindowsManagedCommandLineToken {
+    param([Parameter(Mandatory)][AllowEmptyString()][string]$Value)
+    if ($Value -notmatch '[\s"]' -and $Value.Length -gt 0) { return $Value }
+    $builder = [Text.StringBuilder]::new()
+    [void]$builder.Append('"')
+    $slashes = 0
+    foreach ($character in $Value.ToCharArray()) {
+        if ($character -eq '\') { $slashes++; continue }
+        if ($character -eq '"') {
+            [void]$builder.Append(('\' * (($slashes * 2) + 1)))
+            [void]$builder.Append('"')
+        } else {
+            if ($slashes -gt 0) { [void]$builder.Append(('\' * $slashes)) }
+            [void]$builder.Append($character)
+        }
+        $slashes = 0
+    }
+    if ($slashes -gt 0) { [void]$builder.Append(('\' * ($slashes * 2))) }
+    [void]$builder.Append('"')
+    return $builder.ToString()
+}
+
+function Invoke-WindowsDurableManagedProcessLaunch {
+    param([Parameter(Mandatory)]$Request)
+    if ($env:OS -ne 'Windows_NT') { throw 'Durable managed process launch requires Windows.' }
+    Initialize-WindowsDurableManagedProcessType
+    $tokens = @((ConvertTo-WindowsManagedCommandLineToken $Request.ExecutablePath)) +
+        @($Request.Arguments | ForEach-Object { ConvertTo-WindowsManagedCommandLineToken ([string]$_) })
+    $processId = [Mms.Tooling.DurableManagedProcess]::Launch(
+        $Request.ExecutablePath, ($tokens -join ' '), $Request.WorkingDirectory,
+        $Request.StandardOutputPath, $Request.StandardErrorPath)
+    return [pscustomobject]@{ProcessId=$processId;DurabilityClass='WINDOWS_JOB_BREAKAWAY'}
+}
+
 function Get-ManagedComponentDefinition {
     param(
         [Parameter(Mandatory)][ValidateSet('SpringBoot','Dispatcher','Ngrok')][string]$Component,
@@ -56,7 +240,11 @@ function Get-WmiManagedProcessQueryResult {
             }
         }
     } catch {
-        return [pscustomobject]@{Outcome='UNAVAILABLE';Snapshot=$null;ReasonCode='WMI_QUERY_UNAVAILABLE'}
+        $reasonCode = if ($_.Exception -is [UnauthorizedAccessException] -or
+                ($_.Exception.PSObject.Properties['ErrorCode'] -and [int]$_.Exception.ErrorCode -eq 5)) {
+            'WMI_QUERY_ACCESS_DENIED'
+        } else { 'WMI_QUERY_UNAVAILABLE' }
+        return [pscustomobject]@{Outcome='UNAVAILABLE';Snapshot=$null;ReasonCode=$reasonCode}
     } finally {
         foreach ($item in $items) { if ($item -is [IDisposable]) { $item.Dispose() } }
         if ($searcher) { $searcher.Dispose() }
@@ -182,10 +370,14 @@ function Get-NativeManagedProcessQueryResult {
             }
         }
     } catch {
+        $reasonCode = if (($_.Exception -is [ComponentModel.Win32Exception] -and
+                [int]$_.Exception.NativeErrorCode -eq 5) -or $_.Exception -is [UnauthorizedAccessException]) {
+            'NATIVE_QUERY_ACCESS_DENIED'
+        } else { 'NATIVE_EXACT_QUERY_UNAVAILABLE' }
         $process = $null
         try {
             $process = [Diagnostics.Process]::GetProcessById($ProcessId)
-            return [pscustomobject]@{Outcome='UNAVAILABLE';Snapshot=$null;ReasonCode='NATIVE_EXACT_QUERY_UNAVAILABLE'}
+            return [pscustomobject]@{Outcome='UNAVAILABLE';Snapshot=$null;ReasonCode=$reasonCode}
         } catch [ArgumentException] {
             return [pscustomobject]@{Outcome='NOT_FOUND';Snapshot=$null}
         } catch {
@@ -272,7 +464,33 @@ function Get-ManagedProcessQueryResult {
     if (($wmi -and $wmi.Outcome -eq 'READY') -xor ($native -and $native.Outcome -eq 'READY')) {
         return [pscustomobject]@{Outcome='UNKNOWN';Snapshot=$null;ReasonCode='PROCESS_IDENTITY_INCOMPLETE'}
     }
+    $reasonCodes = @(
+        if ($wmi -and $wmi.PSObject.Properties['ReasonCode']) { [string]$wmi.ReasonCode }
+        if ($native -and $native.PSObject.Properties['ReasonCode']) { [string]$native.ReasonCode }
+    )
+    if (@($reasonCodes | Where-Object { $_ -match 'ACCESS_DENIED' }).Count -gt 0 -and
+            @($reasonCodes | Where-Object { $_ -and $_ -notmatch 'ACCESS_DENIED|PLATFORM_UNSUPPORTED' }).Count -eq 0) {
+        return [pscustomobject]@{Outcome='CALLER_ACCESS_DENIED';Snapshot=$null;ReasonCode='PROCESS_QUERY_ACCESS_DENIED'}
+    }
     return [pscustomobject]@{Outcome='UNKNOWN';Snapshot=$null;ReasonCode='PROCESS_IDENTITY_UNAVAILABLE'}
+}
+
+function Get-ManagedProcessObservation {
+    param([AllowNull()]$QueryResult)
+    if (-not $QueryResult) {
+        return [pscustomobject]@{State='UNKNOWN';ReasonCode='PROCESS_QUERY_MISSING'}
+    }
+    switch ([string]$QueryResult.Outcome) {
+        'READY' { return [pscustomobject]@{State='UP';ReasonCode=$null} }
+        'NOT_FOUND' { return [pscustomobject]@{State='DOWN';ReasonCode='PROCESS_NOT_FOUND'} }
+        'CALLER_ACCESS_DENIED' { return [pscustomobject]@{State='CALLER_ACCESS_DENIED';ReasonCode='PROCESS_QUERY_ACCESS_DENIED'} }
+        'UNAVAILABLE' {
+            if ([string]$QueryResult.ReasonCode -match 'ACCESS_DENIED') {
+                return [pscustomobject]@{State='CALLER_ACCESS_DENIED';ReasonCode='PROCESS_QUERY_ACCESS_DENIED'}
+            }
+        }
+    }
+    return [pscustomobject]@{State='UNKNOWN';ReasonCode='PROCESS_IDENTITY_UNAVAILABLE'}
 }
 
 function Get-ManagedCoordinationOperations {
@@ -408,6 +626,32 @@ function Test-ManagedProcessCommand {
     return $command -match '(?i)-application\s+["'']?root(?:\s|$)'
 }
 
+function Get-ManagedProcessCommandFingerprint {
+    param(
+        [Parameter(Mandatory)]$Snapshot,
+        [Parameter(Mandatory)][string]$Worktree,
+        [Parameter(Mandatory)][ValidateSet('SpringBoot','Dispatcher','Ngrok')][string]$Component,
+        [AllowNull()]$OwnershipReceipt,
+        [switch]$ExactActiveCoordinationProof
+    )
+    if (-not (Test-ManagedProcessSnapshotComplete -Snapshot $Snapshot)) {
+        throw 'Managed process identity is incomplete.'
+    }
+    if (-not (Test-ManagedProcessCommand -Snapshot $Snapshot -Worktree $Worktree -Component $Component `
+            -OwnershipReceipt $OwnershipReceipt -ExactActiveCoordinationProof:$ExactActiveCoordinationProof)) {
+        throw 'Managed process command does not match the bounded component contract.'
+    }
+    $definition = Get-ManagedComponentDefinition -Component $Component -Worktree $Worktree
+    $startedAt = ([datetimeoffset]$Snapshot.StartedAtUtc).ToUniversalTime().ToString('o')
+    $safeIdentity = @(
+        'managed-process-command-v1', $Component, (Get-ManagedTextFingerprint $definition.Resource),
+        [string][int]$Snapshot.ProcessId, $startedAt,
+        (Get-ManagedTextFingerprint ([string]$Snapshot.ExecutablePath).ToLowerInvariant()),
+        (Get-ManagedTextFingerprint ([string]$Snapshot.CommandLine))
+    ) -join '|'
+    return Get-ManagedTextFingerprint $safeIdentity
+}
+
 function Test-ManagedEvidenceStartTime {
     param([Parameter(Mandatory)]$Snapshot, [Parameter(Mandatory)][string]$EvidenceStartedAt)
     $evidenceTime = [datetimeoffset]::MinValue
@@ -532,6 +776,7 @@ function New-ManagedProcessOwnershipReceipt {
         [string[]]$ExpectedArguments,
         [ValidateRange(1,65535)][int]$ExpectedPort = 8080,
         [Nullable[datetimeoffset]]$LaunchObservedAtUtc,
+        [string]$Generation,
         [scriptblock]$ProcessQuery = { param($id) Get-ManagedProcessQueryResult -ProcessId $id -TimeoutMilliseconds 500 },
         [scriptblock]$DelayAdapter = { param($milliseconds) Start-Sleep -Milliseconds $milliseconds },
         [ValidateRange(50,5000)][int]$SnapshotTimeoutMilliseconds = 1500,
@@ -573,7 +818,7 @@ function New-ManagedProcessOwnershipReceipt {
         -ProcessStartedAt ([datetimeoffset]$query.Snapshot.StartedAtUtc)
     $receiptId = [guid]::NewGuid().ToString()
     $receiptDocument = [ordered]@{
-        operationId=$receiptId;outcome='READY';action='managed-process-start';component=$Component
+        operationId=$receiptId;outcome='READY';status='READY';action='managed-process-start';component=$Component
         processId=$ProcessId;processStartedAt=([datetimeoffset]$query.Snapshot.StartedAtUtc).ToString('o')
         worktree=[IO.Path]::GetFullPath($Worktree).TrimEnd('\');resource=$definition.Resource
         disposition='managed-runtime; evidence-retained'
@@ -582,12 +827,404 @@ function New-ManagedProcessOwnershipReceipt {
         $receiptDocument['appPort'] = $ExpectedPort
         $receiptDocument['executableFingerprint'] = $launchContract.ExecutableFingerprint
         $receiptDocument['commandContractFingerprint'] = $launchContract.CommandContractFingerprint
+    } else {
+        $receiptDocument['commandContractFingerprint'] = Get-ManagedProcessCommandFingerprint `
+            -Snapshot $query.Snapshot -Worktree $Worktree -Component $Component -ExactActiveCoordinationProof
     }
+    $receiptDocument['ownershipIdentityFingerprint'] = Get-ManagedProcessCommandFingerprint `
+        -Snapshot $query.Snapshot -Worktree $Worktree -Component $Component `
+        -OwnershipReceipt ([pscustomobject]$receiptDocument) -ExactActiveCoordinationProof
+    if (-not [string]::IsNullOrWhiteSpace($Generation)) { $receiptDocument['generation'] = $Generation }
     Write-CoordinationReceipt -StateRoot $StateRoot -Receipt $receiptDocument
     if ($PassThru) {
         return [pscustomobject]@{ReceiptId=$receiptId;ProcessId=$ProcessId;Snapshot=$query.Snapshot}
     }
     return $receiptId
+}
+
+function Set-ManagedProcessOwnershipReceiptStatus {
+    param(
+        [Parameter(Mandatory)][string]$StateRoot,
+        [Parameter(Mandatory)][string]$ReceiptId,
+        [Parameter(Mandatory)][ValidateSet('READY','REVOKED')][string]$Status,
+        [string]$ReasonCode
+    )
+    if ($ReceiptId -notmatch '^[a-f0-9-]{36}$') { throw 'Managed process ownership receipt id is invalid.' }
+    $path = Join-Path (Join-Path $StateRoot 'receipts') "$ReceiptId.json"
+    if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { throw 'Managed process ownership receipt is missing.' }
+    $receipt = [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    $typed = ConvertTo-ManagedProcessStartReceipt -Receipt $receipt
+    if ($typed.Document.PSObject.Properties['status'] -and [string]$typed.Document.status -eq 'REVOKED') { return }
+    $receipt | Add-Member -NotePropertyName status -NotePropertyValue $Status -Force
+    if ($Status -eq 'REVOKED') {
+        $receipt | Add-Member -NotePropertyName revokedAt -NotePropertyValue ([datetimeoffset]::UtcNow.ToString('o')) -Force
+        $receipt | Add-Member -NotePropertyName revocationReasonCode -NotePropertyValue $ReasonCode -Force
+    }
+    Write-CoordinationJsonAtomic -Path $path -Document $receipt
+}
+
+function Confirm-ManagedRuntimePublication {
+    param(
+        [Parameter(Mandatory)][string]$Worktree,
+        [Parameter(Mandatory)][ValidateSet('SpringBoot','Dispatcher','Ngrok')][string]$Component,
+        [Parameter(Mandatory)][int]$ProcessId,
+        [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]{1,128}$')][string]$Generation,
+        [string]$StateRoot = (Get-CoordinationDefaultRoot),
+        [string]$ExpectedExecutablePath,
+        [string[]]$ExpectedArguments,
+        [ValidateRange(1,65535)][int]$ExpectedPort = 8080,
+        [Nullable[datetimeoffset]]$LaunchObservedAtUtc,
+        [scriptblock]$ProcessQuery = { param($id) Get-ManagedProcessQueryResult -ProcessId $id -TimeoutMilliseconds 500 },
+        [Parameter(Mandatory)][scriptblock]$ReadinessProbe,
+        [scriptblock]$PublicationBoundary = { },
+        [scriptblock]$DelayAdapter = { param($milliseconds) Start-Sleep -Milliseconds $milliseconds },
+        [ValidateRange(50,5000)][int]$SnapshotTimeoutMilliseconds = 1500
+    )
+    $before = & $ProcessQuery $ProcessId
+    $beforeObservation = Get-ManagedProcessObservation -QueryResult $before
+    if ($beforeObservation.State -ne 'UP') {
+        throw 'Managed process identity was not ready before ownership publication.'
+    }
+    $readiness = & $ReadinessProbe 'BEFORE_PUBLICATION' $ProcessId
+    if (-not $readiness -or -not [bool]$readiness.Ready) {
+        throw 'Managed runtime readiness was not proven before ownership publication.'
+    }
+
+    $arguments = @{
+        Worktree=$Worktree;Component=$Component;ProcessId=$ProcessId;StateRoot=$StateRoot
+        ProcessQuery=({ param($id) return $before }).GetNewClosure();DelayAdapter=$DelayAdapter
+        SnapshotTimeoutMilliseconds=$SnapshotTimeoutMilliseconds;Generation=$Generation;PassThru=$true
+    }
+    if ($Component -eq 'Ngrok') {
+        $arguments.ExpectedExecutablePath=$ExpectedExecutablePath;$arguments.ExpectedArguments=$ExpectedArguments
+        $arguments.ExpectedPort=$ExpectedPort;$arguments.LaunchObservedAtUtc=$LaunchObservedAtUtc
+    }
+    $published = New-ManagedProcessOwnershipReceipt @arguments
+    try {
+        & $PublicationBoundary
+        $after = & $ProcessQuery $ProcessId
+        $afterObservation = Get-ManagedProcessObservation -QueryResult $after
+        if ($afterObservation.State -ne 'UP' -or
+                -not (Test-ManagedProcessSnapshotConsensus -Left $before.Snapshot -Right $after.Snapshot)) {
+            throw 'Managed process did not survive the ownership publication boundary.'
+        }
+        $postReadiness = & $ReadinessProbe 'AFTER_PUBLICATION' $ProcessId
+        if (-not $postReadiness -or -not [bool]$postReadiness.Ready) {
+            throw 'Managed runtime readiness did not survive the ownership publication boundary.'
+        }
+        return $published
+    } catch {
+        Set-ManagedProcessOwnershipReceiptStatus -StateRoot $StateRoot -ReceiptId $published.ReceiptId `
+            -Status REVOKED -ReasonCode 'POST_PUBLICATION_RECHECK_FAILED'
+        throw
+    }
+}
+
+function Start-ManagedDurableProcess {
+    param(
+        [Parameter(Mandatory)][string]$Worktree,
+        [Parameter(Mandatory)][ValidateSet('SpringBoot','Dispatcher','Ngrok')][string]$Component,
+        [Parameter(Mandatory)][string]$ExecutablePath,
+        [Parameter(Mandatory)][string[]]$Arguments,
+        [Parameter(Mandatory)][ValidatePattern('^[A-Za-z0-9._-]{1,128}$')][string]$Generation,
+        [Parameter(Mandatory)][string]$StandardOutputPath,
+        [Parameter(Mandatory)][string]$StandardErrorPath,
+        [string]$StateRoot = (Get-CoordinationDefaultRoot),
+        [ValidateRange(1,65535)][int]$ExpectedPort = 8080,
+        [Parameter(Mandatory)][scriptblock]$ReadinessProbe,
+        [scriptblock]$LaunchAdapter = { param($request) Invoke-WindowsDurableManagedProcessLaunch -Request $request },
+        [scriptblock]$ProcessQuery = { param($id) Get-ManagedProcessQueryResult -ProcessId $id -TimeoutMilliseconds 500 },
+        [scriptblock]$PublicationBoundary = { param($id) Start-Sleep -Milliseconds 500 },
+        [scriptblock]$FailureStopAdapter
+    )
+    $normalizedWorktree = [IO.Path]::GetFullPath($Worktree).TrimEnd('\')
+    if (-not (Test-Path -LiteralPath (Join-Path $normalizedWorktree '.git'))) {
+        throw 'Durable managed process launch requires a registered worktree.'
+    }
+    $logsRoot = [IO.Path]::GetFullPath((Join-Path $normalizedWorktree 'scripts\.logs')).TrimEnd('\') + '\'
+    $outputPath = [IO.Path]::GetFullPath($StandardOutputPath)
+    $errorPath = [IO.Path]::GetFullPath($StandardErrorPath)
+    if (-not $outputPath.StartsWith($logsRoot, [StringComparison]::OrdinalIgnoreCase) -or
+            -not $errorPath.StartsWith($logsRoot, [StringComparison]::OrdinalIgnoreCase)) {
+        throw 'Durable managed process logs must remain inside the owned scripts log directory.'
+    }
+    [IO.Directory]::CreateDirectory($logsRoot) | Out-Null
+    $launchObservedAt = [datetimeoffset]::UtcNow
+    $request = [pscustomobject]@{
+        Component=$Component;ExecutablePath=[IO.Path]::GetFullPath($ExecutablePath);Arguments=@($Arguments)
+        WorkingDirectory=$normalizedWorktree;StandardOutputPath=$outputPath;StandardErrorPath=$errorPath
+        Generation=$Generation
+    }
+    $launch = & $LaunchAdapter $request
+    if (-not $launch -or [int]$launch.ProcessId -le 0 -or [string]$launch.DurabilityClass -ne 'WINDOWS_JOB_BREAKAWAY') {
+        throw 'Managed child launch did not prove the durable breakaway contract.'
+    }
+    $confirmArguments = @{
+        Worktree=$normalizedWorktree;Component=$Component;ProcessId=[int]$launch.ProcessId;Generation=$Generation
+        StateRoot=$StateRoot;ProcessQuery=$ProcessQuery;ReadinessProbe=$ReadinessProbe
+        PublicationBoundary=({ & $PublicationBoundary ([int]$launch.ProcessId) }).GetNewClosure()
+        ExpectedPort=$ExpectedPort;LaunchObservedAtUtc=$launchObservedAt
+    }
+    if ($Component -eq 'Ngrok') {
+        $confirmArguments.ExpectedExecutablePath=$request.ExecutablePath
+        $confirmArguments.ExpectedArguments=@($Arguments)
+    }
+    try {
+        return Confirm-ManagedRuntimePublication @confirmArguments
+    } catch {
+        if ($FailureStopAdapter) {
+            try { & $FailureStopAdapter ([int]$launch.ProcessId) | Out-Null } catch { }
+        }
+        throw
+    }
+}
+
+function Assert-ManagedRuntimeReceiptCurrent {
+    param(
+        [Parameter(Mandatory)][string]$Worktree,
+        [Parameter(Mandatory)][ValidateSet('SpringBoot','Dispatcher','Ngrok')][string]$Component,
+        [Parameter(Mandatory)]$State,
+        [string]$StateRoot = (Get-CoordinationDefaultRoot),
+        [scriptblock]$ProcessQuery = { param($id) Get-ManagedProcessQueryResult -ProcessId $id -TimeoutMilliseconds 500 },
+        [Parameter(Mandatory)][scriptblock]$ReadinessProbe
+    )
+    $definition = Get-ManagedComponentDefinition -Component $Component -Worktree $Worktree
+    $pidProperty = $State.PSObject.Properties[$definition.StateField]
+    if (-not $pidProperty -or [int]$pidProperty.Value -le 0) { throw 'Managed runtime state has no exact process identity.' }
+    $processId = [int]$pidProperty.Value
+    $receipt = Read-ManagedOwnershipReceipt -State $State -Definition $definition -StateRoot $StateRoot `
+        -Worktree $Worktree -ProcessId $processId
+    if (-not $receipt -or ($receipt.PSObject.Properties['status'] -and [string]$receipt.status -ne 'READY') -or
+            -not $receipt.PSObject.Properties['generation'] -or -not $State.PSObject.Properties['serviceGeneration'] -or
+            [string]$receipt.generation -ne [string]$State.serviceGeneration) {
+        throw 'Managed runtime ownership receipt does not match the durable service generation.'
+    }
+    $query = & $ProcessQuery $processId
+    $observation = Get-ManagedProcessObservation -QueryResult $query
+    if ($observation.State -ne 'UP') { throw 'Managed runtime process is not observable after durable state publication.' }
+    $expectedStart = [datetimeoffset]::MinValue
+    if (-not [datetimeoffset]::TryParse([string]$receipt.processStartedAt, [ref]$expectedStart) -or
+            [Math]::Abs(($expectedStart.ToUniversalTime() - ([datetimeoffset]$query.Snapshot.StartedAtUtc).ToUniversalTime()).TotalSeconds) -gt 1) {
+        throw 'Managed runtime process generation changed after durable state publication.'
+    }
+    $actualFingerprint = Get-ManagedProcessCommandFingerprint -Snapshot $query.Snapshot -Worktree $Worktree `
+        -Component $Component -OwnershipReceipt $receipt -ExactActiveCoordinationProof
+    if (-not $receipt.PSObject.Properties['ownershipIdentityFingerprint'] -or
+            [string]$receipt.ownershipIdentityFingerprint -ne $actualFingerprint) {
+        throw 'Managed runtime command identity changed after durable state publication.'
+    }
+    $readiness = & $ReadinessProbe
+    if (-not $readiness -or -not [bool]$readiness.Ready) {
+        throw 'Managed runtime readiness failed after durable state publication.'
+    }
+    return [pscustomobject]@{Outcome='READY';Component=$Component;ProcessId=$processId;ReceiptId=[string]$receipt.operationId}
+}
+
+function Get-ManagedLegacyStateOwnershipEvidence {
+    param(
+        [Parameter(Mandatory)][string]$Worktree,
+        [Parameter(Mandatory)][ValidateSet('SpringBoot','Dispatcher')][string]$Component,
+        [Parameter(Mandatory)]$State,
+        [Parameter(Mandatory)]$Snapshot
+    )
+    $generation = if ($State.PSObject.Properties['serviceGeneration']) { [string]$State.serviceGeneration } else { $null }
+    $identity = if ($State.PSObject.Properties['runtimeContentIdentity']) { $State.runtimeContentIdentity } else { $null }
+    $stateStartedAt = [datetimeoffset]::MinValue
+    if ($generation -notmatch '^[A-Za-z0-9._-]{1,128}$' -or -not $identity -or
+            -not $identity.PSObject.Properties['serviceGeneration'] -or [string]$identity.serviceGeneration -ne $generation -or
+            -not $State.PSObject.Properties['startedAt'] -or
+            -not [datetimeoffset]::TryParse([string]$State.startedAt, [ref]$stateStartedAt)) {
+        return [pscustomobject]@{Ready=$false;ReasonCode='LEGACY_GENERATION_EVIDENCE_INVALID'}
+    }
+    $processStartedAt = [datetimeoffset]$Snapshot.StartedAtUtc
+    $publicationDelay = ($stateStartedAt.ToUniversalTime() - $processStartedAt.ToUniversalTime()).TotalSeconds
+    if ($publicationDelay -lt 0 -or $publicationDelay -gt 300) {
+        return [pscustomobject]@{Ready=$false;ReasonCode='LEGACY_PROCESS_START_WINDOW_MISMATCH'}
+    }
+    if (-not $State.PSObject.Properties['serviceLogDirectory'] -or
+            [string]::IsNullOrWhiteSpace([string]$State.serviceLogDirectory)) {
+        return [pscustomobject]@{Ready=$false;ReasonCode='LEGACY_GENERATION_LOG_IDENTITY_MISSING'}
+    }
+    try {
+        $logsRoot = [IO.Path]::GetFullPath((Join-Path $Worktree 'scripts\.logs\generations')).TrimEnd('\') + '\'
+        $logDirectory = [IO.Path]::GetFullPath([string]$State.serviceLogDirectory).TrimEnd('\')
+        if (-not $logDirectory.StartsWith($logsRoot,[StringComparison]::OrdinalIgnoreCase) -or
+                [IO.Path]::GetFileName($logDirectory) -ne $generation) {
+            return [pscustomobject]@{Ready=$false;ReasonCode='LEGACY_GENERATION_LOG_IDENTITY_MISMATCH'}
+        }
+        $fingerprint = Get-ManagedProcessCommandFingerprint -Snapshot $Snapshot -Worktree $Worktree `
+            -Component $Component -ExactActiveCoordinationProof
+    } catch {
+        return [pscustomobject]@{Ready=$false;ReasonCode='LEGACY_COMMAND_CONTRACT_MISMATCH'}
+    }
+    return [pscustomobject]@{
+        Ready=$true;ReasonCode=$null;Generation=$generation;ProcessStartedAt=$processStartedAt
+        CommandContractFingerprint=$fingerprint;EvidenceKind='LEGACY_DURABLE_STATE'
+    }
+}
+
+function Get-ManagedOrphanDiagnosis {
+    param(
+        [Parameter(Mandatory)][string]$Worktree,
+        [Parameter(Mandatory)][ValidateSet('SpringBoot','Dispatcher','Ngrok')][string]$Component,
+        [Parameter(Mandatory)]$State,
+        [string]$StateRoot = (Get-CoordinationDefaultRoot),
+        [scriptblock]$ProcessQuery = { param($id) Get-ManagedProcessQueryResult -ProcessId $id },
+        [AllowNull()][object[]]$OperationDocuments
+    )
+    $definition = Get-ManagedComponentDefinition -Component $Component -Worktree $Worktree
+    $tracked = $State.PSObject.Properties[$definition.StateField]
+    if (-not $tracked -or -not $tracked.Value) {
+        return [pscustomobject]@{Classification='DOWN';ReasonCode='STATE_HAS_NO_TRACKED_PROCESS';Component=$Component}
+    }
+    $processId = [int]$tracked.Value
+    if ($processId -le 0) {
+        return [pscustomobject]@{Classification='ORPHAN_UNVERIFIABLE';ReasonCode='TRACKED_PID_INVALID';Component=$Component}
+    }
+    $query = & $ProcessQuery $processId
+    $observation = Get-ManagedProcessObservation -QueryResult $query
+    if ($observation.State -ne 'UP') {
+        $classification = if ($observation.State -eq 'DOWN') { 'ORPHAN_PROVEN_DOWN' } else { 'ORPHAN_UNVERIFIABLE' }
+        return [pscustomobject]@{Classification=$classification;ReasonCode=$observation.ReasonCode;Component=$Component;ProcessId=$processId}
+    }
+    try {
+        $receipt = Read-ManagedOwnershipReceipt -State $State -Definition $definition -StateRoot $StateRoot `
+            -Worktree $Worktree -ProcessId $processId
+    } catch {
+        return [pscustomobject]@{Classification='ORPHAN_UNVERIFIABLE';ReasonCode='OWNERSHIP_RECEIPT_INVALID';Component=$Component;ProcessId=$processId}
+    }
+    if (-not $receipt) {
+        if ($Component -eq 'Ngrok') {
+            return [pscustomobject]@{Classification='ORPHAN_UNVERIFIABLE';ReasonCode='OWNERSHIP_RECEIPT_INCOMPLETE';Component=$Component;ProcessId=$processId}
+        }
+        $legacy = Get-ManagedLegacyStateOwnershipEvidence -Worktree $Worktree -Component $Component -State $State -Snapshot $query.Snapshot
+        if (-not $legacy.Ready) {
+            return [pscustomobject]@{Classification='ORPHAN_UNVERIFIABLE';ReasonCode=$legacy.ReasonCode;Component=$Component;ProcessId=$processId}
+        }
+        $receiptStart = [datetimeoffset]$legacy.ProcessStartedAt
+        $stateGeneration = [string]$legacy.Generation
+        $actualFingerprint = [string]$legacy.CommandContractFingerprint
+        $receiptId = $null
+        $evidenceKind = [string]$legacy.EvidenceKind
+    } elseif (-not $receipt.PSObject.Properties['generation'] -or
+            -not $receipt.PSObject.Properties['ownershipIdentityFingerprint'] -or
+            ($receipt.PSObject.Properties['status'] -and [string]$receipt.status -ne 'READY')) {
+        return [pscustomobject]@{Classification='ORPHAN_UNVERIFIABLE';ReasonCode='OWNERSHIP_RECEIPT_INCOMPLETE';Component=$Component;ProcessId=$processId}
+    } else {
+        $stateGeneration = if ($State.PSObject.Properties['serviceGeneration']) { [string]$State.serviceGeneration } else { $null }
+        if ([string]::IsNullOrWhiteSpace($stateGeneration) -or [string]$receipt.generation -ne $stateGeneration) {
+            return [pscustomobject]@{Classification='ORPHAN_UNVERIFIABLE';ReasonCode='GENERATION_MISMATCH';Component=$Component;ProcessId=$processId}
+        }
+        $receiptStart = [datetimeoffset]::MinValue
+        if (-not [datetimeoffset]::TryParse([string]$receipt.processStartedAt, [ref]$receiptStart) -or
+                [Math]::Abs(($receiptStart.ToUniversalTime() - ([datetimeoffset]$query.Snapshot.StartedAtUtc).ToUniversalTime()).TotalSeconds) -gt 1) {
+            return [pscustomobject]@{Classification='ORPHAN_UNVERIFIABLE';ReasonCode='PROCESS_START_MISMATCH';Component=$Component;ProcessId=$processId}
+        }
+        try {
+            $actualFingerprint = Get-ManagedProcessCommandFingerprint -Snapshot $query.Snapshot -Worktree $Worktree `
+                -Component $Component -OwnershipReceipt $receipt -ExactActiveCoordinationProof
+        } catch {
+            return [pscustomobject]@{Classification='ORPHAN_UNVERIFIABLE';ReasonCode='COMMAND_CONTRACT_MISMATCH';Component=$Component;ProcessId=$processId}
+        }
+        if ($actualFingerprint -ne [string]$receipt.ownershipIdentityFingerprint) {
+            return [pscustomobject]@{Classification='ORPHAN_UNVERIFIABLE';ReasonCode='COMMAND_FINGERPRINT_MISMATCH';Component=$Component;ProcessId=$processId}
+        }
+        $receiptId = [string]$receipt.operationId
+        $evidenceKind = 'OWNERSHIP_RECEIPT'
+    }
+    try { $operations = if ($null -ne $OperationDocuments) { @($OperationDocuments) } else { @(Get-ManagedCoordinationOperations -StateRoot $StateRoot) } }
+    catch { return [pscustomobject]@{Classification='ORPHAN_UNVERIFIABLE';ReasonCode='COORDINATION_EVIDENCE_INVALID';Component=$Component;ProcessId=$processId} }
+    $active = @($operations | Where-Object { $_.status -eq 'ACTIVE' -and @($_.resources) -contains $definition.Resource })
+    if (@($active | Where-Object { [int]$_.ownerPid -ne $processId }).Count -gt 0) {
+        return [pscustomobject]@{Classification='ORPHAN_BLOCKED_COMPETING_OWNER';ReasonCode='ACTIVE_COMPETING_OWNER';Component=$Component;ProcessId=$processId}
+    }
+    if (@($active | Where-Object { [int]$_.ownerPid -eq $processId }).Count -eq 1) {
+        return [pscustomobject]@{Classification='MANAGED_ACTIVE';ReasonCode='ACTIVE_OWNER_PRESENT';Component=$Component;ProcessId=$processId}
+    }
+    return [pscustomobject]@{
+        Classification='ORPHAN_EXACT_RECONCILABLE';ReasonCode='EXACT_OWNER_WITHOUT_ACTIVE_OPERATION'
+        Component=$Component;ProcessId=$processId;ProcessStartedAt=$receiptStart;Generation=$stateGeneration
+        ReceiptId=$receiptId;EvidenceKind=$evidenceKind;ResourceFingerprint=(Get-ManagedTextFingerprint $definition.Resource)
+        WorktreeFingerprint=(Get-ManagedTextFingerprint ([IO.Path]::GetFullPath($Worktree).TrimEnd('\').ToLowerInvariant()))
+        CommandContractFingerprint=$actualFingerprint
+    }
+}
+
+function New-ManagedOrphanStopAuthority {
+    param(
+        [Parameter(Mandatory)]$Diagnosis,
+        [string]$StateRoot = (Get-CoordinationDefaultRoot),
+        [ValidateRange(5,120)][int]$TtlSeconds = 30
+    )
+    if ([string]$Diagnosis.Classification -ne 'ORPHAN_EXACT_RECONCILABLE') {
+        throw 'Only an exact reconciliable orphan diagnosis can issue stop authority.'
+    }
+    $authorityId = [guid]::NewGuid().ToString()
+    $issuedAt = [datetimeoffset]::UtcNow
+    Write-CoordinationReceipt -StateRoot $StateRoot -Receipt ([ordered]@{
+        operationId=$authorityId;outcome='READY';status='OPEN';action='managed-orphan-stop-authority'
+        component=[string]$Diagnosis.Component;processId=[int]$Diagnosis.ProcessId
+        processStartedAt=([datetimeoffset]$Diagnosis.ProcessStartedAt).ToString('o');generation=[string]$Diagnosis.Generation
+        ownershipReceiptId=[string]$Diagnosis.ReceiptId;resourceFingerprint=[string]$Diagnosis.ResourceFingerprint
+        evidenceKind=[string]$Diagnosis.EvidenceKind
+        worktreeFingerprint=[string]$Diagnosis.WorktreeFingerprint
+        commandContractFingerprint=[string]$Diagnosis.CommandContractFingerprint
+        issuedAt=$issuedAt.ToString('o');expiresAt=$issuedAt.AddSeconds($TtlSeconds).ToString('o')
+        disposition='component-scoped; single-use; evidence-retained'
+    })
+    return [pscustomobject]@{AuthorityId=$authorityId;Action='managed-orphan-stop-authority';Component=[string]$Diagnosis.Component;ExpiresAt=$issuedAt.AddSeconds($TtlSeconds)}
+}
+
+function Test-ManagedOrphanStopAuthority {
+    param(
+        [Parameter(Mandatory)][string]$AuthorityId,
+        [Parameter(Mandatory)][string]$Worktree,
+        [Parameter(Mandatory)][ValidateSet('SpringBoot','Dispatcher','Ngrok')][string]$Component,
+        [Parameter(Mandatory)]$State,
+        [string]$StateRoot = (Get-CoordinationDefaultRoot),
+        [scriptblock]$ProcessQuery = { param($id) Get-ManagedProcessQueryResult -ProcessId $id }
+    )
+    if ($AuthorityId -notmatch '^[a-f0-9-]{36}$') { return [pscustomobject]@{Outcome='REJECTED';ReasonCode='AUTHORITY_ID_INVALID'} }
+    $path = Join-Path (Join-Path $StateRoot 'receipts') "$AuthorityId.json"
+    try { $authority = [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8) | ConvertFrom-Json }
+    catch { return [pscustomobject]@{Outcome='REJECTED';ReasonCode='AUTHORITY_INVALID'} }
+    if ($authority.action -ne 'managed-orphan-stop-authority' -or $authority.status -ne 'OPEN') {
+        $reason = if ($authority.status -eq 'CONSUMED') { 'AUTHORITY_ALREADY_CONSUMED' } else { 'AUTHORITY_INVALID' }
+        return [pscustomobject]@{Outcome='REJECTED';ReasonCode=$reason}
+    }
+    $expiresAt = [datetimeoffset]::MinValue
+    if (-not [datetimeoffset]::TryParse([string]$authority.expiresAt, [ref]$expiresAt) -or $expiresAt -le [datetimeoffset]::UtcNow) {
+        return [pscustomobject]@{Outcome='REJECTED';ReasonCode='AUTHORITY_EXPIRED'}
+    }
+    if ([string]$authority.component -ne $Component) { return [pscustomobject]@{Outcome='REJECTED';ReasonCode='COMPONENT_MISMATCH'} }
+    $diagnosis = Get-ManagedOrphanDiagnosis -Worktree $Worktree -Component $Component -State $State `
+        -StateRoot $StateRoot -ProcessQuery $ProcessQuery -OperationDocuments @()
+    $worktreeFingerprint = Get-ManagedTextFingerprint ([IO.Path]::GetFullPath($Worktree).TrimEnd('\').ToLowerInvariant())
+    if ($diagnosis.Classification -ne 'ORPHAN_EXACT_RECONCILABLE' -or
+            [int]$authority.processId -ne [int]$diagnosis.ProcessId -or
+            [string]$authority.processStartedAt -ne ([datetimeoffset]$diagnosis.ProcessStartedAt).ToString('o') -or
+            [string]$authority.generation -ne [string]$diagnosis.Generation -or
+            [string]$authority.evidenceKind -ne [string]$diagnosis.EvidenceKind -or
+            [string]$authority.ownershipReceiptId -ne [string]$diagnosis.ReceiptId -or
+            [string]$authority.worktreeFingerprint -ne $worktreeFingerprint -or
+            [string]$authority.resourceFingerprint -ne [string]$diagnosis.ResourceFingerprint -or
+            [string]$authority.commandContractFingerprint -ne [string]$diagnosis.CommandContractFingerprint) {
+        return [pscustomobject]@{Outcome='REJECTED';ReasonCode='AUTHORITY_EVIDENCE_MISMATCH'}
+    }
+    return [pscustomobject]@{Outcome='READY';ReasonCode=$null;ProcessId=[int]$diagnosis.ProcessId;Component=$Component;AuthorityId=$AuthorityId}
+}
+
+function Complete-ManagedOrphanStopAuthority {
+    param([Parameter(Mandatory)][string]$AuthorityId,[string]$StateRoot = (Get-CoordinationDefaultRoot))
+    if ($AuthorityId -notmatch '^[a-f0-9-]{36}$') { throw 'Managed orphan authority id is invalid.' }
+    $path = Join-Path (Join-Path $StateRoot 'receipts') "$AuthorityId.json"
+    $authority = [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    if ($authority.action -ne 'managed-orphan-stop-authority') { throw 'Managed orphan authority has an invalid typed schema.' }
+    if ($authority.status -eq 'CONSUMED') { return }
+    if ($authority.status -ne 'OPEN') { throw 'Managed orphan authority is not open.' }
+    $authority.status = 'CONSUMED'
+    $authority | Add-Member -NotePropertyName consumedAt -NotePropertyValue ([datetimeoffset]::UtcNow.ToString('o')) -Force
+    Write-CoordinationJsonAtomic -Path $path -Document $authority
 }
 
 function Get-ManagedProcessOwnershipProof {
@@ -663,13 +1300,21 @@ function Get-ManagedProcessOwnershipProof {
             return [pscustomobject]@{Outcome='BLOCKED';Reason='Another active session legitimately owns the exact worktree resource.';Definition=$definition;ProcessId=$processId}
         }
     }
+    if (-not $operation -and $trustedReceipt) {
+        return [pscustomobject]@{
+            Outcome='BLOCKED';Reason='Exact durable ownership exists without an active coordination operation.'
+            ReasonCode='EXACT_OWNER_WITHOUT_ACTIVE_OPERATION';Classification='ORPHAN_EXACT_RECONCILABLE'
+            Definition=$definition;ProcessId=$processId
+        }
+    }
     return [pscustomobject]@{Outcome='READY';Disposition='OWNED_RUNNING';Definition=$definition;ProcessId=$processId;ProcessPresent=$true;Snapshot=$snapshot;Operation=$operation;Receipt=$receipt}
 }
 
 function Update-ManagedDevStateAtomic {
     param(
         [Parameter(Mandatory)][string]$StateFile,
-        [Parameter(Mandatory)]$Definition
+        [Parameter(Mandatory)]$Definition,
+        [Parameter(Mandatory)][int]$ExpectedProcessId
     )
     $guard = New-CoordinationMutex "service-state/$StateFile"
     $held = $false
@@ -677,6 +1322,12 @@ function Update-ManagedDevStateAtomic {
         $held = Wait-CoordinationMutex -Mutex $guard -Deadline ([datetime]::UtcNow.AddSeconds(10))
         if (-not $held) { throw 'Development state is BUSY; component ownership was not changed.' }
         $state = [IO.File]::ReadAllText($StateFile, [Text.Encoding]::UTF8) | ConvertFrom-Json
+        $currentProperty = $state.PSObject.Properties[$Definition.StateField]
+        $currentProcessId = if ($currentProperty -and $currentProperty.Value) { [int]$currentProperty.Value } else { 0 }
+        if ($currentProcessId -eq 0) { return }
+        if ($currentProcessId -ne $ExpectedProcessId) {
+            throw 'Managed component state changed to another process generation; writeback refused.'
+        }
         $merged = @{}
         foreach ($property in $state.PSObject.Properties) { $merged[$property.Name] = $property.Value }
         $merged[$Definition.StateField] = $null
@@ -711,7 +1362,7 @@ function Complete-ManagedComponentStop {
             Write-CoordinationJsonAtomic -Path $Proof.Operation.EvidencePath -Document $manifest
         }
     }
-    Update-ManagedDevStateAtomic -StateFile $StateFile -Definition $Proof.Definition
+    Update-ManagedDevStateAtomic -StateFile $StateFile -Definition $Proof.Definition -ExpectedProcessId ([int]$Proof.ProcessId)
     $receiptId = [guid]::NewGuid().ToString()
     Write-CoordinationReceipt -StateRoot $StateRoot -Receipt ([ordered]@{
         operationId=$receiptId;outcome='READY';action='managed-process-stop';component=$Proof.Definition.Component
@@ -719,6 +1370,73 @@ function Complete-ManagedComponentStop {
         resource=$Proof.Definition.Resource;disposition='evidence-retained; component-state-cleared'
     })
     return $receiptId
+}
+
+function Stop-ManagedExactProcessTree {
+    param(
+        [Parameter(Mandatory)][int]$RootProcessId,
+        [int]$ExpectedPort = 0,
+        [scriptblock]$ProcessTableAdapter = {
+            try {
+                $rows = @(Get-CimInstance Win32_Process -ErrorAction Stop | Select-Object ProcessId,ParentProcessId)
+                [pscustomobject]@{Outcome='READY';Processes=$rows}
+            } catch {
+                $denied = $_.Exception -is [UnauthorizedAccessException] -or $_.FullyQualifiedErrorId -match 'AccessDenied|UnauthorizedAccess'
+                [pscustomobject]@{Outcome=if($denied){'CALLER_ACCESS_DENIED'}else{'UNKNOWN'};Processes=@()}
+            }
+        },
+        [scriptblock]$TerminationAdapter = {
+            param($id)
+            try { Stop-Process -Id $id -Force -ErrorAction Stop;[pscustomobject]@{Success=$true} }
+            catch [ArgumentException] { [pscustomobject]@{Success=$true} }
+            catch { [pscustomobject]@{Success=$false} }
+        },
+        [scriptblock]$VerificationQuery = { param($id) Get-ManagedProcessQueryResult -ProcessId $id },
+        [scriptblock]$PortObservationAdapter,
+        [ValidateRange(1,30)][int]$TimeoutSeconds = 15
+    )
+    $table = & $ProcessTableAdapter
+    if (-not $table -or $table.Outcome -ne 'READY') {
+        $reasonCode = if ($table) { "PROCESS_TREE_$($table.Outcome)" } else { 'PROCESS_TREE_UNKNOWN' }
+        return [pscustomobject]@{Success=$false;ReasonCode=$reasonCode;StoppedCount=0}
+    }
+    $descendants = [Collections.Generic.List[int]]::new()
+    $frontier = [Collections.Generic.List[int]]::new()
+    $frontier.Add($RootProcessId)
+    for ($index=0;$index -lt $frontier.Count;$index++) {
+        $parent = $frontier[$index]
+        foreach ($row in @($table.Processes | Where-Object { [int]$_.ParentProcessId -eq $parent })) {
+            $child = [int]$row.ProcessId
+            if ($child -gt 0 -and $child -ne $RootProcessId -and -not $descendants.Contains($child)) {
+                $descendants.Add($child);$frontier.Add($child)
+            }
+        }
+    }
+    $ordered = @($descendants.ToArray());[array]::Reverse($ordered);$ordered += $RootProcessId
+    foreach ($processId in $ordered) {
+        $stopped = & $TerminationAdapter $processId
+        if (-not $stopped -or -not [bool]$stopped.Success) {
+            return [pscustomobject]@{Success=$false;ReasonCode='EXACT_PROCESS_TERMINATION_FAILED';StoppedCount=0}
+        }
+    }
+    $deadline = [datetimeoffset]::UtcNow.AddSeconds($TimeoutSeconds)
+    do {
+        $rootQuery = & $VerificationQuery $RootProcessId
+        $rootDown = (Get-ManagedProcessObservation -QueryResult $rootQuery).State -eq 'DOWN'
+        $portDown = $true
+        if ($ExpectedPort -gt 0) {
+            $portObservation = if ($PortObservationAdapter) { & $PortObservationAdapter $ExpectedPort } else {
+                try {
+                    $owner = Get-NetTCPConnection -LocalPort $ExpectedPort -State Listen -ErrorAction Stop | Select-Object -First 1
+                    [pscustomobject]@{State=if($owner){'UP'}else{'DOWN'}}
+                } catch { [pscustomobject]@{State='UNKNOWN'} }
+            }
+            $portDown = $portObservation.State -eq 'DOWN'
+        }
+        if ($rootDown -and $portDown) { return [pscustomobject]@{Success=$true;ReasonCode=$null;StoppedCount=$ordered.Count} }
+        Start-Sleep -Milliseconds 100
+    } while ([datetimeoffset]::UtcNow -lt $deadline)
+    return [pscustomobject]@{Success=$false;ReasonCode='EXACT_PROCESS_STOP_NOT_VERIFIED';StoppedCount=0}
 }
 
 function Invoke-ManagedComponentStop {
@@ -734,7 +1452,32 @@ function Invoke-ManagedComponentStop {
     $state = [IO.File]::ReadAllText($stateFile, [Text.Encoding]::UTF8) | ConvertFrom-Json
     $proof = Get-ManagedProcessOwnershipProof -Worktree $Worktree -Component $Component -State $state `
         -StateRoot $StateRoot -ProcessQuery $ProcessQuery -OperationDocuments $OperationDocuments
-    if ($proof.Outcome -ne 'READY') { return $proof }
+    $orphanAuthorityId = $null
+    if ($proof.Outcome -ne 'READY') {
+        $diagnosis = Get-ManagedOrphanDiagnosis -Worktree $Worktree -Component $Component -State $state `
+            -StateRoot $StateRoot -ProcessQuery $ProcessQuery -OperationDocuments $OperationDocuments
+        if ($diagnosis.Classification -ne 'ORPHAN_EXACT_RECONCILABLE') {
+            return [pscustomobject]@{
+                Outcome='BLOCKED';Reason='Managed component ownership requires typed orphan reconciliation.'
+                ReasonCode=[string]$diagnosis.ReasonCode;Classification=[string]$diagnosis.Classification
+                Component=$Component;ProcessId=$diagnosis.ProcessId
+            }
+        }
+        $authority = New-ManagedOrphanStopAuthority -Diagnosis $diagnosis -StateRoot $StateRoot
+        $validated = Test-ManagedOrphanStopAuthority -AuthorityId $authority.AuthorityId -Worktree $Worktree `
+            -Component $Component -State $state -StateRoot $StateRoot -ProcessQuery $ProcessQuery
+        if ($validated.Outcome -ne 'READY') {
+            return [pscustomobject]@{Outcome='BLOCKED';Reason='Managed orphan stop authority failed exact revalidation.';ReasonCode=$validated.ReasonCode;Component=$Component}
+        }
+        $definition = Get-ManagedComponentDefinition -Component $Component -Worktree $Worktree
+        $current = & $ProcessQuery ([int]$diagnosis.ProcessId)
+        $proof = [pscustomobject]@{
+            Outcome='READY';Disposition='ORPHAN_EXACT_RECONCILE';Definition=$definition
+            ProcessId=[int]$diagnosis.ProcessId;ProcessPresent=$true;Snapshot=$current.Snapshot
+            Operation=$null;Receipt=$null;AuthorityId=$authority.AuthorityId
+        }
+        $orphanAuthorityId = $authority.AuthorityId
+    }
     if ($proof.Disposition -eq 'ALREADY_STOPPED') {
         return [pscustomobject]@{Outcome='READY';Disposition='ALREADY_STOPPED';Component=$Component;Changed=$false}
     }
@@ -745,6 +1488,6 @@ function Invoke-ManagedComponentStop {
         }
     }
     $receiptId = Complete-ManagedComponentStop -Proof $proof -Worktree $Worktree -StateFile $stateFile -StateRoot $StateRoot
+    if ($orphanAuthorityId) { Complete-ManagedOrphanStopAuthority -AuthorityId $orphanAuthorityId -StateRoot $StateRoot }
     return [pscustomobject]@{Outcome='READY';Disposition=$proof.Disposition;Component=$Component;Changed=$true;ReceiptId=$receiptId;Proof=$proof}
 }
-

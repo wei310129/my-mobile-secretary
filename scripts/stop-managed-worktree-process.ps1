@@ -13,9 +13,8 @@ $projectRoot = Split-Path -Parent $PSScriptRoot
 
 try {
     $target = Resolve-ProjectManagedWorktree -ProjectRoot $projectRoot -Worktree $Worktree
-    # Stop-ProcessTree remains the official project implementation. Loading it from the
-    # target worktree preserves its ports and lifecycle conventions; this wrapper supplies
-    # the ownership proof that the generic function intentionally does not infer.
+    # Load the target worktree's bounded status adapters; stop authority still comes only
+    # from the exact typed ownership proof below.
     . (Join-Path $target 'scripts\_devops-common.ps1')
     if ($ValidateOnly) {
         $stateFile = Join-Path $target 'scripts\.dev-state.json'
@@ -37,7 +36,8 @@ try {
             if (-not $lane) { throw 'Dispatcher durable lane cannot be inspected; stop refused.' }
             if ($lane.ActiveRunId) { throw 'Dispatcher has an active run; stop refused.' }
         }
-        Stop-ProcessTree -ProcessId $proof.ProcessId -Label $proof.Definition.Label -Port $proof.Definition.Port
+        Stop-ManagedExactProcessTree -RootProcessId $proof.ProcessId -ExpectedPort $proof.Definition.Port `
+            -PortObservationAdapter { param($port) Get-DevPortObservation -Port $port }
     }
     if ($result.Outcome -ne 'READY') {
         Write-Host ("Managed stop refused: {0}" -f $result.Reason)
@@ -53,4 +53,3 @@ try {
     Write-Host ("Managed stop failed closed: {0}" -f $_.Exception.Message)
     exit 40
 }
-

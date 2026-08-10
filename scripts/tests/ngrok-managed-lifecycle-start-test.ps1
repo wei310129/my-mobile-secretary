@@ -218,13 +218,13 @@ try {
     Assert-NgrokStart ($afterRejected -eq $beforeRejected) 'a rejected or replayed launch wrote ownership evidence'
 
     $devStartText = [IO.File]::ReadAllText((Join-Path $scripts 'dev-start.ps1'), [Text.Encoding]::UTF8)
-    Assert-NgrokStart ($devStartText -match '(?s)StartNewNgrokPid\s*=.*?New-ManagedProcessOwnershipReceipt.*?-PassThru') `
-        'dev-start does not retain the launched root PID before receipt publication'
-    Assert-NgrokStart ($devStartText -match '(?s)ngrokLaunchObservedAt\s*=.*?Start-Process.*?New-ManagedProcessOwnershipReceipt.*?-ExpectedExecutablePath\s+\$ngrokExe.*?-ExpectedArguments\s+\$ngrokArguments.*?-ExpectedPort\s+\$AppPort.*?-LaunchObservedAtUtc\s+\$ngrokLaunchObservedAt') `
-        'dev-start does not bind receipt publication to the exact executable, command, port and observed launch time'
+    Assert-NgrokStart ($devStartText -match '(?s)Start-ManagedDurableProcess.*?-Component Ngrok.*?-ExecutablePath\s+\$ngrokExe.*?-Arguments\s+\$ngrokArguments') `
+        'dev-start does not use the bounded durable launcher for ngrok'
+    Assert-NgrokStart ($devStartText -match '(?s)Start-ManagedDurableProcess.*?-Generation\s+\$script:StartServiceGeneration\.Generation.*?-ExpectedPort\s+\$AppPort.*?-ReadinessProbe') `
+        'dev-start does not bind ngrok publication to generation, command, port and tunnel readiness'
     Assert-NgrokStart ($devStartText -match '(?s)ngrokPid\s*=\s*\$ngrokOwnership\.ProcessId.*?ngrokOwnershipReceiptId\s*=\s*\$ngrokOwnership\.ReceiptId') `
         'dev-start does not consume the verified process identity returned by receipt publication'
-    Assert-NgrokStart ($devStartText -match '(?s)StartNewNgrokPid.*?startup rollback.*?if\s*\(\$devStartFailure\)\s*\{\s*exit 1\s*\}') `
+    Assert-NgrokStart ($devStartText -match '(?s)FailureStopAdapter.*?ngrok \(startup rollback\).*?if\s*\(\$devStartFailure\)\s*\{\s*exit 1\s*\}') `
         'receipt failure is not covered by rollback and an explicit nonzero exit boundary'
 
     [pscustomobject]@{status='passed';assertions=$assertions;liveProcesses='fake';receiptsContainSensitiveCommand=$false} |

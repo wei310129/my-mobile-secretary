@@ -44,6 +44,12 @@
 
 ## 已觀察案例與決策索引
 
+- 2026-08-11 managed coordination legacy ID／stop ordering closure：歷史registry保留合法safe named operation，
+  舊validator卻在status/resource篩選前強制GUID，造成out-of-scope RELEASED evidence阻擋live stop；且舊stop
+  先終止process、後驗stale durable evidence，reconcile失敗時留下舊state。現以bounded path-safe ID＋filename
+  exact fence窄幅相容legacy，新publication仍預設GUID；stop在mutation前雙重preflight與exact current-owner
+  recheck，並以deterministic recovery/stop receipts讓completion或state-write失聯可exactly-once接續。
+
 - 2026-08-11 managed coordination stale owner／PID reuse closure：歷史`ACTIVE` operation只保存owner PID，
   dead owner或被後來無關process重用的PID會被raw scanner誤當競爭owner，阻擋current exact runtime。
   新publication保存typed canonical process start identity；所有status／ownership／orphan／stop路徑共用同一

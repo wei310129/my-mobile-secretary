@@ -115,12 +115,23 @@ caller access denied、identity incomplete或malformed evidence仍fail closed。
 只有正式stop/reconcile會在mutex內重驗後原子標示`ABANDONED`，保留typed evidence且重跑exactly-once。
 沒有owner identity的legacy manifest只在schema/resource一致且observed process start不晚於operation publication
 時視為bounded live owner，否則只在能證明dead/reused時回收，無法證明時維持阻擋。
+歷史operation ID可為GUID或bounded path-safe name：長度最多128、只能使用英數與`.`／`_`／`-`、必須
+以英數開頭結尾且禁止`..`；evidence filename必須與operationId逐字相符。slash、backslash、absolute path、
+錯型別、blank、過長、invalid JSON及malformed relevant ACTIVE evidence一律fail closed。新generic publication
+預設仍產生GUID，不會因legacy compatibility退回named identity。
 
 沒有ACTIVE operation但仍有matching typed ownership receipt時，read-only診斷只會分類為
 `ORPHAN_EXACT_RECONCILABLE`；正式stop會再簽發最長30秒、component-scoped、single-use authority並立即
 重驗PID、creation time、command fingerprint、worktree與service generation。正常停止只終止已證明root的
 descendant tree，使用exact `Stop-Process`與bounded verification，不以`taskkill`作成功路徑；中途失聯可由
 保留的receipt、released operation與expected-PID state fence安全重播。
+
+正式stop在呼叫process mutation adapter前，會兩次唯讀驗證stale evidence的canonical path／typed manifest／
+current classification，並重新核對state PID與exact process snapshot。preflight或mutation-boundary任一失敗時
+`StopAdapter` invocation必須為0。通過後先寫入deterministic durable recovery contract；process停止後才依序
+reconcile stale operations、release current operation、以deterministic ID寫stop receipt、最後清component state。
+completion或state write中斷回`STOP_DURABLE_COMPLETION_REQUIRED`與recovery receipt，下一次官方stop可在不重複
+process mutation的情況下接續並收斂；成功與replay都保留exactly-once evidence。
 
 Codex 需要處理另一個 `var\worktrees` worktree 的 stale managed process 時，只能使用不接受 PID 的
 受限入口：

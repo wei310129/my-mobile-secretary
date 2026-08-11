@@ -59,6 +59,9 @@ Spring、PostgreSQL/PostGIS 與 Redis Testcontainers。
 - Managed coordination owner修改必須用controlled operation fixtures覆蓋current-only、dead＋current、PID reuse＋
   current與genuine live competitor；另驗legacy/new typed identity、malformed/access-denied/incomplete evidence、
   read-only無writeback、正式ABANDONED reconcile、exactly-once replay及stop/restart新operation generation。
+- Legacy operation／stop ordering修改必須覆蓋safe named RELEASED out-of-scope與ACTIVE dead/reuse/live矩陣、
+  filename identity及path traversal deny matrix；process mutation前驗證stale durable evidence並重驗current owner，
+  completion/state-write中斷須有typed recovery contract且官方replay不得再次呼叫process stop adapter。
 - Testcontainers integration 維持 serial；未完成 per-test infra 隔離前，不啟用 JUnit class/method parallel。
 - Dispatcher pause/drain、migration 與 protected management API 變更須跑最小 Dispatcher integration test；主應用與
   Dispatcher Maven target 不可在同一 worktree 同時寫入。

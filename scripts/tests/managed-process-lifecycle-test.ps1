@@ -133,7 +133,8 @@ try {
         -ProcessQuery $query -OperationDocuments @($springOperation) -StopAdapter {
             param($proof);$stopCalls.Add("$($proof.Definition.Component):$($proof.ProcessId)");[pscustomobject]@{Success=$true}
         }
-    Assert-Managed ($springStop.Outcome -eq 'READY') 'verified Spring launcher did not stop'
+    Assert-Managed ($springStop.Outcome -eq 'READY') `
+        ("verified Spring launcher did not stop: {0}" -f ($springStop | ConvertTo-Json -Compress -Depth 6))
     $afterSpring = [IO.File]::ReadAllText($stateFile, [Text.Encoding]::UTF8) | ConvertFrom-Json
     Assert-Managed (-not $afterSpring.springBootPid -and $afterSpring.ngrokPid -eq 200) `
         'Spring component state was not atomically cleared before the later ngrok attempt'

@@ -44,6 +44,12 @@
 
 ## 已觀察案例與決策索引
 
+- 2026-08-11 managed coordination stale owner／PID reuse closure：歷史`ACTIVE` operation只保存owner PID，
+  dead owner或被後來無關process重用的PID會被raw scanner誤當競爭owner，阻擋current exact runtime。
+  新publication保存typed canonical process start identity；所有status／ownership／orphan／stop路徑共用同一
+  fail-closed validator。read-only scan只分類，正式reconcile才會原子保留`ABANDONED` evidence且exactly-once；
+  genuine live competitor、query access denied/incomplete、malformed evidence與無法窄幅證明的legacy manifest仍阻擋。
+
 - 2026-08-11 managed process fingerprint precision closure：native FILETIME可保留100ns ticks，WMI creation time
   只可靠到微秒；同一程序的 `.4765575Z` receipt在後續`.4765570Z` WMI/native consensus曾誤報
   `COMMAND_FINGERPRINT_MISMATCH`。process identity現統一使用UTC微秒向下截斷並以v2 receipt明載精度；

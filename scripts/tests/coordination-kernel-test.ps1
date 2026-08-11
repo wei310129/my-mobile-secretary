@@ -99,8 +99,17 @@ try {
     Stop-Process -Id $crashed.Id -Force
     $crashed.WaitForExit()
     $crashOperationId = [IO.File]::ReadAllText($ready, [Text.Encoding]::UTF8)
+    $readOnlyCrashManifest = Get-CoordinationOperationManifest -StateRoot $testRoot -OperationId $crashOperationId
+    Assert-Kernel ($readOnlyCrashManifest.status -eq 'ACTIVE') 'read-only operation lookup mutated a stale manifest'
+    $crashResource = (New-CoordinationResource -Type 'worktree/maven-target' -Key 'crash-owner' -Mode Exclusive).CanonicalKey
+    $crashClassification = Get-CoordinationOperationOwnerClassification -Manifest $readOnlyCrashManifest -ExpectedResource $crashResource
+    Assert-Kernel ($crashClassification.State -eq 'STALE_DEAD') 'dead operation owner was not typed as stale'
+    $reconcile = Resolve-CoordinationStaleOperation -StateRoot $testRoot -OperationId $crashOperationId -ExpectedResource $crashResource
     $abandoned = Get-CoordinationOperationManifest -StateRoot $testRoot -OperationId $crashOperationId
-    Assert-Kernel ($abandoned.status -eq 'ABANDONED' -and $abandoned.abandonedReason -eq 'owner-pid-not-running') 'crash manifest was not marked abandoned'
+    Assert-Kernel ($reconcile.Changed -and $abandoned.status -eq 'ABANDONED' -and
+            $abandoned.reconcileEvidence.schema -eq 'MMS_COORDINATION_RECONCILE_V1') 'formal reconcile did not retain typed abandonment evidence'
+    $replay = Resolve-CoordinationStaleOperation -StateRoot $testRoot -OperationId $crashOperationId -ExpectedResource $crashResource
+    Assert-Kernel ($replay.Outcome -eq 'READY' -and -not $replay.Changed) 'stale operation reconcile was not exactly-once'
     $recovered = Enter-CoordinationOperation -Resources @(New-CoordinationResource -Type 'worktree/maven-target' -Key 'crash-owner' -Mode Exclusive) -TimeoutSeconds 5
     Assert-Kernel ($recovered.Outcome -eq 'READY') 'abandoned owner lock did not release'
     Exit-CoordinationOperation $recovered
@@ -135,7 +144,7 @@ try {
     $doctor = Get-CoordinationDoctorSnapshot -StateRoot $testRoot
     Assert-Kernel ($doctor.externalProbe -eq 'skipped' -and $doctor.cleanup -like 'read-only*') 'doctor attempted a mutation or external probe'
 
-    [pscustomobject]@{ status = 'passed'; assertions = 12; processes = 20; maximumCriticalSection = $maximum; casGeneration = $final.generation; livePaths = 'skipped' } | ConvertTo-Json -Compress
+    [pscustomobject]@{ status = 'passed'; assertions = 15; processes = 20; maximumCriticalSection = $maximum; casGeneration = $final.generation; livePaths = 'skipped' } | ConvertTo-Json -Compress
 } finally {
     foreach ($job in @($jobs)) { if ($job.State -eq 'Running') { Stop-Job -Job $job -ErrorAction SilentlyContinue }; Remove-Job -Job $job -Force -ErrorAction SilentlyContinue }
     if (Test-Path -LiteralPath $testRoot) { Remove-Item -LiteralPath $testRoot -Recurse -Force }

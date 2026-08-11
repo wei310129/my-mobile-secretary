@@ -40,6 +40,22 @@ function Test-CoordinationCanonicalProcessStartTimeEqual {
         (ConvertTo-CoordinationCanonicalProcessStartTime -Value $Right).Ticks
 }
 
+function Test-CoordinationOperationId {
+    param([AllowNull()]$Value)
+    if ($Value -isnot [string]) { return $false }
+    $operationId = [string]$Value
+    if ($operationId.Length -lt 1 -or $operationId.Length -gt 128 -or $operationId.Contains('..')) { return $false }
+    return $operationId -match '^[A-Za-z0-9](?:[A-Za-z0-9._-]{0,126}[A-Za-z0-9])?$'
+}
+
+function Assert-CoordinationOperationId {
+    param([AllowNull()]$Value)
+    if (-not (Test-CoordinationOperationId -Value $Value)) {
+        throw 'Coordination operation id violates the bounded path-safe contract.'
+    }
+    return [string]$Value
+}
+
 function Get-CoordinationProcessIdentityQueryResult {
     param([Parameter(Mandatory)][int]$ProcessId)
     $process = $null
@@ -82,7 +98,7 @@ function ConvertTo-CoordinationOperationManifest {
     if ($Manifest.schemaVersion.GetType() -notin $integerTypes -or [int]$Manifest.schemaVersion -ne 1) {
         throw 'Coordination operation manifest has an unsupported schema.'
     }
-    if ($Manifest.operationId -isnot [string] -or [string]$Manifest.operationId -notmatch '^[a-f0-9-]{36}$') {
+    if (-not (Test-CoordinationOperationId -Value $Manifest.operationId)) {
         throw 'Coordination operation manifest has an invalid operation id.'
     }
     if ($Manifest.status -isnot [string] -or [string]$Manifest.status -notin @('ACTIVE','RELEASED','ABANDONED')) {
@@ -376,7 +392,8 @@ function Get-CoordinationRegistryPath {
 
 function Get-CoordinationOperationPath {
     param([Parameter(Mandatory)][string]$StateRoot, [Parameter(Mandatory)][string]$OperationId)
-    return Join-Path (Join-Path $StateRoot 'operations') "$OperationId.json"
+    $safeOperationId = Assert-CoordinationOperationId -Value $OperationId
+    return Join-Path (Join-Path $StateRoot 'operations') "$safeOperationId.json"
 }
 
 function Get-CoordinationOperationManifest {

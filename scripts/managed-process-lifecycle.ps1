@@ -523,6 +523,10 @@ function Get-ManagedCoordinationOperations {
         }
         try { ConvertTo-CoordinationOperationManifest -Manifest $document | Out-Null }
         catch { throw "Coordination operation typed evidence is invalid: $($file.Name)" }
+        $fileOperationId = [IO.Path]::GetFileNameWithoutExtension($file.Name)
+        if (-not [string]::Equals($fileOperationId, [string]$document.operationId, [StringComparison]::Ordinal)) {
+            throw "Coordination operation filename identity is invalid: $($file.Name)"
+        }
         $document | Add-Member -NotePropertyName EvidencePath -NotePropertyValue $file.FullName -Force
         $documents.Add($document)
     }
@@ -582,6 +586,135 @@ function Get-ManagedTextFingerprint {
     } finally {
         $sha.Dispose()
     }
+}
+
+function ConvertTo-ManagedStableGuid {
+    param([Parameter(Mandatory)][string]$Value)
+    $hex = (Get-ManagedTextFingerprint -Value $Value).Substring(0,32)
+    return '{0}-{1}-{2}-{3}-{4}' -f $hex.Substring(0,8),$hex.Substring(8,4),$hex.Substring(12,4),$hex.Substring(16,4),$hex.Substring(20,12)
+}
+
+function Test-ManagedStaleCoordinationPreflight {
+    param(
+        [AllowNull()][AllowEmptyCollection()][object[]]$Classifications,
+        [Parameter(Mandatory)][string]$StateRoot,
+        [Parameter(Mandatory)][string]$ExpectedResource,
+        [scriptblock]$ProcessQuery = { param($id) Get-ManagedProcessQueryResult -ProcessId $id }
+    )
+    $validated = [Collections.Generic.List[object]]::new()
+    foreach ($classification in @(@($Classifications) | Where-Object {
+        $null -ne $_ -and $_.State -in @('STALE_DEAD','STALE_PID_REUSED')
+    })) {
+        $operationId = Assert-CoordinationOperationId -Value ([string]$classification.Typed.OperationId)
+        $expectedPath = [IO.Path]::GetFullPath((Get-CoordinationOperationPath -StateRoot $StateRoot -OperationId $operationId))
+        $pathProperty = $classification.Manifest.PSObject.Properties['EvidencePath']
+        if (-not $pathProperty -or $pathProperty.Value -isnot [string] -or
+                -not [string]::Equals([IO.Path]::GetFullPath([string]$pathProperty.Value), $expectedPath,
+                    [StringComparison]::OrdinalIgnoreCase) -or
+                -not (Test-Path -LiteralPath $expectedPath -PathType Leaf)) {
+            throw 'Stale coordination evidence is not durably bound to its canonical operation path.'
+        }
+        try { $manifest = [IO.File]::ReadAllText($expectedPath, [Text.Encoding]::UTF8) | ConvertFrom-Json }
+        catch { throw 'Stale coordination evidence is not valid JSON.' }
+        $typed = ConvertTo-CoordinationOperationManifest -Manifest $manifest
+        if ($typed.OperationId -ne $operationId -or $typed.Status -ne 'ACTIVE' -or
+                $typed.Resources -notcontains $ExpectedResource) {
+            throw 'Stale coordination evidence changed before mutation preflight.'
+        }
+        $fresh = Get-CoordinationOperationOwnerClassification -Manifest $manifest `
+            -ExpectedResource $ExpectedResource -ProcessQuery $ProcessQuery
+        if ($fresh.State -notin @('STALE_DEAD','STALE_PID_REUSED')) {
+            throw 'Stale coordination owner is no longer safely reconciliable.'
+        }
+        $manifest | Add-Member -NotePropertyName EvidencePath -NotePropertyValue $expectedPath -Force
+        $fresh.Manifest = $manifest
+        $validated.Add($fresh)
+    }
+    return $validated.ToArray()
+}
+
+function Test-ManagedStopMutationBoundary {
+    param(
+        [Parameter(Mandatory)]$Proof,
+        [Parameter(Mandatory)][string]$StateFile,
+        [scriptblock]$ProcessQuery = { param($id) Get-ManagedProcessQueryResult -ProcessId $id }
+    )
+    $state = [IO.File]::ReadAllText($StateFile, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    $tracked = $state.PSObject.Properties[$Proof.Definition.StateField]
+    if (-not $tracked -or [int]$tracked.Value -ne [int]$Proof.ProcessId) {
+        throw 'Managed component state changed before the process mutation boundary.'
+    }
+    if ($Proof.ProcessPresent) {
+        $current = & $ProcessQuery ([int]$Proof.ProcessId)
+        if (-not $current -or [string]$current.Outcome -ne 'READY' -or -not $current.Snapshot -or
+                -not (Test-ManagedProcessSnapshotConsensus -Left $Proof.Snapshot -Right $current.Snapshot)) {
+            throw 'Managed process identity changed before the process mutation boundary.'
+        }
+    }
+    return $true
+}
+
+function Open-ManagedStopRecoveryContract {
+    param(
+        [Parameter(Mandatory)]$Proof,
+        [Parameter(Mandatory)][string]$Worktree,
+        [Parameter(Mandatory)][string]$StateRoot
+    )
+    $evidenceId = if ($Proof.Receipt) { [string]$Proof.Receipt.operationId } elseif ($Proof.Operation) {
+        [string]$Proof.Operation.operationId
+    } else { 'bounded-orphan-authority' }
+    $transactionKey = @(
+        'managed-component-stop-v1',$Proof.Definition.Component,$Proof.Definition.Resource,
+        [string][int]$Proof.ProcessId,$evidenceId,
+        (Get-ManagedTextFingerprint ([IO.Path]::GetFullPath($Worktree).TrimEnd('\').ToLowerInvariant()))
+    ) -join '|'
+    $recoveryId = ConvertTo-ManagedStableGuid -Value "recovery|$transactionKey"
+    $stopReceiptId = ConvertTo-ManagedStableGuid -Value "completion|$transactionKey"
+    $path = Join-Path (Join-Path $StateRoot 'receipts') "$recoveryId.json"
+    $expectedWorktree = Get-ManagedTextFingerprint ([IO.Path]::GetFullPath($Worktree).TrimEnd('\').ToLowerInvariant())
+    if (Test-Path -LiteralPath $path -PathType Leaf) {
+        try { $existing = [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8) | ConvertFrom-Json }
+        catch { throw 'Managed stop recovery contract is invalid.' }
+        if ($existing.action -ne 'managed-component-stop-recovery' -or
+                [string]$existing.component -ne [string]$Proof.Definition.Component -or
+                [int]$existing.processId -ne [int]$Proof.ProcessId -or
+                [string]$existing.resource -ne [string]$Proof.Definition.Resource -or
+                [string]$existing.worktreeFingerprint -ne $expectedWorktree -or
+                [string]$existing.stopReceiptId -ne $stopReceiptId -or
+                [string]$existing.status -notin @('PREPARED','PROCESS_STOPPED','RECOVERY_REQUIRED','COMPLETED')) {
+            throw 'Managed stop recovery contract does not match the exact stop identity.'
+        }
+        return $existing
+    }
+    $document = [ordered]@{
+        operationId=$recoveryId;outcome='READY';action='managed-component-stop-recovery';status='PREPARED'
+        component=$Proof.Definition.Component;processId=[int]$Proof.ProcessId;resource=$Proof.Definition.Resource
+        worktreeFingerprint=$expectedWorktree;stopReceiptId=$stopReceiptId
+        preparedAt=[datetimeoffset]::UtcNow.ToString('o');phase='PRE_MUTATION_VALIDATED'
+        disposition='durable-replay; exact-component; no-external-authority'
+    }
+    Write-CoordinationReceipt -StateRoot $StateRoot -Receipt $document
+    return [pscustomobject]$document
+}
+
+function Set-ManagedStopRecoveryContractStatus {
+    param(
+        [Parameter(Mandatory)][string]$StateRoot,
+        [Parameter(Mandatory)][string]$RecoveryId,
+        [Parameter(Mandatory)][ValidateSet('PROCESS_STOPPED','RECOVERY_REQUIRED','COMPLETED')][string]$Status,
+        [Parameter(Mandatory)][string]$Phase
+    )
+    $path = Join-Path (Join-Path $StateRoot 'receipts') "$RecoveryId.json"
+    $document = [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8) | ConvertFrom-Json
+    if ($document.action -ne 'managed-component-stop-recovery' -or
+            [string]$document.status -notin @('PREPARED','PROCESS_STOPPED','RECOVERY_REQUIRED','COMPLETED')) {
+        throw 'Managed stop recovery contract is not updateable.'
+    }
+    if ([string]$document.status -eq 'COMPLETED') { return }
+    $document.status = $Status
+    $document.phase = $Phase
+    $document | Add-Member -NotePropertyName updatedAt -NotePropertyValue ([datetimeoffset]::UtcNow.ToString('o')) -Force
+    Write-CoordinationJsonAtomic -Path $path -Document $document
 }
 
 function Get-ManagedNgrokCommandContract {
@@ -1521,7 +1654,8 @@ function Complete-ManagedComponentStop {
         [Parameter(Mandatory)]$Proof,
         [Parameter(Mandatory)][string]$Worktree,
         [Parameter(Mandatory)][string]$StateFile,
-        [string]$StateRoot = (Get-CoordinationDefaultRoot)
+        [string]$StateRoot = (Get-CoordinationDefaultRoot),
+        [string]$ReceiptId = ([guid]::NewGuid().ToString())
     )
     if ($Proof.Operation -and $Proof.Operation.EvidencePath -and
             (Test-Path -LiteralPath $Proof.Operation.EvidencePath -PathType Leaf)) {
@@ -1537,14 +1671,25 @@ function Complete-ManagedComponentStop {
             Write-CoordinationJsonAtomic -Path $Proof.Operation.EvidencePath -Document $manifest
         }
     }
+    $receiptPath = Join-Path (Join-Path $StateRoot 'receipts') "$ReceiptId.json"
+    if (Test-Path -LiteralPath $receiptPath -PathType Leaf) {
+        try { $existingReceipt = [IO.File]::ReadAllText($receiptPath, [Text.Encoding]::UTF8) | ConvertFrom-Json }
+        catch { throw 'Managed stop completion receipt is invalid.' }
+        if ($existingReceipt.action -ne 'managed-process-stop' -or
+                [string]$existingReceipt.component -ne [string]$Proof.Definition.Component -or
+                [int]$existingReceipt.processId -ne [int]$Proof.ProcessId -or
+                [string]$existingReceipt.resource -ne [string]$Proof.Definition.Resource) {
+            throw 'Managed stop completion receipt does not match the exact stop identity.'
+        }
+    } else {
+        Write-CoordinationReceipt -StateRoot $StateRoot -Receipt ([ordered]@{
+            operationId=$ReceiptId;outcome='READY';action='managed-process-stop';component=$Proof.Definition.Component
+            processId=$Proof.ProcessId;worktree=[IO.Path]::GetFullPath($Worktree).TrimEnd('\')
+            resource=$Proof.Definition.Resource;disposition='evidence-retained; component-state-cleared'
+        })
+    }
     Update-ManagedDevStateAtomic -StateFile $StateFile -Definition $Proof.Definition -ExpectedProcessId ([int]$Proof.ProcessId)
-    $receiptId = [guid]::NewGuid().ToString()
-    Write-CoordinationReceipt -StateRoot $StateRoot -Receipt ([ordered]@{
-        operationId=$receiptId;outcome='READY';action='managed-process-stop';component=$Proof.Definition.Component
-        processId=$Proof.ProcessId;worktree=[IO.Path]::GetFullPath($Worktree).TrimEnd('\')
-        resource=$Proof.Definition.Resource;disposition='evidence-retained; component-state-cleared'
-    })
-    return $receiptId
+    return $ReceiptId
 }
 
 function Stop-ManagedExactProcessTree {
@@ -1621,7 +1766,12 @@ function Invoke-ManagedComponentStop {
         [string]$StateRoot = (Get-CoordinationDefaultRoot),
         [scriptblock]$ProcessQuery = { param($id) Get-ManagedProcessQueryResult -ProcessId $id },
         [AllowNull()][object[]]$OperationDocuments,
-        [Parameter(Mandatory)][scriptblock]$StopAdapter
+        [Parameter(Mandatory)][scriptblock]$StopAdapter,
+        [scriptblock]$CompletionAdapter = {
+            param($proof,$worktree,$stateFile,$stateRoot,$receiptId)
+            Complete-ManagedComponentStop -Proof $proof -Worktree $worktree -StateFile $stateFile `
+                -StateRoot $stateRoot -ReceiptId $receiptId
+        }
     )
     $stateFile = Join-Path $Worktree 'scripts\.dev-state.json'
     $state = [IO.File]::ReadAllText($stateFile, [Text.Encoding]::UTF8) | ConvertFrom-Json
@@ -1657,25 +1807,70 @@ function Invoke-ManagedComponentStop {
     if ($proof.Disposition -eq 'ALREADY_STOPPED') {
         return [pscustomobject]@{Outcome='READY';Disposition='ALREADY_STOPPED';Component=$Component;Changed=$false}
     }
+    try {
+        $preparedStale = @(Test-ManagedStaleCoordinationPreflight -Classifications @($proof.StaleOperations) `
+            -StateRoot $StateRoot -ExpectedResource $proof.Definition.Resource -ProcessQuery $ProcessQuery)
+        Test-ManagedStopMutationBoundary -Proof $proof -StateFile $stateFile -ProcessQuery $ProcessQuery | Out-Null
+    } catch {
+        return [pscustomobject]@{
+            Outcome='BLOCKED';Reason='Managed stop preflight did not prove a mutation-safe boundary.'
+            ReasonCode='STOP_MUTATION_PREFLIGHT_INVALID';Component=$Component;ProcessId=$proof.ProcessId
+        }
+    }
+    try { $recovery = Open-ManagedStopRecoveryContract -Proof $proof -Worktree $Worktree -StateRoot $StateRoot }
+    catch {
+        return [pscustomobject]@{
+            Outcome='BLOCKED';Reason='Managed stop recovery contract could not be prepared.'
+            ReasonCode='STOP_RECOVERY_PREPARE_FAILED';Component=$Component;ProcessId=$proof.ProcessId
+        }
+    }
+    try {
+        $preparedStale = @(Test-ManagedStaleCoordinationPreflight -Classifications $preparedStale `
+            -StateRoot $StateRoot -ExpectedResource $proof.Definition.Resource -ProcessQuery $ProcessQuery)
+        Test-ManagedStopMutationBoundary -Proof $proof -StateFile $stateFile -ProcessQuery $ProcessQuery | Out-Null
+    } catch {
+        return [pscustomobject]@{
+            Outcome='BLOCKED';Reason='Managed stop mutation-boundary revalidation failed.'
+            ReasonCode='STOP_MUTATION_BOUNDARY_CHANGED';Component=$Component;ProcessId=$proof.ProcessId
+            RecoveryReceiptId=[string]$recovery.operationId
+        }
+    }
     if ($proof.ProcessPresent) {
         $stopResult = & $StopAdapter $proof
         if (-not $stopResult -or -not $stopResult.Success) {
+            try { Set-ManagedStopRecoveryContractStatus -StateRoot $StateRoot -RecoveryId $recovery.operationId `
+                -Status RECOVERY_REQUIRED -Phase 'PROCESS_STOP_NOT_VERIFIED' } catch { }
             return [pscustomobject]@{
                 Outcome='RECOVERY_REQUIRED';Reason="$Component stop verification failed; ownership was retained."
-                Component=$Component;ProcessId=$proof.ProcessId;Disposition=$proof.Disposition
+                ReasonCode='PROCESS_STOP_NOT_VERIFIED';Component=$Component;ProcessId=$proof.ProcessId
+                Disposition=$proof.Disposition;RecoveryReceiptId=[string]$recovery.operationId
+            }
+        }
+        try { Set-ManagedStopRecoveryContractStatus -StateRoot $StateRoot -RecoveryId $recovery.operationId `
+            -Status PROCESS_STOPPED -Phase 'PROCESS_STOP_VERIFIED' }
+        catch {
+            return [pscustomobject]@{
+                Outcome='RECOVERY_REQUIRED';Reason='Managed process stopped but durable recovery progress could not be updated.'
+                ReasonCode='STOP_RECOVERY_PROGRESS_WRITE_FAILED';Component=$Component;ProcessId=$proof.ProcessId
+                RecoveryReceiptId=[string]$recovery.operationId
             }
         }
     }
     try {
-        Complete-ManagedStaleCoordinationOperations -Classifications @($proof.StaleOperations) `
+        Complete-ManagedStaleCoordinationOperations -Classifications $preparedStale `
             -StateRoot $StateRoot -ExpectedResource $proof.Definition.Resource -ProcessQuery $ProcessQuery | Out-Null
+        $receiptId = & $CompletionAdapter $proof $Worktree $stateFile $StateRoot ([string]$recovery.stopReceiptId)
+        if ($orphanAuthorityId) { Complete-ManagedOrphanStopAuthority -AuthorityId $orphanAuthorityId -StateRoot $StateRoot }
+        Set-ManagedStopRecoveryContractStatus -StateRoot $StateRoot -RecoveryId $recovery.operationId `
+            -Status COMPLETED -Phase 'STATE_AND_RECEIPT_COMPLETED'
     } catch {
+        try { Set-ManagedStopRecoveryContractStatus -StateRoot $StateRoot -RecoveryId $recovery.operationId `
+            -Status RECOVERY_REQUIRED -Phase 'DURABLE_COMPLETION_REQUIRED' } catch { }
         return [pscustomobject]@{
-            Outcome='RECOVERY_REQUIRED';Reason="$Component stale coordination reconciliation failed; ownership state was retained."
-            Component=$Component;ProcessId=$proof.ProcessId;Disposition=$proof.Disposition
+            Outcome='RECOVERY_REQUIRED';Reason="$Component stopped but durable completion requires an official replay."
+            ReasonCode='STOP_DURABLE_COMPLETION_REQUIRED';Component=$Component;ProcessId=$proof.ProcessId
+            Disposition=$proof.Disposition;RecoveryReceiptId=[string]$recovery.operationId
         }
     }
-    $receiptId = Complete-ManagedComponentStop -Proof $proof -Worktree $Worktree -StateFile $stateFile -StateRoot $StateRoot
-    if ($orphanAuthorityId) { Complete-ManagedOrphanStopAuthority -AuthorityId $orphanAuthorityId -StateRoot $StateRoot }
     return [pscustomobject]@{Outcome='READY';Disposition=$proof.Disposition;Component=$Component;Changed=$true;ReceiptId=$receiptId;Proof=$proof}
 }

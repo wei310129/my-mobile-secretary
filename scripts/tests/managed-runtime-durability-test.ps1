@@ -180,7 +180,8 @@ try {
         -ProcessQuery {param($id)$ready} -OperationDocuments @() `
         -StopAdapter {param($proof)[pscustomobject]@{Success=$true}}
     Assert-Durability ($legacyStop.Outcome -eq 'READY' -and $legacyStop.Disposition -eq 'ORPHAN_EXACT_RECONCILE') `
-        'official managed stop did not reconcile the exact pre-receipt legacy Spring owner'
+        ("official managed stop did not reconcile the exact pre-receipt legacy Spring owner: {0}" -f `
+            ($legacyStop | ConvertTo-Json -Compress -Depth 6))
     $legacyStoppedState=[IO.File]::ReadAllText($legacyStateFile,[Text.Encoding]::UTF8)|ConvertFrom-Json
     Assert-Durability (-not $legacyStoppedState.springBootPid) 'legacy orphan reconcile did not converge durable state'
 

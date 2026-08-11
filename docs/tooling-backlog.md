@@ -44,6 +44,12 @@
 
 ## 已觀察案例與決策索引
 
+- 2026-08-11 managed process fingerprint precision closure：native FILETIME可保留100ns ticks，WMI creation time
+  只可靠到微秒；同一程序的 `.4765575Z` receipt在後續`.4765570Z` WMI/native consensus曾誤報
+  `COMMAND_FINGERPRINT_MISMATCH`。process identity現統一使用UTC微秒向下截斷並以v2 receipt明載精度；
+  差異達1微秒、PID reuse、wrong component/worktree/executable/command/generation與stale/wrong/replayed receipt
+  仍fail closed。既有v1 receipt只在完整typed identity及canonical start time相符時窄幅相容。
+
 - 2026-08-10 managed runtime false-success／orphan closure：Windows／WSL caller下的一般 `Start-Process`
   child可能在父tool返回時被job回收，而舊 `dev-start` 仍在banner或曾健康後發布成功。managed launcher現以
   Windows job breakaway＋handle allowlist啟動，只繼承worktree內的log handles；Spring Boot與ngrok都必須

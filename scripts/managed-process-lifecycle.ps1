@@ -396,6 +396,28 @@ function Test-ManagedProcessSnapshotComplete {
         -not [string]::IsNullOrWhiteSpace([string]$Snapshot.CommandLine) -and $null -ne $Snapshot.StartedAtUtc
 }
 
+function ConvertTo-ManagedProcessCanonicalStartTime {
+    param([Parameter(Mandatory)][datetimeoffset]$Value)
+    $utc = $Value.ToUniversalTime()
+    $ticksPerMicrosecond = 10L
+    return $utc.AddTicks(-($utc.Ticks % $ticksPerMicrosecond))
+}
+
+function Format-ManagedProcessCanonicalStartTime {
+    param([Parameter(Mandatory)][datetimeoffset]$Value)
+    return (ConvertTo-ManagedProcessCanonicalStartTime -Value $Value).ToString(
+        "yyyy-MM-dd'T'HH:mm:ss.ffffff'Z'", [Globalization.CultureInfo]::InvariantCulture)
+}
+
+function Test-ManagedProcessCanonicalStartTimeEqual {
+    param(
+        [Parameter(Mandatory)][datetimeoffset]$Left,
+        [Parameter(Mandatory)][datetimeoffset]$Right
+    )
+    return (ConvertTo-ManagedProcessCanonicalStartTime -Value $Left).Ticks -eq
+        (ConvertTo-ManagedProcessCanonicalStartTime -Value $Right).Ticks
+}
+
 function Copy-ManagedProcessSnapshot {
     param([Parameter(Mandatory)]$Snapshot, [Parameter(Mandatory)][string]$QueryKind)
     return [pscustomobject]@{
@@ -413,9 +435,8 @@ function Test-ManagedProcessSnapshotConsensus {
             [IO.Path]::GetFullPath([string]$Right.ExecutablePath), [StringComparison]::OrdinalIgnoreCase)) { return $false }
     if (-not [string]::Equals(([string]$Left.CommandLine).Trim(), ([string]$Right.CommandLine).Trim(),
             [StringComparison]::Ordinal)) { return $false }
-    $leftStart = [datetimeoffset]$Left.StartedAtUtc
-    $rightStart = [datetimeoffset]$Right.StartedAtUtc
-    return [Math]::Abs(($leftStart.ToUniversalTime() - $rightStart.ToUniversalTime()).TotalSeconds) -le 1
+    return Test-ManagedProcessCanonicalStartTimeEqual -Left ([datetimeoffset]$Left.StartedAtUtc) `
+        -Right ([datetimeoffset]$Right.StartedAtUtc)
 }
 
 function Get-ManagedProcessQueryResult {
@@ -642,14 +663,75 @@ function Get-ManagedProcessCommandFingerprint {
         throw 'Managed process command does not match the bounded component contract.'
     }
     $definition = Get-ManagedComponentDefinition -Component $Component -Worktree $Worktree
-    $startedAt = ([datetimeoffset]$Snapshot.StartedAtUtc).ToUniversalTime().ToString('o')
+    $startedAt = Format-ManagedProcessCanonicalStartTime -Value ([datetimeoffset]$Snapshot.StartedAtUtc)
     $safeIdentity = @(
-        'managed-process-command-v1', $Component, (Get-ManagedTextFingerprint $definition.Resource),
+        'managed-process-command-v2', $Component, (Get-ManagedTextFingerprint $definition.Resource),
         [string][int]$Snapshot.ProcessId, $startedAt,
         (Get-ManagedTextFingerprint ([string]$Snapshot.ExecutablePath).ToLowerInvariant()),
         (Get-ManagedTextFingerprint ([string]$Snapshot.CommandLine))
     ) -join '|'
     return Get-ManagedTextFingerprint $safeIdentity
+}
+
+function Get-LegacyManagedProcessCommandFingerprint {
+    param(
+        [Parameter(Mandatory)]$Snapshot,
+        [Parameter(Mandatory)][string]$Worktree,
+        [Parameter(Mandatory)][ValidateSet('SpringBoot','Dispatcher','Ngrok')][string]$Component,
+        [Parameter(Mandatory)][datetimeoffset]$ReceiptStartedAt,
+        [AllowNull()]$OwnershipReceipt,
+        [switch]$ExactActiveCoordinationProof
+    )
+    if (-not (Test-ManagedProcessSnapshotComplete -Snapshot $Snapshot)) {
+        throw 'Managed process identity is incomplete.'
+    }
+    if (-not (Test-ManagedProcessCommand -Snapshot $Snapshot -Worktree $Worktree -Component $Component `
+            -OwnershipReceipt $OwnershipReceipt -ExactActiveCoordinationProof:$ExactActiveCoordinationProof)) {
+        throw 'Managed process command does not match the bounded component contract.'
+    }
+    $definition = Get-ManagedComponentDefinition -Component $Component -Worktree $Worktree
+    $safeIdentity = @(
+        'managed-process-command-v1', $Component, (Get-ManagedTextFingerprint $definition.Resource),
+        [string][int]$Snapshot.ProcessId, $ReceiptStartedAt.ToUniversalTime().ToString('o'),
+        (Get-ManagedTextFingerprint ([string]$Snapshot.ExecutablePath).ToLowerInvariant()),
+        (Get-ManagedTextFingerprint ([string]$Snapshot.CommandLine))
+    ) -join '|'
+    return Get-ManagedTextFingerprint $safeIdentity
+}
+
+function Test-ManagedProcessOwnershipIdentityFingerprint {
+    param(
+        [Parameter(Mandatory)]$Snapshot,
+        [Parameter(Mandatory)][string]$Worktree,
+        [Parameter(Mandatory)][ValidateSet('SpringBoot','Dispatcher','Ngrok')][string]$Component,
+        [Parameter(Mandatory)]$OwnershipReceipt,
+        [switch]$ExactActiveCoordinationProof
+    )
+    if (-not $OwnershipReceipt.PSObject.Properties['ownershipIdentityFingerprint']) { return $false }
+    $receiptStartedAt = [datetimeoffset]::MinValue
+    if (-not $OwnershipReceipt.PSObject.Properties['processStartedAt'] -or
+            -not [datetimeoffset]::TryParse([string]$OwnershipReceipt.processStartedAt, [ref]$receiptStartedAt) -or
+            -not (Test-ManagedProcessCanonicalStartTimeEqual -Left $receiptStartedAt `
+                -Right ([datetimeoffset]$Snapshot.StartedAtUtc))) {
+        return $false
+    }
+    $version = $OwnershipReceipt.PSObject.Properties['identityFingerprintVersion']
+    $precision = $OwnershipReceipt.PSObject.Properties['startTimeCanonicalPrecision']
+    if ($version -or $precision) {
+        if (-not $version -or -not $precision -or
+                [string]$version.Value -ne 'managed-process-command-v2' -or
+                [string]$precision.Value -ne 'UTC_MICROSECOND_TRUNCATED') {
+            return $false
+        }
+        $expected = Get-ManagedProcessCommandFingerprint -Snapshot $Snapshot -Worktree $Worktree `
+            -Component $Component -OwnershipReceipt $OwnershipReceipt `
+            -ExactActiveCoordinationProof:$ExactActiveCoordinationProof
+    } else {
+        $expected = Get-LegacyManagedProcessCommandFingerprint -Snapshot $Snapshot -Worktree $Worktree `
+            -Component $Component -ReceiptStartedAt $receiptStartedAt -OwnershipReceipt $OwnershipReceipt `
+            -ExactActiveCoordinationProof:$ExactActiveCoordinationProof
+    }
+    return [string]$OwnershipReceipt.ownershipIdentityFingerprint -eq $expected
 }
 
 function Test-ManagedEvidenceStartTime {
@@ -759,7 +841,7 @@ function Assert-NoManagedStartReceiptReplay {
         $typedReceipt = ConvertTo-ManagedProcessStartReceipt -Receipt $receipt -AllowNonManaged
         if ($typedReceipt -and $typedReceipt.Component -eq $Component -and
                 $typedReceipt.ProcessId -eq $ProcessId) {
-            if ([Math]::Abs(($typedReceipt.ProcessStartedAt.ToUniversalTime() - $ProcessStartedAt.ToUniversalTime()).TotalMilliseconds) -lt 1) {
+            if (Test-ManagedProcessCanonicalStartTimeEqual -Left $typedReceipt.ProcessStartedAt -Right $ProcessStartedAt) {
                 throw 'Managed process ownership for this exact process generation was already published.'
             }
         }
@@ -819,8 +901,9 @@ function New-ManagedProcessOwnershipReceipt {
     $receiptId = [guid]::NewGuid().ToString()
     $receiptDocument = [ordered]@{
         operationId=$receiptId;outcome='READY';status='READY';action='managed-process-start';component=$Component
-        processId=$ProcessId;processStartedAt=([datetimeoffset]$query.Snapshot.StartedAtUtc).ToString('o')
+        processId=$ProcessId;processStartedAt=(Format-ManagedProcessCanonicalStartTime -Value ([datetimeoffset]$query.Snapshot.StartedAtUtc))
         worktree=[IO.Path]::GetFullPath($Worktree).TrimEnd('\');resource=$definition.Resource
+        identityFingerprintVersion='managed-process-command-v2';startTimeCanonicalPrecision='UTC_MICROSECOND_TRUNCATED'
         disposition='managed-runtime; evidence-retained'
     }
     if ($Component -eq 'Ngrok') {
@@ -1004,13 +1087,12 @@ function Assert-ManagedRuntimeReceiptCurrent {
     if ($observation.State -ne 'UP') { throw 'Managed runtime process is not observable after durable state publication.' }
     $expectedStart = [datetimeoffset]::MinValue
     if (-not [datetimeoffset]::TryParse([string]$receipt.processStartedAt, [ref]$expectedStart) -or
-            [Math]::Abs(($expectedStart.ToUniversalTime() - ([datetimeoffset]$query.Snapshot.StartedAtUtc).ToUniversalTime()).TotalSeconds) -gt 1) {
+            -not (Test-ManagedProcessCanonicalStartTimeEqual -Left $expectedStart `
+                -Right ([datetimeoffset]$query.Snapshot.StartedAtUtc))) {
         throw 'Managed runtime process generation changed after durable state publication.'
     }
-    $actualFingerprint = Get-ManagedProcessCommandFingerprint -Snapshot $query.Snapshot -Worktree $Worktree `
-        -Component $Component -OwnershipReceipt $receipt -ExactActiveCoordinationProof
-    if (-not $receipt.PSObject.Properties['ownershipIdentityFingerprint'] -or
-            [string]$receipt.ownershipIdentityFingerprint -ne $actualFingerprint) {
+    if (-not (Test-ManagedProcessOwnershipIdentityFingerprint -Snapshot $query.Snapshot -Worktree $Worktree `
+            -Component $Component -OwnershipReceipt $receipt -ExactActiveCoordinationProof)) {
         throw 'Managed runtime command identity changed after durable state publication.'
     }
     $readiness = & $ReadinessProbe
@@ -1036,7 +1118,7 @@ function Get-ManagedLegacyStateOwnershipEvidence {
             -not [datetimeoffset]::TryParse([string]$State.startedAt, [ref]$stateStartedAt)) {
         return [pscustomobject]@{Ready=$false;ReasonCode='LEGACY_GENERATION_EVIDENCE_INVALID'}
     }
-    $processStartedAt = [datetimeoffset]$Snapshot.StartedAtUtc
+    $processStartedAt = ConvertTo-ManagedProcessCanonicalStartTime -Value ([datetimeoffset]$Snapshot.StartedAtUtc)
     $publicationDelay = ($stateStartedAt.ToUniversalTime() - $processStartedAt.ToUniversalTime()).TotalSeconds
     if ($publicationDelay -lt 0 -or $publicationDelay -gt 300) {
         return [pscustomobject]@{Ready=$false;ReasonCode='LEGACY_PROCESS_START_WINDOW_MISMATCH'}
@@ -1117,7 +1199,8 @@ function Get-ManagedOrphanDiagnosis {
         }
         $receiptStart = [datetimeoffset]::MinValue
         if (-not [datetimeoffset]::TryParse([string]$receipt.processStartedAt, [ref]$receiptStart) -or
-                [Math]::Abs(($receiptStart.ToUniversalTime() - ([datetimeoffset]$query.Snapshot.StartedAtUtc).ToUniversalTime()).TotalSeconds) -gt 1) {
+                -not (Test-ManagedProcessCanonicalStartTimeEqual -Left $receiptStart `
+                    -Right ([datetimeoffset]$query.Snapshot.StartedAtUtc))) {
             return [pscustomobject]@{Classification='ORPHAN_UNVERIFIABLE';ReasonCode='PROCESS_START_MISMATCH';Component=$Component;ProcessId=$processId}
         }
         try {
@@ -1126,7 +1209,8 @@ function Get-ManagedOrphanDiagnosis {
         } catch {
             return [pscustomobject]@{Classification='ORPHAN_UNVERIFIABLE';ReasonCode='COMMAND_CONTRACT_MISMATCH';Component=$Component;ProcessId=$processId}
         }
-        if ($actualFingerprint -ne [string]$receipt.ownershipIdentityFingerprint) {
+        if (-not (Test-ManagedProcessOwnershipIdentityFingerprint -Snapshot $query.Snapshot -Worktree $Worktree `
+                -Component $Component -OwnershipReceipt $receipt -ExactActiveCoordinationProof)) {
             return [pscustomobject]@{Classification='ORPHAN_UNVERIFIABLE';ReasonCode='COMMAND_FINGERPRINT_MISMATCH';Component=$Component;ProcessId=$processId}
         }
         $receiptId = [string]$receipt.operationId

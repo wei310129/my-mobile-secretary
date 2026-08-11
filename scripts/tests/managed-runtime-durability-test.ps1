@@ -142,6 +142,7 @@ try {
         processId=901;processStartedAt=$started.ToString('o');worktree=[IO.Path]::GetFullPath($worktree).TrimEnd('\')
         resource=$definition.Resource;generation=$generation;commandContractFingerprint=(Get-ManagedProcessCommandFingerprint -Snapshot $snapshot -Worktree $worktree -Component SpringBoot)
         ownershipIdentityFingerprint=(Get-ManagedProcessCommandFingerprint -Snapshot $snapshot -Worktree $worktree -Component SpringBoot)
+        identityFingerprintVersion='managed-process-command-v2';startTimeCanonicalPrecision='UTC_MICROSECOND_TRUNCATED'
         disposition='managed-runtime; evidence-retained'
     })
     $state = [pscustomobject]@{

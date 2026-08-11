@@ -58,6 +58,7 @@ try {
         resource=$ngrokDefinition.Resource;disposition='managed-runtime';appPort=8080
         executableFingerprint=$ngrokContract.ExecutableFingerprint
         commandContractFingerprint=$ngrokContract.CommandContractFingerprint;generation='generation-current'
+        identityFingerprintVersion='managed-process-command-v2';startTimeCanonicalPrecision='UTC_MICROSECOND_TRUNCATED'
     }
     $ngrokReceiptDocument['ownershipIdentityFingerprint'] = Get-ManagedProcessCommandFingerprint `
         -Snapshot $ngrokSnapshot -Worktree $worktree -Component Ngrok -OwnershipReceipt ([pscustomobject]$ngrokReceiptDocument)

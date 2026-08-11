@@ -148,12 +148,17 @@ rollback本輪新啟動PID與generation state，並回傳nonzero。
 取得 exact image path、creation time 與 command line；此來源仍須通過相同 ngrok publication contract。
 WMI 與 native source 都有完整資料時必須一致，否則回 `PROCESS_IDENTITY_SOURCE_MISMATCH` 並 fail closed。
 錯誤結果只保留 typed reason code，不輸出 executable path、command line 或 webhook host。
+兩個來源的 creation time 與 ownership fingerprint 統一使用 UTC、向下截斷到微秒的 canonical value；
+這是 WMI 可可靠表達的最高共同精度。相同程序在 native FILETIME 多出 100ns ticks 時不會誤判，差異達
+1 微秒、PID reuse 或任何 component／worktree／executable／command／generation 不符仍 fail closed。
+新 receipt 明載 `managed-process-command-v2` 與 `UTC_MICROSECOND_TRUNCATED`；沒有版本欄位的既有 v1
+receipt 只在全部 typed identity 相符且 start time canonical-equivalent 時接受窄幅相容驗證。
 
 managed process replay scan 允許 coordination `receipts` 目錄保留沒有 `action` 的合法舊 schema與其他
 receipt type，不會刪除、改寫或把它們當成 process replay。任何宣稱 `action=managed-process-start` 的
 receipt 則必須先通過完整 typed schema：component、正整數 PID、可解析的 process start time、worktree與
 resource 缺一不可，且欄位型別必須精確；invalid JSON或 malformed managed receipt一律 fail closed。
-只有 component、PID與 start time全部吻合才判定 exact generation replay。ownership read使用同一 validator，
+只有 component、PID與 canonical start time全部吻合才判定 exact generation replay。ownership read使用同一 validator，
 錯誤只回傳固定分類，不輸出 receipt內容或本機路徑。
 
 ## Maven 安全執行

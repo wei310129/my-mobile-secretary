@@ -11,6 +11,7 @@ $tests = @(
     'coordination-maven-test.ps1',
     'managed-process-lifecycle-test.ps1',
     'managed-process-exact-query-test.ps1',
+    'managed-process-fingerprint-precision-test.ps1',
     'managed-runtime-durability-test.ps1',
     'ngrok-managed-lifecycle-start-test.ps1',
     'worktree-secret-resolution-test.ps1',

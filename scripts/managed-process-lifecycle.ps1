@@ -398,15 +398,12 @@ function Test-ManagedProcessSnapshotComplete {
 
 function ConvertTo-ManagedProcessCanonicalStartTime {
     param([Parameter(Mandatory)][datetimeoffset]$Value)
-    $utc = $Value.ToUniversalTime()
-    $ticksPerMicrosecond = 10L
-    return $utc.AddTicks(-($utc.Ticks % $ticksPerMicrosecond))
+    return ConvertTo-CoordinationCanonicalProcessStartTime -Value $Value
 }
 
 function Format-ManagedProcessCanonicalStartTime {
     param([Parameter(Mandatory)][datetimeoffset]$Value)
-    return (ConvertTo-ManagedProcessCanonicalStartTime -Value $Value).ToString(
-        "yyyy-MM-dd'T'HH:mm:ss.ffffff'Z'", [Globalization.CultureInfo]::InvariantCulture)
+    return Format-CoordinationCanonicalProcessStartTime -Value $Value
 }
 
 function Test-ManagedProcessCanonicalStartTimeEqual {
@@ -414,8 +411,7 @@ function Test-ManagedProcessCanonicalStartTimeEqual {
         [Parameter(Mandatory)][datetimeoffset]$Left,
         [Parameter(Mandatory)][datetimeoffset]$Right
     )
-    return (ConvertTo-ManagedProcessCanonicalStartTime -Value $Left).Ticks -eq
-        (ConvertTo-ManagedProcessCanonicalStartTime -Value $Right).Ticks
+    return Test-CoordinationCanonicalProcessStartTimeEqual -Left $Left -Right $Right
 }
 
 function Copy-ManagedProcessSnapshot {
@@ -525,10 +521,57 @@ function Get-ManagedCoordinationOperations {
         } catch {
             throw "Coordination operation evidence is invalid: $($file.Name)"
         }
+        try { ConvertTo-CoordinationOperationManifest -Manifest $document | Out-Null }
+        catch { throw "Coordination operation typed evidence is invalid: $($file.Name)" }
         $document | Add-Member -NotePropertyName EvidencePath -NotePropertyValue $file.FullName -Force
         $documents.Add($document)
     }
     return ,$documents.ToArray()
+}
+
+function Get-ManagedCoordinationOperationSet {
+    param(
+        [Parameter(Mandatory)][AllowNull()][AllowEmptyCollection()][object[]]$Operations,
+        [Parameter(Mandatory)][string]$ExpectedResource,
+        [Parameter(Mandatory)][int]$CurrentProcessId,
+        [scriptblock]$ProcessQuery = { param($id) Get-ManagedProcessQueryResult -ProcessId $id }
+    )
+    $classifications = [Collections.Generic.List[object]]::new()
+    $activeOperations = @(@($Operations) | Where-Object {
+        $null -ne $_ -and $_.status -eq 'ACTIVE' -and @($_.resources) -contains $ExpectedResource
+    })
+    foreach ($operation in $activeOperations) {
+        $classifications.Add((Get-CoordinationOperationOwnerClassification -Manifest $operation `
+            -ExpectedResource $ExpectedResource -ProcessQuery $ProcessQuery))
+    }
+    $unknown = @($classifications | Where-Object State -eq 'UNKNOWN')
+    $live = @($classifications | Where-Object State -in @('ACTIVE_EXACT','ACTIVE_LEGACY_BOUNDED'))
+    return [pscustomobject]@{
+        Classifications=@($classifications);Unknown=$unknown
+        Current=@($live | Where-Object { $_.Typed.OwnerPid -eq $CurrentProcessId })
+        Competitors=@($live | Where-Object { $_.Typed.OwnerPid -ne $CurrentProcessId })
+        Stale=@($classifications | Where-Object State -in @('STALE_DEAD','STALE_PID_REUSED'))
+    }
+}
+
+function Complete-ManagedStaleCoordinationOperations {
+    param(
+        [AllowNull()][AllowEmptyCollection()][object[]]$Classifications,
+        [Parameter(Mandatory)][string]$StateRoot,
+        [Parameter(Mandatory)][string]$ExpectedResource,
+        [scriptblock]$ProcessQuery = { param($id) Get-ManagedProcessQueryResult -ProcessId $id }
+    )
+    $changed = 0
+    foreach ($classification in @(@($Classifications) | Where-Object {
+        $null -ne $_ -and $_.State -in @('STALE_DEAD','STALE_PID_REUSED')
+    })) {
+        $operationId = [string]$classification.Typed.OperationId
+        $result = Resolve-CoordinationStaleOperation -StateRoot $StateRoot -OperationId $operationId `
+            -ExpectedResource $ExpectedResource -ProcessQuery $ProcessQuery
+        if ($result.Outcome -ne 'READY') { throw 'Stale coordination operation could not be durably reconciled.' }
+        if ($result.Changed) { $changed++ }
+    }
+    return [pscustomobject]@{Outcome='READY';ChangedCount=$changed;Disposition='evidence-retained; exactly-once'}
 }
 
 function Get-ManagedTextFingerprint {
@@ -1218,19 +1261,33 @@ function Get-ManagedOrphanDiagnosis {
     }
     try { $operations = if ($null -ne $OperationDocuments) { @($OperationDocuments) } else { @(Get-ManagedCoordinationOperations -StateRoot $StateRoot) } }
     catch { return [pscustomobject]@{Classification='ORPHAN_UNVERIFIABLE';ReasonCode='COORDINATION_EVIDENCE_INVALID';Component=$Component;ProcessId=$processId} }
-    $active = @($operations | Where-Object { $_.status -eq 'ACTIVE' -and @($_.resources) -contains $definition.Resource })
-    if (@($active | Where-Object { [int]$_.ownerPid -ne $processId }).Count -gt 0) {
-        return [pscustomobject]@{Classification='ORPHAN_BLOCKED_COMPETING_OWNER';ReasonCode='ACTIVE_COMPETING_OWNER';Component=$Component;ProcessId=$processId}
+    try {
+        $operationSet = Get-ManagedCoordinationOperationSet -Operations $operations -ExpectedResource $definition.Resource `
+            -CurrentProcessId $processId -ProcessQuery $ProcessQuery
+    } catch {
+        return [pscustomobject]@{Classification='ORPHAN_UNVERIFIABLE';ReasonCode='COORDINATION_OWNER_EVIDENCE_INVALID';Component=$Component;ProcessId=$processId}
     }
-    if (@($active | Where-Object { [int]$_.ownerPid -eq $processId }).Count -eq 1) {
-        return [pscustomobject]@{Classification='MANAGED_ACTIVE';ReasonCode='ACTIVE_OWNER_PRESENT';Component=$Component;ProcessId=$processId}
+    if ($operationSet.Unknown.Count -gt 0) {
+        return [pscustomobject]@{Classification='ORPHAN_UNVERIFIABLE';ReasonCode='COORDINATION_OWNER_IDENTITY_UNAVAILABLE';Component=$Component;ProcessId=$processId}
+    }
+    if ($operationSet.Competitors.Count -gt 0) {
+        return [pscustomobject]@{
+            Classification='ORPHAN_BLOCKED_COMPETING_OWNER';ReasonCode='ACTIVE_COMPETING_OWNER'
+            Component=$Component;ProcessId=$processId;StaleOperations=$operationSet.Stale
+        }
+    }
+    if ($operationSet.Current.Count -gt 0) {
+        return [pscustomobject]@{
+            Classification='MANAGED_ACTIVE';ReasonCode='ACTIVE_OWNER_PRESENT'
+            Component=$Component;ProcessId=$processId;StaleOperations=$operationSet.Stale
+        }
     }
     return [pscustomobject]@{
         Classification='ORPHAN_EXACT_RECONCILABLE';ReasonCode='EXACT_OWNER_WITHOUT_ACTIVE_OPERATION'
         Component=$Component;ProcessId=$processId;ProcessStartedAt=$receiptStart;Generation=$stateGeneration
         ReceiptId=$receiptId;EvidenceKind=$evidenceKind;ResourceFingerprint=(Get-ManagedTextFingerprint $definition.Resource)
         WorktreeFingerprint=(Get-ManagedTextFingerprint ([IO.Path]::GetFullPath($Worktree).TrimEnd('\').ToLowerInvariant()))
-        CommandContractFingerprint=$actualFingerprint
+        CommandContractFingerprint=$actualFingerprint;StaleOperations=$operationSet.Stale
     }
 }
 
@@ -1333,38 +1390,80 @@ function Get-ManagedProcessOwnershipProof {
     try { $operations = if ($null -ne $OperationDocuments) { @($OperationDocuments) } else { @(Get-ManagedCoordinationOperations -StateRoot $StateRoot) } }
     catch { return [pscustomobject]@{Outcome='BLOCKED';Reason=$_.Exception.Message;Definition=$definition;ProcessId=$processId} }
 
-    $matchingOperations = @($operations | Where-Object {
-        [int]$_.ownerPid -eq $processId -and @($_.resources) -contains $definition.Resource -and $_.status -in @('ACTIVE','RELEASED')
+    try {
+        foreach ($candidate in $operations) { ConvertTo-CoordinationOperationManifest -Manifest $candidate | Out-Null }
+        $operationSet = Get-ManagedCoordinationOperationSet -Operations $operations -ExpectedResource $definition.Resource `
+            -CurrentProcessId $processId -ProcessQuery $ProcessQuery
+    } catch {
+        return [pscustomobject]@{Outcome='BLOCKED';Reason='Coordination operation typed evidence is invalid.';Definition=$definition;ProcessId=$processId}
+    }
+    if ($operationSet.Unknown.Count -gt 0) {
+        return [pscustomobject]@{
+            Outcome='BLOCKED';Reason='Another active owner on the exact resource cannot be classified.'
+            Definition=$definition;ProcessId=$processId;StaleOperations=$operationSet.Stale
+        }
+    }
+    if ($operationSet.Competitors.Count -gt 0) {
+        return [pscustomobject]@{
+            Outcome='BLOCKED';Reason='Another active session legitimately owns the exact worktree resource.'
+            Definition=$definition;ProcessId=$processId;StaleOperations=$operationSet.Stale
+        }
+    }
+    if ($operationSet.Current.Count -gt 1) {
+        return [pscustomobject]@{
+            Outcome='BLOCKED';Reason='Multiple coordination operations claim the same managed PID.'
+            Definition=$definition;ProcessId=$processId;StaleOperations=$operationSet.Stale
+        }
+    }
+    $releasedMatching = @($operations | Where-Object {
+        [int]$_.ownerPid -eq $processId -and @($_.resources) -contains $definition.Resource -and $_.status -eq 'RELEASED'
     })
+    if ($releasedMatching.Count -gt 1 -and $operationSet.Current.Count -eq 0) {
+        return [pscustomobject]@{
+            Outcome='BLOCKED';Reason='Multiple coordination operations claim the same managed PID.'
+            Definition=$definition;ProcessId=$processId;StaleOperations=$operationSet.Stale
+        }
+    }
+    $operation = if ($operationSet.Current.Count -eq 1) {
+        $operationSet.Current[0].Manifest
+    } elseif ($releasedMatching.Count -eq 1) {
+        $releasedMatching[0]
+    } else { $null }
     $query = & $ProcessQuery $processId
-    if (-not $query -or $query.Outcome -eq 'UNKNOWN') {
+    if (-not $query -or $query.Outcome -notin @('READY','NOT_FOUND')) {
         $queryReason = if ($query -and $query.PSObject.Properties['Reason']) { [string]$query.Reason } else { 'no process query result' }
         return [pscustomobject]@{Outcome='BLOCKED';Reason="The tracked process could not be inspected: $queryReason";Definition=$definition;ProcessId=$processId}
     }
 
-    $hasEvidence = $matchingOperations.Count -eq 1 -or $null -ne $receipt
+    $hasEvidence = $null -ne $operation -or $operationSet.Stale.Count -gt 0 -or $null -ne $receipt
     if ($query.Outcome -eq 'NOT_FOUND') {
         if (-not $hasEvidence) {
             return [pscustomobject]@{Outcome='BLOCKED';Reason='The stale PID has no matching lifecycle or coordination evidence.';Definition=$definition;ProcessId=$processId}
         }
-        $operation = if ($matchingOperations.Count -eq 1) { $matchingOperations[0] } else { $null }
-        return [pscustomobject]@{Outcome='READY';Disposition='PROVEN_NOT_RUNNING';Definition=$definition;ProcessId=$processId;ProcessPresent=$false;Operation=$operation;Receipt=$receipt}
+        return [pscustomobject]@{
+            Outcome='READY';Disposition='PROVEN_NOT_RUNNING';Definition=$definition;ProcessId=$processId
+            ProcessPresent=$false;Operation=$operation;Receipt=$receipt;StaleOperations=$operationSet.Stale
+        }
     }
 
     $snapshot = $query.Snapshot
     if ([int]$snapshot.ProcessId -ne $processId) {
         return [pscustomobject]@{Outcome='BLOCKED';Reason='Process inspection returned a different PID.';Definition=$definition;ProcessId=$processId}
     }
-    if ($matchingOperations.Count -gt 1) {
-        return [pscustomobject]@{Outcome='BLOCKED';Reason='Multiple coordination operations claim the same managed PID.';Definition=$definition;ProcessId=$processId}
-    }
-    $operation = if ($matchingOperations.Count -eq 1) { $matchingOperations[0] } else { $null }
     $trustedReceipt = $null -ne $receipt
     if (-not $operation -and -not $trustedReceipt) {
         return [pscustomobject]@{Outcome='BLOCKED';Reason='No exact worktree coordination resource proves ownership.';Definition=$definition;ProcessId=$processId}
     }
-    $startedAt = if ($operation) { [string]$operation.startedAt } else { [string]$receipt.processStartedAt }
-    if (-not (Test-ManagedEvidenceStartTime -Snapshot $snapshot -EvidenceStartedAt $startedAt)) {
+    $startMatches = if ($operation -and $operation.PSObject.Properties['ownerProcessIdentity']) {
+        Test-ManagedProcessCanonicalStartTimeEqual -Left ([datetimeoffset]$snapshot.StartedAtUtc) `
+            -Right ([datetimeoffset]$operation.ownerProcessIdentity.startedAt)
+    } elseif ($operation) {
+        Test-ManagedEvidenceStartTime -Snapshot $snapshot -EvidenceStartedAt ([string]$operation.startedAt)
+    } else {
+        Test-ManagedProcessCanonicalStartTimeEqual -Left ([datetimeoffset]$snapshot.StartedAtUtc) `
+            -Right ([datetimeoffset]$receipt.processStartedAt)
+    }
+    if (-not $startMatches) {
         return [pscustomobject]@{Outcome='BLOCKED';Reason='PID creation time does not match ownership evidence; PID reuse is possible.';Definition=$definition;ProcessId=$processId}
     }
     $exactActiveOperation = $operation -and $operation.status -eq 'ACTIVE'
@@ -1373,17 +1472,6 @@ function Get-ManagedProcessOwnershipProof {
         return [pscustomobject]@{Outcome='BLOCKED';Reason='Process command does not match the managed component and exact worktree.';Definition=$definition;ProcessId=$processId}
     }
 
-    foreach ($candidate in @($operations | Where-Object {
-        $_.status -eq 'ACTIVE' -and @($_.resources) -contains $definition.Resource -and [int]$_.ownerPid -ne $processId
-    })) {
-        $other = & $ProcessQuery ([int]$candidate.ownerPid)
-        if (-not $other -or $other.Outcome -eq 'UNKNOWN') {
-            return [pscustomobject]@{Outcome='BLOCKED';Reason='Another active owner on the exact resource cannot be classified.';Definition=$definition;ProcessId=$processId}
-        }
-        if ($other.Outcome -eq 'READY' -and (Test-ManagedEvidenceStartTime -Snapshot $other.Snapshot -EvidenceStartedAt ([string]$candidate.startedAt))) {
-            return [pscustomobject]@{Outcome='BLOCKED';Reason='Another active session legitimately owns the exact worktree resource.';Definition=$definition;ProcessId=$processId}
-        }
-    }
     if (-not $operation -and $trustedReceipt) {
         return [pscustomobject]@{
             Outcome='BLOCKED';Reason='Exact durable ownership exists without an active coordination operation.'
@@ -1391,7 +1479,10 @@ function Get-ManagedProcessOwnershipProof {
             Definition=$definition;ProcessId=$processId
         }
     }
-    return [pscustomobject]@{Outcome='READY';Disposition='OWNED_RUNNING';Definition=$definition;ProcessId=$processId;ProcessPresent=$true;Snapshot=$snapshot;Operation=$operation;Receipt=$receipt}
+    return [pscustomobject]@{
+        Outcome='READY';Disposition='OWNED_RUNNING';Definition=$definition;ProcessId=$processId
+        ProcessPresent=$true;Snapshot=$snapshot;Operation=$operation;Receipt=$receipt;StaleOperations=$operationSet.Stale
+    }
 }
 
 function Update-ManagedDevStateAtomic {
@@ -1559,6 +1650,7 @@ function Invoke-ManagedComponentStop {
             Outcome='READY';Disposition='ORPHAN_EXACT_RECONCILE';Definition=$definition
             ProcessId=[int]$diagnosis.ProcessId;ProcessPresent=$true;Snapshot=$current.Snapshot
             Operation=$null;Receipt=$null;AuthorityId=$authority.AuthorityId
+            StaleOperations=@($diagnosis.StaleOperations)
         }
         $orphanAuthorityId = $authority.AuthorityId
     }
@@ -1568,7 +1660,19 @@ function Invoke-ManagedComponentStop {
     if ($proof.ProcessPresent) {
         $stopResult = & $StopAdapter $proof
         if (-not $stopResult -or -not $stopResult.Success) {
-            return [pscustomobject]@{Outcome='RECOVERY_REQUIRED';Reason="$Component stop verification failed; ownership was retained.";Proof=$proof}
+            return [pscustomobject]@{
+                Outcome='RECOVERY_REQUIRED';Reason="$Component stop verification failed; ownership was retained."
+                Component=$Component;ProcessId=$proof.ProcessId;Disposition=$proof.Disposition
+            }
+        }
+    }
+    try {
+        Complete-ManagedStaleCoordinationOperations -Classifications @($proof.StaleOperations) `
+            -StateRoot $StateRoot -ExpectedResource $proof.Definition.Resource -ProcessQuery $ProcessQuery | Out-Null
+    } catch {
+        return [pscustomobject]@{
+            Outcome='RECOVERY_REQUIRED';Reason="$Component stale coordination reconciliation failed; ownership state was retained."
+            Component=$Component;ProcessId=$proof.ProcessId;Disposition=$proof.Disposition
         }
     }
     $receiptId = Complete-ManagedComponentStop -Proof $proof -Worktree $Worktree -StateFile $stateFile -StateRoot $StateRoot

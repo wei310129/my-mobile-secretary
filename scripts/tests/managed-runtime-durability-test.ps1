@@ -151,7 +151,8 @@ try {
     $diagnosis = Get-ManagedOrphanDiagnosis -Worktree $worktree -Component SpringBoot -State $state `
         -StateRoot $stateRoot -ProcessQuery {param($id)$ready} -OperationDocuments @()
     Assert-Durability ($diagnosis.Classification -eq 'ORPHAN_EXACT_RECONCILABLE') `
-        'an exact owner with no active operation was not classified as a bounded orphan'
+        ("an exact owner with no active operation was not classified as a bounded orphan: {0}/{1}" -f `
+            $diagnosis.Classification,$diagnosis.ReasonCode)
 
     $legacyState=[pscustomobject]@{
         springBootPid=901;serviceGeneration=$generation;startedAt=[datetimeoffset]::UtcNow.ToString('o')
@@ -235,11 +236,12 @@ try {
     }
 
     $competitor = [pscustomobject]@{
-        operationId=[guid]::NewGuid().ToString();status='ACTIVE';ownerPid=903;startedAt=$started.ToString('o')
+        schemaVersion=1;operationId=[guid]::NewGuid().ToString();status='ACTIVE';ownerPid=903;startedAt=$started.ToString('o')
         resources=@($definition.Resource)
     }
+    $competitorSnapshot = New-ProcessSnapshot -Id 903 -StartedAt $started.AddSeconds(-1)
     $competing = Get-ManagedOrphanDiagnosis -Worktree $worktree -Component SpringBoot -State $state `
-        -StateRoot $stateRoot -ProcessQuery {param($id)if($id -eq 901){$ready}else{$unknown}} `
+        -StateRoot $stateRoot -ProcessQuery {param($id)if($id -eq 901){$ready}else{[pscustomobject]@{Outcome='READY';Snapshot=$competitorSnapshot}}} `
         -OperationDocuments @($competitor)
     Assert-Durability ($competing.Classification -eq 'ORPHAN_BLOCKED_COMPETING_OWNER') `
         'an active competing owner did not fail closed'

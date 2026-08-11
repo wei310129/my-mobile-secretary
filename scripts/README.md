@@ -108,6 +108,14 @@ resource，但 `dev-start.ps1` 必須回傳 nonzero，不能把缺 evidence 的�
 或 active coordination operation 全部吻合時才可停止；PID reuse、跨 worktree、另一個 active owner
 或 query 不可判定時一律 fail closed。
 
+新 coordination operation會保存 `MMS_COORDINATION_OWNER_V1` 的exact PID與UTC微秒canonical process
+start identity。status、ownership proof、orphan diagnosis與stop/reconcile共用同一validator：已死亡owner或
+可證明PID reuse的歷史`ACTIVE` manifest不再阻擋current exact owner；真正identity吻合的live competitor、
+caller access denied、identity incomplete或malformed evidence仍fail closed。read-only scan不改寫manifest；
+只有正式stop/reconcile會在mutex內重驗後原子標示`ABANDONED`，保留typed evidence且重跑exactly-once。
+沒有owner identity的legacy manifest只在schema/resource一致且observed process start不晚於operation publication
+時視為bounded live owner，否則只在能證明dead/reused時回收，無法證明時維持阻擋。
+
 沒有ACTIVE operation但仍有matching typed ownership receipt時，read-only診斷只會分類為
 `ORPHAN_EXACT_RECONCILABLE`；正式stop會再簽發最長30秒、component-scoped、single-use authority並立即
 重驗PID、creation time、command fingerprint、worktree與service generation。正常停止只終止已證明root的

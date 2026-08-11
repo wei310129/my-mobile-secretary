@@ -9,6 +9,7 @@ $tests = @(
     'coordination-kernel-test.ps1',
     'coordination-lifecycle-test.ps1',
     'coordination-maven-test.ps1',
+    'managed-coordination-owner-identity-test.ps1',
     'managed-process-lifecycle-test.ps1',
     'managed-process-exact-query-test.ps1',
     'managed-process-fingerprint-precision-test.ps1',

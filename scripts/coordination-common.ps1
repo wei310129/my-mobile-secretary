@@ -19,6 +19,195 @@ function Get-CoordinationHash {
     finally { $bytes = $null }
 }
 
+function ConvertTo-CoordinationCanonicalProcessStartTime {
+    param([Parameter(Mandatory)][datetimeoffset]$Value)
+    $utc = $Value.ToUniversalTime()
+    return $utc.AddTicks(-($utc.Ticks % 10L))
+}
+
+function Format-CoordinationCanonicalProcessStartTime {
+    param([Parameter(Mandatory)][datetimeoffset]$Value)
+    return (ConvertTo-CoordinationCanonicalProcessStartTime -Value $Value).ToString(
+        "yyyy-MM-dd'T'HH:mm:ss.ffffff'Z'", [Globalization.CultureInfo]::InvariantCulture)
+}
+
+function Test-CoordinationCanonicalProcessStartTimeEqual {
+    param(
+        [Parameter(Mandatory)][datetimeoffset]$Left,
+        [Parameter(Mandatory)][datetimeoffset]$Right
+    )
+    return (ConvertTo-CoordinationCanonicalProcessStartTime -Value $Left).Ticks -eq
+        (ConvertTo-CoordinationCanonicalProcessStartTime -Value $Right).Ticks
+}
+
+function Get-CoordinationProcessIdentityQueryResult {
+    param([Parameter(Mandatory)][int]$ProcessId)
+    $process = $null
+    try {
+        $process = [Diagnostics.Process]::GetProcessById($ProcessId)
+        return [pscustomobject]@{
+            Outcome='READY'
+            Snapshot=[pscustomobject]@{
+                ProcessId=$ProcessId
+                StartedAtUtc=$process.StartTime.ToUniversalTime()
+                QueryKind='COORDINATION_PROCESS_EXACT'
+            }
+        }
+    } catch [ArgumentException] {
+        return [pscustomobject]@{Outcome='NOT_FOUND';Snapshot=$null;ReasonCode='OWNER_PROCESS_NOT_FOUND'}
+    } catch [UnauthorizedAccessException] {
+        return [pscustomobject]@{Outcome='CALLER_ACCESS_DENIED';Snapshot=$null;ReasonCode='OWNER_PROCESS_QUERY_ACCESS_DENIED'}
+    } catch [ComponentModel.Win32Exception] {
+        $reason = if ([int]$_.Exception.NativeErrorCode -eq 5) {
+            'OWNER_PROCESS_QUERY_ACCESS_DENIED'
+        } else { 'OWNER_PROCESS_IDENTITY_UNAVAILABLE' }
+        $outcome = if ($reason -eq 'OWNER_PROCESS_QUERY_ACCESS_DENIED') { 'CALLER_ACCESS_DENIED' } else { 'UNKNOWN' }
+        return [pscustomobject]@{Outcome=$outcome;Snapshot=$null;ReasonCode=$reason}
+    } catch {
+        return [pscustomobject]@{Outcome='UNKNOWN';Snapshot=$null;ReasonCode='OWNER_PROCESS_IDENTITY_UNAVAILABLE'}
+    } finally {
+        if ($process) { $process.Dispose() }
+    }
+}
+
+function ConvertTo-CoordinationOperationManifest {
+    param([Parameter(Mandatory)]$Manifest)
+    if ($Manifest -isnot [pscustomobject]) { throw 'Coordination operation manifest has an invalid document shape.' }
+    foreach ($name in @('schemaVersion','operationId','status','ownerPid','startedAt','resources')) {
+        if (-not $Manifest.PSObject.Properties[$name]) {
+            throw 'Coordination operation manifest is missing required typed evidence.'
+        }
+    }
+    $integerTypes = @([byte],[sbyte],[int16],[uint16],[int32],[uint32],[int64],[uint64])
+    if ($Manifest.schemaVersion.GetType() -notin $integerTypes -or [int]$Manifest.schemaVersion -ne 1) {
+        throw 'Coordination operation manifest has an unsupported schema.'
+    }
+    if ($Manifest.operationId -isnot [string] -or [string]$Manifest.operationId -notmatch '^[a-f0-9-]{36}$') {
+        throw 'Coordination operation manifest has an invalid operation id.'
+    }
+    if ($Manifest.status -isnot [string] -or [string]$Manifest.status -notin @('ACTIVE','RELEASED','ABANDONED')) {
+        throw 'Coordination operation manifest has an invalid status.'
+    }
+    if ($null -eq $Manifest.ownerPid -or $Manifest.ownerPid.GetType() -notin $integerTypes -or
+            [long]$Manifest.ownerPid -le 0 -or [long]$Manifest.ownerPid -gt [int]::MaxValue) {
+        throw 'Coordination operation manifest has an invalid owner PID.'
+    }
+    $publishedAt = [datetimeoffset]::MinValue
+    if ($Manifest.startedAt -isnot [string] -or
+            -not [datetimeoffset]::TryParse([string]$Manifest.startedAt, [ref]$publishedAt)) {
+        throw 'Coordination operation manifest has invalid publication time evidence.'
+    }
+    if ($Manifest.resources -is [string] -or $Manifest.resources -isnot [Collections.IEnumerable]) {
+        throw 'Coordination operation manifest has an invalid resource set.'
+    }
+    $resources = @($Manifest.resources)
+    if ($resources.Count -eq 0 -or @($resources | Where-Object {
+            $_ -isnot [string] -or [string]::IsNullOrWhiteSpace([string]$_) -or [string]$_ -notmatch '^v1/'
+        }).Count -gt 0 -or @($resources | Group-Object | Where-Object Count -gt 1).Count -gt 0) {
+        throw 'Coordination operation manifest has invalid canonical resources.'
+    }
+
+    $identityProperty = $Manifest.PSObject.Properties['ownerProcessIdentity']
+    $ownerStartedAt = $null
+    $legacy = -not $identityProperty
+    if ($identityProperty) {
+        $identity = $identityProperty.Value
+        if ($identity -isnot [pscustomobject]) { throw 'Coordination owner identity has an invalid document shape.' }
+        foreach ($name in @('schema','processId','startedAt','canonicalPrecision')) {
+            if (-not $identity.PSObject.Properties[$name]) { throw 'Coordination owner identity is incomplete.' }
+        }
+        if ($identity.schema -isnot [string] -or [string]$identity.schema -ne 'MMS_COORDINATION_OWNER_V1' -or
+                $identity.canonicalPrecision -isnot [string] -or
+                [string]$identity.canonicalPrecision -ne 'UTC_MICROSECOND_TRUNCATED' -or
+                $null -eq $identity.processId -or $identity.processId.GetType() -notin $integerTypes -or
+                [int]$identity.processId -ne [int]$Manifest.ownerPid) {
+            throw 'Coordination owner identity does not match the typed operation owner.'
+        }
+        $parsedOwnerStart = [datetimeoffset]::MinValue
+        if ($identity.startedAt -isnot [string] -or
+                -not [datetimeoffset]::TryParse([string]$identity.startedAt, [ref]$parsedOwnerStart) -or
+                [string]$identity.startedAt -ne (Format-CoordinationCanonicalProcessStartTime -Value $parsedOwnerStart) -or
+                $parsedOwnerStart.ToUniversalTime() -gt $publishedAt.ToUniversalTime()) {
+            throw 'Coordination owner identity has invalid canonical start evidence.'
+        }
+        $ownerStartedAt = $parsedOwnerStart
+    }
+    $reconcileProperty = $Manifest.PSObject.Properties['reconcileEvidence']
+    if ($reconcileProperty) {
+        $evidence = $reconcileProperty.Value
+        if ($evidence -isnot [pscustomobject]) { throw 'Coordination reconcile evidence has an invalid document shape.' }
+        foreach ($name in @('schema','classification','reasonCode','observedAt','disposition')) {
+            if (-not $evidence.PSObject.Properties[$name] -or $evidence.$name -isnot [string] -or
+                    [string]::IsNullOrWhiteSpace([string]$evidence.$name)) {
+                throw 'Coordination reconcile evidence is incomplete.'
+            }
+        }
+        $reconcileObservedAt = [datetimeoffset]::MinValue
+        if ([string]$evidence.schema -ne 'MMS_COORDINATION_RECONCILE_V1' -or
+                [string]$evidence.classification -notin @('STALE_DEAD','STALE_PID_REUSED') -or
+                [string]$evidence.disposition -ne 'evidence-retained; exactly-once' -or
+                -not [datetimeoffset]::TryParse([string]$evidence.observedAt, [ref]$reconcileObservedAt) -or
+                $reconcileObservedAt.ToUniversalTime() -lt $publishedAt.ToUniversalTime() -or
+                [string]$Manifest.status -ne 'ABANDONED') {
+            throw 'Coordination reconcile evidence violates the typed terminal contract.'
+        }
+    }
+    return [pscustomobject]@{
+        Document=$Manifest;OperationId=[string]$Manifest.operationId;Status=[string]$Manifest.status
+        OwnerPid=[int]$Manifest.ownerPid;PublishedAt=$publishedAt;Resources=$resources
+        IsLegacy=$legacy;OwnerProcessStartedAt=$ownerStartedAt
+    }
+}
+
+function Get-CoordinationOperationOwnerClassification {
+    param(
+        [Parameter(Mandatory)]$Manifest,
+        [Parameter(Mandatory)][string]$ExpectedResource,
+        [scriptblock]$ProcessQuery = { param($id) Get-CoordinationProcessIdentityQueryResult -ProcessId $id }
+    )
+    $typed = ConvertTo-CoordinationOperationManifest -Manifest $Manifest
+    if ($typed.Status -ne 'ACTIVE') {
+        return [pscustomobject]@{State='INACTIVE';ReasonCode='OPERATION_NOT_ACTIVE';Manifest=$Manifest;Typed=$typed}
+    }
+    if ($typed.Resources -notcontains $ExpectedResource) {
+        return [pscustomobject]@{State='OUT_OF_SCOPE';ReasonCode='RESOURCE_MISMATCH';Manifest=$Manifest;Typed=$typed}
+    }
+    $query = & $ProcessQuery $typed.OwnerPid
+    if (-not $query) {
+        return [pscustomobject]@{State='UNKNOWN';ReasonCode='OWNER_PROCESS_QUERY_MISSING';Manifest=$Manifest;Typed=$typed}
+    }
+    if ([string]$query.Outcome -eq 'NOT_FOUND') {
+        return [pscustomobject]@{State='STALE_DEAD';ReasonCode='OWNER_PROCESS_NOT_FOUND';Manifest=$Manifest;Typed=$typed}
+    }
+    if ([string]$query.Outcome -ne 'READY' -or -not $query.Snapshot -or
+            -not $query.Snapshot.PSObject.Properties['ProcessId'] -or
+            -not $query.Snapshot.PSObject.Properties['StartedAtUtc']) {
+        $reason = if ($query.PSObject.Properties['ReasonCode']) { [string]$query.ReasonCode } else { 'OWNER_PROCESS_IDENTITY_UNAVAILABLE' }
+        return [pscustomobject]@{State='UNKNOWN';ReasonCode=$reason;Manifest=$Manifest;Typed=$typed}
+    }
+    $observedPid = 0
+    $observedStartedAt = [datetimeoffset]::MinValue
+    try {
+        $observedPid = [int]$query.Snapshot.ProcessId
+        $observedStartedAt = [datetimeoffset]$query.Snapshot.StartedAtUtc
+    } catch {
+        return [pscustomobject]@{State='UNKNOWN';ReasonCode='OWNER_PROCESS_IDENTITY_INCOMPLETE';Manifest=$Manifest;Typed=$typed}
+    }
+    if ($observedPid -ne $typed.OwnerPid) {
+        return [pscustomobject]@{State='UNKNOWN';ReasonCode='OWNER_PROCESS_PID_MISMATCH';Manifest=$Manifest;Typed=$typed}
+    }
+    if (-not $typed.IsLegacy) {
+        if (Test-CoordinationCanonicalProcessStartTimeEqual -Left $typed.OwnerProcessStartedAt -Right $observedStartedAt) {
+            return [pscustomobject]@{State='ACTIVE_EXACT';ReasonCode='TYPED_OWNER_IDENTITY_MATCH';Manifest=$Manifest;Typed=$typed}
+        }
+        return [pscustomobject]@{State='STALE_PID_REUSED';ReasonCode='OWNER_PROCESS_START_MISMATCH';Manifest=$Manifest;Typed=$typed}
+    }
+    if ($observedStartedAt.ToUniversalTime() -le $typed.PublishedAt.ToUniversalTime()) {
+        return [pscustomobject]@{State='ACTIVE_LEGACY_BOUNDED';ReasonCode='LEGACY_OWNER_PREDATES_PUBLICATION';Manifest=$Manifest;Typed=$typed}
+    }
+    return [pscustomobject]@{State='STALE_PID_REUSED';ReasonCode='LEGACY_OWNER_STARTED_AFTER_PUBLICATION';Manifest=$Manifest;Typed=$typed}
+}
+
 function Get-CoordinationDefaultRoot {
     if ([string]::IsNullOrWhiteSpace($env:LOCALAPPDATA)) { throw 'LOCALAPPDATA is unavailable; machine coordination is BLOCKED.' }
     return Join-Path $env:LOCALAPPDATA 'my-mobile-secretary\coordination\v1'
@@ -124,7 +313,8 @@ function Enter-CoordinationOperation {
         [Parameter(Mandatory)][object[]]$Resources,
         [ValidateRange(1, 3600)][int]$TimeoutSeconds = 30,
         [string]$OperationId = ([guid]::NewGuid().ToString()),
-        [string]$StateRoot
+        [string]$StateRoot,
+        [scriptblock]$OwnerProcessQuery = { param($id) Get-CoordinationProcessIdentityQueryResult -ProcessId $id }
     )
     $deadline = [datetime]::UtcNow.AddSeconds($TimeoutSeconds)
     $leases = [Collections.Generic.List[object]]::new()
@@ -139,9 +329,21 @@ function Enter-CoordinationOperation {
         }
         $operation = [pscustomobject]@{ Outcome = 'READY'; OperationId = $OperationId; Leases = @($leases); StateRoot = $StateRoot }
         if ($StateRoot) {
+            $ownerQuery = & $OwnerProcessQuery $PID
+            if (-not $ownerQuery -or [string]$ownerQuery.Outcome -ne 'READY' -or -not $ownerQuery.Snapshot -or
+                    [int]$ownerQuery.Snapshot.ProcessId -ne $PID -or -not $ownerQuery.Snapshot.StartedAtUtc) {
+                throw 'Coordination operation owner process identity is unavailable; publication is BLOCKED.'
+            }
+            $publishedAt = [datetimeoffset]::UtcNow
+            $ownerStartedAt = [datetimeoffset]$ownerQuery.Snapshot.StartedAtUtc
             Write-CoordinationJsonAtomic -Path (Get-CoordinationOperationPath $StateRoot $OperationId) -Document ([ordered]@{
                 schemaVersion = $script:CoordinationSchemaVersion; operationId = $OperationId; status = 'ACTIVE'
-                ownerPid = $PID; startedAt = [datetime]::UtcNow.ToString('o')
+                ownerPid = $PID; startedAt = $publishedAt.ToString('o')
+                ownerProcessIdentity = [ordered]@{
+                    schema='MMS_COORDINATION_OWNER_V1';processId=$PID
+                    startedAt=(Format-CoordinationCanonicalProcessStartTime -Value $ownerStartedAt)
+                    canonicalPrecision='UTC_MICROSECOND_TRUNCATED'
+                }
                 resources = @($leases | ForEach-Object { $_.Resource.CanonicalKey })
             })
         }
@@ -183,11 +385,54 @@ function Get-CoordinationOperationManifest {
     if (-not (Test-Path -LiteralPath $path -PathType Leaf)) { return $null }
     try { $manifest = [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8) | ConvertFrom-Json }
     catch { throw "Operation manifest $OperationId is invalid; reconcile is BLOCKED." }
-    if ($manifest.status -eq 'ACTIVE' -and -not (Get-Process -Id ([int]$manifest.ownerPid) -ErrorAction SilentlyContinue)) {
-        $manifest.status = 'ABANDONED'
-        $manifest | Add-Member -NotePropertyName abandonedReason -NotePropertyValue 'owner-pid-not-running' -Force
-    }
+    ConvertTo-CoordinationOperationManifest -Manifest $manifest | Out-Null
     return $manifest
+}
+
+function Resolve-CoordinationStaleOperation {
+    param(
+        [Parameter(Mandatory)][string]$StateRoot,
+        [Parameter(Mandatory)][string]$OperationId,
+        [Parameter(Mandatory)][string]$ExpectedResource,
+        [scriptblock]$ProcessQuery = { param($id) Get-CoordinationProcessIdentityQueryResult -ProcessId $id }
+    )
+    $path = Get-CoordinationOperationPath $StateRoot $OperationId
+    $guard = New-CoordinationMutex "operation-reconcile/$path"
+    $held = $false
+    try {
+        $held = Wait-CoordinationMutex -Mutex $guard -Deadline ([datetime]::UtcNow.AddSeconds(10))
+        if (-not $held) { return [pscustomobject]@{Outcome='BUSY';Changed=$false;OperationId=$OperationId} }
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            return [pscustomobject]@{Outcome='BLOCKED';Changed=$false;ReasonCode='OPERATION_EVIDENCE_MISSING';OperationId=$OperationId}
+        }
+        try { $manifest = [IO.File]::ReadAllText($path, [Text.Encoding]::UTF8) | ConvertFrom-Json }
+        catch { return [pscustomobject]@{Outcome='BLOCKED';Changed=$false;ReasonCode='OPERATION_EVIDENCE_INVALID';OperationId=$OperationId} }
+        try { $typed = ConvertTo-CoordinationOperationManifest -Manifest $manifest }
+        catch { return [pscustomobject]@{Outcome='BLOCKED';Changed=$false;ReasonCode='OPERATION_TYPED_EVIDENCE_INVALID';OperationId=$OperationId} }
+        if ($typed.Status -in @('ABANDONED','RELEASED')) {
+            return [pscustomobject]@{Outcome='READY';Changed=$false;ReasonCode='OPERATION_ALREADY_TERMINAL';OperationId=$OperationId;Status=$typed.Status}
+        }
+        $classification = Get-CoordinationOperationOwnerClassification -Manifest $manifest `
+            -ExpectedResource $ExpectedResource -ProcessQuery $ProcessQuery
+        if ($classification.State -notin @('STALE_DEAD','STALE_PID_REUSED')) {
+            $outcome = if ($classification.State -eq 'UNKNOWN') { 'BLOCKED' } else { 'BLOCKED' }
+            return [pscustomobject]@{Outcome=$outcome;Changed=$false;ReasonCode=$classification.ReasonCode;OperationId=$OperationId}
+        }
+        $observedAt = [datetimeoffset]::UtcNow
+        $manifest.status = 'ABANDONED'
+        $manifest | Add-Member -NotePropertyName abandonedAt -NotePropertyValue $observedAt.ToString('o') -Force
+        $manifest | Add-Member -NotePropertyName abandonedReason -NotePropertyValue $(if($classification.State -eq 'STALE_DEAD'){'owner-process-not-found'}else{'owner-process-identity-reused'}) -Force
+        $manifest | Add-Member -NotePropertyName reconcileEvidence -NotePropertyValue ([ordered]@{
+            schema='MMS_COORDINATION_RECONCILE_V1';classification=[string]$classification.State
+            reasonCode=[string]$classification.ReasonCode;observedAt=$observedAt.ToString('o')
+            disposition='evidence-retained; exactly-once'
+        }) -Force
+        Write-CoordinationJsonAtomic -Path $path -Document $manifest
+        return [pscustomobject]@{Outcome='READY';Changed=$true;ReasonCode=$classification.ReasonCode;OperationId=$OperationId;Status='ABANDONED'}
+    } finally {
+        if ($held) { $guard.ReleaseMutex() }
+        $guard.Dispose()
+    }
 }
 
 function Read-CoordinationRegistry {

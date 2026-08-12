@@ -22,6 +22,14 @@ interface CalendarReminderRuleRepository
                     UUID workspaceId,
                     UUID actorId);
 
+    List<CalendarReminderRuleEntity>
+            findAllByNodeIdAndOwnerKindAndStatusAndWorkspaceIdAndCreatedByUserId(
+                    UUID nodeId,
+                    CalendarReminderOwnerKind ownerKind,
+                    CalendarReminderRuleEntity.Status status,
+                    UUID workspaceId,
+                    UUID actorId);
+
     Optional<CalendarReminderRuleEntity>
             findByIdAndWorkspaceIdAndCreatedByUserId(
                     UUID id, UUID workspaceId, UUID actorId);

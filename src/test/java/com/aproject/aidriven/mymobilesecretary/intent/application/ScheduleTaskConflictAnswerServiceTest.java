@@ -45,7 +45,7 @@ class ScheduleTaskConflictAnswerServiceTest {
         assertThat(result.message())
                 .contains("運動", "07/15 20:53", "21:53", "帶小孩去洗澡", "07/15 21:00")
                 .contains("縮短到 21:00 前", "改到「帶小孩去洗澡」之後")
-                .contains("⚠️ 目前有時間衝突", "💡 建議可選擇的安排")
+                .contains("目前有時間衝突", "建議可選擇的安排")
                 .contains("不會自行更動", "不會另建一個同名行程");
     }
 

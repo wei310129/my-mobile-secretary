@@ -13,6 +13,9 @@ class TransportModePolicyTest {
         assertResolved("要騎機車到車站", TravelMode.TWO_WHEELER);
         assertResolved("走路去新店區公所", TravelMode.WALK);
         assertResolved("搭高鐵到左營", TravelMode.TRANSIT);
+        assertResolved("搭計程車去醫院", TravelMode.RIDE_HAIL);
+        assertResolved("叫車到機場", TravelMode.RIDE_HAIL);
+        assertResolved("搭計程車從捷運大坪林站到捷運新店站", TravelMode.RIDE_HAIL);
         assertThat(TransportModePolicy.resolve("Google 幫我算去台北"))
                 .extracting(TransportModePolicy.Resolution::status)
                 .isEqualTo(TransportModePolicy.Status.MISSING);

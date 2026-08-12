@@ -45,14 +45,24 @@ class DailyScheduleQueryTest {
         assertThat(IntentService.userFacingUnknownReason(
                 "java.lang.IllegalStateException at com.example.SecretRepository: "
                         + "SQL column api_token, request 123e4567-e89b-12d3-a456-426614174000"))
-                .contains("需要補充")
+                .contains("無法判斷", "不會建立或修改資料")
                 .doesNotContain("java", "com.example", "SQL", "column", "api_token",
                         "123e4567-e89b-12d3-a456-426614174000");
+        assertThat(IntentService.userFacingUnknownReason(
+                "router confidence below threshold; candidate CREATE_SCHEDULE score 0.31"))
+                .contains("無法判斷", "不會建立或修改資料")
+                .doesNotContain("router", "confidence", "CREATE_SCHEDULE", "0.31");
     }
 
     @Test
     void scheduleCreationIsNotMistakenForOverviewQuery() {
         assertThat(IntentService.dailyScheduleDate("幫我排明天的專案行程", CLOCK)).isEmpty();
+        assertThat(IntentService.dailyScheduleDate(
+                        "幫我規劃明天早上九點到捷運台北車站的行程", CLOCK))
+                .isEmpty();
+        assertThat(IntentService.dailyScheduleDate(
+                        "幫我規畫明天早上九點到捷運台北車站的行程", CLOCK))
+                .isEmpty();
         assertThat(IntentService.dailyScheduleDate("明天上午十點安排一個行程", CLOCK)).isEmpty();
         assertThat(IntentService.dailyScheduleDate("取消昨天的行程", CLOCK)).isEmpty();
         assertThat(IntentService.dailyScheduleDate("把上禮拜五的行程刪掉", CLOCK)).isEmpty();

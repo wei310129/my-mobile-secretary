@@ -2,6 +2,9 @@ package com.aproject.aidriven.mymobilesecretary.conversation.persistence;
 
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
 import com.aproject.aidriven.mymobilesecretary.conversation.domain.ConversationFocus;
+import com.aproject.aidriven.mymobilesecretary.conversation.domain.ConversationFocusStatus;
+import java.util.Collection;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
@@ -25,4 +28,9 @@ public interface ConversationFocusRepository extends JpaRepository<ConversationF
                     UUID workspaceId, UUID actorId, WorkspaceChannel channel, String digest,
                     String rootDomain, UUID workflowId,
                     com.aproject.aidriven.mymobilesecretary.conversation.domain.ConversationFocusStatus status);
+
+    List<ConversationFocus>
+            findAllByWorkspaceIdAndCreatedByUserIdAndChannelAndConversationScopeDigestAndStatusInOrderByCreatedAtAsc(
+                    UUID workspaceId, UUID actorId, WorkspaceChannel channel, String digest,
+                    Collection<ConversationFocusStatus> statuses);
 }

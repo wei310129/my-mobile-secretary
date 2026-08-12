@@ -24,6 +24,7 @@ import org.mockito.AdditionalAnswers;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.context.ApplicationEventPublisher;
+import org.springframework.core.io.ClassPathResource;
 
 /**
  * 建地點的 Google 補全規則測試:自帶座標不查、缺座標查 Google 補空缺、
@@ -45,7 +46,9 @@ class PlaceServiceTest {
 
     @BeforeEach
     void setUp() {
-        service = new PlaceService(placeRepository, googlePlacesClient,
+        service = new PlaceService(placeRepository,
+                new SystemPlaceCatalog(new ClassPathResource("system-place-catalog.tsv")),
+                googlePlacesClient,
                 eventPublisher, Clock.fixed(NOW, ZoneOffset.UTC));
     }
 
@@ -124,6 +127,17 @@ class PlaceServiceTest {
     }
 
     @Test
+    void publicInfrastructureLookupUsesSystemOwnedCatalogWithoutGoogle() {
+        PlaceService.PublicPlaceLookup result = service.lookupPublicPlace("桃園國際機場");
+
+        assertThat(result.status()).isEqualTo(PlaceService.PublicPlaceLookup.Status.FOUND);
+        assertThat(result.name()).isEqualTo("臺灣桃園國際機場");
+        assertThat(result.type()).isEqualTo("AIRPORT");
+        assertThat(result.address()).isNotBlank();
+        verify(googlePlacesClient, never()).searchFirst(anyString());
+    }
+
+    @Test
     void googleNotFoundIsRejectedWithActionableMessage() {
         when(googlePlacesClient.usable()).thenReturn(true);
         when(googlePlacesClient.searchFirst(anyString())).thenReturn(Optional.empty());
@@ -143,6 +157,31 @@ class PlaceServiceTest {
         assertThatThrownBy(() -> service.createPlace("全聯", null, null, null, null))
                 .isInstanceOf(BusinessException.class)
                 .hasFieldOrPropertyWithValue("code", "PLACE_LOOKUP_FAILED");
+    }
+
+    @Test
+    void googleMapsLinkResolvesWithoutTextSearchOrCredential() {
+        String link = "https://maps.app.goo.gl/ZQ6x89kFfnmd4qs89";
+        when(googlePlacesClient.resolveMapsLink(link)).thenReturn(Optional.of(
+                new GooglePlacesClient.PlaceCandidate(
+                        "捷運大坪林站", null, 24.9829, 121.5414, "SUBWAY_STATION")));
+
+        PlaceService.ResolvedPlaceCandidate result = service.resolvePlaceCandidate(link);
+
+        assertThat(result.name()).isEqualTo("捷運大坪林站");
+        assertThat(result.latitude()).isEqualTo(24.9829);
+        verify(googlePlacesClient, never()).usable();
+        verify(googlePlacesClient, never()).searchFirst(anyString());
+    }
+
+    @Test
+    void nonGoogleHttpLinkIsRejectedWithoutProviderCall() {
+        assertThatThrownBy(() -> service.resolvePlaceCandidate(
+                "https://example.com/private-location"))
+                .isInstanceOf(BusinessException.class)
+                .hasFieldOrPropertyWithValue("code", "UNSUPPORTED_PLACE_LINK");
+
+        verifyNoInteractions(googlePlacesClient);
     }
 
     @Test

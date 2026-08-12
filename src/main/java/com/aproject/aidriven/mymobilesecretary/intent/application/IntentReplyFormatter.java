@@ -24,7 +24,11 @@ public final class IntentReplyFormatter {
     }
 
     public static String format(IntentResult.Action action, String message) {
-        return format(emojiFor(action), message);
+        return format((String) null, message);
+    }
+
+    public static String formatPlain(String message) {
+        return message == null ? null : message.replace("\r\n", "\n").replace('\r', '\n').strip();
     }
 
     public static String formatNotification(String title, String message) {
@@ -73,7 +77,8 @@ public final class IntentReplyFormatter {
         }
 
         String first = lines.getFirst();
-        if (!LEADING_EMOJI.matcher(first).find() && !LIST_ITEM.matcher(first).matches()) {
+        if (defaultEmoji != null && !defaultEmoji.isBlank()
+                && !LEADING_EMOJI.matcher(first).find() && !LIST_ITEM.matcher(first).matches()) {
             first = emojiForBlock(defaultEmoji, first) + " " + first;
         }
 

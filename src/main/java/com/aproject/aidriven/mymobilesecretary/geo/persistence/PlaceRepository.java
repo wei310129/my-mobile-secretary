@@ -3,6 +3,7 @@ package com.aproject.aidriven.mymobilesecretary.geo.persistence;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
@@ -10,6 +11,9 @@ import org.springframework.data.repository.query.Param;
 
 /** Place 資料存取。 */
 public interface PlaceRepository extends JpaRepository<Place, Long> {
+
+    Optional<Place> findByIdAndWorkspaceIdAndCreatedByUserId(
+            Long id, UUID workspaceId, UUID createdByUserId);
 
     /**
      * 找出座標半徑內的地點(geography + ST_DWithin,公尺計算真實球面距離)。

@@ -29,13 +29,17 @@ class RestaurantBookingServiceTest {
     }
 
     @Test
-    void bareBookingRequestAsksAllGuidingQuestionsAtOnce() {
+    void bareBookingRequestAsksOnlyTheNextRestaurantQuestion() {
         IntentResult result = service.handle("幫我訂餐廳", booking(null, null, null, null));
 
-        assertThat(result.action()).isEqualTo(IntentResult.Action.RESTAURANT_BOOKING_INFO);
+        assertThat(result.action()).isEqualTo(IntentResult.Action.CLARIFICATION_NEEDED);
+        assertThat(result.nextQuestion()).isNotNull();
+        assertThat(result.nextQuestion().code()).isEqualTo("booking.restaurant");
         assertThat(result.message())
-                .contains("哪種料理", "什麼時候用餐", "幾位", "毛小孩")
+                .contains("哪種料理")
+                .doesNotContain("什麼時候用餐", "幾位", "毛小孩", "我會")
                 .doesNotContain("做不到");
+        assertThat(result.message().chars().filter(value -> value == '？').count()).isEqualTo(1);
     }
 
     @Test
@@ -45,6 +49,18 @@ class RestaurantBookingServiceTest {
                 booking("鼎泰豐", "2026-07-18T18:00:00+08:00", 4, null));
 
         assertThat(result.message()).contains("什麼時候用餐");
+        assertThat(result.nextQuestion().code()).isEqualTo("booking.dining-at");
+    }
+
+    @Test
+    void knownRestaurantAndTimeAskOnlyForPartySize() {
+        IntentResult result = service.handle("明晚想去鼎泰豐",
+                booking("鼎泰豐", "2099-07-18T18:00:00+08:00", null, null));
+
+        assertThat(result.nextQuestion().code()).isEqualTo("booking.party-size");
+        assertThat(result.message())
+                .contains("總共幾位")
+                .doesNotContain("哪間餐廳", "什麼時候用餐", "我會");
     }
 
     @Test

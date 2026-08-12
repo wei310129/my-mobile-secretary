@@ -3,6 +3,7 @@ package com.aproject.aidriven.mymobilesecretary;
 import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubIntentInterpreter;
 import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubReceiptInterpreter;
 import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Tag;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.autoconfigure.web.servlet.AutoConfigureMockMvc;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -22,6 +23,7 @@ import org.springframework.test.web.servlet.MockMvc;
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)
 @ActiveProfiles("test")
+@Tag("integration")
 @Sql(scripts = "/reset-integration-test-data.sql",
         config = @SqlConfig(separator = "^^^"),
         executionPhase = Sql.ExecutionPhase.BEFORE_TEST_METHOD)

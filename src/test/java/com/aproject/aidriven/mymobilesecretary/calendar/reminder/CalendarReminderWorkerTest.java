@@ -91,6 +91,99 @@ class CalendarReminderWorkerTest extends IntegrationTestBase {
     }
 
     @Test
+    void scheduledPollProcessesDueOccurrenceInsideATransaction() {
+        WorkspaceContext context = new WorkspaceContext(
+                LegacyAccountIds.USER_ID,
+                LegacyAccountIds.WORKSPACE_ID,
+                WorkspaceChannel.TEST);
+        Instant due = Instant.now().minusSeconds(30);
+        try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(context)) {
+            calendars.createPlan(new CreateCalendarPlanCommand(
+                    "calendar-reminder-scheduled-poll",
+                    "Scheduled poll reminder",
+                    CalendarPlacement.point(due, ZoneId.of("Asia/Taipei")),
+                    null,
+                    null,
+                    null,
+                    List.of(),
+                    List.of(CalendarNodeDraft.of(
+                            CalendarTimeNode.absolute("scheduled-departure", "Departure", due)))));
+            reminders.createRelative(
+                    "calendar-reminder-scheduled-poll",
+                    "scheduled-departure",
+                    Duration.ZERO,
+                    CalendarReminderOwnerKind.PERSONAL,
+                    CalendarReminderDeliveryMode.ONCE,
+                    null,
+                    null,
+                    NotificationChannel.LOG);
+        }
+
+        worker.poll();
+
+        assertThat(jdbc.queryForObject(
+                        """
+                        SELECT count(*) FROM notification_outbox
+                        WHERE delivery_key LIKE 'calendar-reminder:%'
+                            AND channel = 'LOG'
+                        """,
+                        Long.class))
+                .isEqualTo(1L);
+        assertThat(jdbc.queryForObject(
+                        """
+                        SELECT count(*) FROM calendar_reminder_occurrence
+                        WHERE status = 'ENQUEUED'
+                        """,
+                        Long.class))
+                .isEqualTo(1L);
+    }
+
+    @Test
+    void completedTimedIntervalDoesNotSendAStaleReminderAfterRestart() {
+        WorkspaceContext context = new WorkspaceContext(
+                LegacyAccountIds.USER_ID,
+                LegacyAccountIds.WORKSPACE_ID,
+                WorkspaceChannel.TEST);
+        Instant start = Instant.now().minusSeconds(600);
+        Instant end = Instant.now().minusSeconds(60);
+        try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(context)) {
+            calendars.createPlan(new CreateCalendarPlanCommand(
+                    "calendar-reminder-completed-interval",
+                    "Completed trip",
+                    CalendarPlacement.interval(start, end, ZoneId.of("Asia/Taipei")),
+                    null,
+                    null,
+                    null,
+                    List.of(),
+                    List.of(CalendarNodeDraft.of(
+                            CalendarTimeNode.absolute("completed-departure", "Departure", start)))));
+            reminders.createRelative(
+                    "calendar-reminder-completed-interval",
+                    "completed-departure",
+                    Duration.ZERO,
+                    CalendarReminderOwnerKind.PERSONAL,
+                    CalendarReminderDeliveryMode.ONCE,
+                    null,
+                    null,
+                    NotificationChannel.LOG);
+        }
+
+        worker.poll();
+
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM notification_outbox",
+                        Long.class))
+                .isZero();
+        assertThat(jdbc.queryForObject(
+                        """
+                        SELECT count(*) FROM calendar_reminder_occurrence
+                        WHERE status = 'CANCELED'
+                        """,
+                        Long.class))
+                .isEqualTo(1L);
+    }
+
+    @Test
     void quietHoursDeferTheSameOccurrenceInsteadOfDroppingIt() {
         WorkspaceContext context = new WorkspaceContext(
                 LegacyAccountIds.USER_ID,

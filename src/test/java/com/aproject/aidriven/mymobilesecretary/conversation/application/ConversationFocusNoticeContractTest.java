@@ -16,6 +16,8 @@ class ConversationFocusNoticeContractTest {
         assertThat(notice.type()).isEqualTo(FocusTransitionType.SWITCH);
         assertThat(notice.previousSafeLabel()).isEqualTo("整理報稅");
         assertThat(notice.currentSafeLabel()).isEqualTo("大阪旅行");
+        assertThat(new FocusTransitionNoticeRenderer().render(notice))
+                .isEqualTo("原本的「整理報稅」先保留，現在改處理「大阪旅行」。");
     }
 
     @Test

@@ -136,10 +136,15 @@ class LifestyleIntentApiTest extends IntegrationTestBase {
         say("每週三七點上英文課做到年底，國定假日不用上，補課時間老師會另外說，先照能支援的部分處理",
                 jsonPath("$.action").value("CLARIFICATION_NEEDED"),
                 jsonPath("$.message").value(containsString("國定假日採跳過")),
-                jsonPath("$.message").value(containsString("每次持續多久")),
-                jsonPath("$.message").value(containsString("上午或晚上")));
+                jsonPath("$.message").value(containsString("上午還是晚上")),
+                jsonPath("$.message").value(not(containsString("每次持續多久"))));
 
-        say("每次一小時，是晚上七點",
+        say("是晚上七點",
+                jsonPath("$.action").value("CLARIFICATION_NEEDED"),
+                jsonPath("$.message").value(containsString("每次持續多久")),
+                jsonPath("$.message").value(not(containsString("上午還是晚上"))));
+
+        say("每次一小時",
                 jsonPath("$.action").value("PLANNING_PREFERENCE_SET"),
                 jsonPath("$.message").value(containsString("尚未啟用")),
                 jsonPath("$.message").value(containsString("確認為國定假日就跳過")),
@@ -166,11 +171,17 @@ class LifestyleIntentApiTest extends IntegrationTestBase {
         say("明晚八點去健身房，若臨時休館就在家運動，我只要一個行程，場地明天六點再依情況決定",
                 jsonPath("$.action").value("CLARIFICATION_NEEDED"),
                 jsonPath("$.message").value(containsString("條件場地")),
-                jsonPath("$.message").value(containsString("六點是上午或下午")),
-                jsonPath("$.message").value(containsString("活動持續多久")));
+                jsonPath("$.message").value(containsString("活動持續多久")),
+                jsonPath("$.message").value(not(containsString("六點是上午或下午"))));
         org.assertj.core.api.Assertions.assertThat(scheduleItemRepository.count()).isEqualTo(before);
 
-        say("下午六點提醒，每次運動一小時",
+        say("每次運動一小時",
+                jsonPath("$.action").value("CLARIFICATION_NEEDED"),
+                jsonPath("$.message").value(containsString("上午還是下午")),
+                jsonPath("$.message").value(not(containsString("活動持續多久"))));
+        org.assertj.core.api.Assertions.assertThat(scheduleItemRepository.count()).isEqualTo(before);
+
+        say("下午六點提醒",
                 jsonPath("$.action").value("PLANNING_PREFERENCE_SET"),
                 jsonPath("$.message").value(containsString("尚未建立行程")),
                 jsonPath("$.message").value(containsString("我只會建立一筆行程")));
@@ -200,7 +211,7 @@ class LifestyleIntentApiTest extends IntegrationTestBase {
         stub.nextCommand(command(IntentCommand.Type.CREATE_SCHEDULE, "時間格式測試夜課",
                 null, "2032-08-11T21:00:00+08:00", "2032-08-11T22:00:00+08:00",
                 null, IntentOptions.empty()));
-        say("建立夜間課程",
+        say("另外建立夜間課程",
                 jsonPath("$.message").value(containsString("21:00")),
                 jsonPath("$.message").value(not(containsString("下午 9:00"))));
     }

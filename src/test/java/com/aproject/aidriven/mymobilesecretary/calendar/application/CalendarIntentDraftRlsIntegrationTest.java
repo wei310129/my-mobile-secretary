@@ -23,6 +23,7 @@ class CalendarIntentDraftRlsIntegrationTest extends IntegrationTestBase {
     private static final String RUNTIME_ROLE = "mms_calendar_draft_rls_runtime";
 
     @Autowired private CalendarIntentDraftService drafts;
+    @Autowired private RouteOperationPreferenceService routeOperationPreferences;
     @Autowired private JdbcTemplate jdbc;
     @Autowired private PlatformTransactionManager transactions;
 
@@ -65,8 +66,25 @@ class CalendarIntentDraftRlsIntegrationTest extends IntegrationTestBase {
         WorkspaceContext peerContext = context(peer, workspace);
         UUID ownerDraft = in(ownerContext, () -> drafts.propose(command("owner proposal"))).id();
         UUID peerDraft = in(peerContext, () -> drafts.propose(command("peer proposal"))).id();
+        in(ownerContext, () -> routeOperationPreferences.setGeneral(10, 15));
+        in(peerContext, () -> routeOperationPreferences.setGeneral(20, 25));
 
         assertThat(runtime(ownerContext, this::visibleDraftIds)).containsExactly(ownerDraft);
+        assertThat(runtime(ownerContext, this::visibleRouteOperationRevisions))
+                .containsExactly(2L);
+        assertThat(runtime(peerContext, this::visibleRouteOperationRevisions))
+                .containsExactly(2L);
+        assertThat(runtime(WorkspaceContext.system(), this::visibleRouteOperationRevisions))
+                .isEmpty();
+        assertThat(runtime(peerContext, () -> jdbc.update(
+                        """
+                        UPDATE actor_route_operation_preference
+                        SET parking_minutes = 99
+                        WHERE workspace_id = ? AND created_by_user_id = ?
+                        """,
+                        workspace,
+                        owner)))
+                .isZero();
         assertThat(runtime(peerContext, this::visibleDraftIds)).containsExactly(peerDraft);
         assertThat(runtime(WorkspaceContext.system(), this::visibleDraftIds)).isEmpty();
         assertThat(runtime(peerContext, () -> jdbc.update(
@@ -79,6 +97,11 @@ class CalendarIntentDraftRlsIntegrationTest extends IntegrationTestBase {
     private List<UUID> visibleDraftIds() {
         return jdbc.queryForList(
                 "SELECT id FROM calendar_intent_draft ORDER BY id", UUID.class);
+    }
+
+    private List<Long> visibleRouteOperationRevisions() {
+        return jdbc.queryForList(
+                "SELECT revision FROM actor_route_operation_preference ORDER BY id", Long.class);
     }
 
     private <T> T runtime(WorkspaceContext context, Supplier<T> work) {

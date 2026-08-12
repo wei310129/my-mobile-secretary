@@ -198,29 +198,36 @@ class CalendarApiTest extends IntegrationTestBase {
 
     @Test
     void warmCreatePathMeetsLowComplexityP95Budget() throws Exception {
+        createLatencyPlan("calendar-latency-warmup");
         var elapsedMillis = new ArrayList<Long>();
-        for (int index = 0; index < 10; index++) {
+        for (int index = 0; index < 60; index++) {
             long started = System.nanoTime();
-            mockMvc.perform(post("/api/v2/calendar/plans")
-                            .header("Idempotency-Key", "calendar-latency-" + index)
-                            .contentType(MediaType.APPLICATION_JSON)
-                            .content(
-                                    """
-                                    {
-                                      "title":"延遲樣本",
-                                      "placement":{
-                                        "kind":"TIMED_POINT",
-                                        "start":"2026-07-26T03:00:00Z",
-                                        "zoneId":"Asia/Taipei"
-                                      }
-                                    }
-                                    """))
-                    .andExpect(status().isCreated());
+            createLatencyPlan("calendar-latency-" + index);
             elapsedMillis.add((System.nanoTime() - started) / 1_000_000);
         }
         Collections.sort(elapsedMillis);
 
-        long p95 = elapsedMillis.get(9);
+        long p95 = elapsedMillis.get((int) Math.ceil(elapsedMillis.size() * 0.95) - 1);
+        System.out.printf("CALENDAR_CREATE_SAMPLES_MS=%s%n", elapsedMillis);
+        System.out.printf("CALENDAR_CREATE_P95_MS=%d%n", p95);
         assertThat(p95).isLessThanOrEqualTo(1_500);
+    }
+
+    private void createLatencyPlan(String idempotencyKey) throws Exception {
+        mockMvc.perform(post("/api/v2/calendar/plans")
+                        .header("Idempotency-Key", idempotencyKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(
+                                """
+                                {
+                                  "title":"延遲樣本",
+                                  "placement":{
+                                    "kind":"TIMED_POINT",
+                                    "start":"2026-07-26T03:00:00Z",
+                                    "zoneId":"Asia/Taipei"
+                                  }
+                                }
+                                """))
+                .andExpect(status().isCreated());
     }
 }

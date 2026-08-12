@@ -7,6 +7,25 @@ unknown reconciliation, payment decline, 3DS failure, cancellation penalty and r
 Add actor/workspace/RLS, information-leak, quoted-selection, parallel-trip and zero-mutation cases. Seed
 internal IDs and provider errors, then assert no public channel exposes them.
 
+For missing traveller, offer, authorization or payment inputs, assert exactly one typed next question per
+turn, absorption of all valid values supplied together, no repeat of valid answered slots, durable typed
+pending state, and zero provider mutation before the relevant authorization gate. Exercise provider error,
+replay and hosted-checkout return replies through the same final public boundary as ordinary LINE/REST text.
+
+Add complaint/correction cases with sufficient typed context for a same-turn read-only repair and ambiguous
+cases that ask one durable repair-target question. Assert no provider call with mutation authority, no consumed
+unrelated pending state, explicit changed/unchanged status, no repeated question, and exactly one terminal
+public reply after all provider and progress decoration.
+
+Seed unsupported “retrying”, “booked”, “paid”, “refund started” and “will notify” wording and prove the shared
+final boundary rejects it without matching typed evidence. Also prove a genuinely committed provider/outbox
+state preserves truthful wording, uses the configured secretary address naturally, and adds no decorative
+emoji by default.
+
+For guidance-only restaurant intake, cover restaurant → dining time → party size as separate typed questions,
+all-at-once absorption, restart, replay and actor/workspace RLS. Assert the completed local draft states that no
+reservation or payment was sent and causes zero provider, order, payment, cancellation or browser mutation.
+
 Verification order:
 
 1. Domain and state-machine tests with injected `Clock`.

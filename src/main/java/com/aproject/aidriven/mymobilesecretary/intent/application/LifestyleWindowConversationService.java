@@ -65,7 +65,8 @@ public class LifestyleWindowConversationService {
                         .append(window.start()).append("–").append(window.end());
             }
         }
-        message.append("\n\n之後新行程若壓縮這些時段，我會標示受影響項目並讓你決定，不會自行拒絕或挪動其他行程。");
+        message.append("\n\n這些時間窗已設為規劃限制；新行程若壓縮這些時段，系統只會標示受影響項目，"
+                + "由您決定是否調整，不會自行拒絕或挪動其他行程。");
         return Optional.of(IntentResult.message(IntentResult.Action.PLANNING_PREFERENCE_SET,
                 message.toString()));
     }

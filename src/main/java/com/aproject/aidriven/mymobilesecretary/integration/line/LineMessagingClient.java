@@ -1,15 +1,16 @@
 package com.aproject.aidriven.mymobilesecretary.integration.line;
 
-import com.aproject.aidriven.mymobilesecretary.intent.application.IntentReplyFormatter;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.http.MediaType;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
+import org.springframework.web.client.RestClientResponseException;
 
 /**
  * LINE Messaging API 回覆訊息 client。
@@ -23,6 +24,7 @@ public class LineMessagingClient {
     private static final Logger log = LoggerFactory.getLogger(LineMessagingClient.class);
 
     private final RestClient restClient;
+    private final RestClient loadingRestClient;
     private final LineTokenManager tokenManager;
 
     public LineMessagingClient(RestClient.Builder builder, LineProperties properties, LineTokenManager tokenManager) {
@@ -34,6 +36,33 @@ public class LineMessagingClient {
                 .baseUrl(properties.apiBaseUrl())
                 .requestFactory(factory)
                 .build();
+        SimpleClientHttpRequestFactory loadingFactory = new SimpleClientHttpRequestFactory();
+        int loadingTimeout = (int) Math.min(properties.timeout().toMillis(), 500L);
+        loadingFactory.setConnectTimeout(loadingTimeout);
+        loadingFactory.setReadTimeout(loadingTimeout);
+        this.loadingRestClient = builder.clone()
+                .baseUrl(properties.apiBaseUrl())
+                .requestFactory(loadingFactory)
+                .build();
+    }
+
+    /** Displays LINE's one-to-one loading animation without consuming the one-time reply token. */
+    public boolean startLoading(String chatId) {
+        if (chatId == null || chatId.isBlank()) return false;
+        try {
+            loadingRestClient.post()
+                    .uri("/v2/bot/chat/loading/start")
+                    .header("Authorization", "Bearer " + tokenManager.getAccessToken())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of("chatId", chatId, "loadingSeconds", 5))
+                    .retrieve()
+                    .toBodilessEntity();
+            return true;
+        } catch (Exception exception) {
+            log.warn("LINE loading animation failed [cause={}]",
+                    exception.getClass().getSimpleName());
+            return false;
+        }
     }
 
     /**
@@ -42,14 +71,13 @@ public class LineMessagingClient {
      */
     public Optional<String> reply(String replyToken, String text) {
         try {
-            String formattedText = IntentReplyFormatter.format("💬", text);
             ReplyResponse response = restClient.post()
                     .uri("/v2/bot/message/reply")
                     .header("Authorization", "Bearer " + tokenManager.getAccessToken())
                     .contentType(MediaType.APPLICATION_JSON)
                     .body(Map.of(
                             "replyToken", replyToken,
-                            "messages", List.of(Map.of("type", "text", "text", formattedText))))
+                            "messages", List.of(Map.of("type", "text", "text", text))))
                     .retrieve()
                     .body(ReplyResponse.class);
             return response == null || response.sentMessages() == null
@@ -63,6 +91,35 @@ public class LineMessagingClient {
             // Do not log the one-time reply token, message body, access token, or a large stack.
             log.warn("LINE reply failed [cause={}]", e.getClass().getSimpleName());
             return Optional.empty();
+        }
+    }
+
+    /** Sends a proactive message with LINE's retry-key deduplication contract. */
+    public boolean push(String userId, String text, UUID deliveryId) {
+        if (userId == null || userId.isBlank() || text == null || text.isBlank() || deliveryId == null) {
+            return false;
+        }
+        try {
+            restClient.post()
+                    .uri("/v2/bot/message/push")
+                    .header("Authorization", "Bearer " + tokenManager.getAccessToken())
+                    .header("X-Line-Retry-Key", deliveryId.toString())
+                    .contentType(MediaType.APPLICATION_JSON)
+                    .body(Map.of(
+                            "to", userId,
+                            "messages", List.of(Map.of("type", "text", "text", text))))
+                    .retrieve()
+                    .toBodilessEntity();
+            return true;
+        } catch (RestClientResponseException responseFailure) {
+            if (responseFailure.getStatusCode().value() == 409) {
+                return true;
+            }
+            log.warn("LINE push failed [status={}]", responseFailure.getStatusCode().value());
+            return false;
+        } catch (RuntimeException failure) {
+            log.warn("LINE push failed [cause={}]", failure.getClass().getSimpleName());
+            return false;
         }
     }
 

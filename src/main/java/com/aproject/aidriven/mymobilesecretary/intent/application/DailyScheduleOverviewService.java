@@ -1,5 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2IntentService;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2RoutingService;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleRecurrenceCalculator;
@@ -32,6 +34,8 @@ public class DailyScheduleOverviewService {
 
     private final ScheduleService scheduleService;
     private final ConversationContextService contextService;
+    private CalendarV2RoutingService calendarV2Routing;
+    private CalendarV2IntentService calendarV2;
 
     public DailyScheduleOverviewService(ScheduleService scheduleService,
                                         ConversationContextService contextService) {
@@ -39,7 +43,15 @@ public class DailyScheduleOverviewService {
         this.contextService = contextService;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setCalendarV2(CalendarV2RoutingService calendarV2Routing,
+                       CalendarV2IntentService calendarV2) {
+        this.calendarV2Routing = calendarV2Routing;
+        this.calendarV2 = calendarV2;
+    }
+
     public IntentResult overview(LocalDate date) {
+        if (usesCalendarV2()) return calendarV2.listDate(date);
         List<ScheduleItem> visible = scheduleService.listSchedules(null).stream()
                 .filter(item -> VISIBLE_STATUSES.contains(item.getStatus()))
                 .toList();
@@ -115,6 +127,7 @@ public class DailyScheduleOverviewService {
         if (orderedDates.size() > 31) {
             throw new IllegalArgumentException("overview date range is too large");
         }
+        if (usesCalendarV2()) return calendarV2.listDates(orderedDates);
         List<ScheduleItem> visible = scheduleService.listSchedules(null).stream()
                 .filter(item -> VISIBLE_STATUSES.contains(item.getStatus()))
                 .toList();
@@ -151,6 +164,10 @@ public class DailyScheduleOverviewService {
         }
         contextService.rememberScheduleList(List.copyOf(combinedSources));
         return IntentResult.message(IntentResult.Action.SCHEDULES_LISTED, message.toString());
+    }
+
+    private boolean usesCalendarV2() {
+        return calendarV2Routing != null && calendarV2 != null && calendarV2Routing.useCalendarV2();
     }
 
     /** 直接解釋上一則總覽的「當日項目」，不把介面用語問題交給 LLM。 */

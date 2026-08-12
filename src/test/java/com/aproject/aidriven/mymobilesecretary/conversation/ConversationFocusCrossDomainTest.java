@@ -77,7 +77,8 @@ class ConversationFocusCrossDomainTest extends IntegrationTestBase {
             IntentResult scheduleReply = executor.execute("改成回診", command(IntentCommand.Type.RESCHEDULE_SCHEDULE),
                     "b".repeat(64));
             ConversationFocus scheduleFocus = focusService.activeFocus().orElseThrow();
-            assertThat(scheduleReply.responseEnvelope().message()).contains("先暫離「繳電費」，改處理「醫院回診」")
+            assertThat(scheduleReply.responseEnvelope().message())
+                    .contains("原本的「繳電費」先保留，現在改處理「醫院回診」")
                     .doesNotContain("schedule:").doesNotContain(schedule.item().getId().toString());
             assertThat(scheduleFocus.getRootDomain()).isEqualTo("SCHEDULE");
             assertThat(scheduleFocus.getRoutingKey()).isEqualTo("schedule:" + schedule.item().getId());

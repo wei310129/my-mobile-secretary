@@ -42,6 +42,7 @@ final class OccasionGreeting {
             return result;
         }
         return new IntentResult(result.action(), result.message() + "\n\n" + greeting.get(),
-                result.task(), result.decision());
+                result.task(), result.decision(), result.focusNotice(), result.focusBinding(),
+                result.focusDirective(), result.nextQuestion());
     }
 }

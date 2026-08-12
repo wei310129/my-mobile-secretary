@@ -1,6 +1,7 @@
 package com.aproject.aidriven.mymobilesecretary.calendar.adoption;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.verifyNoInteractions;
 import static org.mockito.Mockito.when;
 
 import com.aproject.aidriven.mymobilesecretary.calendar.domain.Adjustability;
@@ -82,14 +83,93 @@ class PersonalRouteAssessmentServiceTest {
                 .isEqualTo(PersonalRouteStatus.INSUFFICIENT_EVIDENCE);
     }
 
+    @Test
+    void trustedPlaceLabelWithoutCoordinatesDoesNotInventRouteEvidence() {
+        PersonalRouteConstraint first = constraint(
+                "first", TEN, 25.0, 121.5, Adjustability.LOCKED);
+        PersonalRouteConstraint second = new PersonalRouteConstraint(
+                UUID.nameUUIDFromBytes("plan-second".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                UUID.nameUUIDFromBytes("node-second".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                OWNER,
+                "second",
+                TEN.plus(Duration.ofHours(1)),
+                new CalendarLocation("系統機場", null, null),
+                Adjustability.LOCKED,
+                1);
+
+        assertThat(new PersonalRouteAssessmentService(estimator)
+                        .assess(List.of(first, second)).status())
+                .isEqualTo(PersonalRouteStatus.INSUFFICIENT_EVIDENCE);
+        verifyNoInteractions(estimator);
+    }
+
+    @Test
+    void unlinkedConstraintBeyondSixHoursIsIgnoredBeforeLocationAssessment() {
+        PersonalRouteConstraint first =
+                constraint("first", TEN, 25.0, 121.5, Adjustability.LOCKED);
+        PersonalRouteConstraint distant = new PersonalRouteConstraint(
+                UUID.nameUUIDFromBytes("plan-distant".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                UUID.nameUUIDFromBytes("node-distant".getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                OWNER,
+                "distant",
+                TEN.plus(Duration.ofHours(14)),
+                null,
+                Adjustability.LOCKED,
+                1);
+
+        assertThat(new PersonalRouteAssessmentService(estimator)
+                        .assess(List.of(first, distant)).status())
+                .isEqualTo(PersonalRouteStatus.NO_CONSTRAINTS);
+        verifyNoInteractions(estimator);
+    }
+
+    @Test
+    void samePlanTypedLinkageCanCrossSixHours() {
+        UUID planId = UUID.randomUUID();
+        PersonalRouteConstraint first = constraint(
+                planId, "first", TEN, 25.0, 121.5, Adjustability.LOCKED);
+        PersonalRouteConstraint linked = constraint(
+                planId,
+                "linked",
+                TEN.plus(Duration.ofHours(14)),
+                24.9,
+                121.1,
+                Adjustability.LOCKED);
+        when(estimator.estimateEvidence(25.0, 121.5, 24.9, 121.1, TEN))
+                .thenReturn(TravelTimeEstimator.TravelTimeEvidence.routed(
+                        Duration.ofHours(2),
+                        TravelTimeEstimator.EvidenceSource.CUSTOM_ROUTED));
+
+        assertThat(new PersonalRouteAssessmentService(estimator)
+                        .assess(List.of(first, linked)).status())
+                .isEqualTo(PersonalRouteStatus.FEASIBLE);
+    }
+
     private static PersonalRouteConstraint constraint(
             String key,
             Instant time,
             double latitude,
             double longitude,
             Adjustability adjustability) {
+        return constraint(
+                UUID.nameUUIDFromBytes(("plan-" + key)
+                        .getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                key,
+                time,
+                latitude,
+                longitude,
+                adjustability);
+    }
+
+    private static PersonalRouteConstraint constraint(
+            UUID planId,
+            String key,
+            Instant time,
+            double latitude,
+            double longitude,
+            Adjustability adjustability) {
         return new PersonalRouteConstraint(
-                UUID.nameUUIDFromBytes(("plan-" + key).getBytes(java.nio.charset.StandardCharsets.UTF_8)),
+                planId,
                 UUID.nameUUIDFromBytes(("node-" + key).getBytes(java.nio.charset.StandardCharsets.UTF_8)),
                 OWNER,
                 key,

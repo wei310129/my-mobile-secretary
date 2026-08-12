@@ -21,7 +21,7 @@ class FailureExplanationServiceTest {
         assertThat(result.action()).isEqualTo(IntentResult.Action.FAILURE_EXPLAINED);
         assertThat(result.message())
                 .contains("缺行程的結束時間或預計時長", "資料沒有異動")
-                .doesNotContain("Java", "AI", "startAt", "endAt", "type=");
+                .doesNotContain("Java", "AI", "startAt", "endAt", "type=", "我會接著處理");
     }
 
     @Test
@@ -32,7 +32,7 @@ class FailureExplanationServiceTest {
         IntentResult result = FailureExplanationService.answer("剛才怎麼了", snapshot).orElseThrow();
 
         assertThat(result.message()).contains("沒有完成", "資料也沒有異動", "日期與時間")
-                .doesNotContain("舊版", "Java", "AI");
+                .doesNotContain("舊版", "Java", "AI", "我會接著處理");
     }
 
     @Test

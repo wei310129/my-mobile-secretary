@@ -83,6 +83,10 @@ class IntentHandlerRegistryTest {
         assertThat(java.util.Arrays.stream(IntentCommand.Type.values())
                 .filter(type -> !registry.supports(type)))
                 .containsExactly(IntentCommand.Type.UNKNOWN);
+        assertThat(java.util.Arrays.stream(IntentCommand.Type.values())
+                .filter(registry::supports)
+                .map(registry::contract))
+                .allMatch(IntentConversationContract.standard()::equals);
     }
 
     private static IntentHandler handler(Set<IntentCommand.Type> types, IntentResult result) {

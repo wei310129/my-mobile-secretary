@@ -1,0 +1,2 @@
+key	name	region	aliases	candidate_keys
+SYSTEM:HUB:TAIPEI_MAIN_STATION	台北火車站	台北市	台北車站|臺北車站|台北站|臺北站	TDX:METRO_STATION:TRTC-BL12|TDX:METRO_STATION:TYMC-A1

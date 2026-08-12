@@ -16,6 +16,7 @@ import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Set;
 import java.util.stream.Collectors;
 
 /**
@@ -33,38 +34,108 @@ public record IntentResult(
         ScheduleDecision decision,
         FocusTransitionNotice focusNotice,
         ConversationFocusBinding focusBinding,
-        ConversationFocusDirective focusDirective
+        ConversationFocusDirective focusDirective,
+        PublicConversationReply.NextQuestion nextQuestion,
+        ResponsePresentation responsePresentation,
+        Set<PublicReplyEvidence> publicReplyEvidence
 ) {
 
     public IntentResult {
-        message = IntentReplyFormatter.format(action, UserReplySafetyPolicy.sanitize(message));
+        publicReplyEvidence = publicReplyEvidence == null
+                ? Set.of() : Set.copyOf(publicReplyEvidence);
+        responsePresentation = responsePresentation == null
+                ? ResponsePresentation.STANDARD : responsePresentation;
+        String safeMessage = UserReplySafetyPolicy.sanitize(message);
+        message = responsePresentation == ResponsePresentation.PLAIN
+                ? IntentReplyFormatter.formatPlain(safeMessage)
+                : IntentReplyFormatter.format(action, safeMessage);
+        if (requiresNextQuestion(action) && nextQuestion == null) {
+            nextQuestion = SingleQuestionPolicy.legacy(message);
+        }
+    }
+
+    public IntentResult(
+            Action action, String message, Task task, ScheduleDecision decision,
+            FocusTransitionNotice focusNotice, ConversationFocusBinding focusBinding,
+            ConversationFocusDirective focusDirective,
+            PublicConversationReply.NextQuestion nextQuestion) {
+        this(action, message, task, decision, focusNotice, focusBinding, focusDirective,
+                nextQuestion, ResponsePresentation.STANDARD, Set.of());
+    }
+
+    public IntentResult(
+            Action action, String message, Task task, ScheduleDecision decision,
+            FocusTransitionNotice focusNotice, ConversationFocusBinding focusBinding,
+            ConversationFocusDirective focusDirective,
+            PublicConversationReply.NextQuestion nextQuestion,
+            ResponsePresentation responsePresentation) {
+        this(action, message, task, decision, focusNotice, focusBinding, focusDirective,
+                nextQuestion, responsePresentation, Set.of());
+    }
+
+    private static boolean requiresNextQuestion(Action action) {
+        return action == Action.CLARIFICATION_NEEDED
+                || action == Action.SCHEDULE_NEEDS_DECISION
+                || action == Action.CALENDAR_ATTACHMENT_DELETE_CONFIRMATION_REQUIRED
+                || action == Action.SCHEDULE_CANCELLATION_PREVIEWED;
     }
 
     public IntentResult(Action action, String message, Task task, ScheduleDecision decision) {
-        this(action, message, task, decision, null, null, null);
+        this(action, message, task, decision, null, null, null, null);
     }
 
     public IntentResult(Action action, String message, Task task, ScheduleDecision decision,
                         FocusTransitionNotice focusNotice) {
-        this(action, message, task, decision, focusNotice, null, null);
+        this(action, message, task, decision, focusNotice, null, null, null);
+    }
+
+    public IntentResult(Action action, String message, Task task, ScheduleDecision decision,
+                        FocusTransitionNotice focusNotice,
+                        ConversationFocusBinding focusBinding,
+                        ConversationFocusDirective focusDirective) {
+        this(action, message, task, decision, focusNotice, focusBinding, focusDirective, null);
     }
 
     public IntentResult withFocusNotice(FocusTransitionNotice notice) {
-        return new IntentResult(action, message, task, decision, notice, focusBinding, focusDirective);
+        return new IntentResult(
+                action, message, task, decision, notice, focusBinding, focusDirective, nextQuestion,
+                responsePresentation, publicReplyEvidence);
     }
 
     public IntentResult withFocusBinding(ConversationFocusBinding binding) {
-        return new IntentResult(action, message, task, decision, focusNotice, binding, focusDirective);
+        return new IntentResult(
+                action, message, task, decision, focusNotice, binding, focusDirective, nextQuestion,
+                responsePresentation, publicReplyEvidence);
     }
 
     public IntentResult withFocusDirective(ConversationFocusBinding binding,
                                            ConversationFocusDirective directive) {
-        return new IntentResult(action, message, task, decision, focusNotice, binding, directive);
+        return new IntentResult(
+                action, message, task, decision, focusNotice, binding, directive, nextQuestion,
+                responsePresentation, publicReplyEvidence);
     }
 
     public IntentResult withFocusDirective(ConversationFocusDirective directive) {
         return new IntentResult(
-                action, message, task, decision, focusNotice, focusBinding, directive);
+                action, message, task, decision, focusNotice, focusBinding, directive, nextQuestion,
+                responsePresentation, publicReplyEvidence);
+    }
+
+    public IntentResult withNextQuestion(PublicConversationReply.NextQuestion question) {
+        return new IntentResult(
+                action, message, task, decision, focusNotice, focusBinding, focusDirective, question,
+                responsePresentation, publicReplyEvidence);
+    }
+
+    public IntentResult withEvidence(PublicReplyEvidence... evidence) {
+        java.util.HashSet<PublicReplyEvidence> merged = new java.util.HashSet<>(
+                publicReplyEvidence);
+        if (evidence != null) {
+            java.util.Collections.addAll(merged, evidence);
+        }
+        return new IntentResult(
+                action, message, task, decision, focusNotice, focusBinding, focusDirective,
+                nextQuestion, responsePresentation, merged);
     }
 
     public FocusResponseEnvelope responseEnvelope() {
@@ -73,6 +144,11 @@ public record IntentResult(
         }
         return FocusResponseEnvelope.withNotice(message, focusNotice,
                 new ConversationFocusReplyDecorator(new FocusTransitionNoticeRenderer()));
+    }
+
+    public enum ResponsePresentation {
+        STANDARD,
+        PLAIN
     }
 
     public enum Action {
@@ -92,6 +168,8 @@ public record IntentResult(
         SCHEDULES_LISTED,
         SUGGESTION_MADE,
         PLACE_INFO,
+        PLACE_CATALOG_INFO,
+        PLACE_CATALOG_ADOPTED,
         PLACE_CREATED,
         PLACE_UPDATED,
         TASK_PLACE_BOUND,
@@ -114,6 +192,7 @@ public record IntentResult(
         ACTIVITY_COUNT_INFO,
         ROUTE_SUGGESTED,
         PLACE_ALIAS_SET,
+        ROUTE_PLACE_CHILD_COMPLETED,
         SHOPPING_ITEMS_ADDED,
         SHOPPING_ITEM_REMOVED,
         SHOPPING_LISTED,
@@ -281,6 +360,18 @@ public record IntentResult(
 
     public static IntentResult message(Action action, String message) {
         return new IntentResult(action, message, null, null);
+    }
+
+    public static IntentResult plainMessage(Action action, String message) {
+        return new IntentResult(action, message, null, null, null, null, null, null,
+                ResponsePresentation.PLAIN);
+    }
+
+    public static IntentResult plainMessage(
+            Action action, String message, PublicReplyEvidence... evidence) {
+        return new IntentResult(action, message, null, null, null, null, null, null,
+                ResponsePresentation.PLAIN,
+                evidence == null ? Set.of() : Set.of(evidence));
     }
 
     public static IntentResult taskMessage(Action action, String message, Task task) {
@@ -536,7 +627,7 @@ public record IntentResult(
     public static IntentResult taskPlaceBound(Task task,
                                        com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
         return new IntentResult(Action.TASK_PLACE_BOUND,
-                "「%s」已綁定「%s」,你到附近時我會提醒你。".formatted(task.getTitle(), place.getName()),
+                "已為「%s」綁定「%s」的到達提醒條件。".formatted(task.getTitle(), place.getName()),
                 task, null);
     }
 
@@ -544,7 +635,7 @@ public record IntentResult(
                                       List<com.aproject.aidriven.mymobilesecretary.geo.domain.Place> places) {
         if (places.isEmpty()) {
             return new IntentResult(Action.TASK_PLACE_INFO,
-                    "「%s」還沒綁定地點,跟我說「%s是要到某地點」我就記住。"
+                    "「%s」目前還沒有綁定地點。您可以告訴我「%s是要到哪個地點」。"
                             .formatted(task.getTitle(), task.getTitle()),
                     task, null);
         }
@@ -558,7 +649,14 @@ public record IntentResult(
 
     public static IntentResult feedbackReceived() {
         return new IntentResult(Action.FEEDBACK_RECEIVED,
-                "收到，我會依你指出的方向調整。這則訊息不會建立待辦或行程，也不會修改既有待辦或行程。", null, null);
+                "收到，謝謝您直接告訴我。這則訊息不會建立待辦或行程，也不會修改既有待辦或行程。",
+                null, null);
+    }
+
+    public static IntentResult feedbackNeedsInput(String fact, ClarificationStep step) {
+        String message = fact.strip() + "\n\n" + step.prompt();
+        return new IntentResult(Action.FEEDBACK_RECEIVED, message, null, null,
+                null, null, null, step.nextQuestion());
     }
 
     public static IntentResult placeInfo(com.aproject.aidriven.mymobilesecretary.geo.domain.Place place) {
@@ -580,6 +678,24 @@ public record IntentResult(
         return new IntentResult(Action.PLACE_INFO,
                 "我知道「%s」%s。\n- %s%s%s".formatted(
                         place.getName(), type, location, learned, question), null, null);
+    }
+
+    public static IntentResult placeCatalogMessage(String message) {
+        return new IntentResult(Action.PLACE_CATALOG_INFO, message, null, null);
+    }
+
+    public static IntentResult placeCatalogAdopted(
+            com.aproject.aidriven.mymobilesecretary.geo.catalog.application.SystemPlaceCatalogView point,
+            boolean discloseSavedState) {
+        String location = point.address() == null || point.address().isBlank()
+                ? "尚未有可讀地址"
+                : "地址：" + point.address();
+        String coordinates = point.hasCoordinates() ? "；已有座標證據" : "；目前沒有座標證據，不能用於路線判斷";
+        String savedState = discloseSavedState ? "；這次沒有建立自訂地點" : "";
+        return new IntentResult(Action.PLACE_CATALOG_ADOPTED,
+                "已選用系統內建地點「%s」%s。來源：%s%s%s"
+                        .formatted(point.pointName(), location, point.sourceName(), coordinates, savedState),
+                null, null);
     }
 
     /** 一句多操作的合併回覆:逐項列出各自結果。 */
@@ -608,6 +724,35 @@ public record IntentResult(
         return new IntentResult(Action.CLARIFICATION_NEEDED, reason, null, null);
     }
 
+    public static IntentResult clarificationNeeded(ClarificationStep step) {
+        return clarificationNeeded(null, step);
+    }
+
+    public static IntentResult clarificationNeeded(String fact, ClarificationStep step) {
+        String message = fact == null || fact.isBlank()
+                ? step.prompt()
+                : fact.strip() + "\n\n" + step.prompt();
+        return new IntentResult(Action.CLARIFICATION_NEEDED, message, null, null,
+                null, null, null, step.nextQuestion());
+    }
+
+    public static IntentResult choiceNeeded(
+            String fact, PublicConversationChoiceQuestion question) {
+        String prompt = PublicConversationChoiceRenderer.render(question);
+        String message = fact == null || fact.isBlank()
+                ? prompt
+                : fact.strip() + "\n\n" + prompt;
+        return new IntentResult(
+                Action.CLARIFICATION_NEEDED,
+                message,
+                null,
+                null,
+                null,
+                null,
+                null,
+                new PublicConversationReply.NextQuestion(question.code(), prompt));
+    }
+
     public static IntentResult fallbackTaskCreated(Task task, String why) {
         return new IntentResult(Action.FALLBACK_TASK_CREATED,
                 "%s,已先把原話存成任務「%s」".formatted(why, task.getTitle()), task, null);
@@ -615,21 +760,21 @@ public record IntentResult(
 
     public static IntentResult aiUnavailable(String why) {
         return new IntentResult(Action.AI_UNAVAILABLE,
-                "這次沒有完成，也沒有建立或修改資料。請再傳一次，我會接著處理。",
+                "抱歉，這次沒有處理完成，資料沒有異動。您可以稍後再傳一次。",
                 null, null);
     }
 
     public static IntentResult aiUnavailable(String why, String validationReason, IntentCommand command) {
-        String guidance = "請補充你想處理的項目、日期或時間，我會接著處理。";
+        String guidance = "您可以補上想處理的項目、日期或時間後再傳一次。";
         if (command != null && command.type() == IntentCommand.Type.CREATE_SCHEDULE) {
             if (command.startAt() == null || command.startAt().isBlank()) {
-                guidance = "請告訴我行程的開始時間，我會接著建立。";
+                guidance = "您可以補上行程的開始時間後再傳一次。";
             } else if (command.endAt() == null || command.endAt().isBlank()) {
-                guidance = "請告訴我行程的結束時間或預計多久，我會接著建立。";
+                guidance = "您可以補上行程的結束時間或預計時長後再傳一次。";
             }
         }
         return new IntentResult(Action.AI_UNAVAILABLE,
-                "這次沒有完成，也沒有建立或修改資料。" + guidance,
+                "抱歉，這次沒有處理完成，資料沒有異動。" + guidance,
                 null, null);
     }
 }

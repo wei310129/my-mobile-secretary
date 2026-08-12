@@ -97,9 +97,16 @@ class SchoolTransportConversationServiceTest {
                 mutations).orElseThrow();
 
         assertThat(first.message())
-                .contains("我已記住", "每週六", "10:00–12:00", "送去：我", "接回：我")
-                .contains("送去預計幾點出發", "12:00 從哪裡接", "接回行程預計幾點結束")
+                .contains("固定接送已保存", "每週六", "10:00–12:00", "送去：我", "接回：我")
+                .contains("送去預計幾點出發")
+                .doesNotContain("從哪裡接", "接回行程預計幾點結束")
                 .doesNotContain("誰負責接回");
+        assertThat(first.nextQuestion().code()).isEqualTo("school-transport.drop-start");
+        assertThat(pending.get().getPayload()).isNull();
+        assertThat(pending.get().getChildName()).isEqualTo("女兒");
+        assertThat(pending.get().getCourseName()).contains("夏恩英語");
+        assertThat(pending.get().getDropPerson()).isEqualTo("我");
+        assertThat(pending.get().getPickupPerson()).isEqualTo("我");
 
         IntentResult completed = answer(
                 "9:30 從我家出發，就在夏恩英語（新店七張分校）接，12:30 結束",
@@ -155,12 +162,16 @@ class SchoolTransportConversationServiceTest {
         IntentResult afterDeparture = answer("9:30出發", mutations).orElseThrow();
         assertThat(afterDeparture.message())
                 .doesNotContain("送去預計幾點出發")
-                .contains("12:00 從哪裡接", "接回行程預計幾點結束");
+                .contains("12:00 要從哪裡接")
+                .doesNotContain("接回行程預計幾點結束");
+        assertThat(afterDeparture.nextQuestion().code())
+                .isEqualTo("school-transport.pickup-location");
 
         IntentResult afterPlace = answer("就在夏恩英語接", mutations).orElseThrow();
         assertThat(afterPlace.message())
                 .doesNotContain("從哪裡接")
                 .contains("接回行程預計幾點結束");
+        assertThat(afterPlace.nextQuestion().code()).isEqualTo("school-transport.pickup-end");
 
         assertCompleted(answer("12:30結束", mutations).orElseThrow());
         assertThat(mutations).hasValue(4);
@@ -202,8 +213,10 @@ class SchoolTransportConversationServiceTest {
         IntentResult target = answer("怎麼合併之後就沒有問？是要怎麼接送了呢？", mutations)
                 .orElseThrow();
         assertThat(target.message())
-                .contains("我指的是行程「送女兒到夏恩英語上課」", "誰負責送去", "誰負責接回")
+                .contains("我指的是行程「送女兒到夏恩英語上課」", "誰負責送去")
+                .doesNotContain("誰負責接回")
                 .doesNotContain("lastScheduleId", "使用者詢問", "系統沒有");
+        assertThat(target.nextQuestion().code()).isEqualTo("school-transport.drop-person");
 
         IntentResult clarified = answer("你是指哪一個行程？", mutations).orElseThrow();
         assertThat(clarified.message()).contains("送女兒到夏恩英語上課");
@@ -214,8 +227,10 @@ class SchoolTransportConversationServiceTest {
                 mutations).orElseThrow();
         assertThat(filled.message())
                 .contains("送去：我", "接回：我", "12:00從夏恩英語接")
-                .contains("送去從哪裡出發", "送去預計幾點出發", "接回行程預計幾點結束")
+                .contains("送去從哪裡出發")
+                .doesNotContain("送去預計幾點出發", "接回行程預計幾點結束")
                 .doesNotContain("誰負責送去", "誰負責接回", "從哪裡接", "AI 暫時無法");
+        assertThat(filled.nextQuestion().code()).isEqualTo("school-transport.drop-origin");
 
         IntentResult repeated = answer(
                 "送女兒到夏恩英語上課是我送也是我接，12點在夏恩英語接", mutations)

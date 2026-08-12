@@ -7,6 +7,8 @@ import java.time.Instant;
 import java.time.LocalDateTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Locale;
 import org.springframework.cache.annotation.Cacheable;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
@@ -46,8 +48,12 @@ public class TdxRoutingClient {
      * @param query 起迄座標(呼叫端請先四捨五入到 4 位小數,提升快取命中率)與出發時間
      * @throws IntegrationException 失敗或查無路線(呼叫端 fallback 直線粗估)
      */
-    @Cacheable(cacheNames = "travel-time", key = "#query.cacheKey()")
     public Duration getTransitTravelTime(TravelQuery query) {
+        return getTransitRoute(query).duration();
+    }
+
+    @Cacheable(cacheNames = "travel-time", key = "#query.cacheKey()")
+    public TdxRoute getTransitRoute(TravelQuery query) {
         String depart = LocalDateTime.ofInstant(query.departAt(), TAIPEI).format(DEPART_FORMAT);
         JsonNode root;
         try {
@@ -60,6 +66,11 @@ public class TdxRoutingClient {
                             .queryParam("gc", "1.0")
                             .queryParam("top", "1")
                             .queryParam("transit", "3,4,5,6,7")
+                            // 0 = walking. Never silently add a paid ride-hail first/last mile.
+                            .queryParam("first_mile_mode", "0")
+                            .queryParam("first_mile_time", "20")
+                            .queryParam("last_mile_mode", "0")
+                            .queryParam("last_mile_time", "20")
                             .queryParam("depart", depart)
                             .build())
                     .header("Authorization", "Bearer " + tokenManager.getAccessToken())
@@ -75,12 +86,61 @@ public class TdxRoutingClient {
         if (routes == null || !routes.isArray() || routes.isEmpty()) {
             throw new IntegrationException("TDX routing returned no routes");
         }
-        long seconds = routes.get(0).path("travel_time").asLong(-1);
+        JsonNode route = routes.get(0);
+        long seconds = route.path("travel_time").asLong(-1);
         if (seconds < 0) {
             throw new IntegrationException("TDX routing response missing travel_time");
         }
-        return Duration.ofSeconds(seconds);
+        List<TdxTransitLeg> legs = new ArrayList<>();
+        JsonNode sections = route.path("sections");
+        if (sections.isArray()) {
+            for (JsonNode section : sections) {
+                if (!"transit".equalsIgnoreCase(section.path("type").asText())) continue;
+                JsonNode transport = section.path("transport");
+                String lineName = firstText(
+                        transport.path("shortName"),
+                        transport.path("name"),
+                        transport.path("longName"));
+                legs.add(new TdxTransitLeg(
+                        safeText(transport.path("mode")),
+                        lineName,
+                        safeText(transport.path("headsign")),
+                        safeText(section.path("departure").path("place").path("name")),
+                        safeText(section.path("arrival").path("place").path("name"))));
+            }
+        }
+        return new TdxRoute(Duration.ofSeconds(seconds), legs);
     }
+
+    private static String firstText(JsonNode... values) {
+        for (JsonNode value : values) {
+            String text = safeText(value);
+            if (text != null) return text;
+        }
+        return null;
+    }
+
+    private static String safeText(JsonNode value) {
+        if (value == null || !value.isTextual() || value.asText().isBlank()) return null;
+        String text = value.asText().strip().replaceAll("[\\p{Cntrl}]", "");
+        return text.length() <= 120 ? text : text.substring(0, 120);
+    }
+
+    public record TdxRoute(Duration duration, List<TdxTransitLeg> transitLegs) {
+        public TdxRoute {
+            if (duration == null || duration.isNegative()) {
+                throw new IllegalArgumentException("TDX route duration is invalid");
+            }
+            transitLegs = List.copyOf(transitLegs == null ? List.of() : transitLegs);
+        }
+    }
+
+    public record TdxTransitLeg(
+            String mode,
+            String lineName,
+            String headsign,
+            String departureStop,
+            String arrivalStop) {}
 
     /**
      * 路線查詢參數。座標請先四捨五入(4 位小數 ≈ 11 公尺),

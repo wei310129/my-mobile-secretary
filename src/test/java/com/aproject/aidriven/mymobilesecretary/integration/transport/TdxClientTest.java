@@ -12,6 +12,7 @@ import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicReference;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -26,6 +27,7 @@ class TdxClientTest {
     private HttpServer server;
     private final AtomicInteger tokenRequests = new AtomicInteger();
     private final AtomicInteger routingRequests = new AtomicInteger();
+    private final AtomicReference<String> routingQuery = new AtomicReference<>();
 
     @BeforeEach
     void startServer() throws Exception {
@@ -59,6 +61,7 @@ class TdxClientTest {
     private void stubRouting(int status, String body) {
         server.createContext("/api/maas/routing", exchange -> {
             routingRequests.incrementAndGet();
+            routingQuery.set(exchange.getRequestURI().getRawQuery());
             byte[] bytes = body.getBytes(UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(status, bytes.length);
@@ -85,6 +88,37 @@ class TdxClientTest {
         Duration duration = client().getTransitTravelTime(query());
 
         assertThat(duration).isEqualTo(Duration.ofSeconds(5400));
+    }
+
+    @Test
+    void parsesTypedTransitLegsWithoutProviderIdentifiers() {
+        stubToken(200, "{\"access_token\":\"tok\",\"expires_in\":1800}");
+        stubRouting(200, """
+                {"data":{"routes":[{"travel_time":2400,"sections":[
+                  {"type":"drive","transport":{"mode":"YOXI","uuid":"raw-id"}},
+                  {"type":"transit",
+                   "departure":{"place":{"name":"捷運大坪林站"}},
+                   "arrival":{"place":{"name":"捷運台北車站"}},
+                   "transport":{"mode":"MRT","shortName":"松山新店線",
+                                  "headsign":"松山","uuid":"raw-transit-id"}}
+                ]}]}}
+                """);
+
+        var route = client().getTransitRoute(query());
+
+        assertThat(route.duration()).isEqualTo(Duration.ofMinutes(40));
+        assertThat(routingQuery.get())
+                .contains(
+                        "first_mile_mode=0", "first_mile_time=20",
+                        "last_mile_mode=0", "last_mile_time=20");
+        assertThat(route.transitLegs()).singleElement().satisfies(leg -> {
+            assertThat(leg.mode()).isEqualTo("MRT");
+            assertThat(leg.lineName()).isEqualTo("松山新店線");
+            assertThat(leg.headsign()).isEqualTo("松山");
+            assertThat(leg.departureStop()).isEqualTo("捷運大坪林站");
+            assertThat(leg.arrivalStop()).isEqualTo("捷運台北車站");
+            assertThat(leg.toString()).doesNotContain("raw-id", "raw-transit-id", "uuid");
+        });
     }
 
     /** token 會被快取:連續兩次查詢只打一次 token endpoint。 */

@@ -69,15 +69,25 @@ final class VagueTimeGuard {
             case SUGGEST_FREE_SLOT, ASK_AVAILABILITY -> "用猜測的時間窗查詢";
             default -> "改時間";
         };
-        StringBuilder message = new StringBuilder(vague.get().startsWith("每")
-                ? "「%s」的固定提醒要有明確時點:請告訴我確切時間(例如「每天早上八點」「每週五下午三點」)。"
+        StringBuilder fact = new StringBuilder(vague.get().startsWith("每")
+                ? "「%s」的固定提醒要有明確時點（例如「每天早上八點」「每週五下午三點」）。"
                         .formatted(vague.get())
-                : "你說「%s」,這個時間我不自己認定:確切要定在哪天幾點?".formatted(vague.get()));
+                : "你說「%s」，這個時間我不會自行認定。".formatted(vague.get()));
         suggestionFrom(command).ifPresent(suggestion ->
-                message.append("\n💡 若要參考,我建議 %s;可以的話回覆這個時間,或直接講你要的。"
+                fact.append(" 若要參考，我建議 %s；您也可以直接告訴我想要的時間。"
                         .formatted(suggestion)));
-        message.append("\n你確認之前我不會").append(action).append("。");
-        return Optional.of(IntentResult.clarificationNeeded(message.toString()));
+        fact.append(" 你確認之前我不會").append(action).append("。");
+        String domain = command.type() == IntentCommand.Type.CREATE_TASK
+                || command.type() == IntentCommand.Type.RESCHEDULE_TASK ? "task" : "schedule";
+        boolean weekdayMissing = vague.get().equals("每週");
+        boolean recurringTimeMissing = vague.get().equals("每天");
+        String code = weekdayMissing ? domain + ".recurrence-weekday"
+                : recurringTimeMissing ? domain + ".recurrence-time" : domain + ".exact-time";
+        String slot = weekdayMissing ? "weekday" : "exactTime";
+        String prompt = weekdayMissing ? "每週星期幾提醒您？"
+                : recurringTimeMissing ? "每天幾點提醒您？" : "確切要定在哪天幾點？";
+        return Optional.of(IntentResult.clarificationNeeded(
+                fact.toString(), ClarificationStep.blocking(code, slot, prompt, 10)));
     }
 
     /** 給其他引導流程共用的模糊判斷(如訂位流程決定要不要回問用餐時間)。 */

@@ -47,6 +47,7 @@ public record RoutePlanningRequest(
 
     public enum TravelMode {
         DRIVE,
+        RIDE_HAIL,
         TWO_WHEELER,
         WALK,
         TRANSIT

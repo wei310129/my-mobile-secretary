@@ -72,15 +72,16 @@ class ShoppingIntentHandlerTest {
     }
 
     @Test
-    void keepsLegacyLifestyleClarificationMapping() {
+    void mapsLifestyleFailureToOneTypedClarification() {
         IntentCommand command = command(IntentCommand.Type.LIST_ITEMS_BY_PLACE);
         when(itemIntentService.execute(command))
                 .thenThrow(new IllegalArgumentException("unknown destination place"));
 
         IntentResult result = handler.handle("query", command);
 
-        assertThat(result).isEqualTo(IntentResult.clarificationNeeded(
-                "我找不到目的地,請說完整地點名稱或先建立地點。"));
+        assertThat(result.action()).isEqualTo(IntentResult.Action.CLARIFICATION_NEEDED);
+        assertThat(result.message()).contains("目的地的完整名稱是什麼");
+        assertThat(result.nextQuestion().code()).isEqualTo("handler.destination");
     }
 
     private static Stream<IntentCommand.Type> shoppingTypes() {

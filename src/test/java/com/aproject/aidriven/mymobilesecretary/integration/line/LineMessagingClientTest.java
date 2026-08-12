@@ -10,6 +10,7 @@ import java.net.InetSocketAddress;
 import java.time.Clock;
 import java.time.Duration;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
@@ -28,6 +29,9 @@ class LineMessagingClientTest {
     private final AtomicInteger tokenRequests = new AtomicInteger();
     private final List<String> replyAuthHeaders = new CopyOnWriteArrayList<>();
     private final List<String> replyBodies = new CopyOnWriteArrayList<>();
+    private final List<String> loadingBodies = new CopyOnWriteArrayList<>();
+    private final List<String> pushBodies = new CopyOnWriteArrayList<>();
+    private final List<String> pushRetryKeys = new CopyOnWriteArrayList<>();
     private final ObjectMapper objectMapper = new ObjectMapper();
 
     @BeforeEach
@@ -37,6 +41,9 @@ class LineMessagingClientTest {
         tokenRequests.set(0);
         replyAuthHeaders.clear();
         replyBodies.clear();
+        loadingBodies.clear();
+        pushBodies.clear();
+        pushRetryKeys.clear();
     }
 
     @AfterEach
@@ -80,6 +87,23 @@ class LineMessagingClientTest {
         });
     }
 
+    private void stubLoading(int status) {
+        server.createContext("/v2/bot/chat/loading/start", exchange -> {
+            loadingBodies.add(new String(exchange.getRequestBody().readAllBytes(), UTF_8));
+            exchange.sendResponseHeaders(status, -1);
+            exchange.close();
+        });
+    }
+
+    private void stubPush(int status) {
+        server.createContext("/v2/bot/message/push", exchange -> {
+            pushRetryKeys.add(exchange.getRequestHeaders().getFirst("X-Line-Retry-Key"));
+            pushBodies.add(new String(exchange.getRequestBody().readAllBytes(), UTF_8));
+            exchange.sendResponseHeaders(status, -1);
+            exchange.close();
+        });
+    }
+
     private LineMessagingClient client(LineProperties props) {
         return new LineMessagingClient(RestClient.builder(), props,
                 new LineTokenManager(RestClient.builder(), props, Clock.systemUTC()));
@@ -89,7 +113,7 @@ class LineMessagingClientTest {
     @Test
     void staticAccessTokenIsUsedDirectly() throws Exception {
         stubReply(200);
-        client(props("long-lived-token")).reply("rt-1", "已記下");
+        client(props("long-lived-token")).reply("rt-1", "💬 已記下");
 
         assertThat(replyAuthHeaders).containsExactly("Bearer long-lived-token");
         assertThat(objectMapper.readTree(replyBodies.getFirst())
@@ -136,5 +160,54 @@ class LineMessagingClientTest {
 
         assertThat(client(props("long-lived-token")).reply("rt-1", "已記下"))
                 .contains("line-out-1");
+    }
+
+    @Test
+    void loadingAnimationUsesChatIdAndNeverConsumesAReplyToken() throws Exception {
+        stubLoading(202);
+
+        assertThat(client(props("long-lived-token")).startLoading("user-safe-fixture")).isTrue();
+
+        assertThat(loadingBodies).hasSize(1);
+        assertThat(objectMapper.readTree(loadingBodies.getFirst()).path("chatId").asText())
+                .isEqualTo("user-safe-fixture");
+        assertThat(objectMapper.readTree(loadingBodies.getFirst()).path("loadingSeconds").asInt())
+                .isEqualTo(5);
+        assertThat(loadingBodies.getFirst()).doesNotContain("replyToken");
+        assertThat(replyBodies).isEmpty();
+    }
+
+    @Test
+    void loadingAnimationFailureIsBestEffort() {
+        stubLoading(400);
+
+        assertThatCode(() -> client(props("long-lived-token")).startLoading("user-safe-fixture"))
+                .doesNotThrowAnyException();
+    }
+
+    @Test
+    void pushUsesStableDeliveryIdAndTypedDestination() throws Exception {
+        stubPush(200);
+        UUID deliveryId = UUID.fromString("123e4567-e89b-12d3-a456-426614174000");
+
+        assertThat(client(props("long-lived-token"))
+                        .push("line-user-safe-fixture", "行程時間快到了。", deliveryId))
+                .isTrue();
+
+        assertThat(pushRetryKeys).containsExactly(deliveryId.toString());
+        assertThat(objectMapper.readTree(pushBodies.getFirst()).path("to").asText())
+                .isEqualTo("line-user-safe-fixture");
+        assertThat(objectMapper.readTree(pushBodies.getFirst())
+                        .path("messages").get(0).path("text").asText())
+                .isEqualTo("行程時間快到了。");
+    }
+
+    @Test
+    void duplicateRetryKeyResponseCountsAsAccepted() {
+        stubPush(409);
+
+        assertThat(client(props("long-lived-token"))
+                        .push("line-user-safe-fixture", "行程時間快到了。", UUID.randomUUID()))
+                .isTrue();
     }
 }

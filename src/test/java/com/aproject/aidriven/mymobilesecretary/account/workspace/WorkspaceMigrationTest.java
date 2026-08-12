@@ -13,6 +13,7 @@ import java.util.UUID;
 import org.flywaydb.core.Flyway;
 import org.flywaydb.core.api.MigrationVersion;
 import org.junit.jupiter.api.MethodOrderer;
+import org.junit.jupiter.api.Tag;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.TestMethodOrder;
 import org.testcontainers.containers.PostgreSQLContainer;
@@ -21,6 +22,8 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import org.testcontainers.utility.DockerImageName;
 
 @Testcontainers(disabledWithoutDocker = true)
+@Tag("integration")
+@Tag("migration")
 @TestMethodOrder(MethodOrderer.MethodName.class)
 class WorkspaceMigrationTest {
 

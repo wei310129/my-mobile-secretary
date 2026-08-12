@@ -40,6 +40,7 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
     private static final DateTimeFormatter DATE_TIME = DateTimeFormatter.ofPattern("MM/dd HH:mm");
     private static final Set<IntentCommand.Type> SUPPORTED_TYPES = Set.of(
             IntentCommand.Type.CREATE_SCHEDULE,
+            IntentCommand.Type.PLAN_ROUTE_ITINERARY,
             IntentCommand.Type.UPDATE_SCHEDULE,
             IntentCommand.Type.COPY_SCHEDULE,
             IntentCommand.Type.MERGE_SCHEDULES,
@@ -65,6 +66,12 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
 
     @Override
     public IntentResult handle(String text, IntentCommand command) {
+        if (command.type() == IntentCommand.Type.PLAN_ROUTE_ITINERARY) {
+            return calendarV2Routing.useCalendarV2()
+                    ? calendarDrafts.createRouteWithPreflight(command)
+                    : IntentResult.clarificationNeeded(
+                            "目前還不能安全保存含交通規劃的行程；這次沒有新增資料。");
+        }
         if (command.type() == IntentCommand.Type.CREATE_SCHEDULE
                 && CalendarIntentDraftRequestPolicy.isDraftOnly(text)) {
             return calendarV2Routing.useCalendarV2()
@@ -83,6 +90,8 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
         }
         return switch (command.type()) {
             case CREATE_SCHEDULE -> createSchedule(command);
+            case PLAN_ROUTE_ITINERARY -> throw new IllegalStateException(
+                    "route itinerary requires Calendar v2");
             case UPDATE_SCHEDULE -> updateSchedule(command);
             case COPY_SCHEDULE -> copySchedule(command);
             case MERGE_SCHEDULES -> mergeSchedules(command);
@@ -106,7 +115,7 @@ public final class ScheduleMutationIntentHandler implements IntentHandler {
         if ((command.sourceText() == null || command.sourceText().isBlank())
                 && parse(command.endAt()) == null) {
             return IntentResult.clarificationNeeded(
-                    "請告訴我行程的結束時間或預計多久，我會接著建立。");
+                    "請告訴我行程的結束時間或預計多久；資料補齊後才能建立行程。");
         }
         CalendarPlacement resolved = CalendarIntentPlacementResolver.resolve(command);
         if (!(resolved instanceof CalendarPlacement.TimedInterval interval)) {

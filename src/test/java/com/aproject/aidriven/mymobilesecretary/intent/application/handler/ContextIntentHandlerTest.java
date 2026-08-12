@@ -77,13 +77,13 @@ class ContextIntentHandlerTest {
     }
 
     @Test
-    void missingContextExceptionIsConvertedToExistingClarification() {
+    void missingContextExceptionIsConvertedToOneTypedClarification() {
         IntentResult result = handler.handle(
                 "晚一點", command(IntentCommand.Type.SHIFT_CONTEXT_LATER));
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.CLARIFICATION_NEEDED);
-        assertThat(result.message()).isEqualTo(
-                IntentResult.clarificationNeeded("目前沒有可承接的上一筆內容,請直接說待辦或行程名稱。").message());
+        assertThat(result.message()).contains("你要接著處理的待辦或行程名稱是什麼");
+        assertThat(result.nextQuestion().code()).isEqualTo("handler.context-target");
     }
 
     private static IntentCommand command(IntentCommand.Type type) {

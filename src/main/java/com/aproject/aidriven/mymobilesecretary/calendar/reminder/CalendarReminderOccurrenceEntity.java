@@ -127,6 +127,10 @@ public class CalendarReminderOccurrenceEntity extends WorkspaceOwnedEntity {
         return ruleId;
     }
 
+    UUID getPlanId() {
+        return planId;
+    }
+
     long getNodeRevision() {
         return nodeRevision;
     }

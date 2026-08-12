@@ -67,6 +67,9 @@ class CalendarAdoptionServiceTest extends IntegrationTestBase {
             assertThat(adoptions.constraints())
                     .extracting(PersonalRouteConstraint::nodeKey)
                     .containsExactly("selected");
+            assertThat(adoptions.constraints())
+                    .extracting(PersonalRouteConstraint::planTitle)
+                    .containsExactly("採用測試");
             assertThat(projection.current().busyIntervals())
                     .containsExactly(new CalendarBusyInterval(
                             "採用測試", time, time.plusSeconds(3600)));

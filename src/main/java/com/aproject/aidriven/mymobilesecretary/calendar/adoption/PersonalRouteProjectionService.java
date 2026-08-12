@@ -119,7 +119,7 @@ public class PersonalRouteProjectionService {
     private List<PersonalRouteConstraint> ownedConstraints(WorkspaceContext context) {
         return jdbc.query(
                 """
-                SELECT node.plan_id, node.id, node.node_key,
+                SELECT node.plan_id, plan.title AS plan_title, node.id, node.node_key,
                        node.resolved_time, node.location_label,
                        node.latitude, node.longitude,
                        node.adjustability, node.revision
@@ -141,6 +141,7 @@ public class PersonalRouteProjectionService {
                         row.getObject("plan_id", UUID.class),
                         row.getObject("id", UUID.class),
                         context.actorId(),
+                        row.getString("plan_title"),
                         row.getString("node_key"),
                         row.getTimestamp("resolved_time").toInstant(),
                         row.getString("location_label") == null

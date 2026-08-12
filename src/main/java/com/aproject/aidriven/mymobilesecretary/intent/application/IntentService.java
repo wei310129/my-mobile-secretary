@@ -33,6 +33,8 @@ import org.springframework.stereotype.Service;
 public class IntentService {
 
     private static final Logger log = LoggerFactory.getLogger(IntentService.class);
+    private static final ConversationErrorResponsePolicy DEFAULT_ERROR_RESPONSE_POLICY =
+            new ConversationErrorResponsePolicy();
 
     private final ObjectProvider<IntentInterpreter> interpreterProvider;
     private final TaskService taskService;
@@ -107,6 +109,24 @@ public class IntentService {
     private com.aproject.aidriven.mymobilesecretary.conversation.application
                     .ConversationIntentReplayService
             conversationIntentReplayService;
+    private com.aproject.aidriven.mymobilesecretary.conversation.application
+                    .ConversationPendingQuestionService
+            conversationPendingQuestionService;
+    private com.aproject.aidriven.mymobilesecretary.conversation.application
+                    .ConversationContextTransitionService
+            conversationContextTransitionService;
+    private com.aproject.aidriven.mymobilesecretary.conversation.application
+                    .ScheduleClarificationRoutingService
+            scheduleClarificationRoutingService;
+    private ConversationRepairService conversationRepairService;
+    private SystemPlaceConversationService systemPlaceConversationService;
+    private com.aproject.aidriven.mymobilesecretary.conversation.application
+                    .ConversationVoicePreferenceConversationService
+            conversationVoicePreferenceConversationService;
+    private com.aproject.aidriven.mymobilesecretary.calendar.application
+                    .CalendarIntentDraftConversationService
+            calendarIntentDraftConversationService;
+    private ConversationErrorResponsePolicy errorResponsePolicy = DEFAULT_ERROR_RESPONSE_POLICY;
 
     public IntentService(ObjectProvider<IntentInterpreter> interpreterProvider,
                          TaskService taskService,
@@ -150,6 +170,35 @@ public class IntentService {
         this.decisionTraceService = decisionTraceService;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setErrorResponsePolicy(ConversationErrorResponsePolicy errorResponsePolicy) {
+        this.errorResponsePolicy = errorResponsePolicy;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setConversationRepairService(ConversationRepairService service) {
+        this.conversationRepairService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSystemPlaceConversationService(SystemPlaceConversationService service) {
+        this.systemPlaceConversationService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setConversationVoicePreferenceConversationService(
+            com.aproject.aidriven.mymobilesecretary.conversation.application
+                            .ConversationVoicePreferenceConversationService service) {
+        this.conversationVoicePreferenceConversationService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setCalendarIntentDraftConversationService(
+            com.aproject.aidriven.mymobilesecretary.calendar.application
+                            .CalendarIntentDraftConversationService service) {
+        this.calendarIntentDraftConversationService = service;
+    }
+
     /** Optional during the additive rollout so existing direct-construction tests remain compatible. */
     @org.springframework.beans.factory.annotation.Autowired(required = false)
     void setConversationFocusIntentExecutor(
@@ -164,6 +213,28 @@ public class IntentService {
             com.aproject.aidriven.mymobilesecretary.conversation.application
                     .ConversationIntentReplayService service) {
         this.conversationIntentReplayService = service;
+    }
+
+    /** Optional setter keeps direct-construction unit tests independent from durable conversation state. */
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setConversationPendingQuestionService(
+            com.aproject.aidriven.mymobilesecretary.conversation.application
+                    .ConversationPendingQuestionService service) {
+        this.conversationPendingQuestionService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setConversationContextTransitionService(
+            com.aproject.aidriven.mymobilesecretary.conversation.application
+                    .ConversationContextTransitionService service) {
+        this.conversationContextTransitionService = service;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setScheduleClarificationRoutingService(
+            com.aproject.aidriven.mymobilesecretary.conversation.application
+                    .ScheduleClarificationRoutingService service) {
+        this.scheduleClarificationRoutingService = service;
     }
 
     /** Optional injection preserves the existing constructor and keeps shadow routing removable. */
@@ -415,6 +486,7 @@ public class IntentService {
                 if (timeDisplayPreferenceService != null) {
                     result = timeDisplayPreferenceService.apply(result);
                 }
+                recordPendingQuestion(result, requestId);
                 flowTrace.complete(result);
                 replayAttempt.complete(result);
                 recordLifeUtteranceSafely(userText, result);
@@ -433,6 +505,15 @@ public class IntentService {
         }
     }
 
+    private void recordPendingQuestion(IntentResult result, UUID requestId) {
+        if (conversationPendingQuestionService == null || result.nextQuestion() == null) {
+            return;
+        }
+        conversationPendingQuestionService.record(result.nextQuestion(), result.focusBinding(),
+                com.aproject.aidriven.mymobilesecretary.conversation.application
+                        .ConversationInboundIdempotency.fromRequestId(requestId));
+    }
+
     private void recordLifeUtteranceSafely(String text, IntentResult result) {
         if (universalLifeRecordService == null
                 || result == null
@@ -449,11 +530,29 @@ public class IntentService {
 
     private IntentResult doHandle(String text, String interpretationText, IntentFlowTrace flowTrace,
                                   MutationBoundary mutationBoundary) {
+        Optional<RouteItineraryTurnRouter.Decision> routeItinerary =
+                RouteItineraryTurnRouter.route(text);
         Optional<IntentCommand.Type> focusControl =
                 ConversationFocusControlPhrasePolicy.classify(text);
         if (focusControl.isPresent()) {
             return executeExplicitFocusControl(
                     text, focusControl.orElseThrow(), flowTrace, mutationBoundary);
+        }
+        if (conversationContextTransitionService != null) {
+            Optional<IntentResult> contextChoice = conversationContextTransitionService.answer(
+                    text, mutationBoundary::beforeMutation,
+                    com.aproject.aidriven.mymobilesecretary.conversation.application
+                            .ConversationInboundIdempotency.fromRequestId(
+                                    RequestCorrelationContext.currentId()));
+            if (contextChoice.isPresent()) return contextChoice.orElseThrow();
+        }
+        if (conversationVoicePreferenceConversationService != null) {
+            Optional<IntentResult> voicePreference =
+                    conversationVoicePreferenceConversationService.answer(
+                            text, mutationBoundary::beforeMutation);
+            if (voicePreference.isPresent()) {
+                return voicePreference.orElseThrow();
+            }
         }
         // Domain continuations run before generic feedback classification. A correction can still
         // contain the missing answer or a reference question that should complete the user's work.
@@ -467,10 +566,40 @@ public class IntentService {
                     text, interpretationText, mutationBoundary::beforeMutation);
             if (placeCorrection.isPresent()) return placeCorrection.get();
         }
+        if (calendarIntentDraftConversationService != null) {
+            Optional<IntentResult> transport =
+                    calendarIntentDraftConversationService.answerTransportPlanning(
+                            text, mutationBoundary::beforeMutation);
+            if (transport.isPresent()) {
+                flowTrace.select(new IntentCommand(
+                        IntentCommand.Type.PLAN_ROUTE_ITINERARY, null, null, null, null, null,
+                        null, null, null, null, null, null, null));
+                flowTrace.validationPassed();
+                return transport.orElseThrow();
+            }
+        }
+        if (systemPlaceConversationService != null) {
+            Optional<IntentResult> systemPlace = systemPlaceConversationService.answer(text);
+            if (systemPlace.isPresent()) {
+                flowTrace.select(new IntentCommand(
+                        IntentCommand.Type.ASK_PLACE, null, null, null, null, null,
+                        null, null, null, null, null, null, null));
+                flowTrace.validationPassed();
+                return systemPlace.orElseThrow();
+            }
+        }
         // 產品更正必須先於所有 pending draft，否則「你沒聽懂這個草稿」會被草稿狀態機消耗。
-        Optional<IntentResult> productFeedback = ProductFeedbackBoundary.answer(text);
+        Optional<IntentResult> productFeedback = conversationRepairService == null
+                ? ProductFeedbackBoundary.answer(text)
+                : conversationRepairService.answer(text, mutationBoundary::beforeMutation);
         if (productFeedback.isPresent()) {
             return productFeedback.get();
+        }
+        if (scheduleClarificationRoutingService != null) {
+            Optional<IntentResult> canceled = scheduleClarificationRoutingService.cancelSelected(text);
+            if (canceled.isPresent()) return canceled.orElseThrow();
+            Optional<IntentResult> selected = scheduleClarificationRoutingService.answerSelection(text);
+            if (selected.isPresent()) return selected.orElseThrow();
         }
         if (scheduleSelectionConversationService != null) {
             Optional<IntentResult> selected = scheduleSelectionConversationService.answer(
@@ -605,6 +734,11 @@ public class IntentService {
                 return lunar.get();
             }
         }
+        if (routeItinerary.isPresent()) {
+            return handleRouteItinerary(
+                    text, interpretationText, routeItinerary.orElseThrow(), flowTrace,
+                    mutationBoundary);
+        }
         Optional<IntentResult> calendarDate = CalendarDatePolicy.answer(text, clock);
         if (calendarDate.isPresent()) {
             return calendarDate.get();
@@ -705,6 +839,18 @@ public class IntentService {
         if (knownPlace.isPresent()) {
             return knownPlace.get();
         }
+        if (scheduleClarificationRoutingService != null) {
+            Optional<IntentResult> ambiguous =
+                    scheduleClarificationRoutingService.askSelectionIfAmbiguous(text);
+            if (ambiguous.isPresent()) return ambiguous.orElseThrow();
+        }
+        Optional<IntentCommand> secretaryShortcut = SecretaryTurnRouter.route(text);
+        if (secretaryShortcut.isPresent()) {
+            IntentCommand command = secretaryShortcut.orElseThrow();
+            flowTrace.select(command);
+            flowTrace.validationPassed();
+            return execute(text, command, mutationBoundary);
+        }
         IntentScript script;
         IntentInterpreter interpreter = interpreterProvider.getIfAvailable();
         if (interpreter == null) {
@@ -741,8 +887,7 @@ public class IntentService {
             IntentCommand command = script.commands().get(0);
             flowTrace.select(command);
             try {
-                mutationBoundary.before(command);
-                IntentResult executed = execute(text, command);
+                IntentResult executed = execute(text, command, mutationBoundary);
                 flowTrace.validationPassed();
                 return executed;
             } catch (IllegalArgumentException e) {
@@ -757,18 +902,31 @@ public class IntentService {
                 // 絕不能往 webhook 洩漏成非 200,否則 LINE 會重送整包事件
                 log.warn("Intent command hit business rule [code={}]", e.getCode());
                 flowTrace.validationRejected(e.getCode());
-                return IntentResult.clarificationNeeded(e.getMessage());
+                ConversationDiagnostic diagnostic = new ConversationDiagnostic(
+                        ConversationDiagnostic.Code.BUSINESS_RULE_REJECTED, e.getCode());
+                return IntentResult.clarificationNeeded(
+                        errorResponsePolicy.publicReply(diagnostic).message());
             }
         }
 
         // 多操作(「取消A,B也取消,C改到11點」):逐一執行,單項失敗不拖垮其他項
+        if (conversationContextTransitionService != null) {
+            String inboundHmac = com.aproject.aidriven.mymobilesecretary.conversation.application
+                    .ConversationInboundIdempotency.fromRequestId(
+                            RequestCorrelationContext.currentId());
+            for (IntentCommand command : script.commands()) {
+                Optional<IntentResult> contextChoice =
+                        conversationContextTransitionService.interceptBeforeExecution(
+                                text, command, mutationBoundary::beforeMutation, inboundHmac);
+                if (contextChoice.isPresent()) return contextChoice.orElseThrow();
+            }
+        }
         java.util.List<String> lines = new java.util.ArrayList<>();
         int failed = 0;
         flowTrace.selectBatch(script.commands());
         for (IntentCommand command : script.commands()) {
             try {
-                mutationBoundary.before(command);
-                lines.add(execute(text, command).message());
+                lines.add(execute(text, command, mutationBoundary).message());
             } catch (IllegalArgumentException e) {
                 log.warn("Batch intent command invalid ({})", e.getClass().getSimpleName());
                 flowTrace.validationRejected(IntentValidationDiagnostic.code(e));
@@ -793,6 +951,123 @@ public class IntentService {
             return safeFallback(text, "多項操作都解析失敗", mutationBoundary);
         }
         return IntentResult.batchExecuted(lines);
+    }
+
+    private IntentResult handleRouteItinerary(
+            String text, String interpretationText, RouteItineraryTurnRouter.Decision decision,
+            IntentFlowTrace flowTrace, MutationBoundary mutationBoundary) {
+        String groundedStartAt = ExplicitRouteTimePolicy.startAt(text, clock).orElse(null);
+        IntentCommand routeEvidence = new IntentCommand(
+                IntentCommand.Type.PLAN_ROUTE_ITINERARY,
+                "從%s到%s".formatted(decision.origin(), decision.destination()),
+                null, groundedStartAt, null,
+                decision.destination(), null, null, null, null, null, null, null,
+                IntentOptions.empty().withDepartureOrigin(decision.origin(), null), text);
+        IntentInterpreter interpreter = interpreterProvider.getIfAvailable();
+        IntentCommand interpreted = null;
+        if (interpreter != null) {
+            try {
+                IntentScript script = interpreter.interpret(
+                        text, interpretationText, Instant.now(clock),
+                        conversationContextService.snapshot());
+                script = IntentScriptSafetyPolicy.apply(text, script, clock);
+                script = IntentScriptDateRangePolicy.apply(text, script, Instant.now(clock));
+                script = IntentScriptCompletenessPolicy.apply(text, script);
+                if (script != null && script.commands() != null && script.commands().size() == 1
+                        && script.commands().getFirst() != null
+                        && script.commands().getFirst().type()
+                        == IntentCommand.Type.PLAN_ROUTE_ITINERARY) {
+                    interpreted = script.commands().getFirst();
+                }
+            } catch (Exception exception) {
+                log.warn("Route itinerary interpretation failed ({})",
+                        exception.getClass().getSimpleName());
+            }
+        }
+        if (interpreted == null && groundedStartAt == null) {
+            flowTrace.select(routeEvidence);
+            flowTrace.validationRejected(interpreter == null
+                    ? "ROUTE_INTERPRETER_NOT_CONFIGURED"
+                    : "ROUTE_INTERPRETATION_INCOMPLETE");
+            return routeItineraryClarification(text);
+        }
+        IntentCommand command = groundRouteEndpoints(
+                interpreted == null ? routeEvidence : interpreted, decision, text);
+        command = groundExplicitRouteTime(command, groundedStartAt);
+        flowTrace.select(command);
+        try {
+            IntentResult result = execute(text, command, mutationBoundary);
+            flowTrace.validationPassed();
+            return result;
+        } catch (IllegalArgumentException exception) {
+            String validationCode = IntentValidationDiagnostic.code(exception);
+            log.warn("Route itinerary command invalid [code={}]", validationCode);
+            flowTrace.validationRejected(validationCode);
+            return routeItineraryClarification(text);
+        } catch (com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException exception) {
+            log.warn("Route itinerary hit business rule [code={}]", exception.getCode());
+            flowTrace.validationRejected(exception.getCode());
+            ConversationDiagnostic diagnostic = new ConversationDiagnostic(
+                    ConversationDiagnostic.Code.BUSINESS_RULE_REJECTED, exception.getCode());
+            return IntentResult.clarificationNeeded(
+                    errorResponsePolicy.publicReply(diagnostic).message());
+        }
+    }
+
+    private static IntentResult routeItineraryClarification(String text) {
+        boolean arriveBy = containsAny(text, "抵達", "到達", "前到", "以前到", "之前到");
+        return IntentResult.clarificationNeeded(
+                "我辨識到你要規劃交通路線；目前沒有建立資料。",
+                ClarificationStep.blocking(
+                        "route.time",
+                        "route.time",
+                        arriveBy ? "這趟希望幾點前抵達？" : "這趟預計幾點出發？",
+                        10));
+    }
+
+    private static IntentCommand groundRouteEndpoints(
+            IntentCommand command,
+            RouteItineraryTurnRouter.Decision decision,
+            String sourceText) {
+        IntentOptions options = command.safeOptions().withDepartureOrigin(
+                decision.origin(), command.safeOptions().bufferMinutes());
+        return new IntentCommand(
+                command.type(),
+                command.title(),
+                command.dueAt(),
+                command.startAt(),
+                command.endAt(),
+                decision.destination(),
+                command.priority(),
+                command.reason(),
+                command.onTime(),
+                command.overrunMinutes(),
+                command.outcomeReason(),
+                command.windowHours(),
+                command.recurring(),
+                options,
+                sourceText);
+    }
+
+    private static IntentCommand groundExplicitRouteTime(
+            IntentCommand command, String explicitStartAt) {
+        if (command.startAt() != null || explicitStartAt == null) return command;
+        return new IntentCommand(
+                command.type(),
+                command.title(),
+                command.dueAt(),
+                explicitStartAt,
+                command.endAt(),
+                command.placeName(),
+                command.priority(),
+                command.reason(),
+                command.onTime(),
+                command.overrunMinutes(),
+                command.outcomeReason(),
+                command.windowHours(),
+                command.recurring(),
+                command.options(),
+                command.sourceText());
     }
 
     private static Optional<IntentResult> collapseFeedbackOnlyScript(IntentScript script) {
@@ -826,8 +1101,7 @@ public class IntentService {
                 type, null, null, null, null, null, null, null,
                 null, null, null, null, false, IntentOptions.empty(), text);
         flowTrace.select(command);
-        mutationBoundary.before(command);
-        IntentResult result = execute(text, command);
+        IntentResult result = execute(text, command, mutationBoundary);
         flowTrace.validationPassed();
         return result;
     }
@@ -839,7 +1113,9 @@ public class IntentService {
         boolean hasSchedule = normalized.contains("行程");
         boolean modifying = normalized.contains("建立") || normalized.contains("新增")
                 || normalized.contains("安排一個") || normalized.contains("排一個")
-                || normalized.contains("幫我排") || normalized.contains("取消")
+                || normalized.contains("幫我排") || normalized.contains("規劃")
+                || normalized.contains("規畫") || normalized.contains("幫我安排")
+                || normalized.contains("取消")
                 || normalized.contains("刪除") || normalized.contains("刪掉")
                 || normalized.contains("改期") || normalized.contains("改到")
                 || normalized.contains("改成") || normalized.contains("移到")
@@ -867,7 +1143,8 @@ public class IntentService {
         String withoutEndingPunctuation = normalized.replaceFirst("[?？。!！]+$", "");
         boolean hasSchedule = normalized.contains("行程");
         boolean modifying = containsAny(normalized,
-                "建立", "新增", "安排一個", "排一個", "幫我排", "取消", "刪除", "刪掉",
+                "建立", "新增", "安排一個", "排一個", "幫我排", "規劃", "規畫", "幫我安排",
+                "取消", "刪除", "刪掉",
                 "改期", "改到", "改成", "移到", "延後", "提前");
         boolean asking = containsAny(normalized,
                 "總整", "總覽", "列出", "有什麼行程", "行程有哪些", "查看行程", "看看行程",
@@ -1142,41 +1419,65 @@ public class IntentService {
     }
 
     /** 依驗證後的 command 執行;LLM 輸出一律先驗證再信。 */
-    private IntentResult execute(String text, IntentCommand command) {
+    private IntentResult execute(
+            String text, IntentCommand command, MutationBoundary mutationBoundary) {
         if (command == null || command.type() == null) {
             return IntentResult.clarificationNeeded("我沒有解析出可執行的指令,請換個說法。");
+        }
+        String inboundHmac = com.aproject.aidriven.mymobilesecretary.conversation.application
+                .ConversationInboundIdempotency.fromRequestId(RequestCorrelationContext.currentId());
+        if (conversationContextTransitionService != null) {
+            Optional<IntentResult> contextChoice =
+                    conversationContextTransitionService.interceptBeforeExecution(
+                            text, command, mutationBoundary::beforeMutation, inboundHmac);
+            if (contextChoice.isPresent()) return contextChoice.orElseThrow();
         }
         Optional<IntentResult> vagueTime = VagueTimeGuard.clarify(text, command);
         if (vagueTime.isPresent()) {
             return vagueTime.get();
         }
         if (command.type() == IntentCommand.Type.UNKNOWN) {
-            return IntentResult.clarificationNeeded(
-                    userFacingUnknownReason(command.reason()));
+            String previousQuestionCode = conversationPendingQuestionService == null
+                    ? null
+                    : conversationPendingQuestionService.current()
+                            .map(com.aproject.aidriven.mymobilesecretary.conversation.domain
+                                    .ConversationPendingQuestion::getQuestionCode)
+                            .orElse(null);
+            IntentResult unknown = UnknownInterpretationReplyPolicy.clarification(
+                    command.reason(), conversationContextService.snapshot().lastAssistantText(),
+                    previousQuestionCode);
+            if (unknown.nextQuestion() == null && conversationPendingQuestionService != null) {
+                conversationPendingQuestionService.finishCurrentUnknownRecovery();
+            }
+            return unknown;
         }
-        if (conversationFocusIntentExecutor == null) {
-            return intentHandlerRegistry.dispatch(text, command);
+        mutationBoundary.before(command);
+        if (conversationFocusIntentExecutor != null) {
+            return conversationFocusIntentExecutor.execute(
+                    text, command, inboundHmac,
+                    result -> completeNewOperationContent(
+                            text, command, result, mutationBoundary, inboundHmac));
         }
-        return conversationFocusIntentExecutor.execute(text, command,
-                com.aproject.aidriven.mymobilesecretary.conversation.application
-                        .ConversationInboundIdempotency.fromRequestId(
-                                RequestCorrelationContext.currentId()));
+        IntentResult result = intentHandlerRegistry.dispatch(text, command);
+        completeNewOperationContent(text, command, result, mutationBoundary, inboundHmac);
+        return result;
+    }
+
+    private void completeNewOperationContent(
+            String text, IntentCommand command, IntentResult result,
+            MutationBoundary mutationBoundary,
+            String inboundHmac) {
+        if (conversationContextTransitionService != null) {
+            conversationContextTransitionService.completeNewOperationIfApplicable(
+                    text, command, result, mutationBoundary::beforeMutation, inboundHmac);
+        }
     }
 
     static String userFacingUnknownReason(String reason) {
-        if (reason == null || reason.isBlank()) return "我沒聽懂，可以換個說法嗎？";
-        String compact = reason.replaceAll("\\s+", "");
-        if (looksLikeInternalDiagnostic(reason, compact)) {
-            return "我還需要補充資訊才能處理；請告訴我名稱、日期時間、地點或你要做的動作。";
-        }
-        if (containsAny(compact, "使用者是在", "使用者已", "系統應", "無法對應到任何能力",
-                "不是要建立", "目前無法直接判定", "才能執行")) {
-            return "我知道你是在追問上一則回覆，但我還沒有唯一對到你指的項目；請直接告訴我名稱或清單編號。";
-        }
-        return reason;
+        return UnknownInterpretationReplyPolicy.message(reason);
     }
 
-    private static boolean looksLikeInternalDiagnostic(String reason, String compact) {
+    static boolean looksLikeInternalDiagnostic(String reason, String compact) {
         String lower = reason.toLowerCase(java.util.Locale.ROOT);
         return lower.matches(".*(?:[a-z_][a-z0-9_]*\\.){2,}[a-z_$][a-z0-9_$]*.*")
                 || lower.matches(".*\\b[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}\\b.*")
@@ -1384,8 +1685,9 @@ public class IntentService {
                     ASK_FREQUENT_STORE, ASK_INVENTORY_EXTREMES,
                     CHECK_SHOPPING_INVENTORY, LIST_UNPLACED_ITEMS,
                     ASK_ITEM_KNOWLEDGE_SUMMARY, ASK_SCHEDULE_REMINDER,
-                    ASK_SCHEDULE_INFO, ASK_PRICE_HISTORY, ASK_PLACE, ASK_TASK_PLACE,
-                    LIST_TASKS, LIST_SCHEDULES, SUGGEST_NEARBY, BOOK_RESTAURANT,
+                    ASK_SCHEDULE_INFO, ASK_PRICE_HISTORY, ASK_PLACE, ASK_PLACE_CATALOG,
+                    ADOPT_PLACE_CATALOG, ASK_TASK_PLACE,
+                    LIST_TASKS, LIST_SCHEDULES, SUGGEST_NEARBY,
                     UNKNOWN -> false;
             default -> true;
         };

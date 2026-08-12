@@ -9,6 +9,7 @@ import com.aproject.aidriven.mymobilesecretary.calendar.query.CalendarQueryPage;
 import com.aproject.aidriven.mymobilesecretary.calendar.query.CalendarQueryService;
 import com.aproject.aidriven.mymobilesecretary.calendar.recurrence.CalendarRecurrenceRegistrationService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService;
+import com.aproject.aidriven.mymobilesecretary.geo.application.SystemPlaceCatalog;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
@@ -35,6 +36,7 @@ public class CalendarV2IntentService {
     private final PlaceAliasService places;
     private final CalendarRecurrenceRegistrationService recurrences;
     private final Clock clock;
+    private SystemPlaceCatalog systemPlaceCatalog;
 
     public CalendarV2IntentService(
             CalendarApplicationService calendar,
@@ -49,6 +51,11 @@ public class CalendarV2IntentService {
         this.clock = clock;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setSystemPlaceCatalog(SystemPlaceCatalog systemPlaceCatalog) {
+        this.systemPlaceCatalog = systemPlaceCatalog;
+    }
+
     @org.springframework.transaction.annotation.Transactional
     public IntentResult create(IntentCommand command) {
         require(command.title(), "title");
@@ -59,7 +66,7 @@ public class CalendarV2IntentService {
         if ((command.sourceText() == null || command.sourceText().isBlank())
                 && parse(command.endAt()) == null) {
             return IntentResult.clarificationNeeded(
-                    "請告訴我行程的結束時間或預計多久，我會接著建立。");
+                    "請告訴我行程的結束時間或預計多久；資料補齊後才能建立行程。");
         }
         var recurrence = CalendarIntentRecurrencePolicy.resolve(command);
         if (!recurrence.valid()) {
@@ -68,7 +75,8 @@ public class CalendarV2IntentService {
                             + "確認前不會建立行程。");
         }
         CalendarPlacement placement = CalendarIntentPlacementResolver.resolve(command);
-        CalendarLocation location = resolveLocation(command);
+        LocationResolution locationResolution = resolveLocation(command);
+        CalendarLocation location = locationResolution.location();
         if (command.placeName() != null
                 && !command.placeName().isBlank()
                 && location == null) {
@@ -103,27 +111,53 @@ public class CalendarV2IntentService {
         }
         return IntentResult.message(
                 IntentResult.Action.SCHEDULE_CONFIRMED,
-                "已建立行程「%s」，時間是 %s%s。"
+                "已建立行程「%s」，時間是 %s%s。%s"
                         .formatted(
                                 created.title(),
                                 format(placement),
                                 created.category() == null
                                         ? ""
-                                        : "，分類為「" + created.category() + "」"));
+                                        : "，分類為「" + created.category() + "」",
+                                locationResolution.publicExplanation()));
     }
 
-    private CalendarLocation resolveLocation(IntentCommand command) {
+    private LocationResolution resolveLocation(IntentCommand command) {
         if (command.placeName() == null || command.placeName().isBlank()) {
-            return null;
+            return LocationResolution.none();
         }
-        return places.resolve(command.placeName())
-                .map(CalendarV2IntentService::location)
-                .orElse(null);
+        var custom = places.resolve(command.placeName());
+        if (custom.isPresent()) {
+            return new LocationResolution(location(custom.orElseThrow()), "");
+        }
+        if (systemPlaceCatalog == null) return LocationResolution.none();
+        SystemPlaceCatalog.Resolution system =
+                systemPlaceCatalog.resolveMention(command.placeName());
+        if (system.status() != SystemPlaceCatalog.Resolution.Status.EXACT
+                && system.status()
+                        != SystemPlaceCatalog.Resolution.Status.LOGICAL_PLACE_MULTIPOINT) {
+            return LocationResolution.none();
+        }
+        SystemPlaceCatalog.SystemPlace selected = system.selected();
+        String reason = system.status() == SystemPlaceCatalog.Resolution.Status.EXACT
+                ? ""
+                : " 地點「%s」包含 %d 個同一場站點位；你沒有指定運輸系統，"
+                        .formatted(command.placeName(), system.candidates().size())
+                        + "本次採用「%s」作為共構場站中心定位；沒有建立自訂地點。"
+                                .formatted(selected.name());
+        return new LocationResolution(new CalendarLocation(
+                selected.name(), selected.latitude(), selected.longitude()), reason);
     }
 
     private static CalendarLocation location(Place place) {
         return new CalendarLocation(
                 place.getName(), place.getLatitude(), place.getLongitude());
+    }
+
+    private record LocationResolution(CalendarLocation location, String publicExplanation) {
+
+        private static LocationResolution none() {
+            return new LocationResolution(null, "");
+        }
     }
 
     public IntentResult list(IntentCommand command) {
@@ -135,6 +169,17 @@ public class CalendarV2IntentService {
         Instant from = date.atStartOfDay(TAIPEI).toInstant();
         Instant to = date.plusDays(1).atStartOfDay(TAIPEI).toInstant();
         return listed(queries.query(CalendarQueryFilter.range(from, to, TAIPEI, 20, 0)));
+    }
+
+    public IntentResult listDates(List<LocalDate> dates) {
+        if (dates == null || dates.isEmpty()) {
+            throw new IllegalArgumentException("at least one calendar date is required");
+        }
+        String message = dates.stream().distinct().sorted()
+                .map(this::listDate)
+                .map(IntentResult::message)
+                .collect(java.util.stream.Collectors.joining("\n\n"));
+        return IntentResult.message(IntentResult.Action.SCHEDULES_LISTED, message);
     }
 
     public IntentResult findOne(IntentCommand command) {

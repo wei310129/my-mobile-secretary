@@ -21,16 +21,43 @@ public final class TransportModePolicy {
         }
         Set<RoutePlanningRequest.TravelMode> modes =
                 EnumSet.noneOf(RoutePlanningRequest.TravelMode.class);
-        if (containsAny(text, "開車", "駕車", "自駕")) {
+        boolean driveEvidence = containsAny(text, "開車", "駕車", "自駕");
+        boolean rideHailEvidence = containsAny(text, "計程車", "小黃", "叫車", "搭車");
+        boolean walkEvidence = containsAny(text, "步行", "走路");
+        if (driveEvidence) {
             modes.add(RoutePlanningRequest.TravelMode.DRIVE);
+        }
+        if (rideHailEvidence) {
+            modes.add(RoutePlanningRequest.TravelMode.RIDE_HAIL);
         }
         if (motorbikeEvidence) {
             modes.add(RoutePlanningRequest.TravelMode.TWO_WHEELER);
         }
-        if (containsAny(text, "步行", "走路")) {
+        if (walkEvidence) {
             modes.add(RoutePlanningRequest.TravelMode.WALK);
         }
-        if (containsAny(text, "大眾運輸", "公共運輸", "公車", "捷運", "台鐵", "高鐵", "火車", "輕軌")) {
+        boolean explicitTransit = containsAny(
+                text,
+                "大眾運輸",
+                "公共運輸",
+                "搭公車",
+                "坐公車",
+                "搭捷運",
+                "坐捷運",
+                "搭台鐵",
+                "坐台鐵",
+                "搭高鐵",
+                "坐高鐵",
+                "搭火車",
+                "坐火車",
+                "搭輕軌",
+                "坐輕軌");
+        boolean onlyPlaceTransitEvidence = !driveEvidence
+                && !rideHailEvidence
+                && !motorbikeEvidence
+                && !walkEvidence
+                && containsAny(text, "公車", "捷運", "台鐵", "高鐵", "火車", "輕軌");
+        if (explicitTransit || onlyPlaceTransitEvidence) {
             modes.add(RoutePlanningRequest.TravelMode.TRANSIT);
         }
         if (modes.isEmpty()) {

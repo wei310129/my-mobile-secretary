@@ -109,6 +109,28 @@ public class CalendarPlanEntity extends WorkspaceOwnedEntity {
         updatedAt = Objects.requireNonNull(now, "now");
     }
 
+    public void rescheduleFreshStandaloneRoute(
+            CalendarPlacement.TimedInterval nextPlacement, Instant now) {
+        requireActive();
+        requireRevision(1);
+        placement = CalendarPlacementEmbeddable.from(
+                Objects.requireNonNull(nextPlacement, "nextPlacement"));
+        updatedAt = Objects.requireNonNull(now, "now");
+    }
+
+    public void completePrematureStandaloneRoute(
+            CalendarPlacement.TimedInterval completedPlacement, Instant now) {
+        requireActive();
+        requireRevision(1);
+        if (!(placement.toDomain() instanceof CalendarPlacement.TimedPoint)) {
+            throw new IllegalStateException(
+                    "Only a premature timed-point route can be completed in place");
+        }
+        placement = CalendarPlacementEmbeddable.from(
+                Objects.requireNonNull(completedPlacement, "completedPlacement"));
+        updatedAt = Objects.requireNonNull(now, "now");
+    }
+
     public CalendarPlacement toPlacement() {
         return placement.toDomain();
     }

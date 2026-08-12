@@ -18,7 +18,6 @@ class ConversationCapabilityCatalogTest {
                 .filter(line -> !line.isBlank())
                 .toList();
 
-        assertThat(lines).hasSize(442);
         Set<String> commandTypes = Arrays.stream(IntentCommand.Type.values())
                 .map(Enum::name)
                 .collect(java.util.stream.Collectors.toSet());
@@ -41,5 +40,10 @@ class ConversationCapabilityCatalogTest {
                         .isTrue();
             }
         }
+        Set<String> catalogTypes = lines.stream()
+                .map(line -> line.split("\\|", 4)[2])
+                .flatMap(markers -> Arrays.stream(markers.split("\\+")))
+                .collect(java.util.stream.Collectors.toSet());
+        assertThat(catalogTypes).containsAll(commandTypes);
     }
 }

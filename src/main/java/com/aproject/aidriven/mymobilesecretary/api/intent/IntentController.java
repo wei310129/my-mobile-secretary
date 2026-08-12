@@ -4,6 +4,7 @@ import com.aproject.aidriven.mymobilesecretary.api.schedule.ScheduleDecisionResp
 import com.aproject.aidriven.mymobilesecretary.api.task.TaskResponse;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentService;
+import com.aproject.aidriven.mymobilesecretary.intent.application.PublicConversationResponseService;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import jakarta.validation.constraints.Size;
@@ -20,9 +21,12 @@ import org.springframework.web.bind.annotation.RestController;
 public class IntentController {
 
     private final IntentService intentService;
+    private final PublicConversationResponseService publicResponseService;
 
-    public IntentController(IntentService intentService) {
+    public IntentController(IntentService intentService,
+                            PublicConversationResponseService publicResponseService) {
         this.intentService = intentService;
+        this.publicResponseService = publicResponseService;
     }
 
     /** 使用者的一句話。 */
@@ -37,7 +41,7 @@ public class IntentController {
     @PostMapping
     public IntentResponse handle(@Valid @RequestBody IntentRequest request) {
         IntentResult result = intentService.handle(request.text(), "REST");
-        String publicMessage = result.responseEnvelope().message();
+        String publicMessage = publicResponseService.finalizeReply(result).message();
         return new IntentResponse(
                 result.action().name(),
                 publicMessage,

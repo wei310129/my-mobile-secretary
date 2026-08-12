@@ -30,7 +30,7 @@ class ConditionalRecurrenceConversationServiceTest {
     private ConditionalRecurrenceService recurrenceService;
 
     @Test
-    void incompleteConditionalWeeklyRequestAsksAllMissingFieldsWithoutMutation() {
+    void incompleteConditionalWeeklyRequestAsksOnlyTheFirstMissingFieldWithoutMutation() {
         AtomicInteger mutations = new AtomicInteger();
 
         IntentResult result = service().answer(
@@ -39,7 +39,9 @@ class ConditionalRecurrenceConversationServiceTest {
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.CLARIFICATION_NEEDED);
         assertThat(result.message())
-                .contains("條件式週期", "不會建立成普通每週固定行程", "每次持續多久", "停班停課適用縣市");
+                .contains("條件式週期", "不會建立成普通每週固定行程", "是否要每週固定")
+                .doesNotContain("每次持續多久", "哪個縣市");
+        assertThat(result.nextQuestion().code()).isEqualTo("conditional-recurrence.recurrence");
         assertThat(mutations).hasValue(0);
     }
 
@@ -87,7 +89,9 @@ class ConditionalRecurrenceConversationServiceTest {
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.CLARIFICATION_NEEDED);
         assertThat(result.message())
-                .contains("國定假日採跳過", "補課不會自動建立", "每次持續多久", "上午或晚上");
+                .contains("國定假日採跳過", "補課不會自動建立", "上午還是晚上")
+                .doesNotContain("每次持續多久");
+        assertThat(result.nextQuestion().code()).isEqualTo("conditional-recurrence.time-period");
         assertThat(mutations).hasValue(0);
     }
 

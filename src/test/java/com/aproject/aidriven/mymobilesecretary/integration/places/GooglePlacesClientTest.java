@@ -7,6 +7,7 @@ import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import com.aproject.aidriven.mymobilesecretary.integration.IntegrationException;
 import com.sun.net.httpserver.HttpServer;
 import java.net.InetSocketAddress;
+import java.net.URI;
 import java.time.Duration;
 import java.util.Optional;
 import org.junit.jupiter.api.AfterEach;
@@ -134,6 +135,115 @@ class GooglePlacesClientTest {
         stubSearch(403, "{\"error\":{\"status\":\"PERMISSION_DENIED\"}}");
 
         assertThatThrownBy(() -> client().searchFirst("全聯"))
+                .isInstanceOf(IntegrationException.class);
+    }
+
+    @Test
+    void resolvesFullGoogleMapsPlaceLinkWithoutPlacesCredential() {
+        GooglePlacesClient client = new GooglePlacesClient(
+                RestClient.builder(),
+                new GooglePlacesProperties(false, "", "http://localhost", Duration.ofSeconds(2)),
+                current -> Optional.empty());
+
+        Optional<GooglePlacesClient.PlaceCandidate> result = client.resolveMapsLink(
+                "https://www.google.com/maps/place/Taipei+Main+Station/@25.0478,121.5170,17z");
+
+        assertThat(result).isPresent();
+        assertThat(result.orElseThrow().name()).isEqualTo("Taipei Main Station");
+        assertThat(result.orElseThrow().latitude()).isEqualTo(25.0478);
+        assertThat(result.orElseThrow().longitude()).isEqualTo(121.5170);
+    }
+
+    @Test
+    void resolvesAllowedShortLinkThroughValidatedRedirect() {
+        GooglePlacesClient client = new GooglePlacesClient(
+                RestClient.builder(),
+                new GooglePlacesProperties(false, "", "http://localhost", Duration.ofSeconds(2)),
+                current -> "maps.app.goo.gl".equals(current.getHost())
+                        ? Optional.of(URI.create(
+                                "https://www.google.com/maps/place/Taoyuan+HSR/@25.0131,121.2142,17z"))
+                        : Optional.empty());
+
+        Optional<GooglePlacesClient.PlaceCandidate> result =
+                client.resolveMapsLink("https://maps.app.goo.gl/AbCdEf123");
+
+        assertThat(result).isPresent();
+        assertThat(result.orElseThrow().name()).isEqualTo("Taoyuan HSR");
+        assertThat(result.orElseThrow().latitude()).isEqualTo(25.0131);
+    }
+
+    @Test
+    void resolvesShortLinkThroughMultipleAllowedGoogleRedirects() {
+        GooglePlacesClient client = new GooglePlacesClient(
+                RestClient.builder(),
+                new GooglePlacesProperties(false, "", "http://localhost", Duration.ofSeconds(2)),
+                current -> {
+                    if ("maps.app.goo.gl".equals(current.getHost())) {
+                        return Optional.of(URI.create("https://maps.google.com/?cid=123456789"));
+                    }
+                    if ("maps.google.com".equals(current.getHost())) {
+                        return Optional.of(URI.create(
+                                "https://www.google.com/maps/place/Transit+Station/@24.6849,120.9047,17z"));
+                    }
+                    return Optional.empty();
+                });
+
+        Optional<GooglePlacesClient.PlaceCandidate> result =
+                client.resolveMapsLink("https://maps.app.goo.gl/GenericShortId?g_st=ic");
+
+        assertThat(result).isPresent();
+        assertThat(result.orElseThrow().name()).isEqualTo("Transit Station");
+        assertThat(result.orElseThrow().latitude()).isEqualTo(24.6849);
+        assertThat(result.orElseThrow().longitude()).isEqualTo(120.9047);
+    }
+
+    @Test
+    void resolvesGoogleMapsQueryAndFtidLinkThroughPlacesSearch() {
+        stubSearch(200, """
+                {"places":[{
+                  "displayName": {"text": "Transit Station"},
+                  "formattedAddress": "Miaoli County",
+                  "location": {"latitude": 24.6849, "longitude": 120.9047},
+                  "primaryTypeDisplayName": {"text": "Bus station"}
+                }]}
+                """);
+        String base = "http://localhost:" + server.getAddress().getPort();
+        GooglePlacesClient client = new GooglePlacesClient(
+                RestClient.builder(),
+                new GooglePlacesProperties(true, "test-key", base, Duration.ofSeconds(2)),
+                current -> {
+                    if ("maps.app.goo.gl".equals(current.getHost())) {
+                        return Optional.of(URI.create("https://maps.google.com/?cid=123456789"));
+                    }
+                    if ("maps.google.com".equals(current.getHost())) {
+                        return Optional.of(URI.create(
+                                "https://www.google.com/maps?q=Transit+Station&ftid=0x123:0x456&entry=tts"));
+                    }
+                    return Optional.empty();
+                });
+
+        Optional<GooglePlacesClient.PlaceCandidate> result =
+                client.resolveMapsLink("https://maps.app.goo.gl/GenericQueryLink?g_st=ic");
+
+        assertThat(result).isPresent();
+        assertThat(result.orElseThrow().name()).isEqualTo("Transit Station");
+        assertThat(result.orElseThrow().latitude()).isEqualTo(24.6849);
+    }
+
+    @Test
+    void rejectsNonGoogleInputAndRedirectTarget() {
+        assertThat(GooglePlacesClient.isGoogleMapsLink("https://example.com/maps/place/test"))
+                .isFalse();
+        assertThat(GooglePlacesClient.isGoogleMapsLink(
+                "https://www.google.com:8443/maps/place/test/@25.0,121.5"))
+                .isFalse();
+
+        GooglePlacesClient client = new GooglePlacesClient(
+                RestClient.builder(),
+                new GooglePlacesProperties(false, "", "http://localhost", Duration.ofSeconds(2)),
+                current -> Optional.of(URI.create("https://attacker.example/collect")));
+
+        assertThatThrownBy(() -> client.resolveMapsLink("https://maps.app.goo.gl/Unsafe"))
                 .isInstanceOf(IntegrationException.class);
     }
 }

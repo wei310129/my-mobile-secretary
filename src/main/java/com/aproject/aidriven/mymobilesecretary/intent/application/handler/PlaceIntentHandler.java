@@ -4,7 +4,11 @@ import com.aproject.aidriven.mymobilesecretary.family.application.FamilyMessageS
 import com.aproject.aidriven.mymobilesecretary.geo.application.GeofenceRuleService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
+import com.aproject.aidriven.mymobilesecretary.geo.catalog.application.SystemPlaceCatalogAdoption;
+import com.aproject.aidriven.mymobilesecretary.geo.catalog.application.SystemPlaceCatalogLookup;
+import com.aproject.aidriven.mymobilesecretary.geo.catalog.application.SystemPlaceCatalogService;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
+import com.aproject.aidriven.mymobilesecretary.geo.domain.SystemPlaceCategory;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationContextService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
@@ -31,6 +35,8 @@ public final class PlaceIntentHandler implements IntentHandler {
 
     private static final Set<IntentCommand.Type> SUPPORTED_TYPES = Set.of(
             IntentCommand.Type.ASK_PLACE,
+            IntentCommand.Type.ASK_PLACE_CATALOG,
+            IntentCommand.Type.ADOPT_PLACE_CATALOG,
             IntentCommand.Type.CREATE_PLACE,
             IntentCommand.Type.UPDATE_PLACE,
             IntentCommand.Type.BIND_TASK_PLACE,
@@ -50,6 +56,7 @@ public final class PlaceIntentHandler implements IntentHandler {
     private final NearbySuggestionService nearbySuggestionService;
     private final ConversationContextService contextService;
     private final FamilyMessageService familyMessageService;
+    private final SystemPlaceCatalogService systemPlaceCatalogService;
     private final int bindRadiusMeters;
 
     public PlaceIntentHandler(
@@ -60,6 +67,7 @@ public final class PlaceIntentHandler implements IntentHandler {
             NearbySuggestionService nearbySuggestionService,
             ConversationContextService contextService,
             FamilyMessageService familyMessageService,
+            SystemPlaceCatalogService systemPlaceCatalogService,
             @Value("${app.knowledge.auto-bind-radius-meters:200}") int bindRadiusMeters) {
         this.taskService = taskService;
         this.placeAliasService = placeAliasService;
@@ -68,6 +76,7 @@ public final class PlaceIntentHandler implements IntentHandler {
         this.nearbySuggestionService = nearbySuggestionService;
         this.contextService = contextService;
         this.familyMessageService = familyMessageService;
+        this.systemPlaceCatalogService = systemPlaceCatalogService;
         this.bindRadiusMeters = bindRadiusMeters;
     }
 
@@ -81,6 +90,8 @@ public final class PlaceIntentHandler implements IntentHandler {
         IntentOptions options = command.safeOptions();
         return switch (command.type()) {
             case ASK_PLACE -> askPlace(command);
+            case ASK_PLACE_CATALOG -> askPlaceCatalog(command);
+            case ADOPT_PLACE_CATALOG -> adoptPlaceCatalog(command);
             case CREATE_PLACE -> createPlace(text, command);
             case UPDATE_PLACE -> updatePlace(command);
             case BIND_TASK_PLACE -> bindTaskPlace(command, options);
@@ -118,9 +129,118 @@ public final class PlaceIntentHandler implements IntentHandler {
                     contextService.rememberPlace(place.getId());
                     return placeInfo(place);
                 })
-                .orElseGet(() -> IntentResult.clarificationNeeded(
-                        "我沒有叫「%s」的地點紀錄,說「建立地點:%s」我就去 Google 查來存。"
-                                .formatted(command.placeName(), command.placeName())));
+                .orElseGet(() -> publicPlaceInfo(command.placeName()));
+    }
+
+    private IntentResult publicPlaceInfo(String placeName) {
+        PlaceService.PublicPlaceLookup lookup = placeService.lookupPublicPlace(placeName);
+        if (lookup.status() == PlaceService.PublicPlaceLookup.Status.FOUND
+                && lookup.address() != null && !lookup.address().isBlank()) {
+            String type = publicPlaceType(lookup);
+            String status = lookup.source() == PlaceService.PublicPlaceLookup.Source.SYSTEM_CATALOG
+                    ? "這是系統公共地點資料，沒有建立或修改你的自訂地點。"
+                    : "這是公開地點查詢結果，尚未儲存，也沒有建立或修改你的自訂地點。";
+            return IntentResult.message(IntentResult.Action.PLACE_INFO,
+                    "查到「%s」｜%s%s。%s"
+                            .formatted(lookup.name(), lookup.address(), type, status));
+        }
+        String fact = switch (lookup.status()) {
+            case AMBIGUOUS -> "系統公共地點有多個同名結果；這次沒有建立或修改資料。";
+            case NOT_FOUND -> "本地和系統公共地點都沒有唯一結果；這次沒有建立或修改資料。";
+            default -> "本地和系統公共地點沒有結果，而且外部補充查詢目前不可用；"
+                    + "這次沒有建立或修改資料。";
+        };
+        return IntentResult.clarificationNeeded(fact,
+                com.aproject.aidriven.mymobilesecretary.intent.application.ClarificationStep.blocking(
+                        "place.lookup-disambiguation", "place.name",
+                        "你指的是哪個縣市、運輸系統或較完整的名稱？", 10));
+    }
+
+    private static String publicPlaceType(PlaceService.PublicPlaceLookup lookup) {
+        if (lookup.type() == null || lookup.type().isBlank()) return "";
+        if (lookup.source() != PlaceService.PublicPlaceLookup.Source.SYSTEM_CATALOG) {
+            return "｜" + lookup.type();
+        }
+        try {
+            return "｜" + SystemPlaceCategory.valueOf(lookup.type()).publicLabel();
+        } catch (IllegalArgumentException exception) {
+            return "";
+        }
+    }
+
+    private IntentResult askPlaceCatalog(IntentCommand command) {
+        require(command.placeName(), "placeName");
+        return catalogLookupResult(systemPlaceCatalogService.lookup(
+                command.placeName(), command.safeOptions().catalogRegion()));
+    }
+
+    private IntentResult adoptPlaceCatalog(IntentCommand command) {
+        require(command.placeName(), "placeName");
+        SystemPlaceCatalogLookup lookup = systemPlaceCatalogService.lookup(
+                command.placeName(), command.safeOptions().catalogRegion());
+        if (lookup.status() == SystemPlaceCatalogLookup.Status.NOT_FOUND) {
+            return catalogLookupResult(lookup);
+        }
+        Integer ordinal = command.safeOptions().ordinal();
+        if (lookup.status() != SystemPlaceCatalogLookup.Status.EXACT && ordinal == null) {
+            return catalogLookupResult(lookup);
+        }
+        try {
+            SystemPlaceCatalogAdoption adoption = systemPlaceCatalogService.adopt(
+                    command.placeName(), command.safeOptions().catalogRegion(), ordinal);
+            return IntentResult.placeCatalogAdopted(
+                    adoption.point(), lookup.status() != SystemPlaceCatalogLookup.Status.EXACT);
+        } catch (IllegalArgumentException exception) {
+            return catalogSelectionQuestion(
+                    "系統內建地點仍有多個候選；這次沒有建立自訂地點。");
+        }
+    }
+
+    private static IntentResult catalogLookupResult(SystemPlaceCatalogLookup lookup) {
+        if (lookup.status() == SystemPlaceCatalogLookup.Status.NOT_FOUND) {
+            return IntentResult.clarificationNeeded(
+                    "系統內建地點找不到「%s」；這次沒有建立自訂地點。"
+                            .formatted(lookup.query()),
+                    com.aproject.aidriven.mymobilesecretary.intent.application.ClarificationStep.blocking(
+                            "place.catalog-query", "place.name",
+                            "要用哪個更完整的地點名稱查詢？", 10));
+        }
+        String rows = java.util.stream.IntStream.range(0, lookup.candidates().size())
+                .mapToObj(index -> {
+                    var point = lookup.candidates().get(index);
+                    String region = point.region() == null ? "未提供地區" : point.region();
+                    String address = point.address() == null ? "未提供地址" : point.address();
+                    return "%d.「%s」｜%s｜%s".formatted(
+                            index + 1, point.pointName(), region, address);
+                })
+                .collect(java.util.stream.Collectors.joining("\n"));
+        return switch (lookup.status()) {
+            case EXACT -> IntentResult.placeCatalogMessage(
+                    "系統內建地點「%s」：%s。來源：%s"
+                            .formatted(lookup.candidates().getFirst().pointName(),
+                                    lookup.candidates().getFirst().address() == null
+                                            ? "地址未提供"
+                                            : lookup.candidates().getFirst().address(),
+                                    lookup.candidates().getFirst().sourceName()));
+            case CROSS_REGION -> IntentResult.clarificationNeeded(
+                    "「%s」在不同地區有多個系統內建結果：\n%s"
+                            .formatted(lookup.query(), rows),
+                    com.aproject.aidriven.mymobilesecretary.intent.application.ClarificationStep.blocking(
+                            "place.catalog-region", "place.catalog-region",
+                            "你指的是哪個地區？", 10));
+            case MULTIPOINT, MULTIPLE -> catalogSelectionQuestion(
+                    "「%s」有多個系統內建地點：\n%s"
+                            .formatted(lookup.query(), rows));
+            case NOT_FOUND -> throw new IllegalStateException("handled above");
+        };
+    }
+
+    private static IntentResult catalogSelectionQuestion(String fact) {
+        return IntentResult.clarificationNeeded(
+                fact,
+                com.aproject.aidriven.mymobilesecretary.intent.application.ClarificationStep.blocking(
+                        "place.catalog-selection", "place.catalog-ordinal",
+                        "要選哪一個編號？", 10));
     }
 
     private IntentResult createPlace(String text, IntentCommand command) {
@@ -229,7 +349,7 @@ public final class PlaceIntentHandler implements IntentHandler {
         placeAliasService.remember(options.alias(), place.getId());
         contextService.rememberPlace(place.getId());
         return IntentResult.message(IntentResult.Action.PLACE_ALIAS_SET,
-                "記住了,「%s」就是「%s」。".formatted(options.alias(), place.getName()));
+                "好的，「%s」已設定為「%s」的別名。".formatted(options.alias(), place.getName()));
     }
 
     private IntentResult listLocationTasks(IntentOptions options) {

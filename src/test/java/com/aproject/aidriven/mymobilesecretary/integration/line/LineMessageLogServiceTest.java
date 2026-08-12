@@ -148,6 +148,20 @@ class LineMessageLogServiceTest {
     }
 
     @Test
+    void draftReferenceComesOnlyFromScopedStoredQuoteMetadata() {
+        UUID draftId = UUID.fromString("20000000-0000-0000-0000-000000000002");
+        LineMessageLog quoted = LineMessageLog.of(
+                LineMessageLog.Direction.OUT, "TEXT", "請補充一項資訊", NOW);
+        quoted.attachReferences("DRAFT:" + draftId + ":1");
+        when(repository.findFirstByWorkspaceIdAndCreatedByUserIdAndExternalMessageId(
+                WORKSPACE_ID, ACTOR_ID, "quoted-draft")).thenReturn(Optional.of(quoted));
+
+        assertThat(inScope(() -> service.quotedDraftReference("quoted-draft")))
+                .contains(draftId);
+        assertThat(inScope(() -> service.quotedDraftReference(null))).isEmpty();
+    }
+
+    @Test
     void lengthyChildCourseMessageIncludesRecentHistoryForSpeechRecognitionDisambiguation() {
         LineMessageLog previous = LineMessageLog.of(
                 LineMessageLog.Direction.IN, "TEXT", "女兒每週六要上夏恩英語課", NOW);

@@ -4,6 +4,7 @@ import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContex
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.calendar.adoption.CalendarLocation;
 import com.aproject.aidriven.mymobilesecretary.calendar.domain.CalendarPlacement;
+import com.aproject.aidriven.mymobilesecretary.calendar.domain.CalendarTimeNode;
 import com.aproject.aidriven.mymobilesecretary.calendar.domain.CalendarTimeResolver;
 import com.aproject.aidriven.mymobilesecretary.calendar.persistence.CalendarActivityEntity;
 import com.aproject.aidriven.mymobilesecretary.calendar.persistence.CalendarActivityRepository;
@@ -207,6 +208,124 @@ public class CalendarApplicationService {
         return revisionView(node);
     }
 
+    public CalendarPlanIdentityView rescheduleFreshStandaloneRouteById(
+            UUID planId, CalendarPlacement.TimedInterval placement) {
+        WorkspaceContext context = tenantContext();
+        CalendarEffectiveOwnerAccess.Scope scope =
+                effectiveOwnerAccess.requireAndLockPlan(planId, context);
+        CalendarPlanEntity plan = plans
+                .findWithLockByIdAndWorkspaceIdAndCreatedByUserId(
+                        planId, context.workspaceId(), scope.sourceOwnerId())
+                .orElseThrow(() -> new NotFoundException(
+                        "Calendar plan", "requested plan"));
+        Instant now = Instant.now(clock);
+        plan.rescheduleFreshStandaloneRoute(placement, now);
+
+        List<CalendarTimeNodeEntity> routeNodes = nodes
+                .findAllByPlanIdAndWorkspaceIdAndCreatedByUserIdOrderByCreatedAt(
+                        planId, context.workspaceId(), scope.sourceOwnerId())
+                .stream()
+                .filter(node -> "start".equals(node.getNodeKey())
+                        || "end".equals(node.getNodeKey()))
+                .toList();
+        if (routeNodes.size() != 2
+                || routeNodes.stream().anyMatch(node -> node.getRevision() != 1)) {
+            throw new BusinessException(
+                    "CALENDAR_ROUTE_CHANGED",
+                    "The route changed before its safe-time adjustment");
+        }
+        for (CalendarTimeNodeEntity node : routeNodes) {
+            long previousRevision = node.getRevision();
+            Instant nextTime = "start".equals(node.getNodeKey())
+                    ? placement.start()
+                    : placement.end();
+            node.reviseAbsolute(nextTime, previousRevision, now);
+            nodes.saveAndFlush(node);
+            sourceMutationSignals.recordOwnerGeneral(
+                    node,
+                    CalendarSourceMutationSignalService.MutationKind.NODE_TIME,
+                    now);
+            events.publishEvent(new CalendarNodeRevisedEvent(
+                    node.getId(),
+                    node.getLabel(),
+                    previousRevision,
+                    node.getRevision(),
+                    node.getResolvedTime(),
+                    now));
+        }
+        plans.saveAndFlush(plan);
+        return identityView(plan, context, scope.sourceOwnerId());
+    }
+
+    public CalendarPlanIdentityView completePrematureStandaloneRouteById(
+            UUID planId,
+            CalendarPlacement.TimedInterval placement,
+            CalendarLocation origin,
+            CalendarLocation destination) {
+        if (origin == null || destination == null) {
+            throw new IllegalArgumentException(
+                    "Confirmed route endpoints are required");
+        }
+        WorkspaceContext context = tenantContext();
+        CalendarEffectiveOwnerAccess.Scope scope =
+                effectiveOwnerAccess.requireAndLockPlan(planId, context);
+        CalendarPlanEntity plan = plans
+                .findWithLockByIdAndWorkspaceIdAndCreatedByUserId(
+                        planId, context.workspaceId(), scope.sourceOwnerId())
+                .orElseThrow(() -> new NotFoundException(
+                        "Calendar plan", "requested plan"));
+        List<CalendarTimeNodeEntity> currentNodes = nodes
+                .findAllByPlanIdAndWorkspaceIdAndCreatedByUserIdOrderByCreatedAt(
+                        planId, context.workspaceId(), scope.sourceOwnerId())
+                .stream()
+                .filter(node -> !node.isCanceled())
+                .toList();
+        if (currentNodes.size() != 1
+                || !"start".equals(currentNodes.getFirst().getNodeKey())
+                || currentNodes.getFirst().getRevision() != 1) {
+            throw new BusinessException(
+                    "CALENDAR_ROUTE_CHANGED",
+                    "The premature route changed before completion");
+        }
+
+        Instant now = Instant.now(clock);
+        plan.completePrematureStandaloneRoute(placement, now);
+        CalendarTimeNodeEntity start = currentNodes.getFirst();
+        long previousRevision = start.getRevision();
+        start.completePrematureRouteEndpoint(
+                placement.start(), origin, previousRevision, now);
+        nodes.saveAndFlush(start);
+        sourceMutationSignals.recordOwnerGeneral(
+                start,
+                CalendarSourceMutationSignalService.MutationKind.NODE_TIME,
+                now);
+        events.publishEvent(new CalendarNodeRevisedEvent(
+                start.getId(),
+                start.getLabel(),
+                previousRevision,
+                start.getRevision(),
+                start.getResolvedTime(),
+                now));
+        events.publishEvent(new CalendarNodeLocationRevisedEvent(
+                start.getId(), start.getLabel(), start.getRevision(), now));
+
+        CalendarTimeNode endNode = CalendarTimeNode.absolute(
+                "end", plan.getTitle() + "結束", placement.end());
+        CalendarTimeNodeEntity end = nodes.saveAndFlush(
+                CalendarTimeNodeEntity.create(
+                        UUID.randomUUID(),
+                        planId,
+                        null,
+                        endNode,
+                        placement.end(),
+                        destination,
+                        now));
+        events.publishEvent(new CalendarNodeCreatedEvent(
+                end.getId(), end.getLabel(), end.getResolvedTime(), now));
+        plans.saveAndFlush(plan);
+        return identityView(plan, context, scope.sourceOwnerId());
+    }
+
     @Transactional(readOnly = true)
     public CalendarPlanView getPlan(String requestKey) {
         WorkspaceContext context = tenantContext();
@@ -383,6 +502,35 @@ public class CalendarApplicationService {
         events.publishEvent(new CalendarNodeCreatedEvent(
                 node.getId(), node.getLabel(), node.getResolvedTime(), now));
         return node;
+    }
+
+    public CalendarTimeNodeEntity addTransportDepartureNode(
+            UUID planId, CalendarLocation origin, Instant departure) {
+        if (origin == null || departure == null) {
+            throw new IllegalArgumentException("Transport origin and departure are required");
+        }
+        WorkspaceContext context = tenantContext();
+        CalendarEffectiveOwnerAccess.Scope scope =
+                effectiveOwnerAccess.requireAndLockPlan(planId, context);
+        CalendarPlanEntity plan = plans.findByIdAndWorkspaceIdAndCreatedByUserId(
+                        planId, context.workspaceId(), scope.sourceOwnerId())
+                .orElseThrow(() -> new NotFoundException("Calendar plan", "requested plan"));
+        plan.requireActiveForMutation();
+        String nodeKey = "transport-departure";
+        var replay = nodes.findByPlanIdAndNodeKeyAndWorkspaceIdAndCreatedByUserId(
+                planId, nodeKey, context.workspaceId(), scope.sourceOwnerId());
+        if (replay.isPresent()) return replay.orElseThrow();
+        Instant now = Instant.now(clock);
+        CalendarTimeNode node = new CalendarTimeNode(
+                nodeKey, "交通出發", new com.aproject.aidriven.mymobilesecretary.calendar.domain
+                        .TimeExpression.Absolute(departure),
+                com.aproject.aidriven.mymobilesecretary.calendar.domain.Criticality.NORMAL,
+                com.aproject.aidriven.mymobilesecretary.calendar.domain.Adjustability.FLEXIBLE);
+        CalendarTimeNodeEntity saved = nodes.saveAndFlush(CalendarTimeNodeEntity.create(
+                UUID.randomUUID(), planId, null, node, departure, origin, now));
+        events.publishEvent(new CalendarNodeCreatedEvent(
+                saved.getId(), saved.getLabel(), saved.getResolvedTime(), now));
+        return saved;
     }
 
     public CalendarTimeNodeEntity lockNodeForReminder(

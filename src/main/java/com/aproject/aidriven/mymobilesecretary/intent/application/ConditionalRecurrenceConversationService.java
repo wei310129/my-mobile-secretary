@@ -1,5 +1,8 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ScheduleClarificationDraftService;
+import com.aproject.aidriven.mymobilesecretary.conversation.domain.ScheduleClarificationCapability;
+import com.aproject.aidriven.mymobilesecretary.conversation.domain.ScheduleClarificationDraft;
 import com.aproject.aidriven.mymobilesecretary.schedule.conditional.application.ConditionalRecurrenceService;
 import com.aproject.aidriven.mymobilesecretary.schedule.conditional.domain.ConditionalRecurrenceRule;
 import com.aproject.aidriven.mymobilesecretary.shared.time.ChineseTimePeriod;
@@ -37,11 +40,17 @@ public class ConditionalRecurrenceConversationService {
 
     private final ConditionalRecurrenceService recurrenceService;
     private final Clock clock;
+    private ScheduleClarificationDraftService clarificationDrafts;
 
     public ConditionalRecurrenceConversationService(
             ConditionalRecurrenceService recurrenceService, Clock clock) {
         this.recurrenceService = recurrenceService;
         this.clock = clock;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setClarificationDrafts(ScheduleClarificationDraftService clarificationDrafts) {
+        this.clarificationDrafts = clarificationDrafts;
     }
 
     public Optional<IntentResult> answer(String text, Runnable beforeMutation) {
@@ -52,7 +61,11 @@ public class ConditionalRecurrenceConversationService {
             String text, ConversationSnapshot previous, Runnable beforeMutation) {
         String current = normalize(text);
         if (looksLikeMeta(current)) return Optional.empty();
-        String compact = resumePendingDuration(current, previous);
+        Optional<ScheduleClarificationDraft> pending = clarificationDrafts == null
+                ? Optional.empty()
+                : clarificationDrafts.findCurrent(
+                        ScheduleClarificationCapability.CONDITIONAL_RECURRENCE);
+        String compact = pending.isPresent() ? current : resumePendingDuration(current, previous);
 
         Matcher activation = ACTIVATE.matcher(compact);
         if (activation.find()) {
@@ -64,22 +77,51 @@ public class ConditionalRecurrenceConversationService {
                             .formatted(rule.getId(), rule.getTitle())));
         }
 
-        if (!isConditionalRecurrence(compact)) return Optional.empty();
+        boolean initialRequest = isConditionalRecurrence(compact);
+        if (!initialRequest && pending.isEmpty()) return Optional.empty();
+        if (!initialRequest && clarificationDrafts != null
+                && !clarificationDrafts.mayConsumeContinuation(
+                        ScheduleClarificationCapability.CONDITIONAL_RECURRENCE)) {
+            return Optional.empty();
+        }
         Parsed parsed = parse(compact);
-        List<String> missing = new ArrayList<>();
+        if (pending.isPresent() && !hasTypedInput(parsed, compact)) return Optional.empty();
+        if (clarificationDrafts != null) {
+            beforeMutation.run();
+            ScheduleClarificationDraft draft = clarificationDrafts.recurrence(
+                    parsed.title(), parsed.weekday(), parsed.startTime(),
+                    parsed.timePeriodExplicit(), durationMinutes(parsed.duration()),
+                    parsed.until(), hasExplicitRecurrence(compact),
+                    hasHolidayInput(compact) ? parsed.holidayPolicy().name() : null,
+                    hasClosureInput(compact) ? parsed.closurePolicy().name() : null,
+                    parsed.jurisdiction());
+            parsed = fromDraft(draft);
+            compact = draft.isRecurrenceExplicit() ? "每週" + compact : compact;
+        }
+        List<ClarificationStep> missing = new ArrayList<>();
         if (!hasExplicitRecurrence(compact)) {
-            missing.add("是否每週固定（名稱叫「週會」不代表一定要重複）");
+            missing.add(ClarificationStep.blocking(
+                    "conditional-recurrence.recurrence", "recurrence",
+                    "這個安排是否要每週固定？", 10));
         }
-        if (parsed.weekday() == null) missing.add("每週星期幾");
-        if (parsed.startTime() == null) missing.add("開始時間");
+        if (parsed.weekday() == null) missing.add(ClarificationStep.blocking(
+                "conditional-recurrence.weekday", "weekday", "每週星期幾進行？", 20));
+        if (parsed.startTime() == null) missing.add(ClarificationStep.blocking(
+                "conditional-recurrence.start-time", "startTime", "幾點開始？", 30));
         if (parsed.startTime() != null && !parsed.timePeriodExplicit()) {
-            missing.add("未帶時段的鐘點是上午或晚上（例如七點需明講）");
+            missing.add(ClarificationStep.blocking(
+                    "conditional-recurrence.time-period", "timePeriod",
+                    "這個鐘點是上午還是晚上？", 40));
         }
-        if (parsed.duration() == null) missing.add("每次持續多久");
-        if (parsed.title() == null) missing.add("行程名稱");
+        if (parsed.duration() == null) missing.add(ClarificationStep.blocking(
+                "conditional-recurrence.duration", "duration", "每次持續多久？", 50));
+        if (parsed.title() == null) missing.add(ClarificationStep.blocking(
+                "conditional-recurrence.title", "title", "這個行程要叫什麼名稱？", 60));
         if (parsed.closurePolicy() != ConditionalRecurrenceRule.ClosurePolicy.NONE
                 && parsed.jurisdiction() == null) {
-            missing.add("停班停課適用縣市");
+            missing.add(ClarificationStep.blocking(
+                    "conditional-recurrence.jurisdiction", "jurisdiction",
+                    "停班停課要以哪個縣市為準？", 70));
         }
         if (!missing.isEmpty()) {
             String supportedBoundary = parsed.holidayPolicy()
@@ -88,8 +130,9 @@ public class ConditionalRecurrenceConversationService {
                             : "";
             return Optional.of(IntentResult.clarificationNeeded(
                     "我已辨識這是依官方假日／停班停課調整的條件式週期，不會建立成普通每週固定行程。"
-                            + supportedBoundary + "還需要確認：" + String.join("、", missing)
-                            + "。資訊補齊後只會先存草稿，明確啟用前不建立任何一場。"));
+                            + supportedBoundary
+                            + "資訊補齊後只會先存草稿，明確啟用前不建立任何一場。",
+                    ClarificationStep.first(missing)));
         }
 
         ZonedDateTime start = nextOccurrence(parsed.weekday(), parsed.startTime());
@@ -99,6 +142,9 @@ public class ConditionalRecurrenceConversationService {
         ConditionalRecurrenceRule rule = recurrenceService.createDraft(
                 parsed.title(), startAt, endAt, parsed.until(), parsed.holidayPolicy(),
                 parsed.closurePolicy(), parsed.jurisdiction());
+        if (clarificationDrafts != null) {
+            clarificationDrafts.complete(ScheduleClarificationCapability.CONDITIONAL_RECURRENCE);
+        }
         String message = ("已建立條件式週期草稿 #%d「%s」（尚未啟用）：\n"
                         + "- 基準時間｜%s\n- 國定假日｜%s\n- 停班停課｜%s\n- 補課｜%s\n\n"
                         + "它不是普通固定行程；請核對後回覆「啟用條件規則 %d」。")
@@ -237,6 +283,37 @@ public class ConditionalRecurrenceConversationService {
 
     private static boolean asksHolidaySkip(String text) {
         return containsAny(text, "假日不用", "放假不用", "國定假日不", "假日跳過");
+    }
+
+    private static boolean hasHolidayInput(String text) {
+        return containsAny(text, "國定假日", "放假", "逢假日", "假日不用", "假日跳過");
+    }
+
+    private static boolean hasClosureInput(String text) {
+        return containsAny(text, "颱風", "停班", "停課");
+    }
+
+    private static boolean hasTypedInput(Parsed parsed, String text) {
+        return parsed.title() != null || parsed.weekday() != null || parsed.startTime() != null
+                || parsed.duration() != null || parsed.until() != null || parsed.jurisdiction() != null
+                || hasExplicitRecurrence(text) || hasHolidayInput(text) || hasClosureInput(text);
+    }
+
+    private static Integer durationMinutes(Duration duration) {
+        return duration == null ? null : Math.toIntExact(duration.toMinutes());
+    }
+
+    private static Parsed fromDraft(ScheduleClarificationDraft draft) {
+        return new Parsed(draft.getTitle(), draft.getWeekday(), draft.getStartTime(),
+                draft.isTimePeriodExplicit(),
+                draft.getDurationMinutes() == null ? null
+                        : Duration.ofMinutes(draft.getDurationMinutes()),
+                draft.getUntilDate(),
+                draft.getHolidayPolicy() == null ? ConditionalRecurrenceRule.HolidayPolicy.NONE
+                        : ConditionalRecurrenceRule.HolidayPolicy.valueOf(draft.getHolidayPolicy()),
+                draft.getClosurePolicy() == null ? ConditionalRecurrenceRule.ClosurePolicy.NONE
+                        : ConditionalRecurrenceRule.ClosurePolicy.valueOf(draft.getClosurePolicy()),
+                draft.getJurisdiction());
     }
 
     private static boolean looksLikeMeta(String text) {

@@ -40,6 +40,10 @@ management:
     web:
       exposure:
         include: health,info
+  info:
+    # A custom contributor exposes only the version fields that are safe and stable for tooling.
+    git:
+      enabled: false
 
 app:
   media:
@@ -150,6 +154,9 @@ app:
     google-routes:
       # Google Routes 是計費服務；api-key 只放 secrets.yaml，沒設時 provider policy fail closed
       enabled: true
+    route-planning:
+      # 實際公開站點 benchmark 通過前維持 TDX_PRIMARY；可切 GOOGLE_PRIMARY 或 GOOGLE_PRIMARY_TDX_CONFIRM
+      provider-strategy: ${ROUTE_PROVIDER_STRATEGY:TDX_PRIMARY}
     line:
       # 真憑證放 secrets.yaml;未設定時 webhook 直接吞掉請求(見 LineWebhookController)
       enabled: true

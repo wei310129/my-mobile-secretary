@@ -5,6 +5,7 @@ import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceAliasService
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.TriggerType;
+import com.aproject.aidriven.mymobilesecretary.intent.application.ClarificationStep;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationContextService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentOptions;
@@ -222,7 +223,9 @@ public final class TaskMutationIntentHandler implements IntentHandler {
                                 .PlanningItemShape(match.task().getTitle(), dueAt, null,
                                         false, false, false));
         if (!decision.allowed()) {
-            return IntentResult.clarificationNeeded(String.join("；", decision.requirements()));
+            return IntentResult.clarificationNeeded(ClarificationStep.blocking(
+                    "task-transition.schedule-reminder", "transitionRequirement",
+                    decision.requirements().getFirst(), 10));
         }
         Task changed = taskService.changeDueDate(match.task().getId(), dueAt);
         return IntentResult.message(IntentResult.Action.TASK_UPDATED,
@@ -243,7 +246,9 @@ public final class TaskMutationIntentHandler implements IntentHandler {
                                 .PlanningItemShape(match.task().getTitle(), null, null,
                                         false, false, false));
         if (!decision.allowed()) {
-            return IntentResult.clarificationNeeded(String.join("；", decision.requirements()));
+            return IntentResult.clarificationNeeded(ClarificationStep.blocking(
+                    "task-transition.todo", "transitionRequirement",
+                    decision.requirements().getFirst(), 10));
         }
         Task changed = taskService.changeDueDate(match.task().getId(), null);
         return IntentResult.message(IntentResult.Action.TASK_UPDATED,

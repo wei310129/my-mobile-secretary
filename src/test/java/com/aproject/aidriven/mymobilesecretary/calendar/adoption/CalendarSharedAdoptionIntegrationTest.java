@@ -82,9 +82,15 @@ class CalendarSharedAdoptionIntegrationTest extends IntegrationTestBase {
             assertThat(adoptions.constraints())
                     .extracting(PersonalRouteConstraint::nodeKey)
                     .containsExactly("shared-selected");
+            assertThat(adoptions.constraints())
+                    .extracting(PersonalRouteConstraint::planTitle)
+                    .containsExactly("共享採用行程");
             assertThat(projection.current().routeConstraints())
                     .extracting(PersonalRouteConstraint::nodeKey)
                     .containsExactly("shared-selected");
+            assertThat(projection.current().routeConstraints())
+                    .extracting(PersonalRouteConstraint::planTitle)
+                    .containsExactly("共享採用行程");
             assertThat(projection.current().busyIntervals())
                     .extracting(CalendarBusyInterval::title)
                     .containsExactly("共享採用行程");

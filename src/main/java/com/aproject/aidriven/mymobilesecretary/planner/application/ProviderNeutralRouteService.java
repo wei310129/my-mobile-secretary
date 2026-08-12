@@ -11,11 +11,14 @@ import com.aproject.aidriven.mymobilesecretary.planner.application.RoutePlanning
 import com.aproject.aidriven.mymobilesecretary.planner.application.RoutePlanningResult.Provider;
 import com.aproject.aidriven.mymobilesecretary.planner.application.RoutePlanningResult.ProviderFailure;
 import com.aproject.aidriven.mymobilesecretary.planner.application.RoutePlanningResult.RouteOption;
+import com.aproject.aidriven.mymobilesecretary.planner.application.RoutePlanningResult.TransitLeg;
+import io.micrometer.core.instrument.MeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
@@ -30,52 +33,130 @@ public class ProviderNeutralRouteService {
     private final TdxRoutingClient tdxClient;
     private final TdxProperties tdxProperties;
     private final GoogleRoutesClient googleClient;
+    private final RouteProviderPolicyProperties policy;
+    private final MeterRegistry metrics;
     private final Clock clock;
 
     public ProviderNeutralRouteService(
             TdxRoutingClient tdxClient,
             TdxProperties tdxProperties,
             GoogleRoutesClient googleClient,
+            RouteProviderPolicyProperties policy,
+            MeterRegistry metrics,
             Clock clock) {
         this.tdxClient = tdxClient;
         this.tdxProperties = tdxProperties;
         this.googleClient = googleClient;
+        this.policy = policy;
+        this.metrics = metrics;
         this.clock = clock;
     }
 
     public RoutePlanningResult plan(RoutePlanningRequest request) {
         List<ProviderFailure> failures = new ArrayList<>();
         if (request.mode() == TravelMode.TRANSIT && request.bothEndpointsInTaiwan()) {
-            if (tdxProperties.usable()) {
-                try {
-                    return RoutePlanningResult.available(planWithTdx(request), failures);
-                } catch (RuntimeException exception) {
-                    log.warn("TDX route evidence failed; trying allowed fallback", exception);
-                    failures.add(ProviderFailure.TDX_FAILED);
-                }
-            } else {
-                failures.add(ProviderFailure.TDX_UNAVAILABLE);
-            }
+            return switch (policy.providerStrategy()) {
+                case TDX_PRIMARY -> tdxThenGoogle(request, failures);
+                case GOOGLE_PRIMARY -> googleThenTdx(request, failures, false);
+                case GOOGLE_PRIMARY_TDX_CONFIRM -> googleThenTdx(request, failures, true);
+            };
         }
-        if (!googleClient.usable()) {
-            failures.add(ProviderFailure.GOOGLE_UNAVAILABLE);
-            return RoutePlanningResult.insufficient(failures);
+        return googleOnly(request, failures);
+    }
+
+    private RoutePlanningResult tdxThenGoogle(
+            RoutePlanningRequest request, List<ProviderFailure> failures) {
+        List<RouteOption> tdx = tryTdx(request, failures);
+        if (tdx != null) return RoutePlanningResult.available(tdx, failures);
+        return googleOnly(request, failures);
+    }
+
+    private RoutePlanningResult googleThenTdx(
+            RoutePlanningRequest request,
+            List<ProviderFailure> failures,
+            boolean confirmWithTdx) {
+        List<RouteOption> google = tryGoogle(request, failures);
+        if (google != null) {
+            if (confirmWithTdx) tryTdx(request, failures);
+            return RoutePlanningResult.available(google, failures);
+        }
+        List<RouteOption> tdx = tryTdx(request, failures);
+        return tdx == null
+                ? RoutePlanningResult.insufficient(failures)
+                : RoutePlanningResult.available(tdx, failures);
+    }
+
+    private RoutePlanningResult googleOnly(
+            RoutePlanningRequest request, List<ProviderFailure> failures) {
+        List<RouteOption> google = tryGoogle(request, failures);
+        return google == null
+                ? RoutePlanningResult.insufficient(failures)
+                : RoutePlanningResult.available(google, failures);
+    }
+
+    private List<RouteOption> tryTdx(
+            RoutePlanningRequest request, List<ProviderFailure> failures) {
+        long started = System.nanoTime();
+        if (!tdxProperties.usable()) {
+            failures.add(ProviderFailure.TDX_UNAVAILABLE);
+            recordProvider("tdx", "unavailable", started);
+            return null;
         }
         try {
-            return RoutePlanningResult.available(planWithGoogle(request), failures);
+            List<RouteOption> result = planWithTdx(request);
+            recordProvider("tdx", "success", started);
+            return result;
+        } catch (RuntimeException exception) {
+            log.warn("TDX route evidence failed; trying allowed fallback", exception);
+            failures.add(ProviderFailure.TDX_FAILED);
+            recordProvider("tdx", "failed", started);
+            return null;
+        }
+    }
+
+    private List<RouteOption> tryGoogle(
+            RoutePlanningRequest request, List<ProviderFailure> failures) {
+        long started = System.nanoTime();
+        if (!googleClient.usable()) {
+            failures.add(ProviderFailure.GOOGLE_UNAVAILABLE);
+            recordProvider("google", "unavailable", started);
+            return null;
+        }
+        try {
+            List<RouteOption> result = planWithGoogle(request);
+            recordProvider("google", "success", started);
+            return result;
         } catch (RuntimeException exception) {
             log.warn("Google route evidence failed", exception);
             failures.add(ProviderFailure.GOOGLE_FAILED);
-            return RoutePlanningResult.insufficient(failures);
+            recordProvider("google", "failed", started);
+            return null;
         }
+    }
+
+    private void recordProvider(String provider, String outcome, long startedNanos) {
+        metrics.timer(
+                        "mms.route.provider.latency",
+                        "provider",
+                        provider,
+                        "outcome",
+                        outcome,
+                        "strategy",
+                        policy.providerStrategy().name().toLowerCase(java.util.Locale.ROOT))
+                .record(System.nanoTime() - startedNanos, TimeUnit.NANOSECONDS);
     }
 
     private List<RouteOption> planWithTdx(RoutePlanningRequest request) {
         Function<Instant, List<Candidate>> query = departAt -> {
-            Duration duration = tdxClient.getTransitTravelTime(TravelQuery.of(
+            var route = tdxClient.getTransitRoute(TravelQuery.of(
                     request.fromLatitude(), request.fromLongitude(),
                     request.toLatitude(), request.toLongitude(), departAt));
-            return List.of(new Candidate(duration, null, false, true));
+            List<TransitLeg> legs = route.transitLegs().stream()
+                    .map(leg -> new TransitLeg(
+                            leg.mode(), leg.lineName(), leg.headsign(),
+                            leg.departureStop(), leg.arrivalStop()))
+                    .toList();
+            return List.of(new Candidate(route.duration(), null, false, true, legs));
         };
         return materialize(request, Provider.TDX, query);
     }
@@ -173,7 +254,8 @@ public class ProviderNeutralRouteService {
             options.add(new RouteOption(
                     provider, request.mode(), departAt, departAt.plus(candidate.duration()),
                     candidate.duration(), request.safetyBuffer(), candidate.distanceMeters(),
-                    candidate.trafficAware(), candidate.scheduledTransit(), retrievedAt));
+                    candidate.trafficAware(), candidate.scheduledTransit(), retrievedAt,
+                    candidate.transitLegs()));
         }
         return List.copyOf(options);
     }
@@ -181,13 +263,21 @@ public class ProviderNeutralRouteService {
     private static Candidate googleCandidate(GoogleRoute route, TravelMode mode) {
         return new Candidate(
                 route.duration(), route.distanceMeters(),
-                mode == TravelMode.DRIVE || mode == TravelMode.TWO_WHEELER,
-                mode == TravelMode.TRANSIT);
+                mode == TravelMode.DRIVE
+                        || mode == TravelMode.RIDE_HAIL
+                        || mode == TravelMode.TWO_WHEELER,
+                mode == TravelMode.TRANSIT,
+                route.transitLegs().stream()
+                        .map(leg -> new TransitLeg(
+                                "TRANSIT", leg.lineName(), leg.headsign(),
+                                leg.departureStop(), leg.arrivalStop()))
+                        .toList());
     }
 
     private static GoogleRoutesClient.TravelMode googleMode(TravelMode mode) {
         return switch (mode) {
             case DRIVE -> GoogleRoutesClient.TravelMode.DRIVE;
+            case RIDE_HAIL -> GoogleRoutesClient.TravelMode.DRIVE;
             case TWO_WHEELER -> GoogleRoutesClient.TravelMode.TWO_WHEELER;
             case WALK -> GoogleRoutesClient.TravelMode.WALK;
             case TRANSIT -> GoogleRoutesClient.TravelMode.TRANSIT;
@@ -198,6 +288,7 @@ public class ProviderNeutralRouteService {
             Duration duration,
             Long distanceMeters,
             boolean trafficAware,
-            boolean scheduledTransit) {
+            boolean scheduledTransit,
+            List<TransitLeg> transitLegs) {
     }
 }

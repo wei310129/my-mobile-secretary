@@ -71,7 +71,7 @@ public class SchedulePlaceBindingAnswerService {
     private IntentResult clarifyTarget(List<ScheduleItem> schedules) {
         if (schedules.isEmpty()) {
             return IntentResult.clarificationNeeded(
-                    "目前找不到可查證的近期行程。請告訴我行程名稱，我再檢查是否正確綁定地點。");
+                    "目前找不到可查證的近期行程。請告訴我行程名稱；有明確目標後即可檢查地點綁定。");
         }
         StringBuilder message = new StringBuilder("你是要查哪一個行程是否綁定地點？請回覆編號或名稱：");
         for (int i = 0; i < Math.min(5, schedules.size()); i++) {

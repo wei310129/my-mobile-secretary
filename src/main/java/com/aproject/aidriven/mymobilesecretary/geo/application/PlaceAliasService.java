@@ -5,8 +5,11 @@ import com.aproject.aidriven.mymobilesecretary.geo.domain.PlaceAlias;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceAliasRepository;
 import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
 import com.aproject.aidriven.mymobilesecretary.shared.error.BusinessException;
+import java.text.Normalizer;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Optional;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
@@ -50,6 +53,45 @@ public class PlaceAliasService {
         return places.stream()
                 .filter(p -> p.getName().contains(needle))
                 .findFirst();
+    }
+
+    /** Longest unique actor-owned name or alias mentioned in a natural read-only question. */
+    @Transactional(readOnly = true)
+    public Optional<Place> resolveMention(String text) {
+        String normalizedText = normalize(text);
+        if (normalizedText.isBlank()) return Optional.empty();
+        LinkedHashMap<Long, Integer> matches = new LinkedHashMap<>();
+        for (PlaceAlias alias : aliasRepository.findAll()) {
+            addMention(matches, alias.getPlaceId(), alias.getAlias(), normalizedText);
+        }
+        List<Place> places = placeRepository.findAll();
+        for (Place place : places) {
+            if (place.getId() != null) {
+                addMention(matches, place.getId(), place.getName(), normalizedText);
+            }
+        }
+        int longest = matches.values().stream().mapToInt(Integer::intValue).max().orElse(0);
+        List<Long> ids = matches.entrySet().stream()
+                .filter(entry -> entry.getValue() == longest)
+                .map(java.util.Map.Entry::getKey).distinct().toList();
+        if (ids.size() != 1) return Optional.empty();
+        return places.stream().filter(place -> ids.getFirst().equals(place.getId())).findFirst()
+                .or(() -> placeRepository.findById(ids.getFirst()));
+    }
+
+    private static void addMention(
+            LinkedHashMap<Long, Integer> matches, Long placeId, String candidate, String text) {
+        String normalized = normalize(candidate);
+        if (placeId != null && normalized.length() >= 2 && text.contains(normalized)) {
+            matches.merge(placeId, normalized.length(), Math::max);
+        }
+    }
+
+    private static String normalize(String value) {
+        return value == null ? "" : Normalizer.normalize(value, Normalizer.Form.NFKC)
+                .replace('臺', '台')
+                .toLowerCase(java.util.Locale.ROOT)
+                .replaceAll("[^\\p{L}\\p{N}]", "");
     }
 
     public PlaceAlias remember(String alias, Long placeId) {

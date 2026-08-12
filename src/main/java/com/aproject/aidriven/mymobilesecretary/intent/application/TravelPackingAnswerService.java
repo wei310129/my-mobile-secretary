@@ -138,7 +138,7 @@ public class TravelPackingAnswerService {
         return IntentResult.message(IntentResult.Action.PACKING_LIST_INFO,
                 "🧳 %s行李清單草案：\n%s".formatted(contextLabel, body)
                         + memory + conditional
-                        + "\n\n❓ 哪些項目要新增或刪除？刪除時我會區分只限這次或長期偏好。");
+                        + "\n\n❓ 哪些項目要新增或刪除？刪除時需要區分只限這次或長期偏好。");
     }
 
     public IntentResult setPreference(String itemName, String filter, String reason) {

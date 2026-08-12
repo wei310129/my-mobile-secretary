@@ -291,7 +291,12 @@ class CalendarIntentDraftRoutePreflightActualEntryTest extends IntegrationTestBa
 
             assertThat(insufficient.action()).isEqualTo(IntentResult.Action.SUGGESTION_MADE);
             assertThat(insufficient.responseEnvelope().message())
-                    .contains("缺可靠路線資料", "不能判定是否趕得上", "仍照這個版本建立嗎")
+                    .contains(
+                            "缺可靠路線資料",
+                            "不能判定是否趕得上",
+                            "本次行程要怎麼處理",
+                            "1. 往後安排到安全時間",
+                            "2. 照原安排保留")
                     .doesNotContain("可行", "準時", "Intent", "reason=", "planId", "nodeId");
             assertThat(count("calendar_plan", workspace)).isEqualTo(1L);
             assertThat(count("calendar_route_risk", workspace)).isZero();

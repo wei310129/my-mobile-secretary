@@ -7,6 +7,7 @@ import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
 import com.aproject.aidriven.mymobilesecretary.intent.application.handler.IntentHandlerRegistry;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.function.Supplier;
 import org.springframework.stereotype.Service;
@@ -37,8 +38,19 @@ public final class ConversationFocusIntentExecutor {
     }
 
     public IntentResult execute(String text, IntentCommand command, String inboundHmac) {
+        return execute(text, command, inboundHmac, ignored -> {});
+    }
+
+    public IntentResult execute(
+            String text, IntentCommand command, String inboundHmac,
+            Consumer<IntentResult> afterDomainSuccess) {
         Objects.requireNonNull(command, "command");
-        return atomicExecutor.executeResolved(inboundHmac, () -> resolve(text, command));
+        Objects.requireNonNull(afterDomainSuccess, "afterDomainSuccess");
+        return atomicExecutor.executeResolved(inboundHmac, () -> {
+            ResolvedFocusExecution<IntentResult> resolved = resolve(text, command);
+            afterDomainSuccess.accept(resolved.response());
+            return resolved;
+        });
     }
 
     /** Coordinates a bounded non-LLM fallback after the interpreter has failed. */

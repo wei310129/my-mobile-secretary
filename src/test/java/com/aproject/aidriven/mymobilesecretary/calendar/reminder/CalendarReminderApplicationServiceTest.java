@@ -344,6 +344,51 @@ class CalendarReminderApplicationServiceTest extends IntegrationTestBase {
     }
 
     @Test
+    void reviewedFixedStartReminderIsCanceledExactlyOnceWithinItsPlanNodeScope() {
+        TestScope scope = seedCalendar("calendar-reviewed-start-reminder", false);
+        Instant original = scope.nodeTime();
+        UUID planId = jdbc.queryForObject(
+                "SELECT id FROM calendar_plan WHERE workspace_id = ?",
+                UUID.class,
+                scope.workspaceId());
+
+        inContext(scope.context(), () -> {
+            reminders.createAbsolute(
+                    scope.planKey(),
+                    "anchor",
+                    original.minus(Duration.ofMinutes(20)),
+                    CalendarReminderOwnerKind.PERSONAL,
+                    CalendarReminderDeliveryMode.ONCE,
+                    null,
+                    null,
+                    NotificationChannel.LOG);
+            calendars.reviseLockedNode(
+                    scope.planKey(), "anchor", original.plus(Duration.ofHours(1)), 1);
+        });
+
+        assertThat(inContext(
+                        scope.context(),
+                        () -> reminders.cancelPersonalStartRemindersRequiringReview(
+                                planId, "anchor")))
+                .isEqualTo(1);
+        assertThat(inContext(
+                        scope.context(),
+                        () -> reminders.cancelPersonalStartRemindersRequiringReview(
+                                planId, "anchor")))
+                .isZero();
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM calendar_reminder_rule WHERE workspace_id = ? AND status = 'REVIEW_REQUIRED'",
+                        Long.class,
+                        scope.workspaceId()))
+                .isZero();
+        assertThat(jdbc.queryForObject(
+                        "SELECT count(*) FROM calendar_reminder_rule WHERE workspace_id = ? AND status = 'CANCELED'",
+                        Long.class,
+                        scope.workspaceId()))
+                .isEqualTo(1L);
+    }
+
+    @Test
     void criticalAckChoiceIsExplicitAndAcknowledgementCancelsFutureEscalation() {
         TestScope scope = seedCalendar("calendar-reminder-ack", true);
 

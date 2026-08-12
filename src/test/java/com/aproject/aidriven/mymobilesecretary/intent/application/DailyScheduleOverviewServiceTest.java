@@ -1,9 +1,12 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2IntentService;
+import com.aproject.aidriven.mymobilesecretary.calendar.application.CalendarV2RoutingService;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityIssue;
 import com.aproject.aidriven.mymobilesecretary.planner.domain.FeasibilityResult;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
@@ -127,6 +130,22 @@ class DailyScheduleOverviewServiceTest {
                 .contains("2026/07/18", "週六游泳")
                 .contains("2026/07/19", "目前沒有固定或當日行程");
         verify(contextService).rememberScheduleList(List.of(saturday));
+    }
+
+    @Test
+    void cutoverOverviewReadsCalendarV2InsteadOfLegacySchedules() {
+        CalendarV2RoutingService routing = org.mockito.Mockito.mock(CalendarV2RoutingService.class);
+        CalendarV2IntentService calendarV2 = org.mockito.Mockito.mock(CalendarV2IntentService.class);
+        LocalDate date = LocalDate.of(2026, 8, 4);
+        when(routing.useCalendarV2()).thenReturn(true);
+        when(calendarV2.listDate(date)).thenReturn(IntentResult.message(
+                IntentResult.Action.SCHEDULES_LISTED, "Calendar V2 行程"));
+        service.setCalendarV2(routing, calendarV2);
+
+        assertThat(service.overview(date).message()).contains("Calendar V2 行程");
+
+        verify(calendarV2).listDate(date);
+        verify(scheduleService, never()).listSchedules(null);
     }
 
     @Test

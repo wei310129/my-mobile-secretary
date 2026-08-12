@@ -8,6 +8,7 @@ import com.aproject.aidriven.mymobilesecretary.intent.application.DailyScheduleO
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentOptions;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
+import com.aproject.aidriven.mymobilesecretary.intent.application.SecretaryOverviewService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.FreeSlotService;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
 import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
@@ -61,6 +62,7 @@ public final class ScheduleQueryIntentHandler implements IntentHandler {
     private final Clock clock;
     private final CalendarV2RoutingService calendarV2Routing;
     private final CalendarV2IntentService calendarV2;
+    private final SecretaryOverviewService secretaryOverviewService;
 
     @Override
     public Set<IntentCommand.Type> supportedTypes() {
@@ -143,20 +145,9 @@ public final class ScheduleQueryIntentHandler implements IntentHandler {
         contextService.rememberTaskList(tasks);
         contextService.rememberScheduleList(schedules);
         if (tasks.isEmpty() && schedules.isEmpty()) {
-            return IntentResult.message(IntentResult.Action.AGENDA_LISTED,
-                    "指定範圍內沒有待辦或行程。 ");
+            return secretaryOverviewService.agenda(tasks, schedules, options.filter());
         }
-        String taskLines = tasks.stream().limit(10)
-                .map(task -> "待辦｜%s%s".formatted(task.getTitle(),
-                        task.getDueAt() == null ? "" : "｜" + format(task.getDueAt())))
-                .collect(java.util.stream.Collectors.joining("\n"));
-        String scheduleLines = schedules.stream().limit(10)
-                .map(item -> "行程｜%s｜%s".formatted(item.getTitle(), format(item.getStartAt())))
-                .collect(java.util.stream.Collectors.joining("\n"));
-        return IntentResult.message(IntentResult.Action.AGENDA_LISTED,
-                "行程與待辦:\n" + java.util.stream.Stream.of(scheduleLines, taskLines)
-                        .filter(value -> !value.isBlank())
-                        .collect(java.util.stream.Collectors.joining("\n")));
+        return secretaryOverviewService.agenda(tasks, schedules, options.filter());
     }
 
     private IntentResult askAvailability(IntentCommand command) {
@@ -171,14 +162,7 @@ public final class ScheduleQueryIntentHandler implements IntentHandler {
     private IntentResult agendaSummary(IntentOptions options) {
         List<Task> tasks = filterTasks(taskService.listOpenTasks(), options);
         List<ScheduleItem> schedules = filterSchedules(upcomingSchedules(), options);
-        long scheduledMinutes = schedules.stream()
-                .mapToLong(item -> Duration.between(
-                        item.getStartAt(), item.getEndAt()).toMinutes()).sum();
-        long dueTasks = tasks.stream().filter(task -> task.getDueAt() != null).count();
-        return IntentResult.message(IntentResult.Action.AGENDA_SUMMARY,
-                "共有 %d 個行程(約 %d 小時 %d 分鐘)、%d 件待辦,其中 %d 件有期限。".formatted(
-                        schedules.size(), scheduledMinutes / 60, scheduledMinutes % 60,
-                        tasks.size(), dueTasks));
+        return secretaryOverviewService.summary(tasks, schedules, options.filter());
     }
 
     private IntentResult nextSchedule() {
@@ -285,7 +269,7 @@ public final class ScheduleQueryIntentHandler implements IntentHandler {
                 + "\n\n可考慮以下時段：\nA.「%s」改到 %s–%s\nB.「%s」改到 %s–%s"
                         .formatted(first.getTitle(), format(firstEarlierStart), time(second.getStartAt()),
                                 second.getTitle(), format(first.getEndAt()), time(secondLaterEnd))
-                + "\n\n選定後我會再檢查其他衝突。";
+                + "\n\n選定後還需要再檢查其他衝突。";
     }
 
     private IntentResult busiestScheduleDay(IntentCommand command, IntentOptions options) {

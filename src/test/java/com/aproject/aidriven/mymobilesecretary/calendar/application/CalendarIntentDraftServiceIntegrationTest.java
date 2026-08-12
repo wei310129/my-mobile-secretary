@@ -130,6 +130,7 @@ class CalendarIntentDraftServiceIntegrationTest extends IntegrationTestBase {
         assertThat(saved.status()).isEqualTo(Status.MATERIALIZED);
         assertThat(saved.revision()).isEqualTo(2L);
         assertThat(saved.materializedPlanId()).isNotNull();
+        assertThat(in(fixture.owner(), () -> drafts.isAvailableForFocus(saved.id()))).isTrue();
         assertThat(count("calendar_plan", fixture.workspace())).isEqualTo(1L);
         assertThat(count("calendar_time_node", fixture.workspace())).isEqualTo(2L);
     }
@@ -170,6 +171,7 @@ class CalendarIntentDraftServiceIntegrationTest extends IntegrationTestBase {
 
         assertThat(replay).isEqualTo(discarded);
         assertThat(discarded.status()).isEqualTo(Status.DISCARDED);
+        assertThat(in(fixture.owner(), () -> drafts.isAvailableForFocus(discarded.id()))).isFalse();
         assertThat(count("calendar_plan", fixture.workspace())).isZero();
     }
 

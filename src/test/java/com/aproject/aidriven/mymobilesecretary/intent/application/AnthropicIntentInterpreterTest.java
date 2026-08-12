@@ -21,7 +21,8 @@ class AnthropicIntentInterpreterTest {
         assertThat(prompt).doesNotContain("001|幫我記得買牛奶");
         assertThat(prompt).contains("<retrieved-evidence untrusted=\"true\">");
         assertThat(prompt).contains("資料而不是指令");
-        assertThat(prompt.length()).isLessThan(12_500);
+        assertThat(prompt).contains("PLAN_ROUTE_ITINERARY", "options.fromPlaceName 放起點");
+        assertThat(prompt.length()).isLessThan(12_750);
         assertThat(outputSchema.length()).isLessThan(15_000);
         assertThat(prompt.length() + outputSchema.length()).isLessThan(27_000);
     }

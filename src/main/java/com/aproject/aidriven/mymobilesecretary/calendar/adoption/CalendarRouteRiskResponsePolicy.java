@@ -23,11 +23,7 @@ public class CalendarRouteRiskResponsePolicy {
             return riskMessage(risk.orElseThrow());
         }
         if (insufficient.isPresent()) {
-            PersonalRouteAssessment assessment = insufficient.orElseThrow();
-            return "從「%s」到「%s」目前還缺可靠路線資料，我不能判定是否趕得上。這次要用哪種交通方式？"
-                    .formatted(
-                            assessment.fromNodeKey(),
-                            assessment.toNodeKey());
+            return "這趟和相鄰行程之間還缺可靠路線資料，我不能判定是否趕得上。這次要用哪種交通方式？";
         }
         return "目前相鄰行程都接得上。";
     }
@@ -36,10 +32,8 @@ public class CalendarRouteRiskResponsePolicy {
         long gapMinutes = Math.max(0, risk.availableGap().toMinutes());
         long requiredMinutes = risk.requiredTravel().toMinutes();
         String preferred = preferredAdjustment(risk);
-        return "從「%s」到「%s」中間只有 %d 分鐘，目前路線需要約 %d 分鐘，會接不上。%s要照原安排保留嗎？"
+        return "這趟和相鄰行程之間只有 %d 分鐘，目前路線需要約 %d 分鐘，會接不上。%s要照原安排保留嗎？"
                 .formatted(
-                        risk.fromNodeKey(),
-                        risk.toNodeKey(),
                         gapMinutes,
                         requiredMinutes,
                         preferred);

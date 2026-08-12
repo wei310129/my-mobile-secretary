@@ -234,9 +234,9 @@
 234|你會在什麼時機提醒我簡報排練|ASK_SCHEDULE_REMINDER|title=簡報排練;未設定時明說並提供設定語句
 235|拿包裹有兩筆的話列編號給我選|ASK_TASK_PLACE|title=拿包裹;多筆回編號、期限、分類並保存上下文
 236|第一個拿包裹要去哪裡|ASK_TASK_PLACE|options.ordinal=1;ordinal優先於重複title
-237|幫我訂餐廳|BOOK_RESTAURANT|全欄位留空;系統回問料理/餐廳、時間、人數與特殊需求
+237|幫我訂餐廳|BOOK_RESTAURANT|全欄位留空;typed guidance draft 每輪只問料理/餐廳、時間、人數中的下一題;不送出訂位或付款
 238|週五晚上七點訂鼎泰豐,4大1小有寶寶|BOOK_RESTAURANT|placeName=鼎泰豐;startAt=週五19:00;options.quantity=5;options.description=有寶寶同行
-239|想找地方吃日式料理慶生|BOOK_RESTAURANT|title=日式料理;缺時間人數留空由系統回問;慶生線索會附祝賀語
+239|想找地方吃日式料理慶生|BOOK_RESTAURANT|title=日式料理;缺時間人數由 typed draft 每輪只問下一題;慶生線索會附祝賀語
 240|晚上七點訂巷口熱炒,6位有坐輪椅的長輩|BOOK_RESTAURANT|placeName=巷口熱炒;options.quantity=6;options.description=行動不便長輩;回覆要確認無障礙
 241|把下週一到週三的行程都刪掉|BULK_CANCEL_SCHEDULES|startAt=下週一00:00;endAt=下週三24:00;只刪非固定行程並回報固定行程未動
 242|刪掉所有行程|BULK_CANCEL_SCHEDULES|範圍留空;系統回問明確時間段,固定行程要逐一指名刪
@@ -440,3 +440,14 @@
 440|直接同步到我的 iPhone 行事曆|EXPLAIN_CALENDAR_EXTERNAL_SYNC|只說明一次性 ICS 與未來 iOS client/EventKit 邊界；不得宣稱已寫入裝置、背景刷新或雙向同步，所有業務 mutation=0
 441|幫我看看前後行程趕不趕得上|CHECK_FEASIBILITY|未指定兩個 legacy title 時檢查個人 Calendar projection 的相鄰定點行程；可靠 route 才能判定，risk revision 同版只通知一次
 442|9月10日下午三點到四點客戶會議，只留草稿，不要直接建立|CREATE_SCHEDULE|建立 actor/scope 綁定的 Calendar typed draft；確認前 Calendar plan/task mutation=0；修正用 expected revision；可信引用優先於其他平行草稿
+443|把目前行程改成每週重複|SET_SCHEDULE_RECURRING|必須先由 Java 唯一定位行程並驗證 recurrence；缺規則只問一個問題；確認前 mutation=0
+444|公司地址在哪裡|ASK_PLACE|custom place 優先，再查 system catalog；唯一結果直接回答，同一大型場站多點延後至最終規劃選定並說明，跨縣市同名只問一個縣市問題；所有非行程查詢 mutation=0
+445|記住公司在中正路辦公大樓|CREATE_PLACE|名稱與地址由 Java 驗證後建立；缺任一必要欄位只問下一個問題，不猜座標或內部 ID
+446|剛才的會議準時結束|RECORD_OUTCOME|只對唯一且已結束的行程記錄結果；目標或結果不明時單題澄清，確認前 mutation=0
+447|明天上午九點從公司到機場參加會議，幫我安排行程|PLAN_ROUTE_ITINERARY|title=參加會議;startAt/endAt依明講時間;placeName=機場;options.fromPlaceName=公司；Java驗證後先建立目的活動，再只問要不要規劃交通
+448|幫我規劃明天早上九點從捷運大坪林到桃園捷運「捷運台北車站」的行程|PLAN_ROUTE_ITINERARY|明確起訖加單一出發時間為STANDALONE_TRIP；provider evidence前Calendar mutation=0；成功後exactly-one route並輸出掃讀時間軸、TDX來源與可信端點Maps連結；精確system point不附custom-place disclaimer
+449|這趟和哪些既有行程有衝突|CHECK_FEASIBILITY|風險回覆先列verified route；每個相關既有行程至少公開名稱與時間，已知地點一併列出；只問一個調整或忽略問題；不得公開plan/node/UUID
+450|我開車去，停車時間也幫我留著|PLAN_ROUTE_ITINERARY|standalone driving使用actor typed停車緩衝；未設定只問一個分鐘問題；緩衝參與Java overlap與adjacency；外部活動本身不預設停車緩衝
+451|我搭計程車，幫我預留等車時間並提醒叫車|PLAN_ROUTE_ITINERARY|standalone ride-hail使用actor typed等車緩衝；路線建立後可單題確認等車開始前五分鐘提醒；replay exactly-once；外部活動本身不預設等車或提醒
+452|系統知道台北車站嗎|ASK_PLACE_CATALOG|placeName=台北車站；只查系統內建catalog，不建立自訂地點；多地區或多點只問一個typed問題
+453|採用系統內建的台北車站南一門|ADOPT_PLACE_CATALOG|placeName=台北車站南一門；只產生typed選點evidence，不建立自訂地點

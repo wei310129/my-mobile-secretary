@@ -55,7 +55,7 @@ public class ReminderTimingAnswerService {
                 .filter(java.util.Objects::nonNull).distinct().sorted().toList();
         if (times.isEmpty()) {
             return Optional.of(IntentResult.message(IntentResult.Action.SCHEDULE_REMINDER_INFO,
-                    "「%s」目前沒有設定提醒時間。\n\n請告訴我日期與時間，我再替你設定。"
+                    "「%s」目前沒有設定提醒時間。\n\n請告訴我日期與時間；資料補齊後即可設定。"
                             .formatted(selectedTitle)));
         }
 

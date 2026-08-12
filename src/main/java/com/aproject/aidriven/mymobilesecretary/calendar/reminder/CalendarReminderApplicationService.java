@@ -146,6 +146,141 @@ public class CalendarReminderApplicationService {
         return List.copyOf(created);
     }
 
+    public List<CalendarReminderRuleView> createAdaptiveDepartureReminders(
+            UUID planId,
+            String departureNodeKey,
+            Duration routeDuration,
+            CalendarReminderDeliveryMode deliveryMode,
+            NotificationChannel preferredChannel) {
+        WorkspaceContext context = tenantContext();
+        CalendarTimeNodeEntity node = nodes
+                .findWithLockByPlanIdAndNodeKeyAndWorkspaceIdAndCreatedByUserId(
+                        planId,
+                        departureNodeKey,
+                        context.workspaceId(),
+                        context.actorId())
+                .orElseThrow(() -> new NotFoundException(
+                        "CalendarTimeNode", departureNodeKey));
+        List<CalendarReminderRuleView> created = new java.util.ArrayList<>();
+        for (Duration offset : AdaptiveDepartureReminderPolicy.offsets(routeDuration)) {
+            created.add(createRelative(
+                    node,
+                    offset,
+                    CalendarReminderOwnerKind.PERSONAL,
+                    deliveryMode,
+                    null,
+                    null,
+                    preferredChannel,
+                    departureNodeKey));
+        }
+        return List.copyOf(created);
+    }
+
+    public CalendarReminderRuleView createPersonalRelativeForPlanNode(
+            UUID planId, String nodeKey, Duration offset) {
+        if (offset == null || offset.isPositive()) {
+            throw new BusinessException(
+                    "CALENDAR_REMINDER_AFTER_NODE_REQUIRES_TASK",
+                    "A reminder after a calendar node must be created as a Task");
+        }
+        WorkspaceContext context = tenantContext();
+        CalendarTimeNodeEntity node = nodes
+                .findWithLockByPlanIdAndNodeKeyAndWorkspaceIdAndCreatedByUserId(
+                        planId, nodeKey, context.workspaceId(), context.actorId())
+                .orElseThrow(() -> new NotFoundException("CalendarTimeNode", nodeKey));
+        return createRelative(
+                node,
+                offset,
+                CalendarReminderOwnerKind.PERSONAL,
+                CalendarReminderDeliveryMode.ONCE,
+                null,
+                null,
+                null,
+                nodeKey);
+    }
+
+    @Transactional(readOnly = true)
+    public List<CalendarReminderRuleView> activePersonalStartReminders(
+            UUID planId, String nodeKey) {
+        WorkspaceContext context = tenantContext();
+        CalendarTimeNodeEntity node = nodes
+                .findByPlanIdAndNodeKeyAndWorkspaceIdAndCreatedByUserId(
+                        planId, nodeKey, context.workspaceId(), context.actorId())
+                .orElseThrow(() -> new NotFoundException("CalendarTimeNode", nodeKey));
+        Instant nodeTime = requireResolvedTime(node);
+        return rules.findAllByNodeIdAndOwnerKindAndStatusAndWorkspaceIdAndCreatedByUserId(
+                        node.getId(),
+                        CalendarReminderOwnerKind.PERSONAL,
+                        CalendarReminderRuleEntity.Status.ACTIVE,
+                        context.workspaceId(),
+                        context.actorId())
+                .stream()
+                .map(rule -> new CalendarReminderRuleView(
+                        rule.getId(),
+                        CalendarReminderOwnerKind.PERSONAL,
+                        rule.getDeliveryMode(),
+                        rule.scheduleFrom(nodeTime)))
+                .sorted(java.util.Comparator.comparing(
+                        CalendarReminderRuleView::firstScheduledAt))
+                .toList();
+    }
+
+    @Transactional(readOnly = true)
+    public PersonalStartReminderState personalStartReminderState(
+            UUID planId, String nodeKey) {
+        WorkspaceContext context = tenantContext();
+        CalendarTimeNodeEntity node = nodes
+                .findByPlanIdAndNodeKeyAndWorkspaceIdAndCreatedByUserId(
+                        planId, nodeKey, context.workspaceId(), context.actorId())
+                .orElseThrow(() -> new NotFoundException("CalendarTimeNode", nodeKey));
+        List<CalendarReminderRuleEntity> active = rules
+                .findAllByNodeIdAndOwnerKindAndStatusAndWorkspaceIdAndCreatedByUserId(
+                        node.getId(),
+                        CalendarReminderOwnerKind.PERSONAL,
+                        CalendarReminderRuleEntity.Status.ACTIVE,
+                        context.workspaceId(),
+                        context.actorId());
+        if (active.stream().anyMatch(CalendarReminderRuleEntity::isRelative)) {
+            return PersonalStartReminderState.RELATIVE_ACTIVE;
+        }
+        return active.isEmpty()
+                ? PersonalStartReminderState.NONE
+                : PersonalStartReminderState.ABSOLUTE_ACTIVE;
+    }
+
+    public int cancelPersonalStartRemindersRequiringReview(
+            UUID planId, String nodeKey) {
+        WorkspaceContext context = tenantContext();
+        CalendarTimeNodeEntity node = nodes
+                .findWithLockByPlanIdAndNodeKeyAndWorkspaceIdAndCreatedByUserId(
+                        planId, nodeKey, context.workspaceId(), context.actorId())
+                .orElseThrow(() -> new NotFoundException("CalendarTimeNode", nodeKey));
+        List<CalendarReminderRuleEntity> reviewed = rules
+                .findAllByNodeIdAndOwnerKindAndStatusAndWorkspaceIdAndCreatedByUserId(
+                        node.getId(),
+                        CalendarReminderOwnerKind.PERSONAL,
+                        CalendarReminderRuleEntity.Status.REVIEW_REQUIRED,
+                        context.workspaceId(),
+                        context.actorId());
+        Instant now = Instant.now(clock);
+        for (CalendarReminderRuleEntity rule : reviewed) {
+            rule.cancel(now);
+            cancelPending(rule, context, now);
+            events.publishEvent(new CalendarReminderLifecycleEvent(
+                    rule.getId(),
+                    CalendarReminderLifecycleEvent.Action.CANCELED,
+                    "calendar node",
+                    now));
+        }
+        return reviewed.size();
+    }
+
+    public enum PersonalStartReminderState {
+        NONE,
+        RELATIVE_ACTIVE,
+        ABSOLUTE_ACTIVE
+    }
+
     private CalendarReminderRuleView createRelative(
             CalendarTimeNodeEntity node,
             Duration offset,
@@ -249,6 +384,29 @@ public class CalendarReminderApplicationService {
                 ackInterval,
                 maxAlerts,
                 preferredChannel);
+    }
+
+    public CalendarReminderRuleView createPersonalAbsoluteForPlanNode(
+            UUID planId, String nodeKey, Instant fireAt) {
+        WorkspaceContext context = tenantContext();
+        CalendarTimeNodeEntity node = nodes
+                .findWithLockByPlanIdAndNodeKeyAndWorkspaceIdAndCreatedByUserId(
+                        planId, nodeKey, context.workspaceId(), context.actorId())
+                .orElseThrow(() -> new NotFoundException("CalendarTimeNode", nodeKey));
+        if (fireAt == null || fireAt.isAfter(requireResolvedTime(node))) {
+            throw new BusinessException(
+                    "CALENDAR_REMINDER_AFTER_NODE_REQUIRES_TASK",
+                    "A reminder after a calendar node must be created as a Task");
+        }
+        return createAbsolute(
+                node,
+                fireAt,
+                CalendarReminderOwnerKind.PERSONAL,
+                CalendarReminderDeliveryMode.ONCE,
+                null,
+                null,
+                null,
+                nodeKey);
     }
 
     private CalendarReminderRuleView createAbsolute(

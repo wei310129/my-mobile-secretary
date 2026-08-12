@@ -11,15 +11,27 @@ public final class TrustedConversationReferenceContext {
 
     public static Scope openMaterializationProposal(UUID proposalId) {
         References current = REFERENCES.get();
-        return open(proposalId, current == null ? null : current.mediaId());
+        return open(proposalId, current == null ? null : current.mediaId(),
+                current == null ? null : current.draftId());
     }
 
     public static Scope open(UUID proposalId, Long mediaId) {
+        References current = REFERENCES.get();
+        return open(proposalId, mediaId, current == null ? null : current.draftId());
+    }
+
+    public static Scope openDraft(UUID draftId) {
+        References current = REFERENCES.get();
+        return open(current == null ? null : current.materializationProposalId(),
+                current == null ? null : current.mediaId(), draftId);
+    }
+
+    private static Scope open(UUID proposalId, Long mediaId, UUID draftId) {
         References previous = REFERENCES.get();
-        if (proposalId == null && mediaId == null) {
+        if (proposalId == null && mediaId == null && draftId == null) {
             REFERENCES.remove();
         } else {
-            REFERENCES.set(new References(proposalId, mediaId));
+            REFERENCES.set(new References(proposalId, mediaId, draftId));
         }
         return new Scope(previous);
     }
@@ -32,6 +44,11 @@ public final class TrustedConversationReferenceContext {
     public static Long currentMediaId() {
         References references = REFERENCES.get();
         return references == null ? null : references.mediaId();
+    }
+
+    public static UUID currentDraftId() {
+        References references = REFERENCES.get();
+        return references == null ? null : references.draftId();
     }
 
     public static final class Scope implements AutoCloseable {
@@ -56,5 +73,5 @@ public final class TrustedConversationReferenceContext {
         }
     }
 
-    private record References(UUID materializationProposalId, Long mediaId) {}
+    private record References(UUID materializationProposalId, Long mediaId, UUID draftId) {}
 }

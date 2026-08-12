@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application.handler;
 
+import com.aproject.aidriven.mymobilesecretary.intent.application.ClarificationStep;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationContextService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
@@ -137,10 +138,11 @@ public final class ActivityIntentHandler implements IntentHandler {
     }
 
     private static IntentResult genericCorrection() {
-        return IntentResult.message(IntentResult.Action.FEEDBACK_RECEIVED,
-                "收到，是我理解錯了。我會保留問題，後續依你指出的方向調整。"
-                        + "這則回饋不會建立或修改任何資料：不會建立待辦或行程，"
-                        + "也不會修改既有待辦或行程；目前不會說成已經修好。");
+        return IntentResult.feedbackNeedsInput(
+                "收到，是我理解錯了。這則回饋不會建立或修改待辦或行程，"
+                        + "目前也還沒有重新處理。",
+                ClarificationStep.blocking("feedback.activity-target", "repair.target",
+                        "您希望我先釐清剛才回答的哪一部分？", 10));
     }
 
     private static boolean containsAny(String text, String... markers) {

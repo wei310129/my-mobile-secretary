@@ -141,7 +141,7 @@ class ProjectModeIntentApiTest extends IntegrationTestBase {
         stub.nextCommand(command(IntentCommand.Type.OPEN_PROJECT_EDIT_MODE, "大阪親子旅遊"));
         say("打開大阪親子旅遊", "CLARIFICATION_NEEDED", "找到多個符合的專案");
         stub.nextCommand(command(IntentCommand.Type.OPEN_PROJECT_EDIT_MODE, "北海道賞雪"));
-        say("打開北海道賞雪", "CLARIFICATION_NEEDED", "找不到可使用");
+        say("另外打開北海道賞雪", "CLARIFICATION_NEEDED", "找不到可使用");
 
         assertThat(count("conversation_focus")).isZero();
         assertThat(count("focus_transition")).isZero();

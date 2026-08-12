@@ -29,13 +29,13 @@ class CalendarV2LegacyRoutingApiTest extends IntegrationTestBase {
                 IntentCommand.Type.CREATE_SCHEDULE,
                 "W11 關閉旗標會議",
                 null,
-                "2026-08-04T09:00:00+08:00",
-                "2026-08-04T10:00:00+08:00",
+                "2099-08-04T09:00:00+08:00",
+                "2099-08-04T10:00:00+08:00",
                 null, null, null, null, null, null, null, null));
 
         mockMvc.perform(post("/api/intent")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"text\":\"8月4日上午九點建立 W11 關閉旗標會議\"}"))
+                        .content("{\"text\":\"2099年8月4日上午九點建立 W11 關閉旗標會議\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.action").value("SCHEDULE_CONFIRMED"));
 
@@ -47,13 +47,13 @@ class CalendarV2LegacyRoutingApiTest extends IntegrationTestBase {
     void disabledCutoverCannotTurnStartOnlyEvidenceIntoGuessedLegacyInterval()
             throws Exception {
         String title = "W11 舊版單點阻擋";
-        String source = "8月5日上午十一點進行 W11 舊版單點阻擋";
+        String source = "2099年8月5日上午十一點進行 W11 舊版單點阻擋";
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE,
                 title,
                 null,
-                "2026-08-05T11:00:00+08:00",
-                "2026-08-05T12:00:00+08:00",
+                "2099-08-05T11:00:00+08:00",
+                "2099-08-05T12:00:00+08:00",
                 null, null, null, null, null, null, null, false, null, source));
 
         mockMvc.perform(post("/api/intent")

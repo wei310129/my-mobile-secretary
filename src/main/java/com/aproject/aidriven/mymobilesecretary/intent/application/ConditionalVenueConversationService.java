@@ -1,5 +1,8 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ScheduleClarificationDraftService;
+import com.aproject.aidriven.mymobilesecretary.conversation.domain.ScheduleClarificationCapability;
+import com.aproject.aidriven.mymobilesecretary.conversation.domain.ScheduleClarificationDraft;
 import com.aproject.aidriven.mymobilesecretary.schedule.decision.application.ConditionalVenueService;
 import com.aproject.aidriven.mymobilesecretary.schedule.decision.domain.ConditionalVenueDraft;
 import com.aproject.aidriven.mymobilesecretary.shared.time.ChineseTimePeriod;
@@ -39,10 +42,16 @@ public class ConditionalVenueConversationService {
 
     private final ConditionalVenueService venueService;
     private final Clock clock;
+    private ScheduleClarificationDraftService clarificationDrafts;
 
     public ConditionalVenueConversationService(ConditionalVenueService venueService, Clock clock) {
         this.venueService = venueService;
         this.clock = clock;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setClarificationDrafts(ScheduleClarificationDraftService clarificationDrafts) {
+        this.clarificationDrafts = clarificationDrafts;
     }
 
     public Optional<IntentResult> answer(
@@ -50,13 +59,13 @@ public class ConditionalVenueConversationService {
         String current = normalize(text);
         if (looksLikeMeta(current)) return Optional.empty();
 
-        Optional<ConditionalVenueDraft> pending = venueService.latestPending();
-        if (pending.isPresent()) {
-            Optional<String> selection = selectedPlace(current, pending.get());
+        Optional<ConditionalVenueDraft> pendingVenue = venueService.latestPending();
+        if (pendingVenue.isPresent()) {
+            Optional<String> selection = selectedPlace(current, pendingVenue.get());
             if (selection.isPresent()) {
                 beforeMutation.run();
                 ConditionalVenueService.Resolution resolution =
-                        venueService.resolve(pending.get(), selection.get());
+                        venueService.resolve(pendingVenue.get(), selection.get());
                 IntentResult decided = IntentResult.scheduleDecided(resolution.scheduleDecision());
                 String binding = resolution.scheduleDecision().item().getPlaceId() == null
                         ? "；已保存場地文字，但尚未綁定可導航的精確地點"
@@ -67,27 +76,55 @@ public class ConditionalVenueConversationService {
             }
         }
 
-        String compact = resumePending(current, previous);
-        if (!isConditionalVenueRequest(compact)) return Optional.empty();
+        Optional<ScheduleClarificationDraft> pendingIntake = clarificationDrafts == null
+                ? Optional.empty()
+                : clarificationDrafts.findCurrent(ScheduleClarificationCapability.CONDITIONAL_VENUE);
+        String compact = pendingIntake.isPresent() ? current : resumePending(current, previous);
+        boolean initialRequest = isConditionalVenueRequest(compact);
+        if (!initialRequest && pendingIntake.isEmpty()) return Optional.empty();
+        if (!initialRequest && clarificationDrafts != null
+                && !clarificationDrafts.mayConsumeContinuation(
+                        ScheduleClarificationCapability.CONDITIONAL_VENUE)) {
+            return Optional.empty();
+        }
         Parsed parsed = parse(compact);
-        List<String> missing = new ArrayList<>();
-        if (parsed.eventAt() == null) missing.add("活動日期與開始時間");
-        if (parsed.duration() == null) missing.add("活動持續多久");
-        if (parsed.decisionAt() == null) missing.add("何時提醒決定場地");
+        if (pendingIntake.isPresent()) {
+            parsed = applyPendingDecisionPeriod(current, parsed, pendingIntake.get());
+        }
+        if (pendingIntake.isPresent() && !hasTypedInput(parsed)) return Optional.empty();
+        if (clarificationDrafts != null) {
+            beforeMutation.run();
+            ScheduleClarificationDraft draft = clarificationDrafts.venue(
+                    parsed.eventAt(), durationMinutes(parsed.duration()), parsed.activityTitle(),
+                    parsed.primaryPlace(), parsed.fallbackPlace(), parsed.decisionAt(),
+                    parsed.decisionPeriodExplicit());
+            parsed = fromDraft(draft);
+        }
+        List<ClarificationStep> missing = new ArrayList<>();
+        if (parsed.eventAt() == null) missing.add(ClarificationStep.blocking(
+                "conditional-venue.event-at", "eventAt", "活動是哪一天幾點開始？", 10));
+        if (parsed.duration() == null) missing.add(ClarificationStep.blocking(
+                "conditional-venue.duration", "duration", "活動持續多久？", 20));
+        if (parsed.decisionAt() == null) missing.add(ClarificationStep.blocking(
+                "conditional-venue.decision-at", "decisionAt", "要在什麼時候提醒你決定場地？", 30));
         if (parsed.decisionAt() != null && !parsed.decisionPeriodExplicit()) {
-            missing.add("決定場地的六點是上午或下午");
+            missing.add(ClarificationStep.blocking(
+                    "conditional-venue.decision-period", "decisionPeriod",
+                    "決定場地的鐘點是上午還是下午？", 40));
         }
         if (parsed.primaryPlace() == null || parsed.fallbackPlace() == null) {
-            missing.add("原定與備用場地");
+            missing.add(ClarificationStep.blocking(
+                    "conditional-venue.places", "places", "原定場地和備用場地分別是哪裡？", 50));
         }
         if (parsed.activityTitle() == null) {
-            missing.add("活動名稱");
+            missing.add(ClarificationStep.blocking(
+                    "conditional-venue.title", "activityTitle", "這個活動要叫什麼名稱？", 60));
         }
         if (!missing.isEmpty()) {
             return Optional.of(IntentResult.clarificationNeeded(
                     "我已辨識這是二選一的條件場地，只會建立一個最終行程，不會先建兩份。"
-                            + "還需要確認：" + String.join("、", missing)
-                            + "。補齊後我會先存條件場地草稿與決策提醒，選定前不建立行程。"));
+                            + "補齊後可以先保存條件場地草稿與決策提醒，選定前不建立行程。",
+                    ClarificationStep.first(missing)));
         }
         if (!parsed.decisionAt().isBefore(parsed.eventAt())) {
             return Optional.of(IntentResult.clarificationNeeded(
@@ -98,6 +135,9 @@ public class ConditionalVenueConversationService {
         ConditionalVenueDraft draft = venueService.createDraft(
                 parsed.activityTitle(), parsed.eventAt(), parsed.duration(), parsed.primaryPlace(),
                 parsed.fallbackPlace(), parsed.decisionAt());
+        if (clarificationDrafts != null) {
+            clarificationDrafts.complete(ScheduleClarificationCapability.CONDITIONAL_VENUE);
+        }
         return Optional.of(IntentResult.message(IntentResult.Action.PLANNING_PREFERENCE_SET,
                 "已保存條件場地草稿 #%d，尚未建立行程：\n"
                         .formatted(draft.getId())
@@ -235,6 +275,38 @@ public class ConditionalVenueConversationService {
 
     private static boolean looksLikeMeta(String text) {
         return containsAny(text, "情境清單", "測試資料", "功能開發", "需求文件", "使用者說");
+    }
+
+    private static boolean hasTypedInput(Parsed parsed) {
+        return parsed.eventAt() != null || parsed.duration() != null || parsed.activityTitle() != null
+                || parsed.primaryPlace() != null || parsed.fallbackPlace() != null
+                || parsed.decisionAt() != null;
+    }
+
+    private static Integer durationMinutes(Duration duration) {
+        return duration == null ? null : Math.toIntExact(duration.toMinutes());
+    }
+
+    private static Parsed applyPendingDecisionPeriod(
+            String current, Parsed parsed, ScheduleClarificationDraft draft) {
+        String period = ChineseTimePeriod.containedPeriod(current);
+        if (period == null || draft.getDecisionAt() == null
+                || draft.isDecisionPeriodExplicit()) {
+            return parsed;
+        }
+        ZonedDateTime stored = draft.getDecisionAt().atZone(TAIPEI);
+        int resolvedHour = ChineseTimePeriod.toTwentyFourHour(period, stored.getHour());
+        Instant resolvedDecisionAt = stored.withHour(resolvedHour).toInstant();
+        return new Parsed(parsed.eventAt(), parsed.duration(), parsed.activityTitle(),
+                parsed.primaryPlace(), parsed.fallbackPlace(), resolvedDecisionAt, true);
+    }
+
+    private static Parsed fromDraft(ScheduleClarificationDraft draft) {
+        return new Parsed(draft.getEventAt(),
+                draft.getDurationMinutes() == null ? null
+                        : Duration.ofMinutes(draft.getDurationMinutes()),
+                draft.getTitle(), draft.getPrimaryPlace(), draft.getFallbackPlace(),
+                draft.getDecisionAt(), draft.isDecisionPeriodExplicit());
     }
 
     private static String normalize(String text) {

@@ -82,13 +82,18 @@ class IntentApiTest extends IntegrationTestBase {
     @Test
     void unknownIntentAsksForClarification() throws Exception {
         stub.nextCommand(new IntentCommand(
-                IntentCommand.Type.UNKNOWN, null, null, null, null, null, null, "請告訴我具體要做什麼",
+                IntentCommand.Type.UNKNOWN, null, null, null, null, null, null,
+                "router confidence below threshold; candidate CREATE_SCHEDULE score 0.31",
                 null, null, null, null, null));
 
         say("嗯...那個...",
                 jsonPath("$.action").value("CLARIFICATION_NEEDED"),
-                // 回覆一律經 IntentReplyFormatter 加上分類 emoji(回問 → ❓)
-                jsonPath("$.message").value("❓ 請告訴我具體要做什麼"));
+                jsonPath("$.message").value(org.hamcrest.Matchers.allOf(
+                        org.hamcrest.Matchers.containsString("無法判斷"),
+                        org.hamcrest.Matchers.containsString("不會建立或修改資料"),
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("router")),
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("CREATE_SCHEDULE")),
+                        org.hamcrest.Matchers.not(org.hamcrest.Matchers.containsString("0.31")))));
     }
 
     /** 任務閉環:「買到了」→ 唯一命中的未完成任務被劃掉(CONFIRMED)。 */
@@ -194,7 +199,8 @@ class IntentApiTest extends IntegrationTestBase {
                 null, null, null, null, null));
         say("建立地點:建地點測試蝦皮店到店",
                 jsonPath("$.action").value("CLARIFICATION_NEEDED"),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("經緯度")));
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("無法確認位置")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("提供地址嗎")));
     }
 
     /** 任務綁地點閉環:「拿包裹是要到X」→ 綁 geofence;「要去哪拿」→ 回地點。 */
@@ -216,7 +222,8 @@ class IntentApiTest extends IntegrationTestBase {
                 "綁定測試蝦皮店到店", null, null, null, null, null, null, null));
         say("拿綁定測試包裹是要到綁定測試蝦皮店到店",
                 jsonPath("$.action").value("TASK_PLACE_BOUND"),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("已綁定")));
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
+                        "綁定「綁定測試蝦皮店到店」的到達提醒條件")));
 
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.ASK_TASK_PLACE, "綁定測試包裹", null, null, null, null, null, null,
@@ -234,9 +241,11 @@ class IntentApiTest extends IntegrationTestBase {
                 null, null, null, null, null));
         say("你是不是重複建立任務了",
                 jsonPath("$.action").value("FEEDBACK_RECEIVED"),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("依你指出的方向調整")),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不會建立待辦或行程")),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("不會修改既有待辦或行程")));
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("收到")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("依你指出的方向調整"))),
+                jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("我會重新處理"))));
     }
 
     /** 自由文字提到「地點」是產品建議，不得接回先前任務的缺地點追問。 */
@@ -252,7 +261,9 @@ class IntentApiTest extends IntegrationTestBase {
                 "旅行功能要包含出發地點與交通工具", null, null, null, null, null));
         say("這是功能改善：旅行要詢問出發地點與交通工具",
                 jsonPath("$.action").value("FEEDBACK_RECEIVED"),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("依你指出的方向調整")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("收到")),
+                jsonPath("$.message").value(org.hamcrest.Matchers.not(
+                        org.hamcrest.Matchers.containsString("依你指出的方向調整"))),
                 jsonPath("$.message").value(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("要在哪裡做"))));
     }
@@ -601,7 +612,7 @@ class IntentApiTest extends IntegrationTestBase {
         say("這句話一定要被留下來",
                 jsonPath("$.action").value("AI_UNAVAILABLE"),
                 jsonPath("$.task").value(org.hamcrest.Matchers.nullValue()),
-                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("沒有建立或修改資料")));
+                jsonPath("$.message").value(org.hamcrest.Matchers.containsString("資料沒有異動")));
         org.assertj.core.api.Assertions.assertThat(taskService.listTasks()).hasSize(before);
     }
 
@@ -637,7 +648,7 @@ class IntentApiTest extends IntegrationTestBase {
         say("診斷測試今晚十點倒垃圾",
                 jsonPath("$.action").value("AI_UNAVAILABLE"),
                 jsonPath("$.message").value(org.hamcrest.Matchers.containsString(
-                        "請告訴我行程的開始時間")),
+                        "補上行程的開始時間後再傳一次")),
                 jsonPath("$.message").value(org.hamcrest.Matchers.not(
                         org.hamcrest.Matchers.containsString("startAt"))));
 

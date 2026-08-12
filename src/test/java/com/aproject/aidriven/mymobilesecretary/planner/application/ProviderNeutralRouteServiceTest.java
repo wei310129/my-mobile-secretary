@@ -16,6 +16,7 @@ import com.aproject.aidriven.mymobilesecretary.planner.application.RoutePlanning
 import com.aproject.aidriven.mymobilesecretary.planner.application.RoutePlanningRequest.TravelMode;
 import com.aproject.aidriven.mymobilesecretary.planner.application.RoutePlanningResult.Provider;
 import com.aproject.aidriven.mymobilesecretary.planner.application.RoutePlanningResult.ProviderFailure;
+import io.micrometer.core.instrument.simple.SimpleMeterRegistry;
 import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
@@ -32,10 +33,12 @@ class ProviderNeutralRouteServiceTest {
     private static final Instant TIME = Instant.parse("2026-08-02T02:00:00Z");
     @Mock private TdxRoutingClient tdxClient;
     @Mock private GoogleRoutesClient googleClient;
+    private final SimpleMeterRegistry metrics = new SimpleMeterRegistry();
 
     @Test
     void taiwanTransitUsesTdxBeforeGoogle() {
-        when(tdxClient.getTransitTravelTime(any())).thenReturn(Duration.ofMinutes(40));
+        when(tdxClient.getTransitRoute(any())).thenReturn(new TdxRoutingClient.TdxRoute(
+                Duration.ofMinutes(40), List.of()));
         ProviderNeutralRouteService service = service(true);
 
         var result = service.plan(request(TravelMode.TRANSIT, TimeRole.DEPART_AT));
@@ -50,8 +53,52 @@ class ProviderNeutralRouteServiceTest {
     }
 
     @Test
+    void googlePrimaryTransitUsesGoogleBeforeTdx() {
+        when(googleClient.usable()).thenReturn(true);
+        when(googleClient.computeRoutes(any())).thenReturn(List.of(
+                new GoogleRoute(Duration.ofMinutes(36), null, 21_000)));
+        ProviderNeutralRouteService service = service(
+                true, RouteProviderPolicyProperties.Strategy.GOOGLE_PRIMARY);
+
+        var result = service.plan(request(TravelMode.TRANSIT, TimeRole.DEPART_AT));
+
+        assertThat(result.options()).singleElement().satisfies(option -> {
+            assertThat(option.provider()).isEqualTo(Provider.GOOGLE);
+            assertThat(option.duration()).isEqualTo(Duration.ofMinutes(36));
+        });
+        verify(tdxClient, never()).getTransitRoute(any());
+        assertThat(metrics.get("mms.route.provider.latency")
+                        .tags(
+                                "provider", "google",
+                                "outcome", "success",
+                                "strategy", "google_primary")
+                        .timer()
+                        .count())
+                .isEqualTo(1L);
+    }
+
+    @Test
+    void googlePrimaryTdxConfirmReturnsGoogleAndChecksTdxEvidence() {
+        when(googleClient.usable()).thenReturn(true);
+        when(googleClient.computeRoutes(any())).thenReturn(List.of(
+                new GoogleRoute(Duration.ofMinutes(36), null, 21_000)));
+        when(tdxClient.getTransitRoute(any())).thenReturn(new TdxRoutingClient.TdxRoute(
+                Duration.ofMinutes(39), List.of()));
+        ProviderNeutralRouteService service = service(
+                true, RouteProviderPolicyProperties.Strategy.GOOGLE_PRIMARY_TDX_CONFIRM);
+
+        var result = service.plan(request(TravelMode.TRANSIT, TimeRole.DEPART_AT));
+
+        assertThat(result.options()).singleElement()
+                .extracting(RoutePlanningResult.RouteOption::provider)
+                .isEqualTo(Provider.GOOGLE);
+        assertThat(result.providerFailures()).isEmpty();
+        verify(tdxClient).getTransitRoute(any());
+    }
+
+    @Test
     void tdxFailureFallsBackToGoogleTransitAndKeepsFailureClass() {
-        when(tdxClient.getTransitTravelTime(any()))
+        when(tdxClient.getTransitRoute(any()))
                 .thenThrow(new IntegrationException("tdx unavailable"));
         when(googleClient.usable()).thenReturn(true);
         when(googleClient.computeRoutes(any())).thenReturn(List.of(
@@ -79,7 +126,25 @@ class ProviderNeutralRouteServiceTest {
             assertThat(option.departAt()).isEqualTo(TIME);
             assertThat(option.trafficAware()).isTrue();
         });
-        verify(tdxClient, never()).getTransitTravelTime(any());
+        verify(tdxClient, never()).getTransitRoute(any());
+    }
+
+    @Test
+    void rideHailKeepsPublicSemanticWhileDelegatingRoutingToGoogleDrive() {
+        when(googleClient.usable()).thenReturn(true);
+        when(googleClient.computeRoutes(any())).thenReturn(List.of(
+                new GoogleRoute(Duration.ofMinutes(18), Duration.ofMinutes(15), 12_000)));
+
+        var result = service(false).plan(request(TravelMode.RIDE_HAIL, TimeRole.DEPART_AT));
+
+        assertThat(result.options()).singleElement().satisfies(option -> {
+            assertThat(option.mode()).isEqualTo(TravelMode.RIDE_HAIL);
+            assertThat(option.trafficAware()).isTrue();
+        });
+        var captor = org.mockito.ArgumentCaptor.forClass(GoogleRouteQuery.class);
+        verify(googleClient).computeRoutes(captor.capture());
+        assertThat(captor.getValue().mode()).isEqualTo(GoogleRoutesClient.TravelMode.DRIVE);
+        verify(tdxClient, never()).getTransitRoute(any());
     }
 
     @Test
@@ -118,6 +183,11 @@ class ProviderNeutralRouteServiceTest {
     }
 
     private ProviderNeutralRouteService service(boolean tdxUsable) {
+        return service(tdxUsable, RouteProviderPolicyProperties.Strategy.TDX_PRIMARY);
+    }
+
+    private ProviderNeutralRouteService service(
+            boolean tdxUsable, RouteProviderPolicyProperties.Strategy strategy) {
         return new ProviderNeutralRouteService(
                 tdxClient,
                 new TdxProperties(
@@ -125,6 +195,8 @@ class ProviderNeutralRouteServiceTest {
                         tdxUsable ? "client" : "", tdxUsable ? "secret" : "",
                         Duration.ofSeconds(1)),
                 googleClient,
+                new RouteProviderPolicyProperties(strategy),
+                metrics,
                 Clock.fixed(TIME, ZoneOffset.UTC));
     }
 

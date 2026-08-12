@@ -69,6 +69,14 @@ public class ConversationContextService {
         exchangeTouches.remove();
     }
 
+    /** Keeps bounded referents across feedback, meta, and other non-consuming interjections. */
+    public void preserveReferencesForInterjection() {
+        ExchangeTouches current = touches();
+        current.taskList = true;
+        current.scheduleList = true;
+        current.objectAnnotationState = true;
+    }
+
     public void rememberExchange(String userText, IntentResult result) {
         ExchangeTouches touches = exchangeTouches.get();
         try {

@@ -35,6 +35,7 @@ public class CalendarQueryService {
              AND l.workspace_id = p.workspace_id
              AND l.created_by_user_id = p.created_by_user_id
             WHERE p.workspace_id = :workspaceId
+              AND p.status = 'ACTIVE'
               AND (
                     p.created_by_user_id = :actorId
                     OR EXISTS (
@@ -73,6 +74,7 @@ public class CalendarQueryService {
               )
               AND (:hasKeyword = false OR lower(p.title) LIKE :keywordPattern ESCAPE '\\')
               AND (:hasCategory = false OR lower(p.category) = :category)
+              AND (:hasExcludedPlan = false OR p.id <> :excludedPlanId)
             ORDER BY
               CASE
                 WHEN :hasKeyword = false THEN 0
@@ -95,8 +97,19 @@ public class CalendarQueryService {
     }
 
     public CalendarQueryPage query(CalendarQueryFilter filter) {
+        return query(filter, null);
+    }
+
+    public CalendarQueryPage queryExcludingPlan(
+            CalendarQueryFilter filter, java.util.UUID excludedPlanId) {
+        if (excludedPlanId == null) return query(filter);
+        return query(filter, excludedPlanId);
+    }
+
+    private CalendarQueryPage query(
+            CalendarQueryFilter filter, java.util.UUID excludedPlanId) {
         WorkspaceContext context = tenantContext();
-        Map<String, Object> parameters = parameters(filter, context);
+        Map<String, Object> parameters = parameters(filter, context, excludedPlanId);
         List<CalendarQueryItem> rows =
                 jdbc.query(QUERY, parameters, CalendarQueryService::mapItem);
         boolean hasMore = rows.size() > filter.limit();
@@ -107,7 +120,9 @@ public class CalendarQueryService {
     }
 
     private static Map<String, Object> parameters(
-            CalendarQueryFilter filter, WorkspaceContext context) {
+            CalendarQueryFilter filter,
+            WorkspaceContext context,
+            java.util.UUID excludedPlanId) {
         Map<String, Object> values = new HashMap<>();
         boolean hasRange = filter.fromInclusive() != null;
         boolean hasKeyword = filter.keyword() != null;
@@ -142,6 +157,12 @@ public class CalendarQueryService {
         values.put("zoneId", filter.zoneId().getId());
         values.put("fetchLimit", filter.limit() + 1);
         values.put("offset", filter.offset());
+        values.put("hasExcludedPlan", excludedPlanId != null);
+        values.put(
+                "excludedPlanId",
+                excludedPlanId == null
+                        ? new java.util.UUID(0L, 0L)
+                        : excludedPlanId);
         return values;
     }
 

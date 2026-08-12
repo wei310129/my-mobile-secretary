@@ -145,6 +145,36 @@ class ExternalIdentityServiceTest {
     }
 
     @Test
+    void outboundSubjectRequiresActiveMembershipInTheRequestedWorkspace() {
+        AppUser user = AppUser.create("Aiden", NOW);
+        UUID workspaceId = UUID.randomUUID();
+        ExternalIdentity identity = ExternalIdentity.create(
+                user.getId(), "LINE", "line-subject", workspaceId, NOW);
+        WorkspaceMember membership = WorkspaceMember.create(
+                workspaceId, user.getId(), WorkspaceRole.MEMBER, user.getId(), NOW);
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(memberRepository.findByWorkspaceIdAndUserId(workspaceId, user.getId()))
+                .thenReturn(Optional.of(membership));
+        when(identityRepository.findByUserIdAndProvider(user.getId(), "LINE"))
+                .thenReturn(Optional.of(identity));
+
+        assertThat(service.outboundSubject(workspaceId, user.getId(), "line"))
+                .contains("line-subject");
+    }
+
+    @Test
+    void outboundSubjectFailsClosedAfterWorkspaceAccessIsRevoked() {
+        AppUser user = AppUser.create("Aiden", NOW);
+        UUID workspaceId = UUID.randomUUID();
+        when(userRepository.findById(user.getId())).thenReturn(Optional.of(user));
+        when(memberRepository.findByWorkspaceIdAndUserId(workspaceId, user.getId()))
+                .thenReturn(Optional.empty());
+
+        assertThat(service.outboundSubject(workspaceId, user.getId(), "LINE")).isEmpty();
+        verify(identityRepository, never()).findByUserIdAndProvider(any(), any());
+    }
+
+    @Test
     void linkingRequiresWorkspaceMembershipBeforePersistingIdentity() {
         AppUser user = AppUser.create("Aiden", NOW);
         UUID workspaceId = UUID.randomUUID();

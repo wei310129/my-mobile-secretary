@@ -80,18 +80,19 @@ public class SchoolTransportConversationService {
             if (payload == null) payload = existingSchedulePayload(original);
             if (payload == null) return Optional.empty();
             beforeMutation.run();
-            draft = repository.save(SchoolTransportDraft.create(
-                    payload.child() + "上" + payload.course(), write(payload), now.plus(RETENTION), now));
+            draft = repository.save(createDraft(payload, now));
         } else {
             if (!looksLikeFollowUp(original)) return Optional.empty();
             payload = update(read(draft), original);
             beforeMutation.run();
-            draft.replace(payload.child() + "上" + payload.course(), write(payload), now);
+            replaceDraft(draft, payload, now);
         }
 
-        List<String> missing = missing(payload);
+        List<ClarificationStep> missing = missing(payload);
         if (!missing.isEmpty()) {
-            return Optional.of(IntentResult.clarificationNeeded(pendingMessage(payload, missing)));
+            ClarificationStep next = ClarificationStep.first(missing);
+            return Optional.of(IntentResult.clarificationNeeded(
+                    pendingMessage(payload), next));
         }
 
         if (existingFlow(payload)) {
@@ -264,9 +265,9 @@ public class SchoolTransportConversationService {
                 .anyMatch(item -> java.util.Objects.equals(item.getRecurrenceUntil(), until));
     }
 
-    private static String pendingMessage(Payload payload, List<String> missing) {
+    private static String pendingMessage(Payload payload) {
         String prefix = payload.sourceScheduleTitle() == null
-                ? "我已記住這筆固定接送：\n"
+                ? "這筆固定接送已保存：\n"
                 : "我指的是行程「%s」。以下是目前已知的接送設定：\n"
                         .formatted(payload.sourceScheduleTitle());
         StringBuilder message = new StringBuilder(prefix)
@@ -280,22 +281,26 @@ public class SchoolTransportConversationService {
                 .append("- 接回：").append(value(payload.pickupPerson()))
                 .append("｜").append(payload.end()).append("從")
                 .append(value(payload.pickupLocation())).append("接｜至").append(value(payload.pickupEnd()))
-                .append("\n\n還缺：");
-        for (int i = 0; i < missing.size(); i++) {
-            message.append("\n").append(i + 1).append(". ").append(missing.get(i));
-        }
-        message.append("\n\n可以一次回覆，例如：「9:30 從家裡出發，我在課程地點接，12:30 結束」。");
+                .append("\n\n您也可以在同一句補充其他已知接送資訊；資料齊全時會一併保存。");
         return message.toString();
     }
 
-    private static List<String> missing(Payload payload) {
-        List<String> missing = new ArrayList<>();
-        if (payload.dropPerson() == null) missing.add("誰負責送去？");
-        if (payload.dropOrigin() == null) missing.add("送去從哪裡出發？");
-        if (payload.dropStart() == null) missing.add("送去預計幾點出發？");
-        if (payload.pickupPerson() == null) missing.add("誰負責接回？");
-        if (payload.pickupLocation() == null) missing.add(payload.end() + " 從哪裡接？");
-        if (payload.pickupEnd() == null) missing.add("接回行程預計幾點結束？");
+    private static List<ClarificationStep> missing(Payload payload) {
+        List<ClarificationStep> missing = new ArrayList<>();
+        if (payload.dropPerson() == null) missing.add(ClarificationStep.blocking(
+                "school-transport.drop-person", "dropPerson", "誰負責送去？", 10));
+        if (payload.dropOrigin() == null) missing.add(ClarificationStep.blocking(
+                "school-transport.drop-origin", "dropOrigin", "送去從哪裡出發？", 20));
+        if (payload.dropStart() == null) missing.add(ClarificationStep.blocking(
+                "school-transport.drop-start", "dropStart", "送去預計幾點出發？", 30));
+        if (payload.pickupPerson() == null) missing.add(ClarificationStep.blocking(
+                "school-transport.pickup-person", "pickupPerson", "誰負責接回？", 40));
+        if (payload.pickupLocation() == null) missing.add(ClarificationStep.blocking(
+                "school-transport.pickup-location", "pickupLocation",
+                payload.end() + " 要從哪裡接？", 50));
+        if (payload.pickupEnd() == null) missing.add(ClarificationStep.blocking(
+                "school-transport.pickup-end", "pickupEnd",
+                "接回行程預計幾點結束？", 60));
         return List.copyOf(missing);
     }
 
@@ -443,7 +448,30 @@ public class SchoolTransportConversationService {
         catch (JsonProcessingException failure) { throw new IllegalStateException("cannot write school transport draft", failure); }
     }
 
+    private static SchoolTransportDraft createDraft(Payload payload, Instant now) {
+        return SchoolTransportDraft.createTyped(payload.child() + "上" + payload.course(),
+                payload.child(), payload.course(), payload.weekday(), payload.start(), payload.end(),
+                payload.until(), payload.dropPerson(), payload.dropOrigin(), payload.dropStart(),
+                payload.pickupPerson(), payload.pickupLocation(), payload.pickupEnd(),
+                payload.sourceScheduleId(), payload.sourceScheduleTitle(), now.plus(RETENTION), now);
+    }
+
+    private static void replaceDraft(SchoolTransportDraft draft, Payload payload, Instant now) {
+        draft.replaceTyped(payload.child() + "上" + payload.course(),
+                payload.child(), payload.course(), payload.weekday(), payload.start(), payload.end(),
+                payload.until(), payload.dropPerson(), payload.dropOrigin(), payload.dropStart(),
+                payload.pickupPerson(), payload.pickupLocation(), payload.pickupEnd(),
+                payload.sourceScheduleId(), payload.sourceScheduleTitle(), now);
+    }
+
     private Payload read(SchoolTransportDraft draft) {
+        if (draft.getPayload() == null) {
+            return new Payload(draft.getChildName(), draft.getCourseName(), draft.getWeekday(),
+                    draft.getCourseStart(), draft.getCourseEnd(), draft.getRecurrenceUntil(),
+                    draft.getDropPerson(), draft.getDropOrigin(), draft.getDropStart(),
+                    draft.getPickupPerson(), draft.getPickupLocation(), draft.getPickupEnd(),
+                    draft.getSourceScheduleId(), draft.getSourceScheduleTitle());
+        }
         try { return objectMapper.readValue(draft.getPayload(), Payload.class); }
         catch (JsonProcessingException failure) { throw new IllegalStateException("cannot read school transport draft", failure); }
     }

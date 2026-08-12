@@ -10,6 +10,7 @@ import com.aproject.aidriven.mymobilesecretary.account.security.idempotency.Idem
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.TrustedConversationReferenceContext;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineContentClient;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLog;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLogService;
@@ -17,9 +18,14 @@ import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessagingCli
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineProperties;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineSignatureVerifier;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineWebhookPayload;
+import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationDiagnostic;
+import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationErrorResponsePolicy;
+import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationLatencyPolicy;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationReferenceService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentService;
+import com.aproject.aidriven.mymobilesecretary.intent.application.PublicConversationReply;
+import com.aproject.aidriven.mymobilesecretary.intent.application.PublicConversationResponseService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ReceiptService;
 import com.aproject.aidriven.mymobilesecretary.media.application.MediaStorageService;
 import com.aproject.aidriven.mymobilesecretary.media.domain.StoredMedia;
@@ -62,6 +68,9 @@ public class LineWebhookController {
     private final SecurityAuditService securityAuditService;
     private final ObjectMapper objectMapper;
     private final ConversationReferenceService conversationReferenceService;
+    private final PublicConversationResponseService publicResponseService;
+    private final ConversationErrorResponsePolicy errorResponsePolicy;
+    private ConversationLatencyPolicy latencyPolicy;
 
     public LineWebhookController(LineSignatureVerifier signatureVerifier,
                                  LineMessagingClient messagingClient,
@@ -75,7 +84,9 @@ public class LineWebhookController {
                                  IdempotencyService idempotencyService,
                                  SecurityAuditService securityAuditService,
                                  ObjectMapper objectMapper,
-                                 ConversationReferenceService conversationReferenceService) {
+                                 ConversationReferenceService conversationReferenceService,
+                                 PublicConversationResponseService publicResponseService,
+                                 ConversationErrorResponsePolicy errorResponsePolicy) {
         this.signatureVerifier = signatureVerifier;
         this.messagingClient = messagingClient;
         this.contentClient = contentClient;
@@ -89,6 +100,13 @@ public class LineWebhookController {
         this.securityAuditService = securityAuditService;
         this.objectMapper = objectMapper;
         this.conversationReferenceService = conversationReferenceService;
+        this.publicResponseService = publicResponseService;
+        this.errorResponsePolicy = errorResponsePolicy;
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setLatencyPolicy(ConversationLatencyPolicy latencyPolicy) {
+        this.latencyPolicy = latencyPolicy;
     }
 
     @PostMapping("/webhook")
@@ -208,8 +226,14 @@ public class LineWebhookController {
                     RequestCorrelationContext.currentId()));
             log.warn("LINE event processing failed [event={}, cause={}]",
                     SensitiveValueFingerprint.of(eventKey), failure.getClass().getSimpleName());
-            messagingClient.reply(event.replyToken(),
-                    "⚠️ 這次訊息暫時無法處理。\n\n🔄 請稍後再試一次。");
+            ConversationDiagnostic diagnostic = new ConversationDiagnostic(
+                    executionBoundary.started()
+                            ? ConversationDiagnostic.Code.PROCESSING_RESULT_UNKNOWN
+                            : ConversationDiagnostic.Code.PRE_EXECUTION_FAILED,
+                    failureCode);
+            PublicConversationReply publicReply = publicResponseService.finalizeReply(
+                    errorResponsePolicy.publicReply(diagnostic));
+            messagingClient.reply(event.replyToken(), publicReply.message());
             return;
         }
 
@@ -217,22 +241,38 @@ public class LineWebhookController {
         if (eventKey != null) {
             completeReservationSafely(workspaceId, actorUserId, eventKey, reply);
         }
-        java.util.Optional<String> sent = messagingClient.reply(event.replyToken(), reply.message());
-        messageLogService.recordSafely(LineMessageLog.Direction.OUT, "TEXT", reply.message(),
+        java.util.Optional<String> sent = messagingClient.reply(
+                event.replyToken(), reply.reply().message());
+        messageLogService.recordSafely(LineMessageLog.Direction.OUT, "TEXT", reply.reply().message(),
                 sent == null ? null : sent.orElse(null), null, reply.referencePayload());
     }
 
     private PreparedReply prepareTextReply(LineWebhookPayload.Event event,
                                            ExecutionBoundary executionBoundary) {
         String original = event.message().text();
+        if (latencyPolicy != null && latencyPolicy.shouldShowLoading(original)
+                && isOneToOne(event.source())) {
+            messagingClient.startLoading(event.source().userId());
+        }
         String contextualized = messageLogService.contextualize(
                 original, event.message().quotedMessageId());
         messageLogService.recordSafely(LineMessageLog.Direction.IN, "TEXT", original,
                 event.message().id(), event.message().quotedMessageId());
-        IntentResult result = intentService.handleWithContext(
-                original, contextualized, "LINE", executionBoundary::beforeMutation);
-        return new PreparedReply(result.action().name(), result.responseEnvelope().message(),
-                conversationReferenceService.capture(result));
+        try (TrustedConversationReferenceContext.Scope ignored =
+                TrustedConversationReferenceContext.openDraft(messageLogService
+                        .quotedDraftReference(event.message().quotedMessageId()).orElse(null))) {
+            IntentResult result = intentService.handleWithContext(
+                    original, contextualized, "LINE", executionBoundary::beforeMutation);
+            return new PreparedReply(result.action().name(),
+                    publicResponseService.finalizeReply(result),
+                    conversationReferenceService.capture(result));
+        }
+    }
+
+    private static boolean isOneToOne(LineWebhookPayload.Source source) {
+        return source != null && source.userId() != null && !source.userId().isBlank()
+                && (source.groupId() == null || source.groupId().isBlank())
+                && (source.roomId() == null || source.roomId().isBlank());
     }
 
     private PreparedReply prepareImageReply(LineWebhookPayload.Event event,
@@ -248,9 +288,12 @@ public class LineWebhookController {
                 content.bytes(), content.mimeType());
         messageLogService.enrichImageContextSafely(event.message().id(), result.message());
         mediaStorageService.label(original.getId(), result.action());
-        return new PreparedReply(result.action(), result.message()
-                + "\n\n🗂️ 原始圖檔已私密保存（檔案編號 #%d），可在 App 的檔案區查看。"
-                        .formatted(original.getId()), null);
+        PublicConversationReply publicReply = publicResponseService.finalizeMessage(
+                result.message() + "\n\n🗂️ 原始圖檔已私密保存，可在 App 的檔案區查看。",
+                PublicConversationReply.TerminalState.SUCCEEDED,
+                com.aproject.aidriven.mymobilesecretary.intent.application.PublicReplyEvidence
+                        .MUTATION_COMMITTED);
+        return new PreparedReply(result.action(), publicReply, null);
     }
 
     private void handleExistingDelivery(LineWebhookPayload.Event event,
@@ -258,8 +301,14 @@ public class LineWebhookController {
                                         UUID workspaceId,
                                         IdempotencyService.BeginResult reservation) {
         switch (reservation.state()) {
-            case REPLAY_AVAILABLE -> messagingClient.reply(
-                    event.replyToken(), reservation.responseBody());
+            case REPLAY_AVAILABLE -> {
+                PublicConversationReply replay = publicResponseService.finalizeMessage(
+                        reservation.responseBody(),
+                        publicResponseService.terminalState(reservation.responseAction()),
+                        com.aproject.aidriven.mymobilesecretary.intent.application.PublicReplyEvidence
+                                .REPLAY_VERIFIED);
+                messagingClient.reply(event.replyToken(), replay.message());
+            }
             case CONFLICT -> securityAuditService.recordSafely(new SecurityAuditDraft(
                     workspaceId, actorUserId, "LINE_IDEMPOTENCY_CONFLICT", "WEBHOOK_EVENT",
                     SensitiveValueFingerprint.of(event.idempotencyKey()),
@@ -288,8 +337,11 @@ public class LineWebhookController {
                 workspaceId, actorUserId, "LINE_CONVERSATION_ROLE", "WORKSPACE",
                 workspaceId.toString(), SecurityAuditEvent.Outcome.DENIED,
                 "WORKSPACE_ROLE_REQUIRED", "LINE", RequestCorrelationContext.currentId()));
-        messagingClient.reply(event.replyToken(),
-                "🔒 這個工作區角色目前只能檢視資料，尚不能透過對話執行操作。");
+        PublicConversationReply denial = publicResponseService.finalizeReply(
+                errorResponsePolicy.publicReply(new ConversationDiagnostic(
+                        ConversationDiagnostic.Code.WORKSPACE_ROLE_DENIED,
+                        "WORKSPACE_ROLE_REQUIRED")));
+        messagingClient.reply(event.replyToken(), denial.message());
     }
 
     private void failReservationSafely(UUID workspaceId, UUID actorUserId, String eventKey) {
@@ -317,7 +369,7 @@ public class LineWebhookController {
                                            String eventKey, PreparedReply reply) {
         try {
             idempotencyService.complete(workspaceId, actorUserId, "LINE", eventKey,
-                    reply.action(), reply.message());
+                    reply.action(), reply.reply().message());
         } catch (RuntimeException persistenceFailure) {
             securityAuditService.recordSafely(new SecurityAuditDraft(
                     workspaceId, actorUserId, "LINE_IDEMPOTENCY_FINALIZATION", "WEBHOOK_EVENT",
@@ -372,6 +424,7 @@ public class LineWebhookController {
         }
     }
 
-    private record PreparedReply(String action, String message, String referencePayload) {
+    private record PreparedReply(
+            String action, PublicConversationReply reply, String referencePayload) {
     }
 }

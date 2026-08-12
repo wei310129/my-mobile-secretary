@@ -1,5 +1,6 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationPendingQuestionService;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
@@ -18,6 +19,7 @@ public class ConversationReferenceService {
     private final ScheduleService schedules;
     private final TaskService tasks;
     private final PlaceService places;
+    private ConversationPendingQuestionService pendingQuestions;
 
     public ConversationReferenceService(
             ConversationContextService context, ScheduleService schedules, TaskService tasks,
@@ -28,14 +30,35 @@ public class ConversationReferenceService {
         this.places = places;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setPendingQuestions(ConversationPendingQuestionService pendingQuestions) {
+        this.pendingQuestions = pendingQuestions;
+    }
+
     /** Stable wire format: KIND:id:displayOrdinal. */
     public String capture(IntentResult result) {
         try {
+            String draft = capturePendingDraft(result);
+            if (draft != null) return draft;
             return captureResolved(result);
         } catch (RuntimeException ignored) {
             // Reference metadata is auxiliary; it must never turn a successful reply into a failure.
             return null;
         }
+    }
+
+    private String capturePendingDraft(IntentResult result) {
+        if (pendingQuestions == null || result == null || result.nextQuestion() == null) return null;
+        String code = result.nextQuestion().code();
+        if (!(code.startsWith("conditional-recurrence.")
+                || code.startsWith("conditional-venue.")
+                || code.startsWith("monthly-ordinal."))) {
+            return null;
+        }
+        return pendingQuestions.current()
+                .filter(question -> question.getQuestionCode().equals(code))
+                .map(question -> "DRAFT:" + question.getWorkflowId() + ":1")
+                .orElse(null);
     }
 
     private String captureResolved(IntentResult result) {

@@ -23,13 +23,13 @@ final class FailureExplanationService {
         String message;
         if (previous != null && previous.contains("開始時間")) {
             message = "剛才沒有完成，因為還缺行程的開始時間；資料沒有異動。"
-                    + "告訴我何時開始，我就能接著處理。";
+                    + "您補上開始時間後，可以再送出這項要求重新驗證。";
         } else if (previous != null && previous.contains("結束時間")) {
             message = "剛才沒有完成，因為還缺行程的結束時間或預計時長；資料沒有異動。"
-                    + "補上其中一項，我就能接著處理。";
+                    + "您補上其中一項後，可以再送出這項要求重新驗證。";
         } else {
             message = "剛才沒有完成，資料也沒有異動。請把要處理的項目、日期與時間一起告訴我，"
-                    + "我會接著處理。";
+                    + "資料補齊後即可重新驗證這項要求。";
         }
         return Optional.of(IntentResult.message(IntentResult.Action.FAILURE_EXPLAINED,
                 message));

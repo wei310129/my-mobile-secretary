@@ -20,7 +20,13 @@ import org.springframework.web.client.RestClient;
 public class GoogleRoutesClient {
 
     private static final String FIELD_MASK =
-            "routes.duration,routes.distanceMeters,routes.staticDuration";
+            "routes.duration,routes.distanceMeters,routes.staticDuration,"
+                    + "routes.legs.steps.travelMode,"
+                    + "routes.legs.steps.transitDetails.headsign,"
+                    + "routes.legs.steps.transitDetails.stopDetails.departureStop.name,"
+                    + "routes.legs.steps.transitDetails.stopDetails.arrivalStop.name,"
+                    + "routes.legs.steps.transitDetails.transitLine.name,"
+                    + "routes.legs.steps.transitDetails.transitLine.nameShort";
 
     private final RestClient restClient;
     private final GoogleRoutesProperties properties;
@@ -72,9 +78,46 @@ public class GoogleRoutesClient {
             if (distanceMeters < 0) {
                 throw new IntegrationException("Google Routes response missing distance");
             }
-            result.add(new GoogleRoute(duration, staticDuration, distanceMeters));
+            result.add(new GoogleRoute(
+                    duration, staticDuration, distanceMeters, transitLegs(route)));
         }
         return List.copyOf(result);
+    }
+
+    private static List<GoogleTransitLeg> transitLegs(JsonNode route) {
+        List<GoogleTransitLeg> legs = new ArrayList<>();
+        JsonNode routeLegs = route.path("legs");
+        if (!routeLegs.isArray()) return List.of();
+        for (JsonNode leg : routeLegs) {
+            JsonNode steps = leg.path("steps");
+            if (!steps.isArray()) continue;
+            for (JsonNode step : steps) {
+                if (!"TRANSIT".equalsIgnoreCase(step.path("travelMode").asText())) continue;
+                JsonNode details = step.path("transitDetails");
+                JsonNode line = details.path("transitLine");
+                String lineName = firstText(line.path("nameShort"), line.path("name"));
+                legs.add(new GoogleTransitLeg(
+                        lineName,
+                        safeText(details.path("headsign")),
+                        safeText(details.path("stopDetails").path("departureStop").path("name")),
+                        safeText(details.path("stopDetails").path("arrivalStop").path("name"))));
+            }
+        }
+        return List.copyOf(legs);
+    }
+
+    private static String firstText(JsonNode... values) {
+        for (JsonNode value : values) {
+            String text = safeText(value);
+            if (text != null) return text;
+        }
+        return null;
+    }
+
+    private static String safeText(JsonNode value) {
+        if (value == null || !value.isTextual() || value.asText().isBlank()) return null;
+        String text = value.asText().strip().replaceAll("[\\p{Cntrl}]", "");
+        return text.length() <= 120 ? text : text.substring(0, 120);
     }
 
     private static Map<String, Object> requestBody(GoogleRouteQuery query) {
@@ -146,6 +189,20 @@ public class GoogleRoutesClient {
     }
 
     public record GoogleRoute(
-            Duration duration, Duration staticDuration, long distanceMeters) {
+            Duration duration,
+            Duration staticDuration,
+            long distanceMeters,
+            List<GoogleTransitLeg> transitLegs) {
+
+        public GoogleRoute(Duration duration, Duration staticDuration, long distanceMeters) {
+            this(duration, staticDuration, distanceMeters, List.of());
+        }
+
+        public GoogleRoute {
+            transitLegs = List.copyOf(transitLegs == null ? List.of() : transitLegs);
+        }
     }
+
+    public record GoogleTransitLeg(
+            String lineName, String headsign, String departureStop, String arrivalStop) {}
 }

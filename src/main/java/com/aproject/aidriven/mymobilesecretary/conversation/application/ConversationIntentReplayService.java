@@ -5,6 +5,7 @@ import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContex
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.conversation.domain.FocusTransitionType;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
+import com.aproject.aidriven.mymobilesecretary.intent.application.PublicConversationReply;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.Objects;
@@ -66,10 +67,13 @@ public final class ConversationIntentReplayService {
         try {
             StoredReply stored = objectMapper.readValue(
                     reservation.responseBody(), StoredReply.class);
-            if (stored.version() != 1 || stored.message() == null) {
+            if ((stored.version() != 1 && stored.version() != 2) || stored.message() == null) {
                 return safe("先前的處理已完成，但回覆資料無法驗證；為避免重複修改，這次沒有再次執行。");
             }
             IntentResult result = IntentResult.message(action, stored.message());
+            if (stored.version() == 2 && stored.question() != null) {
+                result = result.withNextQuestion(stored.question().toQuestion());
+            }
             return stored.notice() == null ? result : result.withFocusNotice(stored.notice().toNotice());
         } catch (JsonProcessingException invalid) {
             return safe("先前的處理已完成，但回覆資料無法驗證；為避免重複修改，這次沒有再次執行。");
@@ -188,8 +192,11 @@ public final class ConversationIntentReplayService {
                 StoredNotice storedNotice = notice == null ? null : new StoredNotice(
                         notice.type(), notice.previousSafeLabel(), notice.currentSafeLabel(),
                         notice.activitySafeLabel());
+                var question = result.nextQuestion();
+                StoredQuestion storedQuestion = question == null ? null
+                        : new StoredQuestion(question.code(), question.prompt());
                 return objectMapper.writeValueAsString(
-                        new StoredReply(1, result.message(), storedNotice));
+                        new StoredReply(2, result.message(), storedNotice, storedQuestion));
             } catch (JsonProcessingException invalid) {
                 throw new IllegalStateException("Conversation replay response could not be encoded",
                         invalid);
@@ -197,7 +204,15 @@ public final class ConversationIntentReplayService {
         }
     }
 
-    private record StoredReply(int version, String message, StoredNotice notice) {}
+    private record StoredReply(
+            int version, String message, StoredNotice notice, StoredQuestion question) {}
+
+    private record StoredQuestion(String code, String prompt) {
+
+        PublicConversationReply.NextQuestion toQuestion() {
+            return new PublicConversationReply.NextQuestion(code, prompt);
+        }
+    }
 
     private record StoredNotice(FocusTransitionType type, String previousSafeLabel,
                                 String currentSafeLabel, String activitySafeLabel) {

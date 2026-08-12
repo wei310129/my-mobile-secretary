@@ -21,6 +21,7 @@ import com.aproject.aidriven.mymobilesecretary.conversation.persistence.FocusTra
 import java.time.Clock;
 import java.time.Instant;
 import java.time.ZoneOffset;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
@@ -98,5 +99,50 @@ class ConversationFocusServiceTest {
                 com.aproject.aidriven.mymobilesecretary.conversation.domain.ConversationFocusStatus.SUSPENDED);
         assertThat(saved.getValue().getType()).isEqualTo(FocusTransitionType.SWITCH);
         assertThat(saved.getValue().getFromFocusId()).isEqualTo(previous.getId());
+    }
+
+    @Test
+    void closeAllClosesActiveAndSuspendedFocusWithoutDeletingTheirResources() {
+        ConversationScopeResolver resolver = mock(ConversationScopeResolver.class);
+        ConversationFocusHeadRepository heads = mock(ConversationFocusHeadRepository.class);
+        ConversationFocusRepository focuses = mock(ConversationFocusRepository.class);
+        FocusTransitionRepository transitions = mock(FocusTransitionRepository.class);
+        Instant now = Instant.parse("2026-07-21T00:00:00Z");
+        ConversationFocusService service = new ConversationFocusService(
+                resolver, heads, focuses, transitions, Clock.fixed(now, ZoneOffset.UTC));
+        WorkspaceContext context = new WorkspaceContext(
+                UUID.randomUUID(), UUID.randomUUID(), WorkspaceChannel.TEST, "test", "scope-a");
+        ConversationScopeKey scope = new ConversationScopeKey("a".repeat(64), 1);
+        ConversationFocus active = ConversationFocus.workflow(
+                scope, WorkspaceChannel.TEST, ConversationFocusRootKind.WORKFLOW,
+                "CALENDAR_DRAFT", UUID.randomUUID(), "目前路線", now);
+        ConversationFocus suspended = ConversationFocus.workflow(
+                scope, WorkspaceChannel.TEST, ConversationFocusRootKind.WORKFLOW,
+                "PROJECT", UUID.randomUUID(), "先前專案", now);
+        suspended.suspend(now);
+        String inboundHmac = "b".repeat(64);
+        when(resolver.current(context)).thenReturn(scope);
+        when(transitions.findByWorkspaceIdAndCreatedByUserIdAndChannelAndConversationScopeDigestAndInboundIdempotencyHmac(
+                        context.workspaceId(), context.actorId(), context.channel(), scope.digest(), inboundHmac))
+                .thenReturn(Optional.empty());
+        when(focuses.findAllByWorkspaceIdAndCreatedByUserIdAndChannelAndConversationScopeDigestAndStatusInOrderByCreatedAtAsc(
+                        context.workspaceId(), context.actorId(), context.channel(), scope.digest(),
+                        List.of(
+                                com.aproject.aidriven.mymobilesecretary.conversation.domain.ConversationFocusStatus.ACTIVE,
+                                com.aproject.aidriven.mymobilesecretary.conversation.domain.ConversationFocusStatus.SUSPENDED)))
+                .thenReturn(List.of(active, suspended));
+        when(heads.findWithLockByWorkspaceIdAndCreatedByUserIdAndChannelAndConversationScopeDigest(
+                        context.workspaceId(), context.actorId(), context.channel(), scope.digest()))
+                .thenReturn(Optional.of(ConversationFocusHead.create(scope, context.channel(), now)));
+
+        try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(context)) {
+            assertThat(service.closeAll(inboundHmac)).isEqualTo(2);
+        }
+
+        assertThat(active.getStatus())
+                .isEqualTo(com.aproject.aidriven.mymobilesecretary.conversation.domain.ConversationFocusStatus.CLOSED);
+        assertThat(suspended.getStatus())
+                .isEqualTo(com.aproject.aidriven.mymobilesecretary.conversation.domain.ConversationFocusStatus.CLOSED);
+        verify(focuses).saveAll(List.of(active, suspended));
     }
 }

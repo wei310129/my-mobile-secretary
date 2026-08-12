@@ -15,6 +15,7 @@ import com.aproject.aidriven.mymobilesecretary.conversation.persistence.Conversa
 import com.aproject.aidriven.mymobilesecretary.conversation.persistence.FocusTransitionRepository;
 import java.time.Clock;
 import java.time.Instant;
+import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -93,6 +94,28 @@ public class ConversationFocusService {
 
     public void close(ConversationFocusCloseReason reason, String inboundHmac) {
         mutate(FocusTransitionType.CLOSE, inboundHmac, reason.name(), null);
+    }
+
+    /** Closes every conversational focus in this actor/scope without deleting domain resources. */
+    public int closeAll(String inboundHmac) {
+        WorkspaceContext context = WorkspaceContextHolder.requireContext();
+        ConversationScopeKey scope = scope(context);
+        if (existing(context, scope, inboundHmac) != null) return 0;
+        List<ConversationFocus> open = focuses
+                .findAllByWorkspaceIdAndCreatedByUserIdAndChannelAndConversationScopeDigestAndStatusInOrderByCreatedAtAsc(
+                        context.workspaceId(), context.actorId(), context.channel(), scope.digest(),
+                        List.of(ConversationFocusStatus.ACTIVE, ConversationFocusStatus.SUSPENDED));
+        if (open.isEmpty()) return 0;
+        ConversationFocus anchor = open.stream()
+                .filter(focus -> focus.getStatus() == ConversationFocusStatus.ACTIVE)
+                .findFirst()
+                .orElse(open.getFirst());
+        Instant now = Instant.now(clock);
+        open.forEach(focus -> focus.close(ConversationFocusCloseReason.USER_CLOSED, now));
+        focuses.saveAll(open);
+        record(context, scope, head(context, scope), FocusTransitionType.CLOSE,
+                anchor.getId(), anchor.getId(), inboundHmac, now);
+        return open.size();
     }
 
     public void invalidate(String inboundHmac) {

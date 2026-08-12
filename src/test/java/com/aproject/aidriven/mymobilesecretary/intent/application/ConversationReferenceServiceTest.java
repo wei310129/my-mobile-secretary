@@ -4,6 +4,8 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ConversationPendingQuestionService;
+import com.aproject.aidriven.mymobilesecretary.conversation.domain.ConversationPendingQuestion;
 import com.aproject.aidriven.mymobilesecretary.geo.application.PlaceService;
 import com.aproject.aidriven.mymobilesecretary.geo.domain.Place;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
@@ -11,9 +13,32 @@ import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.junit.jupiter.api.Test;
 
 class ConversationReferenceServiceTest {
+
+    @Test
+    void capturesPendingDraftAsInternalTypedReference() {
+        ConversationContextService context = mock(ConversationContextService.class);
+        ConversationReferenceService service = new ConversationReferenceService(
+                context, mock(ScheduleService.class), mock(TaskService.class),
+                mock(PlaceService.class));
+        ConversationPendingQuestionService pending = mock(ConversationPendingQuestionService.class);
+        ConversationPendingQuestion question = mock(ConversationPendingQuestion.class);
+        UUID workflowId = UUID.fromString("30000000-0000-0000-0000-000000000003");
+        when(question.getQuestionCode()).thenReturn("conditional-recurrence.duration");
+        when(question.getWorkflowId()).thenReturn(workflowId);
+        when(pending.current()).thenReturn(Optional.of(question));
+        service.setPendingQuestions(pending);
+
+        String payload = service.capture(IntentResult.clarificationNeeded(
+                ClarificationStep.blocking("conditional-recurrence.duration", "duration",
+                        "每次持續多久？", 10)));
+
+        assertThat(payload).isEqualTo("DRAFT:" + workflowId + ":1");
+    }
 
     @Test
     void capturesOnlyRenderedSchedulesInDisplayOrder() {

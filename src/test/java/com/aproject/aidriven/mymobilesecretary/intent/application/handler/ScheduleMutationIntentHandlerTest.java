@@ -47,6 +47,7 @@ class ScheduleMutationIntentHandlerTest {
     void registersEveryScheduleMutationType() {
         assertThat(handler.supportedTypes()).containsExactlyInAnyOrderElementsOf(Set.of(
                 IntentCommand.Type.CREATE_SCHEDULE,
+                IntentCommand.Type.PLAN_ROUTE_ITINERARY,
                 IntentCommand.Type.UPDATE_SCHEDULE,
                 IntentCommand.Type.COPY_SCHEDULE,
                 IntentCommand.Type.MERGE_SCHEDULES,
@@ -113,6 +114,26 @@ class ScheduleMutationIntentHandlerTest {
 
         assertThat(result).isSameAs(expected);
         verify(calendarDrafts).createWithPreflight(command);
+        verifyNoInteractions(legacySchedules, calendarV2);
+    }
+
+    @Test
+    void routeItineraryUsesTypedCalendarDraftLane() {
+        IntentCommand command = new IntentCommand(
+                IntentCommand.Type.PLAN_ROUTE_ITINERARY,
+                "參加會議", null,
+                "2026-08-04T09:00:00+08:00",
+                "2026-08-04T10:00:00+08:00",
+                "桃園機場", null, null, null, null, null, null, null,
+                IntentOptions.empty().withDepartureOrigin("台北車站", null));
+        var expected = com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult
+                .message(com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult
+                        .Action.SCHEDULE_CONFIRMED, "已建立，是否規劃交通？");
+        when(routing.useCalendarV2()).thenReturn(true);
+        when(calendarDrafts.createRouteWithPreflight(command)).thenReturn(expected);
+
+        assertThat(handler.handle("建立目的活動後詢問交通", command)).isSameAs(expected);
+        verify(calendarDrafts).createRouteWithPreflight(command);
         verifyNoInteractions(legacySchedules, calendarV2);
     }
 }

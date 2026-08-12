@@ -52,7 +52,8 @@ class CalendarRouteRiskResponsePolicyTest {
                         Adjustability.LOCKED,
                         Adjustability.WINDOWED,
                         Duration.ofMinutes(90)))))
-                .contains("中間只有 60 分鐘", "需要約 90 分鐘", "先把後一段延後")
+                .contains("和相鄰行程之間只有 60 分鐘", "需要約 90 分鐘", "先把後一段延後")
+                .doesNotContain("nodeId", "fromNode", "toNode")
                 .endsWith("要照原安排保留嗎？");
     }
 

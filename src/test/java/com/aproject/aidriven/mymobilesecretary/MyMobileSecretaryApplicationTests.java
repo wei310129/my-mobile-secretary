@@ -24,4 +24,20 @@ class MyMobileSecretaryApplicationTests extends IntegrationTestBase {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.status").value("UP"));
     }
+
+    @Test
+    void infoEndpointReportsCurrentServiceVersionWithoutSensitiveGitDetails() throws Exception {
+        mockMvc.perform(get("/actuator/info"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.service.buildNumber").isNumber())
+                .andExpect(jsonPath("$.service.versionLabel").isString())
+                .andExpect(jsonPath("$.service.gitSha").isString())
+                .andExpect(jsonPath("$.service.shortGitSha").isString())
+                .andExpect(jsonPath("$.service.changeSummary").isString())
+                .andExpect(jsonPath("$.service.dirty").isBoolean())
+                .andExpect(jsonPath("$.service.commitTime").isString())
+                .andExpect(jsonPath("$.service.buildTime").isString())
+                .andExpect(jsonPath("$.service.startedAt").isString())
+                .andExpect(jsonPath("$.git").doesNotExist());
+    }
 }

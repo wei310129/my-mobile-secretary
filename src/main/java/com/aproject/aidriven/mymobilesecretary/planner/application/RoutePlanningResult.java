@@ -58,7 +58,24 @@ public record RoutePlanningResult(
             Long distanceMeters,
             boolean trafficAware,
             boolean scheduledTransit,
-            Instant retrievedAt) {
+            Instant retrievedAt,
+            List<TransitLeg> transitLegs) {
+
+        public RouteOption(
+                Provider provider,
+                RoutePlanningRequest.TravelMode mode,
+                Instant departAt,
+                Instant arriveAt,
+                Duration duration,
+                Duration safetyBuffer,
+                Long distanceMeters,
+                boolean trafficAware,
+                boolean scheduledTransit,
+                Instant retrievedAt) {
+            this(
+                    provider, mode, departAt, arriveAt, duration, safetyBuffer,
+                    distanceMeters, trafficAware, scheduledTransit, retrievedAt, List.of());
+        }
 
         public RouteOption {
             if (provider == null || mode == null || departAt == null || arriveAt == null
@@ -70,6 +87,32 @@ public record RoutePlanningResult(
             if (distanceMeters != null && distanceMeters < 0) {
                 throw new IllegalArgumentException("route distance must be non-negative");
             }
+            transitLegs = List.copyOf(transitLegs == null ? List.of() : transitLegs);
+        }
+    }
+
+    public record TransitLeg(
+            String mode,
+            String lineName,
+            String headsign,
+            String departureStop,
+            String arrivalStop) {
+
+        public TransitLeg {
+            mode = safe(mode);
+            lineName = safe(lineName);
+            headsign = safe(headsign);
+            departureStop = safe(departureStop);
+            arrivalStop = safe(arrivalStop);
+            if (lineName == null && departureStop == null && arrivalStop == null) {
+                throw new IllegalArgumentException("transit leg has no public guidance");
+            }
+        }
+
+        private static String safe(String value) {
+            if (value == null || value.isBlank()) return null;
+            String normalized = value.strip().replaceAll("[\\p{Cntrl}]", "");
+            return normalized.length() <= 120 ? normalized : normalized.substring(0, 120);
         }
     }
 }

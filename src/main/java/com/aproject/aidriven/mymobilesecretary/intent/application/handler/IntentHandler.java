@@ -9,5 +9,9 @@ public interface IntentHandler {
 
     Set<IntentCommand.Type> supportedTypes();
 
+    default IntentConversationContract conversationContract() {
+        return IntentConversationContract.standard();
+    }
+
     IntentResult handle(String text, IntentCommand command);
 }

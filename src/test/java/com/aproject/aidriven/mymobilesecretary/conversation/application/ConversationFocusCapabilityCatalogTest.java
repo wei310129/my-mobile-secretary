@@ -53,6 +53,8 @@ class ConversationFocusCapabilityCatalogTest {
                 .isEqualTo(FocusBehavior.START_OR_SWITCH);
         assertThat(catalog.behaviorFor(IntentCommand.Type.PLAN_TRIP))
                 .isEqualTo(FocusBehavior.START_OR_SWITCH);
+        assertThat(catalog.behaviorFor(IntentCommand.Type.PLAN_ROUTE_ITINERARY))
+                .isEqualTo(FocusBehavior.START_OR_SWITCH);
         assertThat(catalog.behaviorFor(IntentCommand.Type.PLAN_PACKING_LIST))
                 .isEqualTo(FocusBehavior.START_OR_SWITCH);
         assertThat(catalog.behaviorFor(IntentCommand.Type.CANCEL_SCHEDULE))

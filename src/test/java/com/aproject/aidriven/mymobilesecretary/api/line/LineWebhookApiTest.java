@@ -1,6 +1,10 @@
 package com.aproject.aidriven.mymobilesecretary.api.line;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.never;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
@@ -8,12 +12,16 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.aproject.aidriven.mymobilesecretary.IntegrationTestBase;
 import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubIntentInterpreter;
 import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubReceiptInterpreter;
+import com.aproject.aidriven.mymobilesecretary.account.security.idempotency.IdempotencyService;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
+import com.aproject.aidriven.mymobilesecretary.geo.persistence.PlaceRepository;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineContentClient;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLog;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLogRepository;
+import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessagingClient;
+import com.aproject.aidriven.mymobilesecretary.integration.line.LineWebhookPayload;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationContextService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ReceiptCommand;
@@ -23,6 +31,7 @@ import com.aproject.aidriven.mymobilesecretary.reminder.persistence.TaskReposito
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleStatus;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 import java.time.Instant;
 import java.util.Base64;
@@ -61,9 +70,17 @@ class LineWebhookApiTest extends IntegrationTestBase {
     @Autowired
     private SchoolTransportDraftRepository schoolTransportDrafts;
     @Autowired
+    private PlaceRepository placeRepository;
+    @Autowired
     private StubReceiptInterpreter receiptStub;
     @MockitoBean
     private LineContentClient contentClient;
+    @MockitoBean
+    private LineMessagingClient messagingClient;
+    @Autowired
+    private IdempotencyService idempotencyService;
+    @Autowired
+    private ObjectMapper objectMapper;
 
     private String sign(byte[] body) throws Exception {
         Mac mac = Mac.getInstance("HmacSHA256");
@@ -76,11 +93,15 @@ class LineWebhookApiTest extends IntegrationTestBase {
     }
 
     private byte[] textMessageEvent(String text, String eventId) {
+        return textMessageEvent(text, eventId, "{\"userId\":\"%s\"}".formatted(OWNER_USER_ID));
+    }
+
+    private byte[] textMessageEvent(String text, String eventId, String source) {
         return """
                 {"events":[{"type":"message","replyToken":"rt-1","webhookEventId":"%s",\
-                "source":{"userId":"%s"},\
+                "source":%s,\
                 "message":{"id":"message-%s","type":"text","text":"%s"}}]}
-                """.formatted(eventId, OWNER_USER_ID, eventId, text)
+                """.formatted(eventId, source, eventId, text)
                 .getBytes(StandardCharsets.UTF_8);
     }
 
@@ -120,6 +141,92 @@ class LineWebhookApiTest extends IntegrationTestBase {
                 .andExpect(status().isOk());
     }
 
+    @Test
+    void systemPlaceQueryUsesBundledCatalogAndCreatesNoCustomPlace() throws Exception {
+        long placesBefore = placeRepository.count();
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.ASK_PLACE, null, null, null, null, "桃園機場", null, null,
+                null, null, null, null, null));
+        byte[] body = textMessageEvent("桃園機場在哪");
+
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(body))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        verify(messagingClient).reply(eq("rt-1"), argThat(message ->
+                message.equals("我知道，您說的是位於桃園市的「臺灣桃園國際機場」。")
+                        && !message.contains("系統公共地點")
+                        && !message.contains("AIRPORT")
+                        && !message.contains("航站南路")));
+        assertThat(placeRepository.count()).isEqualTo(placesBefore);
+    }
+
+    @Test
+    void logicalSystemPlaceKnowledgeAndPointFollowUpUseTheActualLineEntryPath() throws Exception {
+        long placesBefore = placeRepository.count();
+        byte[] knowledge = textMessageEvent("你知道台北車站嗎？");
+        byte[] points = textMessageEvent("有哪些點位？");
+
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(knowledge))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(knowledge))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(points))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(points))
+                .andExpect(status().isOk());
+
+        verify(messagingClient).reply(eq("rt-1"), eq(
+                "我知道，您說的是位於台北市的「台北火車站」。目前有 2 個系統點位，"
+                        + "有需要我可以列出來給您，或者您也可以提供關鍵字讓我幫您查詢。"));
+        verify(messagingClient).reply(eq("rt-1"), argThat(message ->
+                message.contains("目前有 2 個系統點位")
+                        && message.contains("台北捷運")
+                        && message.contains("桃園捷運")
+                        && !message.contains("安排完整行程")));
+        assertThat(placeRepository.count()).isEqualTo(placesBefore);
+    }
+
+    @Test
+    void slowOneToOneTextStartsLoadingAnimationBeforeTheTerminalReply() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.SOCIAL, null, null, null, null, null, null, null,
+                null, null, null, null, null));
+        byte[] body = textMessageEvent("幫我處理這件事");
+
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(body))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        verify(messagingClient).startLoading(OWNER_USER_ID);
+    }
+
+    @Test
+    void groupTextNeverStartsOneToOneLoadingAnimation() throws Exception {
+        stub.nextCommand(new IntentCommand(
+                IntentCommand.Type.SOCIAL, null, null, null, null, null, null, null,
+                null, null, null, null, null));
+        String eventId = "event-" + UUID.randomUUID();
+        byte[] body = textMessageEvent(
+                "幫我處理這件事",
+                eventId,
+                "{\"userId\":\"%s\",\"groupId\":\"test-group\"}".formatted(OWNER_USER_ID));
+
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(body))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        verify(messagingClient, never()).startLoading(org.mockito.ArgumentMatchers.anyString());
+    }
+
     /** LINE 重送同一 webhookEventId 時不得再次執行已完成的 mutation。 */
     @Test
     void duplicateWebhookEventCreatesTaskOnlyOnce() throws Exception {
@@ -144,6 +251,41 @@ class LineWebhookApiTest extends IntegrationTestBase {
         assertThat(taskRepository.findAll().stream()
                 .filter(task -> title.equals(task.getTitle())))
                 .hasSize(1);
+    }
+
+    @Test
+    void replayedLegacyBodyPassesFinalPublicBoundaryBeforeLineOutput() throws Exception {
+        String eventId = "legacy-replay-" + java.util.UUID.randomUUID();
+        byte[] body = """
+                {"events":[{"type":"message","replyToken":"rt-replay",\
+                "webhookEventId":"%s","timestamp":1700000000000,"source":{"userId":"%s"},\
+                "message":{"id":"message-%s","type":"text","text":"再說一次"}}]}
+                """.formatted(eventId, OWNER_USER_ID, eventId)
+                .getBytes(StandardCharsets.UTF_8);
+        LineWebhookPayload.Event event = objectMapper
+                .readValue(body, LineWebhookPayload.class).events().getFirst();
+        String requestMaterial = org.springframework.test.util.ReflectionTestUtils.invokeMethod(
+                LineWebhookController.class, "requestFingerprintMaterial", event);
+        try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(lineContext())) {
+            idempotencyService.begin(
+                    WORKSPACE_ID, ACTOR_ID, "LINE", eventId, requestMaterial);
+            idempotencyService.markExecutionStarted(
+                    WORKSPACE_ID, ACTOR_ID, "LINE", eventId);
+            idempotencyService.complete(
+                    WORKSPACE_ID, ACTOR_ID, "LINE", eventId, "CLARIFICATION_NEEDED",
+                    "handler=LegacyReplayHandler schema=legacy_private_table");
+        }
+
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(body))
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        verify(messagingClient).reply(eq("rt-replay"), argThat(message ->
+                !message.contains("LegacyReplayHandler")
+                        && !message.contains("legacy_private_table")
+                        && !message.contains("handler")
+                        && !message.contains("schema")));
     }
 
     /** 非文字事件(如 follow)一樣回 200,只是不觸發意圖處理。 */
@@ -210,6 +352,37 @@ class LineWebhookApiTest extends IntegrationTestBase {
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertThat(media).contains("\"sourceType\":\"LINE\"")
                 .contains("\"mediaType\":\"image/png\"");
+    }
+
+    @Test
+    void imageReplyDoesNotExposeStoredMediaDatabaseIdentifier() throws Exception {
+        String messageId = "m-public-boundary-" + java.util.UUID.randomUUID();
+        byte[] png = new byte[] {
+            (byte) 0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a, 11, 12, 13
+        };
+        when(contentClient.fetchContent(messageId))
+                .thenReturn(new LineContentClient.MessageContent(png, "image/png"));
+        receiptStub.nextCommand(new ReceiptCommand(
+                "匿名商店", "2026-08-02",
+                java.util.List.of(new ReceiptCommand.Line("匿名品項", 20, 1))));
+        byte[] body = """
+                {"events":[{"type":"message","replyToken":"rt-public-boundary",\
+                "webhookEventId":"event-%s","source":{"userId":"%s"},\
+                "message":{"id":"%s","type":"image"}}]}
+                """.formatted(messageId, OWNER_USER_ID, messageId)
+                .getBytes(StandardCharsets.UTF_8);
+
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(body))
+                        .contentType(MediaType.APPLICATION_JSON).content(body))
+                .andExpect(status().isOk());
+
+        String logs = mockMvc.perform(
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .get("/api/line/messages").param("limit", "10"))
+                .andExpect(status().isOk()).andReturn().getResponse()
+                .getContentAsString(StandardCharsets.UTF_8);
+        assertThat(logs).doesNotContain("檔案編號");
     }
 
     @Test
@@ -396,9 +569,10 @@ class LineWebhookApiTest extends IntegrationTestBase {
                             WORKSPACE_ID, ACTOR_ID, SchoolTransportDraft.Status.PENDING,
                             Instant.EPOCH)
                     .orElseThrow();
-            assertThat(draft.getPayload())
-                    .contains("\"dropPerson\":\"我\"", "\"pickupPerson\":\"我\"",
-                            "\"pickupLocation\":\"夏恩英語\"");
+            assertThat(draft.getPayload()).isNull();
+            assertThat(draft.getDropPerson()).isEqualTo("我");
+            assertThat(draft.getPickupPerson()).isEqualTo("我");
+            assertThat(draft.getPickupLocation()).isEqualTo("夏恩英語");
             latestReply = lineMessageLogs
                     .findAllByWorkspaceIdAndCreatedByUserIdOrderByCreatedAtDescIdDesc(
                             WORKSPACE_ID, ACTOR_ID,
@@ -406,9 +580,9 @@ class LineWebhookApiTest extends IntegrationTestBase {
                     .getFirst().getContent();
         }
         assertThat(latestReply)
-                .contains("送去：我", "接回：我", "送去從哪裡出發", "送去預計幾點出發",
-                        "接回行程預計幾點結束")
-                .doesNotContain("誰負責送去", "誰負責接回", "從哪裡接");
+                .contains("送去：我", "接回：我", "送去從哪裡出發")
+                .doesNotContain("送去預計幾點出發", "接回行程預計幾點結束",
+                        "誰負責送去", "誰負責接回", "從哪裡接");
 
         String logs = mockMvc.perform(
                         org.springframework.test.web.servlet.request.MockMvcRequestBuilders
@@ -417,8 +591,9 @@ class LineWebhookApiTest extends IntegrationTestBase {
                 .getContentAsString(StandardCharsets.UTF_8);
         assertThat(logs)
                 .contains("我指的是行程", "送女兒到夏恩英語上課", "送去：我", "接回：我")
-                .contains("送去從哪裡出發", "送去預計幾點出發", "接回行程預計幾點結束")
-                .doesNotContain("lastScheduleId", "Java 驗證", "AI 回覆資料", "使用者詢問",
+                .contains("送去從哪裡出發")
+                .doesNotContain("送去預計幾點出發", "接回行程預計幾點結束",
+                        "lastScheduleId", "Java 驗證", "AI 回覆資料", "使用者詢問",
                         "問題紀錄", "AI 暫時無法");
     }
 

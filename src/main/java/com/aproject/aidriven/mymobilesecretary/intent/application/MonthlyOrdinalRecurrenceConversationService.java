@@ -1,5 +1,8 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.ScheduleClarificationDraftService;
+import com.aproject.aidriven.mymobilesecretary.conversation.domain.ScheduleClarificationCapability;
+import com.aproject.aidriven.mymobilesecretary.conversation.domain.ScheduleClarificationDraft;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import com.aproject.aidriven.mymobilesecretary.shared.time.ChineseTimePeriod;
@@ -36,35 +39,68 @@ public class MonthlyOrdinalRecurrenceConversationService {
 
     private final ScheduleService scheduleService;
     private final Clock clock;
+    private ScheduleClarificationDraftService clarificationDrafts;
 
     public MonthlyOrdinalRecurrenceConversationService(ScheduleService scheduleService, Clock clock) {
         this.scheduleService = scheduleService;
         this.clock = clock;
     }
 
+    @org.springframework.beans.factory.annotation.Autowired(required = false)
+    void setClarificationDrafts(ScheduleClarificationDraftService clarificationDrafts) {
+        this.clarificationDrafts = clarificationDrafts;
+    }
+
     public Optional<IntentResult> answer(
             String text, ConversationSnapshot previous, Runnable beforeMutation) {
         String current = normalize(text);
         if (looksLikeMeta(current)) return Optional.empty();
-        String compact = resumePendingDuration(current, previous);
-        if (!isMonthlyOrdinalRule(compact)) return Optional.empty();
+        Optional<ScheduleClarificationDraft> pending = clarificationDrafts == null
+                ? Optional.empty()
+                : clarificationDrafts.findCurrent(ScheduleClarificationCapability.MONTHLY_ORDINAL);
+        String compact = pending.isPresent() ? current : resumePendingDuration(current, previous);
+        boolean initialRequest = isMonthlyOrdinalRule(compact);
+        if (!initialRequest && pending.isEmpty()) return Optional.empty();
+        if (!initialRequest && clarificationDrafts != null
+                && !clarificationDrafts.mayConsumeContinuation(
+                        ScheduleClarificationCapability.MONTHLY_ORDINAL)) {
+            return Optional.empty();
+        }
 
         Parsed parsed = parse(compact);
-        List<String> missing = new ArrayList<>();
-        if (parsed.ordinal() == null || parsed.weekday() == null) missing.add("每月第幾個星期幾");
-        if (parsed.startTime() == null) missing.add("開始時間");
-        if (parsed.startTime() != null && !parsed.timePeriodExplicit()) {
-            missing.add("未帶時段的鐘點是上午或晚上");
+        if (pending.isPresent() && !hasTypedInput(parsed)) return Optional.empty();
+        Integer monthOffset = compact.contains("下個月") ? 1 : null;
+        if (clarificationDrafts != null) {
+            beforeMutation.run();
+            ScheduleClarificationDraft draft = clarificationDrafts.monthly(
+                    parsed.ordinal(), monthOffset, parsed.weekday(), parsed.startTime(),
+                    parsed.timePeriodExplicit(), durationMinutes(parsed.duration()), parsed.title());
+            parsed = fromDraft(draft);
+            monthOffset = draft.getMonthOffset();
         }
-        if (parsed.duration() == null) missing.add("每次持續多久");
-        if (parsed.title() == null) missing.add("行程名稱");
+        List<ClarificationStep> missing = new ArrayList<>();
+        if (parsed.ordinal() == null || parsed.weekday() == null) missing.add(
+                ClarificationStep.blocking("monthly-ordinal.rule", "ordinalWeekday",
+                        "要排每月第幾個星期幾？", 10));
+        if (parsed.startTime() == null) missing.add(ClarificationStep.blocking(
+                "monthly-ordinal.start-time", "startTime", "幾點開始？", 20));
+        if (parsed.startTime() != null && !parsed.timePeriodExplicit()) {
+            missing.add(ClarificationStep.blocking(
+                    "monthly-ordinal.time-period", "timePeriod",
+                    "這個鐘點是上午還是晚上？", 30));
+        }
+        if (parsed.duration() == null) missing.add(ClarificationStep.blocking(
+                "monthly-ordinal.duration", "duration", "每次持續多久？", 40));
+        if (parsed.title() == null) missing.add(ClarificationStep.blocking(
+                "monthly-ordinal.title", "title", "這個行程要叫什麼名稱？", 50));
         if (!missing.isEmpty()) {
             return Optional.of(IntentResult.clarificationNeeded(
                     "我支援「每月第 N 個星期幾」的專用週期，絕不會拆成每週行程。"
-                            + "還需要確認：" + String.join("、", missing) + "。資訊補齊前不建立行程。"));
+                            + "資訊補齊前不建立行程。",
+                    ClarificationStep.first(missing)));
         }
 
-        Optional<LocalDate> firstDate = firstOccurrence(compact, parsed.ordinal(), parsed.weekday(),
+        Optional<LocalDate> firstDate = firstOccurrence(monthOffset, parsed.ordinal(), parsed.weekday(),
                 parsed.startTime());
         if (firstDate.isEmpty()) {
             return Optional.of(IntentResult.clarificationNeeded(
@@ -73,9 +109,13 @@ public class MonthlyOrdinalRecurrenceConversationService {
         }
         ZonedDateTime start = firstDate.get().atTime(parsed.startTime()).atZone(TAIPEI);
         beforeMutation.run();
-        return Optional.of(IntentResult.scheduleDecided(scheduleService.createSchedule(
+        IntentResult result = IntentResult.scheduleDecided(scheduleService.createSchedule(
                 parsed.title(), start.toInstant(), start.plus(parsed.duration()).toInstant(), null,
-                ScheduleItem.Recurrence.MONTHLY_NTH_WEEKDAY)));
+                ScheduleItem.Recurrence.MONTHLY_NTH_WEEKDAY));
+        if (clarificationDrafts != null) {
+            clarificationDrafts.complete(ScheduleClarificationCapability.MONTHLY_ORDINAL);
+        }
+        return Optional.of(result);
     }
 
     private Parsed parse(String text) {
@@ -110,11 +150,11 @@ public class MonthlyOrdinalRecurrenceConversationService {
     }
 
     private Optional<LocalDate> firstOccurrence(
-            String text, int ordinal, DayOfWeek weekday, LocalTime time) {
+            Integer monthOffset, int ordinal, DayOfWeek weekday, LocalTime time) {
         ZonedDateTime now = ZonedDateTime.now(clock.withZone(TAIPEI));
         YearMonth month = YearMonth.from(now);
-        if (text.contains("下個月")) {
-            return dateIn(month.plusMonths(1), ordinal, weekday);
+        if (monthOffset != null) {
+            return dateIn(month.plusMonths(monthOffset), ordinal, weekday);
         }
         for (int offset = 0; offset < 24; offset++) {
             Optional<LocalDate> date = dateIn(month.plusMonths(offset), ordinal, weekday);
@@ -204,6 +244,23 @@ public class MonthlyOrdinalRecurrenceConversationService {
     private static boolean looksLikeMeta(String text) {
         return text.contains("情境清單") || text.contains("測試資料")
                 || text.contains("功能開發") || text.contains("需求文件") || text.contains("使用者說");
+    }
+
+    private static boolean hasTypedInput(Parsed parsed) {
+        return parsed.ordinal() != null || parsed.weekday() != null || parsed.startTime() != null
+                || parsed.duration() != null || parsed.title() != null;
+    }
+
+    private static Integer durationMinutes(Duration duration) {
+        return duration == null ? null : Math.toIntExact(duration.toMinutes());
+    }
+
+    private static Parsed fromDraft(ScheduleClarificationDraft draft) {
+        return new Parsed(draft.getOrdinalValue(), draft.getWeekday(), draft.getStartTime(),
+                draft.isTimePeriodExplicit(),
+                draft.getDurationMinutes() == null ? null
+                        : Duration.ofMinutes(draft.getDurationMinutes()),
+                draft.getTitle());
     }
 
     private static String normalize(String text) {

@@ -220,6 +220,30 @@ public class CalendarTimeNodeEntity extends WorkspaceOwnedEntity {
         updatedAt = Objects.requireNonNull(now, "now");
     }
 
+    public void completePrematureRouteEndpoint(
+            Instant time,
+            CalendarLocation location,
+            long expectedRevision,
+            Instant now) {
+        requireActive();
+        if (revision != expectedRevision) {
+            throw new BusinessException(
+                    "STALE_CALENDAR_REVISION",
+                    "Calendar node changed; reload it before revising");
+        }
+        expressionKind = ExpressionKind.ABSOLUTE;
+        absoluteTime = Objects.requireNonNull(time, "time");
+        resolvedTime = absoluteTime;
+        offsetSeconds = null;
+        baseNodeKey = null;
+        CalendarLocation confirmed = Objects.requireNonNull(location, "location");
+        locationLabel = confirmed.label();
+        latitude = confirmed.latitude();
+        longitude = confirmed.longitude();
+        revision++;
+        updatedAt = Objects.requireNonNull(now, "now");
+    }
+
     public void cancel(long expectedRevision, Instant now) {
         requireActive();
         if (revision != expectedRevision) {

@@ -33,8 +33,27 @@ public record IntentOptions(
         String quietEnd,
         Boolean allowHighPriority,
         String recurrenceUntil,
-        String recurrenceScope
+        String recurrenceScope,
+        String catalogRegion
 ) {
+    /** Compatibility constructor for the former canonical 27-field shape. */
+    public IntentOptions(String filter, Integer ordinal, Integer durationMinutes,
+                         Integer leadMinutes, Integer radiusMeters, String triggerType,
+                         String recurrence, String category, List<String> itemNames,
+                         Integer quantity, String referenceTitle, String referenceKind,
+                         String timeOfDay, Boolean keepTime, Integer shiftMinutes,
+                         String condition, String fromPlaceName, Integer bufferMinutes,
+                         String clarificationQuestion, String alias, String newTitle,
+                         String description, String quietStart, String quietEnd,
+                         Boolean allowHighPriority, String recurrenceUntil,
+                         String recurrenceScope) {
+        this(filter, ordinal, durationMinutes, leadMinutes, radiusMeters, triggerType,
+                recurrence, category, itemNames, quantity, referenceTitle, referenceKind,
+                timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName, bufferMinutes,
+                clarificationQuestion, alias, newTitle, description, quietStart, quietEnd,
+                allowHighPriority, recurrenceUntil, recurrenceScope, null);
+    }
+
     /** 相容既有 26 欄呼叫端；新增的固定行程改期範圍預設為空。 */
     public IntentOptions(String filter, Integer ordinal, Integer durationMinutes,
                          Integer leadMinutes, Integer radiusMeters, String triggerType,
@@ -49,7 +68,7 @@ public record IntentOptions(
                 recurrence, category, itemNames, quantity, referenceTitle, referenceKind,
                 timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName, bufferMinutes,
                 clarificationQuestion, alias, newTitle, description, quietStart, quietEnd,
-                allowHighPriority, recurrenceUntil, null);
+                allowHighPriority, recurrenceUntil, null, null);
     }
 
     /** 相容既有 25 欄呼叫端；新增的固定行程截止日預設為空。 */
@@ -66,7 +85,7 @@ public record IntentOptions(
                 recurrence, category, itemNames, quantity, referenceTitle, referenceKind,
                 timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName, bufferMinutes,
                 clarificationQuestion, alias, newTitle, description, quietStart, quietEnd,
-                allowHighPriority, null, null);
+                allowHighPriority, null, null, null);
     }
 
     /** 既有 22 欄呼叫端相容建構子。 */
@@ -81,13 +100,13 @@ public record IntentOptions(
         this(filter, ordinal, durationMinutes, leadMinutes, radiusMeters, triggerType,
                 recurrence, category, itemNames, quantity, referenceTitle, referenceKind,
                 timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName, bufferMinutes,
-                clarificationQuestion, alias, newTitle, description, null, null, null, null, null);
+                clarificationQuestion, alias, newTitle, description, null, null, null, null, null, null);
     }
 
     public static IntentOptions empty() {
         return new IntentOptions(null, null, null, null, null, null, null, null,
                 null, null, null, null, null, null, null, null, null, null, null, null,
-                null, null, null, null, null, null, null);
+                null, null, null, null, null, null, null, null);
     }
 
     public IntentOptions withLeadMinutes(Integer value) {
@@ -95,7 +114,7 @@ public record IntentOptions(
                 triggerType, recurrence, category, itemNames, quantity, referenceTitle,
                 referenceKind, timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName,
                 bufferMinutes, clarificationQuestion, alias, newTitle, description,
-                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope, catalogRegion);
     }
 
     public IntentOptions afterTaskCompletion(String predecessorTitle, Integer delayMinutes) {
@@ -103,7 +122,7 @@ public record IntentOptions(
                 triggerType, recurrence, category, itemNames, quantity, predecessorTitle,
                 "AFTER_TASK_COMPLETION", timeOfDay, keepTime, delayMinutes, condition,
                 fromPlaceName, bufferMinutes, clarificationQuestion, alias, newTitle, description,
-                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope, catalogRegion);
     }
 
     public IntentOptions withDepartureOrigin(String origin, Integer arrivalBufferMinutes) {
@@ -111,7 +130,7 @@ public record IntentOptions(
                 triggerType, recurrence, category, itemNames, quantity, referenceTitle,
                 referenceKind, timeOfDay, keepTime, shiftMinutes, condition, origin,
                 arrivalBufferMinutes, clarificationQuestion, alias, newTitle, description,
-                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope, catalogRegion);
     }
 
     public IntentOptions withHypotheticalBuffers(
@@ -120,7 +139,7 @@ public record IntentOptions(
                 triggerType, recurrence, category, itemNames, quantity, referenceTitle,
                 referenceKind, timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName,
                 afterTravelMinutes, clarificationQuestion, alias, newTitle, description,
-                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope, catalogRegion);
     }
 
     public IntentOptions withFilter(String value) {
@@ -128,7 +147,7 @@ public record IntentOptions(
                 triggerType, recurrence, category, itemNames, quantity, referenceTitle,
                 referenceKind, timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName,
                 bufferMinutes, clarificationQuestion, alias, newTitle, description,
-                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope, catalogRegion);
     }
 
     public IntentOptions withCategory(String value) {
@@ -136,7 +155,7 @@ public record IntentOptions(
                 triggerType, recurrence, value, itemNames, quantity, referenceTitle,
                 referenceKind, timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName,
                 bufferMinutes, clarificationQuestion, alias, newTitle, description,
-                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope, catalogRegion);
     }
 
     public IntentOptions withTagRelation(
@@ -145,7 +164,7 @@ public record IntentOptions(
                 triggerType, recurrence, sourceKind, itemNames, quantity, target, relation,
                 timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName, bufferMinutes,
                 clarificationQuestion, alias, newTitle, description, quietStart, quietEnd,
-                allowHighPriority, recurrenceUntil, recurrenceScope);
+                allowHighPriority, recurrenceUntil, recurrenceScope, catalogRegion);
     }
 
     public IntentOptions withReferenceTitle(String value) {
@@ -153,7 +172,7 @@ public record IntentOptions(
                 triggerType, recurrence, category, itemNames, quantity, value,
                 referenceKind, timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName,
                 bufferMinutes, clarificationQuestion, alias, newTitle, description,
-                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope, catalogRegion);
     }
 
     public IntentOptions withNewTitle(String value) {
@@ -161,7 +180,7 @@ public record IntentOptions(
                 triggerType, recurrence, category, itemNames, quantity, referenceTitle,
                 referenceKind, timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName,
                 bufferMinutes, clarificationQuestion, alias, value, description,
-                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope, catalogRegion);
     }
 
     public IntentOptions withLifeRecord(String recordType, List<String> tags, String details) {
@@ -169,6 +188,14 @@ public record IntentOptions(
                 triggerType, recurrence, recordType, tags, quantity, referenceTitle,
                 referenceKind, timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName,
                 bufferMinutes, clarificationQuestion, alias, newTitle, details, quietStart,
-                quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope);
+                quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope, catalogRegion);
+    }
+
+    public IntentOptions withCatalogRegion(String value) {
+        return new IntentOptions(filter, ordinal, durationMinutes, leadMinutes, radiusMeters,
+                triggerType, recurrence, category, itemNames, quantity, referenceTitle,
+                referenceKind, timeOfDay, keepTime, shiftMinutes, condition, fromPlaceName,
+                bufferMinutes, clarificationQuestion, alias, newTitle, description,
+                quietStart, quietEnd, allowHighPriority, recurrenceUntil, recurrenceScope, value);
     }
 }

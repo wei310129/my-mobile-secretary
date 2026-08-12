@@ -32,6 +32,8 @@ import java.util.UUID;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
+import org.springframework.core.io.ClassPathResource;
+import org.springframework.test.util.ReflectionTestUtils;
 
 class CalendarV2IntentServiceTest {
 
@@ -268,6 +270,45 @@ class CalendarV2IntentServiceTest {
                     assertThat(node.location().latitude()).isEqualTo(24.95);
                     assertThat(node.location().longitude()).isEqualTo(121.54);
                 });
+    }
+
+    @Test
+    void systemOwnedPlaceCanBeUsedWithoutCreatingAUserPlace() {
+        when(places.resolve("桃園機場")).thenReturn(Optional.empty());
+        ReflectionTestUtils.setField(service, "systemPlaceCatalog",
+                new com.aproject.aidriven.mymobilesecretary.geo.application.SystemPlaceCatalog(
+                        new ClassPathResource("system-place-catalog.tsv")));
+        when(calendar.createPlanWithIdentity(any())).thenReturn(created("搭機", null));
+        IntentCommand command = new IntentCommand(
+                IntentCommand.Type.CREATE_SCHEDULE,
+                "搭機",
+                null,
+                "2026-07-25T14:00:00+08:00",
+                "2026-07-25T16:00:00+08:00",
+                "桃園機場",
+                null,
+                null,
+                null,
+                null,
+                null,
+                null,
+                false,
+                IntentOptions.empty(),
+                "週六下午兩點到四點在桃園機場搭機");
+
+        IntentResult result = RequestCorrelationContext.run(
+                UUID.randomUUID(), () -> service.create(command));
+
+        ArgumentCaptor<CreateCalendarPlanCommand> captured =
+                ArgumentCaptor.forClass(CreateCalendarPlanCommand.class);
+        verify(calendar).createPlanWithIdentity(captured.capture());
+        assertThat(captured.getValue().nodes()).singleElement().satisfies(node -> {
+            assertThat(node.location().label()).contains("桃園");
+        });
+        assertThat(result.action()).isEqualTo(IntentResult.Action.SCHEDULE_CONFIRMED);
+        assertThat(result.message())
+                .contains("已建立行程")
+                .doesNotContain("系統公共地點", "沒有建立自訂地點");
     }
 
     @Test

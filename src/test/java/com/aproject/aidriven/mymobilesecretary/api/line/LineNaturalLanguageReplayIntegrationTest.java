@@ -1,6 +1,9 @@
 package com.aproject.aidriven.mymobilesecretary.api.line;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
@@ -11,6 +14,7 @@ import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContex
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLog;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLogRepository;
+import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessagingClient;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentOptions;
 import com.aproject.aidriven.mymobilesecretary.intent.domain.IntentIssue;
@@ -40,6 +44,7 @@ import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.data.domain.PageRequest;
 import org.springframework.http.MediaType;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 
 /**
  * 去識別化 LINE 多輪重播：只保留歷史風險形狀，不複製任何實際使用者原話或識別資訊。
@@ -53,6 +58,8 @@ class LineNaturalLanguageReplayIntegrationTest extends IntegrationTestBase {
     private static final UUID WORKSPACE_ID =
             UUID.fromString("00000000-0000-0000-0000-000000000101");
     private static final ZoneId TAIPEI = ZoneId.of("Asia/Taipei");
+    private static final int LATENCY_WARMUP_COUNT = 60;
+    private static final int LATENCY_SAMPLE_COUNT = 60;
 
     @Autowired
     private StubIntentInterpreter interpreter;
@@ -68,6 +75,8 @@ class LineNaturalLanguageReplayIntegrationTest extends IntegrationTestBase {
     private Clock clock;
     @Autowired
     private JdbcTemplate jdbc;
+    @MockitoBean
+    private LineMessagingClient messagingClient;
 
     @Test
     void signedLineHelpConversationStaysDeterministicAcrossThreeTurns() throws Exception {
@@ -293,32 +302,35 @@ class LineNaturalLanguageReplayIntegrationTest extends IntegrationTestBase {
 
     @Test
     void deterministicLineRepairRoutesMeetWarmP95LatencyBudget() throws Exception {
-        sendText("你可以幫哪些忙");
-        List<Long> elapsedMillis = new ArrayList<>();
         List<String> turns = List.of(
                 "你可以幫哪些忙",
                 "不是重複建立，而是你不應該亂回答",
                 "這週末有哪些行程",
                 "你現在能協助哪些事情",
                 "並非重複項目，我是在說你答錯問題",
-                "這個周末行程排了哪些",
-                "你可以幫哪些忙",
-                "不是重複建立，而是你不應該亂回答",
-                "這週末有哪些行程",
-                "你現在能協助哪些事情",
-                "並非重複項目，我是在說你答錯問題",
                 "這個周末行程排了哪些");
-
-        for (String turn : turns) {
-            long started = System.nanoTime();
+        for (int warmup = 0; warmup < LATENCY_WARMUP_COUNT; warmup++) {
+            String turn = turns.get(warmup % turns.size());
             sendText(turn);
-            elapsedMillis.add((System.nanoTime() - started) / 1_000_000);
             assertThat(latestReply()).doesNotContain("暫時無法處理", "CAPABILITY_HELP", "null");
         }
 
+        List<Long> elapsedMillis = new ArrayList<>();
+        for (int sample = 0; sample < LATENCY_SAMPLE_COUNT; sample++) {
+            String turn = turns.get(sample % turns.size());
+            long started = System.nanoTime();
+            sendText(turn);
+            elapsedMillis.add((System.nanoTime() - started) / 1_000_000);
+            assertThat(latestReply())
+                    .doesNotContain("暫時無法處理", "CAPABILITY_HELP", "null");
+        }
+
+        System.out.printf("LINE_REPAIR_SAMPLES_MS=%s%n", elapsedMillis);
         List<Long> ordered = elapsedMillis.stream().sorted(Comparator.naturalOrder()).toList();
         long p95 = ordered.get((int) Math.ceil(ordered.size() * 0.95) - 1);
         System.out.printf("LINE_REPAIR_P95_MS=%d%n", p95);
+        verify(messagingClient, times(LATENCY_WARMUP_COUNT + elapsedMillis.size()))
+                .reply(anyString(), anyString());
         assertThat(p95).as("signed LINE deterministic warm P95 milliseconds")
                 .isLessThanOrEqualTo(1_500L);
     }

@@ -55,9 +55,9 @@ class TaskDetailAnswerServiceTest {
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.TASK_INFO);
         assertThat(result.message())
-                .contains("📋 待辦「買小兒子的奶粉」明細", "期限｜07/19 23:59｜尚未到")
+                .contains("待辦「買小兒子的奶粉」明細", "期限｜07/19 23:59｜尚未到")
                 .contains("優先度｜高", "狀態｜已建立", "重複｜單次", "地點｜尚未紀錄")
-                .contains("⚠️ 目前沒有綁定地點");
+                .contains("目前沒有綁定地點");
     }
 
     @Test
@@ -93,7 +93,7 @@ class TaskDetailAnswerServiceTest {
         IntentResult result = IntentResult.taskCreated(milk, null, pharmacy);
 
         assertThat(result.message())
-                .contains("📋 已建立任務「買小兒子的奶粉」")
+                .contains("已建立任務「買小兒子的奶粉」")
                 .contains("期限｜07/19 23:59", "優先度｜高", "地點｜景美大樹藥局");
     }
 }

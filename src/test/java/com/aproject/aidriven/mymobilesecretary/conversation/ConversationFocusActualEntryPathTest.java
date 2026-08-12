@@ -570,7 +570,7 @@ class ConversationFocusActualEntryPathTest extends IntegrationTestBase {
             assertThat(activeRoutingKey(workspaceId)).isEqualTo("task:" + task.getId());
             assertThat(focusRevision(workspaceId)).isEqualTo(3L);
             assertThat(resumed.responseEnvelope().message())
-                    .contains("先暫離「機車定檢」，回到「繳機車強制險」");
+                    .contains("原本的「機車定檢」先保留，現在回到「繳機車強制險」");
 
             String exitText = "先離開目前這件事，歇一下";
             IntentResult exited = handle(exitText, command(

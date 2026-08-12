@@ -6,6 +6,8 @@ import com.aproject.aidriven.mymobilesecretary.shared.error.NotFoundException;
 import java.time.Clock;
 import java.time.Instant;
 import java.util.List;
+import java.util.Optional;
+import java.util.UUID;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.data.domain.PageRequest;
@@ -121,6 +123,32 @@ public class LineMessageLogService {
             if (!recentText.isBlank()) context.append("【近期對話】\n").append(recentText).append('\n');
         }
         return context.append("【使用者目前訊息】").append(original).toString();
+    }
+
+    /** Resolves only server-stored, tenant-scoped typed metadata; user text is never trusted. */
+    @Transactional(readOnly = true)
+    public Optional<UUID> quotedDraftReference(String quotedMessageId) {
+        if (quotedMessageId == null || quotedMessageId.isBlank()) return Optional.empty();
+        WorkspaceContext scope = WorkspaceContextHolder.requireContext();
+        return repository.findFirstByWorkspaceIdAndCreatedByUserIdAndExternalMessageId(
+                        scope.workspaceId(), scope.actorId(), quotedMessageId)
+                .map(LineMessageLog::getReferencePayload)
+                .flatMap(LineMessageLogService::draftReference);
+    }
+
+    private static Optional<UUID> draftReference(String payload) {
+        if (payload == null || payload.isBlank()) return Optional.empty();
+        for (String reference : payload.split(";")) {
+            String[] parts = reference.split(":", 3);
+            if (parts.length == 3 && "DRAFT".equals(parts[0])) {
+                try {
+                    return Optional.of(UUID.fromString(parts[1]));
+                } catch (IllegalArgumentException ignored) {
+                    return Optional.empty();
+                }
+            }
+        }
+        return Optional.empty();
     }
 
     /** Explicit LINE quotes never fall back to an unrelated recent transcript. */

@@ -7,6 +7,7 @@ import com.aproject.aidriven.mymobilesecretary.account.domain.LegacyAccountIds;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
+import java.util.Set;
 import java.util.UUID;
 import jakarta.persistence.EntityManager;
 import org.junit.jupiter.api.Test;
@@ -29,28 +30,45 @@ class NotificationOutboxIntegrationTest extends IntegrationTestBase {
                 LegacyAccountIds.WORKSPACE_ID, deliveryKey, "LOG");
 
         try (WorkspaceContextHolder.Scope ignored = WorkspaceContextHolder.open(
-                new WorkspaceContext(LegacyAccountIds.USER_ID, LegacyAccountIds.WORKSPACE_ID,
+                new WorkspaceContext(
+                        LegacyAccountIds.USER_ID,
+                        LegacyAccountIds.WORKSPACE_ID,
                         WorkspaceChannel.TEST))) {
             assertThat(publisher.enqueue(new NotificationRequest(
-                    LegacyAccountIds.USER_ID, deliveryKey,  null, null,
-                    "私密提醒", "不應永久留在 outbox"))).isEqualTo(1);
+                            LegacyAccountIds.USER_ID,
+                            deliveryKey,
+                            null,
+                            null,
+                            "Reminder",
+                            "Persist through the notification outbox",
+                            Set.of(NotificationChannel.LOG))))
+                    .isEqualTo(1);
 
             NotificationOutboxService.ClaimedNotification claim = outboxService
                     .claimDue(LegacyAccountIds.USER_ID).stream()
                     .filter(candidate -> deliveryId.equals(candidate.envelope().deliveryId()))
                     .findFirst()
                     .orElseThrow();
-            assertThat(claim.envelope().workspaceId()).isEqualTo(LegacyAccountIds.WORKSPACE_ID);
-            assertThat(claim.envelope().targetUserId()).isEqualTo(LegacyAccountIds.USER_ID);
+            assertThat(claim.envelope().workspaceId())
+                    .isEqualTo(LegacyAccountIds.WORKSPACE_ID);
+            assertThat(claim.envelope().targetUserId())
+                    .isEqualTo(LegacyAccountIds.USER_ID);
             assertThat(outboxService.markSent(claim.id(), claim.claimToken())).isTrue();
             entityManager.flush();
         }
 
         assertThat(jdbcTemplate.queryForObject(
-                "SELECT status FROM notification_outbox WHERE delivery_id = ?",
-                String.class, deliveryId)).isEqualTo("SENT");
+                        "SELECT status FROM notification_outbox WHERE delivery_id = ?",
+                        String.class,
+                        deliveryId))
+                .isEqualTo("SENT");
         assertThat(jdbcTemplate.queryForObject(
-                "SELECT title IS NULL AND message IS NULL FROM notification_outbox WHERE delivery_id = ?",
-                Boolean.class, deliveryId)).isTrue();
+                        """
+                        SELECT title IS NULL AND message IS NULL
+                        FROM notification_outbox WHERE delivery_id = ?
+                        """,
+                        Boolean.class,
+                        deliveryId))
+                .isTrue();
     }
 }

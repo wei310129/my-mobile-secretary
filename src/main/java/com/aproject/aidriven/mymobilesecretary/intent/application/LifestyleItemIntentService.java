@@ -238,7 +238,7 @@ public class LifestyleItemIntentService {
                 placeService.createPlace(command.placeName(), null, null, null, null));
         Item item = itemService.bindItemToPlace(command.title(), place.getId());
         return withItemFocus(IntentResult.message(IntentResult.Action.ITEM_PLACE_BOUND,
-                "記住了,「%s」可以在「%s」買。".formatted(
+                "好的，「%s」可在「%s」購買的關係已保存。".formatted(
                         item.getName(), place.getName())), item);
     }
 

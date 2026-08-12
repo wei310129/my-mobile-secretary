@@ -45,7 +45,7 @@ public class DelegatedDecisionService {
         }
         return IntentResult.message(IntentResult.Action.CONTEXT_UPDATED,
                 "目前沒有等待決定的提案,所以我什麼都沒動。\n"
-                        + "之後有待確認的行程時跟我說「你決定」,我會用最低風險的方式處理並回報。");
+                        + "之後有待確認的行程時，您可以說「你決定」；系統只採最低風險選項並回報結果。");
     }
 
     private static String format(ScheduleItem item) {

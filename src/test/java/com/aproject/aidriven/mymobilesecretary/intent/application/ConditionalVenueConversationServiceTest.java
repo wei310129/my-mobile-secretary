@@ -28,6 +28,22 @@ class ConditionalVenueConversationServiceTest {
     @Mock private ConditionalVenueDraft draft;
 
     @Test
+    void incompleteRequestAsksOneTypedQuestionWithoutMutation() {
+        when(venues.latestPending()).thenReturn(Optional.empty());
+        AtomicInteger mutations = new AtomicInteger();
+
+        IntentResult result = service().answer(
+                "如果甲館休館就改去乙館活動，我只要一個行程，場地之後決定",
+                null, mutations::incrementAndGet).orElseThrow();
+
+        assertThat(result.nextQuestion().code()).isEqualTo("conditional-venue.event-at");
+        assertThat(result.message())
+                .contains("活動是哪一天幾點開始")
+                .doesNotContain("持續多久", "什麼時候提醒", "活動要叫什麼");
+        assertThat(mutations).hasValue(0);
+    }
+
+    @Test
     void mentioningOneCandidateToAskAQuestionDoesNotSelectIt() {
         AtomicInteger mutations = new AtomicInteger();
         when(venues.latestPending()).thenReturn(Optional.of(draft));

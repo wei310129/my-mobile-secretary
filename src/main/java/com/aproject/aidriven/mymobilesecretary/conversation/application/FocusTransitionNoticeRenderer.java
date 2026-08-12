@@ -13,11 +13,11 @@ public final class FocusTransitionNoticeRenderer {
             case ENTER -> "目前先處理「%s」。".formatted(notice.currentSafeLabel());
             case CHANGE_SUBFOCUS -> "目前仍處理「%s」，先聚焦「%s」。".formatted(
                     notice.currentSafeLabel(), notice.activitySafeLabel());
-            case SWITCH -> "先暫離「%s」，改處理「%s」。".formatted(
+            case SWITCH -> "原本的「%s」先保留，現在改處理「%s」。".formatted(
                     notice.previousSafeLabel(), notice.currentSafeLabel());
             case RESUME -> notice.previousSafeLabel() == null
                     ? "繼續處理「%s」。".formatted(notice.currentSafeLabel())
-                    : "先暫離「%s」，回到「%s」。".formatted(
+                    : "原本的「%s」先保留，現在回到「%s」。".formatted(
                             notice.previousSafeLabel(), notice.currentSafeLabel());
             case EXIT -> "已離開「%s」，目前沒有正在處理的事項。".formatted(
                     notice.currentSafeLabel());

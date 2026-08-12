@@ -62,14 +62,20 @@ class GoogleRoutesClientTest {
                 .contains("\"departureTime\"")
                 .doesNotContain("\"arrivalTime\"");
         assertThat(fieldMask.get())
-                .isEqualTo("routes.duration,routes.distanceMeters,routes.staticDuration");
+                .contains("routes.duration", "routes.distanceMeters", "routes.staticDuration");
     }
 
     @Test
     void transitArriveByUsesArrivalTimeWithoutDrivingPreference() {
         server.createContext("/directions/v2:computeRoutes", exchange -> {
             requestBody.set(new String(exchange.getRequestBody().readAllBytes(), UTF_8));
-            byte[] response = "{\"routes\":[{\"duration\":\"1800s\",\"distanceMeters\":8000}]}"
+            fieldMask.set(exchange.getRequestHeaders().getFirst("X-Goog-FieldMask"));
+            byte[] response = ("{\"routes\":[{\"duration\":\"1800s\",\"distanceMeters\":8000,"
+                    + "\"legs\":[{\"steps\":[{\"travelMode\":\"TRANSIT\",\"transitDetails\":{"
+                    + "\"headsign\":\"淡水\",\"stopDetails\":{"
+                    + "\"departureStop\":{\"name\":\"捷運台北車站\"},"
+                    + "\"arrivalStop\":{\"name\":\"捷運中山站\"}},"
+                    + "\"transitLine\":{\"name\":\"淡水信義線\",\"nameShort\":\"紅線\"}}}]}]}]}")
                     .getBytes(UTF_8);
             exchange.getResponseHeaders().add("Content-Type", "application/json");
             exchange.sendResponseHeaders(200, response.length);
@@ -80,12 +86,21 @@ class GoogleRoutesClientTest {
         var routes = client().computeRoutes(query(TravelMode.TRANSIT, TimeRole.ARRIVE_BY));
 
         assertThat(routes).singleElement()
-                .extracting(GoogleRoutesClient.GoogleRoute::duration)
-                .isEqualTo(Duration.ofMinutes(30));
+                .satisfies(route -> {
+                    assertThat(route.duration()).isEqualTo(Duration.ofMinutes(30));
+                    assertThat(route.transitLegs()).singleElement().satisfies(leg -> {
+                        assertThat(leg.lineName()).isEqualTo("紅線");
+                        assertThat(leg.headsign()).isEqualTo("淡水");
+                        assertThat(leg.departureStop()).isEqualTo("捷運台北車站");
+                        assertThat(leg.arrivalStop()).isEqualTo("捷運中山站");
+                    });
+                });
         assertThat(requestBody.get())
                 .contains("\"travelMode\":\"TRANSIT\"")
                 .contains("\"arrivalTime\"")
                 .doesNotContain("routingPreference", "computeAlternativeRoutes", "departureTime");
+        assertThat(fieldMask.get())
+                .contains("routes.legs.steps.transitDetails", "routes.legs.steps.travelMode");
     }
 
     @Test

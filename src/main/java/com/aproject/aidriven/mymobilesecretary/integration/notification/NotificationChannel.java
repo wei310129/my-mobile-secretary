@@ -6,6 +6,7 @@ package com.aproject.aidriven.mymobilesecretary.integration.notification;
 public enum NotificationChannel {
     LOG,
     WINDOWS_TOAST,
+    LINE,
     /** 尚未實作,保留介面邊界。 */
     APNS
 }

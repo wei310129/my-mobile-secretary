@@ -28,6 +28,15 @@ public final class IntentHandlerRegistry {
         return type != null && handlersByType.containsKey(type);
     }
 
+    public IntentConversationContract contract(IntentCommand.Type type) {
+        IntentHandler handler = handlersByType.get(type);
+        if (handler == null) {
+            throw new IllegalArgumentException("no intent handler registered for type " + type);
+        }
+        return Objects.requireNonNull(handler.conversationContract(),
+                "intent handler conversation contract");
+    }
+
     public IntentResult dispatch(String text, IntentCommand command) {
         if (command == null || command.type() == null) {
             throw new IllegalArgumentException("intent command and type must not be null");

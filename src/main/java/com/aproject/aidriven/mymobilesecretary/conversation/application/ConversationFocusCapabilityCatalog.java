@@ -70,6 +70,7 @@ public final class ConversationFocusCapabilityCatalog {
         values.put(IntentCommand.Type.ASK_TAGGED_RECORDS, FocusBehavior.START_OR_SWITCH);
         values.put(IntentCommand.Type.SHOW_TRAVEL_ITINERARY_DRAFT, FocusBehavior.START_OR_SWITCH);
         values.put(IntentCommand.Type.PLAN_TRIP, FocusBehavior.START_OR_SWITCH);
+        values.put(IntentCommand.Type.PLAN_ROUTE_ITINERARY, FocusBehavior.START_OR_SWITCH);
         values.put(IntentCommand.Type.PLAN_PACKING_LIST, FocusBehavior.START_OR_SWITCH);
         values.put(IntentCommand.Type.CANCEL_SCHEDULE, FocusBehavior.TERMINAL);
         values.put(IntentCommand.Type.CANCEL_TASK, FocusBehavior.TERMINAL);

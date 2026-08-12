@@ -13,13 +13,17 @@ import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationCo
 import com.aproject.aidriven.mymobilesecretary.intent.application.DailyScheduleOverviewService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
+import com.aproject.aidriven.mymobilesecretary.intent.application.SecretaryOverviewService;
 import com.aproject.aidriven.mymobilesecretary.planner.application.FreeSlotService;
 import com.aproject.aidriven.mymobilesecretary.reminder.application.TaskService;
+import com.aproject.aidriven.mymobilesecretary.reminder.domain.Task;
+import com.aproject.aidriven.mymobilesecretary.reminder.domain.TaskPriority;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleInsightService;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import com.aproject.aidriven.mymobilesecretary.schedule.domain.ScheduleItem;
 import java.time.Clock;
 import java.time.Instant;
+import java.time.ZoneOffset;
 import java.util.List;
 import java.util.Optional;
 import java.util.Set;
@@ -34,6 +38,7 @@ class ScheduleQueryIntentHandlerTest {
     private ScheduleService legacySchedules;
     private CalendarV2RoutingService routing;
     private CalendarV2IntentService calendarV2;
+    private TaskService tasks;
 
     @BeforeEach
     void setUp() {
@@ -41,17 +46,20 @@ class ScheduleQueryIntentHandlerTest {
         legacySchedules = mock(ScheduleService.class);
         routing = mock(CalendarV2RoutingService.class);
         calendarV2 = mock(CalendarV2IntentService.class);
+        tasks = mock(TaskService.class);
         handler = new ScheduleQueryIntentHandler(
                 legacySchedules,
-                mock(TaskService.class),
+                tasks,
                 mock(ConversationContextService.class),
                 mock(FreeSlotService.class),
                 scheduleInsightService,
                 mock(PlaceService.class),
                 mock(DailyScheduleOverviewService.class),
-                Clock.systemUTC(),
+                Clock.fixed(Instant.parse("2026-08-03T01:00:00Z"), ZoneOffset.UTC),
                 routing,
-                calendarV2);
+                calendarV2,
+                new SecretaryOverviewService(Clock.fixed(
+                        Instant.parse("2026-08-03T01:00:00Z"), ZoneOffset.UTC)));
     }
 
     @Test
@@ -161,6 +169,26 @@ class ScheduleQueryIntentHandlerTest {
         ArgumentCaptor<List<ScheduleItem>> candidates = ArgumentCaptor.forClass(List.class);
         verify(scheduleInsightService).longest(candidates.capture());
         assertThat(candidates.getValue()).containsExactly(tomorrow);
+    }
+
+    @Test
+    void unifiedAgendaAnswersWithConcreteNowAndNextItems() {
+        Task dueTask = Task.create("準備資料", null, TaskPriority.HIGH,
+                Instant.parse("2026-08-03T04:00:00Z"), Instant.parse("2026-08-02T00:00:00Z"));
+        ScheduleItem meeting = schedule("上午會議", "2026-08-03T02:00:00Z");
+        when(tasks.listOpenTasks()).thenReturn(List.of(dueTask));
+        when(legacySchedules.listSchedules(com.aproject.aidriven.mymobilesecretary.schedule.domain
+                .ScheduleStatus.CONFIRMED)).thenReturn(List.of(meeting));
+
+        IntentResult result = handler.handle("今天有什麼事", new IntentCommand(
+                IntentCommand.Type.LIST_AGENDA, null, null, null, null, null, null, null,
+                null, null, null, null, null,
+                com.aproject.aidriven.mymobilesecretary.intent.application.IntentOptions.empty()
+                        .withFilter("TODAY")));
+
+        assertThat(result.message())
+                .contains("現在", "接下來", "上午會議", "準備資料")
+                .doesNotContain("行程與待辦:");
     }
 
     private static IntentCommand command(IntentCommand.Type type) {

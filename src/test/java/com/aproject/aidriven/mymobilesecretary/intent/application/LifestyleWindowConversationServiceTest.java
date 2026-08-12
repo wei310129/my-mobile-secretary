@@ -48,7 +48,7 @@ class LifestyleWindowConversationServiceTest {
 
         assertThat(mutations).hasValue(1);
         assertThat(result.action()).isEqualTo(IntentResult.Action.PLANNING_PREFERENCE_SET);
-        assertThat(result.message()).contains("不建立固定行程", "之後新行程若壓縮", "讓你決定");
+        assertThat(result.message()).contains("不建立固定行程", "新行程若壓縮", "由您決定");
         verify(windowService).set(LifestyleWindow.DayType.WEEKDAY,
                 LifestyleWindow.Kind.BREAKFAST, LocalTime.of(7, 0), LocalTime.of(7, 30));
         verify(windowService).set(LifestyleWindow.DayType.WEEKDAY,

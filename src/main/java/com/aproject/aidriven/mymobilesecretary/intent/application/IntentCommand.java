@@ -83,6 +83,8 @@ public record IntentCommand(
         CREATE_WEATHER_REMINDER,
         ASK_TRAVEL_TIME,
         ASK_DEPARTURE_TIME,
+        /** 建立目的活動後詢問是否規劃交通；起點放 options.fromPlaceName。 */
+        PLAN_ROUTE_ITINERARY,
         CREATE_TRAFFIC_WATCH,
         CHECK_FEASIBILITY,
         SET_PLANNING_BUFFER,
@@ -262,6 +264,10 @@ public record IntentCommand(
         RESCHEDULE_SCHEDULE,
         /** 問已知地點的資訊(「全聯是指哪一間?」);placeName 放地點名。 */
         ASK_PLACE,
+        /** 查詢系統內建地點 catalog；不建立使用者自訂地點。 */
+        ASK_PLACE_CATALOG,
+        /** 選用系統內建地點的 typed evidence；不建立使用者自訂地點。 */
+        ADOPT_PLACE_CATALOG,
         /** 建立地點(「建立地點:蝦皮店到店中興二店」);placeName 放地點名,詳細資訊由 Google 補全。 */
         CREATE_PLACE,
         /** 更新既有地點地址；placeName 指定既有地點，options.description 放完整地址。 */

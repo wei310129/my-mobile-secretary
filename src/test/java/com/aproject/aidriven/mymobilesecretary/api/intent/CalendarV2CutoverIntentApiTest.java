@@ -8,6 +8,12 @@ import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.
 import com.aproject.aidriven.mymobilesecretary.IntegrationTestBase;
 import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubIntentInterpreter;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
+import java.time.Clock;
+import java.time.DayOfWeek;
+import java.time.LocalDate;
+import java.time.ZoneId;
+import java.time.ZonedDateTime;
+import java.time.temporal.TemporalAdjusters;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.http.MediaType;
@@ -23,19 +29,25 @@ class CalendarV2CutoverIntentApiTest extends IntegrationTestBase {
     @Autowired
     private JdbcTemplate jdbc;
 
+    @Autowired
+    private Clock clock;
+
     @Test
     void createAndListUseOnlyCalendarV2WithoutLegacyDualWrite() throws Exception {
+        ZoneId taipei = ZoneId.of("Asia/Taipei");
+        ZonedDateTime start = LocalDate.now(clock.withZone(taipei)).plusDays(1)
+                .atTime(9, 0).atZone(taipei);
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE,
                 "W11 切換驗證會議",
                 null,
-                "2026-08-03T09:00:00+08:00",
-                "2026-08-03T10:00:00+08:00",
+                start.toOffsetDateTime().toString(),
+                start.plusHours(1).toOffsetDateTime().toString(),
                 null, null, null, null, null, null, null, null));
 
                 mockMvc.perform(post("/api/intent")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"text\":\"8月3日上午九點建立 W11 切換驗證會議\"}"))
+                        .content("{\"text\":\"明天上午九點建立 W11 切換驗證會議\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.action").value("SCHEDULE_CONFIRMED"));
 
@@ -46,12 +58,12 @@ class CalendarV2CutoverIntentApiTest extends IntegrationTestBase {
                 IntentCommand.Type.LIST_SCHEDULES_ON_DATE,
                 null,
                 null,
-                "2026-08-03T00:00:00+08:00",
+                start.toLocalDate().atStartOfDay(taipei).toOffsetDateTime().toString(),
                 null, null, null, null, null, null, null, null, null));
 
         mockMvc.perform(post("/api/intent")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content("{\"text\":\"8月3日有什麼行程\"}"))
+                        .content("{\"text\":\"明天有什麼行程\"}"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.action").value("SCHEDULES_LISTED"))
                 .andExpect(jsonPath("$.message").value(
@@ -64,14 +76,17 @@ class CalendarV2CutoverIntentApiTest extends IntegrationTestBase {
     @Test
     void typedScheduleLookupWinsOverImplicitTaggedLifeRecordShortcut() throws Exception {
         String title = "Port Checkin";
+        ZoneId taipei = ZoneId.of("Asia/Taipei");
+        ZonedDateTime start = LocalDate.now(clock.withZone(taipei)).plusDays(2)
+                .atTime(8, 0).atZone(taipei);
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE, title, null,
-                "2026-08-04T08:00:00+08:00", "2026-08-04T09:00:00+08:00",
+                start.toOffsetDateTime().toString(), start.plusHours(1).toOffsetDateTime().toString(),
                 null, null, null, null, null, null, null, null));
 
         mockMvc.perform(post("/api/intent")
                         .contentType(MediaType.APPLICATION_JSON)
-                        .content(payload("create Port Checkin at 8 AM on August 4")))
+                        .content(payload("create Port Checkin two days from now at 8 AM")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.action").value("SCHEDULE_CONFIRMED"));
 
@@ -101,13 +116,17 @@ class CalendarV2CutoverIntentApiTest extends IntegrationTestBase {
     @Test
     void startOnlyEvidencePersistsTimedPointInsteadOfModelInventedDuration() throws Exception {
         String title = "W11 單一時點驗證";
-        String source = "8月5日上午十一點進行 W11 單一時點驗證";
+        ZoneId taipei = ZoneId.of("Asia/Taipei");
+        ZonedDateTime start = LocalDate.now(clock.withZone(taipei)).plusDays(3)
+                .atTime(11, 0).atZone(taipei);
+        String source = "%d月%d日上午十一點進行 W11 單一時點驗證"
+                .formatted(start.getMonthValue(), start.getDayOfMonth());
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE,
                 title,
                 null,
-                "2026-08-05T11:00:00+08:00",
-                "2026-08-05T12:00:00+08:00",
+                start.toOffsetDateTime().toString(),
+                start.plusHours(1).toOffsetDateTime().toString(),
                 null, null, null, null, null, null, null, false, null, source));
 
         mockMvc.perform(post("/api/intent")
@@ -129,13 +148,18 @@ class CalendarV2CutoverIntentApiTest extends IntegrationTestBase {
     @Test
     void recurringCreatePersistsOneCalendarSeriesWithoutLegacyDualWrite() throws Exception {
         String title = "W11 每週課程";
-        String source = "8月8日每週六下午兩點到四點上 W11 陶藝課";
+        ZoneId taipei = ZoneId.of("Asia/Taipei");
+        ZonedDateTime start = LocalDate.now(clock.withZone(taipei))
+                .with(TemporalAdjusters.next(DayOfWeek.SATURDAY))
+                .atTime(14, 0).atZone(taipei);
+        String source = "%d月%d日每週六下午兩點到四點上 W11 陶藝課"
+                .formatted(start.getMonthValue(), start.getDayOfMonth());
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_SCHEDULE,
                 title,
                 null,
-                "2026-08-08T14:00:00+08:00",
-                "2026-08-08T16:00:00+08:00",
+                start.toOffsetDateTime().toString(),
+                start.plusHours(2).toOffsetDateTime().toString(),
                 null,
                 null,
                 null,

@@ -7,6 +7,39 @@ import org.junit.jupiter.api.Test;
 class ProductFeedbackBoundaryTest {
 
     @Test
+    void praiseReceivesWarmControlledAcknowledgementWithoutInventingMemory() {
+        IntentResult result = ProductFeedbackBoundary.answer("你做得很好").orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+        assertThat(result.message())
+                .containsAnyOf("謝謝您", "肯定", "您滿意就好", "幫到您")
+                .doesNotContain("我會記住", "我會維持", "我會繼續");
+        assertThat(result.nextQuestion()).isNull();
+    }
+
+    @Test
+    void genericDissatisfactionActivelyClarifiesWithoutClaimingARerun() {
+        IntentResult result = ProductFeedbackBoundary.answer("你做得很差").orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+        assertThat(result.message()).contains("您最希望我先");
+        assertThat(result.message())
+                .doesNotContain("我會重新處理", "我會依您", "我會調整", "已重新處理");
+        assertThat(result.message().chars().filter(value -> value == '？').count()).isEqualTo(1);
+        assertThat(result.nextQuestion()).isNotNull();
+    }
+
+    @Test
+    void productRuleAcknowledgementDoesNotPromiseUnsupportedFutureBehavior() {
+        IntentResult result = ProductFeedbackBoundary.answer(
+                "這是一個功能需求，系統應該要用更自然的方式回答使用者").orElseThrow();
+
+        assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+        assertThat(result.message())
+                .doesNotContain("我會依", "我會調整", "我會記住", "我會重新處理");
+    }
+
+    @Test
     void mixedFamilyContextAndGeneralizedSecretaryRulesAreProductFeedback() {
         String text = """
                 明天的父親節活動是12點結束，而且結束後女兒同學（呂曼菲）的爸爸有約大家一起午餐。
@@ -19,8 +52,9 @@ class ProductFeedbackBoundaryTest {
         IntentResult result = ProductFeedbackBoundary.answer(text).orElseThrow();
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
-        assertThat(result.message()).contains("依你指出的方向調整").contains("不會建立待辦或行程")
+        assertThat(result.message()).contains("謝謝您直接告訴我").contains("不會建立待辦或行程")
                 .contains("不會修改既有待辦或行程")
+                .doesNotContain("我會依", "我會調整", "我會記住")
                 .doesNotContain("問題紀錄", "後端");
     }
 
@@ -29,7 +63,10 @@ class ProductFeedbackBoundaryTest {
         IntentResult result = ProductFeedbackBoundary.answer("你沒有聽懂").orElseThrow();
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
-        assertThat(result.message()).contains("理解錯了").contains("原本的主題與訊息仍會保留").contains("從原操作續接");
+        assertThat(result.message()).contains("理解錯了").contains("還沒有重新處理")
+                .contains("您希望我先更正哪一部分")
+                .doesNotContain("從原操作續接", "我會重新處理");
+        assertThat(result.nextQuestion()).isNotNull();
     }
 
     @Test
@@ -77,7 +114,8 @@ class ProductFeedbackBoundaryTest {
         IntentResult result = ProductFeedbackBoundary.answer(text).orElseThrow();
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
-        assertThat(result.message()).contains("依你指出的方向調整")
+        assertThat(result.message()).contains("謝謝您直接告訴我")
+                .doesNotContain("我會依", "我會調整", "我會記住")
                 .doesNotContain("問題紀錄", "後端");
     }
 
@@ -88,7 +126,8 @@ class ProductFeedbackBoundaryTest {
                 .orElseThrow();
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
-        assertThat(result.message()).contains("理解錯了", "從原操作續接");
+        assertThat(result.message()).contains("理解錯了", "您希望我先更正哪一部分")
+                .doesNotContain("從原操作續接", "我會重新處理");
     }
 
     @Test
@@ -105,7 +144,7 @@ class ProductFeedbackBoundaryTest {
         IntentResult result = ProductFeedbackBoundary.answer("完全不知所云").orElseThrow();
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
-        assertThat(result.message()).contains("理解錯了", "原本的主題")
+        assertThat(result.message()).contains("理解錯了", "還沒有重新處理")
                 .doesNotContain("使用者說", "無法判斷意圖");
     }
 
@@ -116,8 +155,10 @@ class ProductFeedbackBoundaryTest {
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
         assertThat(result.message())
-                .contains("並不是在說重複建立", "不會建立或修改", "不會說成已經修好")
+                .contains("不是在說重複建立", "不會建立或修改", "還沒有重新處理")
+                .doesNotContain("我會保留問題")
                 .doesNotContain("你提醒得對，不應該重複建立");
+        assertThat(result.nextQuestion()).isNotNull();
     }
 
     @Test
@@ -135,5 +176,16 @@ class ProductFeedbackBoundaryTest {
                 "為什麼你又回了和上一則無關的內容？").orElseThrow();
 
         assertThat(result.action()).isEqualTo(IntentResult.Action.FEEDBACK_RECEIVED);
+    }
+
+    @Test
+    void taskScheduleRelationshipCorrectionNamesTheMissAndAsksOnlyOneRepairQuestion() {
+        IntentResult result = ProductFeedbackBoundary.answer(
+                "你沒有把待辦和行程的時間關聯一起看，才會回答錯重點").orElseThrow();
+
+        assertThat(result.message())
+                .contains("待辦", "行程", "關聯")
+                .doesNotContain("請直接指出要更正的內容");
+        assertThat(result.message().chars().filter(value -> value == '？').count()).isEqualTo(1);
     }
 }

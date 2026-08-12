@@ -33,6 +33,27 @@ When the change affects intent, LINE, quoted context, progress or public replies
 8. Validate deterministic behavior first, then provider contract, sandbox and conversation gates.
 9. Report mutation counts, environment, masked evidence, untested paths and remaining risk.
 
+All provider, hosted-checkout and browser-assisted public replies use the conversation capability's typed
+final boundary after provider/error decoration. Never expose raw provider reason, payload, request/order ID,
+internal booking/payment state, exception detail or reconciliation key. Needs-input replies ask exactly one
+typed next question, preserve valid answered traveller/offer/payment slots, and store answers only in the
+booking capability's typed draft. Provider success never relaxes these reply or clarification contracts.
+
+Do not promise that a provider operation was remembered, started, retried, changed, canceled, paid, refunded
+or will produce a notification unless the public result carries the corresponding committed typed evidence.
+An acknowledgement or repair question is not proof of a provider retry. Use concise secretary language and
+let the shared final tone boundary remove decorative channel-specific wording before adapter output.
+
+Treat booking complaints and corrections as conversation repair turns. If typed booking state is sufficient,
+return the corrected read-only status or quote explanation in the same turn without a provider mutation. If
+the target is ambiguous, ask exactly one typed repair-target question, preserve unrelated pending work, and
+never claim a provider error or transaction outcome without evidence.
+
+A public “help me book” intake without provider authority is guidance only. Store restaurant/time/party-size
+answers in an actor/workspace-owned typed draft, ask one next question, preserve valid supplied values, and say
+plainly that no booking or payment was sent. Completing that local draft is not provider availability, a hold,
+a reservation, payment, or authority to open a browser transaction.
+
 ## Hard stops
 
 Stop and request authority for live booking, payment, cancellation, refund, paid services, real traveller

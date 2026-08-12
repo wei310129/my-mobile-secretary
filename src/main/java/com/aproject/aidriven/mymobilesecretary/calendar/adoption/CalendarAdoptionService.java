@@ -164,7 +164,7 @@ public class CalendarAdoptionService {
         WorkspaceContext context = tenantContext();
         return jdbc.query(
                 """
-                SELECT node.plan_id, node.source_node_id,
+                SELECT node.plan_id, snapshot.plan_title, node.source_node_id,
                     node.source_created_by_user_id,
                     node.node_key, node.resolved_time,
                     node.location_label, node.latitude, node.longitude,
@@ -217,6 +217,7 @@ public class CalendarAdoptionService {
                         row.getObject("plan_id", UUID.class),
                         row.getObject("source_node_id", UUID.class),
                         row.getObject("source_created_by_user_id", UUID.class),
+                        row.getString("plan_title"),
                         row.getString("node_key"),
                         row.getTimestamp("resolved_time").toInstant(),
                         row.getString("location_label") == null

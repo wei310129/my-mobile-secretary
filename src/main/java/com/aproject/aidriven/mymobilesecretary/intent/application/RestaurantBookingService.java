@@ -1,13 +1,13 @@
 package com.aproject.aidriven.mymobilesecretary.intent.application;
 
+import com.aproject.aidriven.mymobilesecretary.conversation.application.RestaurantBookingDraftService;
+import com.aproject.aidriven.mymobilesecretary.conversation.domain.RestaurantBookingDraft;
 import com.aproject.aidriven.mymobilesecretary.integration.places.GooglePlacesClient;
 import com.aproject.aidriven.mymobilesecretary.integration.places.GooglePlacesClient.RestaurantCandidate;
 import java.time.ZoneId;
 import java.time.ZonedDateTime;
 import java.time.format.DateTimeFormatter;
 import java.time.format.TextStyle;
-import java.util.ArrayList;
-import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
 import org.slf4j.Logger;
@@ -17,7 +17,7 @@ import org.springframework.stereotype.Service;
 /**
  * 訂餐廳引導流程(使用者 2026-07-16 裁決 #47):
  * 系統不能真的完成訂位,但**不可只說做不到**——要走替代路徑:
- * 問齊「餐廳/料理、時間、人數與特殊需求」,查營業時間、電話與菜單連結,
+ * 逐輪確認「餐廳/料理、時間、人數與特殊需求」,查營業時間、電話與菜單連結,
  * 給報到與用餐時長建議,結尾祝使用者用餐愉快。
  *
  * 可靠度規則:Google 查詢失敗或未設定金鑰時,引導與建議照常給,流程不可中斷。
@@ -31,40 +31,64 @@ public class RestaurantBookingService {
             DateTimeFormatter.ofPattern("MM/dd(E) HH:mm", Locale.TAIWAN);
 
     private final GooglePlacesClient placesClient;
+    private final RestaurantBookingDraftService drafts;
 
     public RestaurantBookingService(GooglePlacesClient placesClient) {
+        this(placesClient, null);
+    }
+
+    @org.springframework.beans.factory.annotation.Autowired
+    public RestaurantBookingService(
+            GooglePlacesClient placesClient, RestaurantBookingDraftService drafts) {
         this.placesClient = placesClient;
+        this.drafts = drafts;
     }
 
     /**
-     * 依已知欄位決定下一步:缺資訊 → 一次問齊缺的;齊了 → 查餐廳並整理訂位須知。
+     * 依已知欄位決定下一步:缺資訊 → 每輪只問下一題;齊了 → 查餐廳並整理訂位須知。
      * 回覆用 RESTAURANT_BOOKING_INFO,不算聽不懂,不進意圖問題清單。
      */
     public IntentResult handle(String text, IntentCommand command) {
         String restaurant = firstNonBlank(command.placeName(), command.title());
         Optional<ZonedDateTime> diningAt = parseDiningTime(text, command);
         Integer partySize = command.safeOptions().quantity();
+        String specialNeeds = command.safeOptions().description();
 
-        List<String> questions = new ArrayList<>();
+        RestaurantBookingDraft draft = drafts == null ? null : drafts.merge(
+                restaurant, diningAt.map(ZonedDateTime::toInstant).orElse(null), partySize,
+                hasChildNeed(specialNeeds), hasAccessibilityNeed(specialNeeds),
+                hasPetNeed(specialNeeds));
+        if (draft != null) {
+            restaurant = draft.getRestaurantName();
+            diningAt = Optional.ofNullable(draft.getDiningAt())
+                    .map(value -> ZonedDateTime.ofInstant(value, TAIPEI));
+            partySize = draft.getPartySize();
+            specialNeeds = needsSummary(draft);
+        }
+
         if (restaurant == null) {
-            questions.add("想吃哪種料理,或直接說哪間餐廳?我來幫你找。");
+            return IntentResult.clarificationNeeded(
+                    "可以，我先確認餐廳。",
+                    ClarificationStep.blocking(
+                            "booking.restaurant", "booking.restaurant",
+                            "您想吃哪種料理，或是哪間餐廳？", 10));
         }
         if (diningAt.isEmpty()) {
-            questions.add("什麼時候用餐?(例如「週五晚上七點」)我會順便確認那時有沒有營業。");
+            return IntentResult.clarificationNeeded(
+                    ClarificationStep.blocking(
+                            "booking.dining-at", "booking.diningAt",
+                            "您預計什麼時候用餐？", 20));
         }
         if (partySize == null) {
-            questions.add("總共幾位?有長輩、小朋友、行動不便的家人或毛小孩同行嗎?我幫你確認餐廳有沒有對應服務。");
+            return IntentResult.clarificationNeeded(
+                    ClarificationStep.blocking(
+                            "booking.party-size", "booking.partySize",
+                            "總共幾位用餐？", 30));
         }
-        if (!questions.isEmpty()) {
-            StringBuilder ask = new StringBuilder("訂位這件事交給我引導 😊 幫我補幾個資訊:");
-            for (int i = 0; i < questions.size(); i++) {
-                ask.append("\n%d. %s".formatted(i + 1, questions.get(i)));
-            }
-            ask.append("\n都告訴我後,我會查營業時間、找菜單,整理好訂位須知給你。");
-            return IntentResult.message(IntentResult.Action.RESTAURANT_BOOKING_INFO, ask.toString());
-        }
-        return bookingBriefing(restaurant, diningAt.get(), partySize,
-                command.safeOptions().description());
+        IntentResult result = bookingBriefing(
+                restaurant, diningAt.get(), partySize, specialNeeds);
+        if (draft != null) drafts.complete(draft.getId());
+        return result;
     }
 
     /** 資訊齊了:查餐廳、比對營業時間、對應特殊需求,整理成一則訂位須知。 */
@@ -80,19 +104,20 @@ public class RestaurantBookingService {
             }
         }
 
-        StringBuilder message = new StringBuilder();
+        StringBuilder message = new StringBuilder(
+                "我先替您整理訂位資訊；目前沒有向餐廳送出訂位或付款。\n");
         if (found.isPresent()) {
             RestaurantCandidate place = found.get();
-            message.append("幫你查好「%s」了:".formatted(place.name()));
+            message.append("我查到「%s」的公開資訊：".formatted(place.name()));
             if (place.address() != null) {
                 message.append("\n地址｜").append(place.address());
             }
             if (place.phoneNumber() != null) {
-                message.append("\n電話｜%s(訂位直接打這支最快%s)".formatted(place.phoneNumber(),
+                message.append("\n電話｜%s（如果要訂位，直接致電最快%s）".formatted(place.phoneNumber(),
                         Boolean.TRUE.equals(place.reservable()) ? ",這間有收訂位" : ""));
             }
             openingLineFor(place, diningAt).ifPresent(line ->
-                    message.append("\n當天營業｜%s,你想訂 %s,請確認落在營業時段內".formatted(
+                    message.append("\n當天營業｜%s；您預計 %s 用餐，請確認落在營業時段內".formatted(
                             line, diningAt.format(DINING_TIME))));
             appendNeedsAdvice(message, place, specialNeeds);
             if (place.websiteUri() != null) {
@@ -102,13 +127,13 @@ public class RestaurantBookingService {
                         .append(place.googleMapsUri());
             }
         } else {
-            message.append("「%s」我這邊查不到詳細資料,不過訂位須知先幫你備好:".formatted(restaurant));
-            message.append("\n建議直接致電餐廳,或給我完整店名(含分店)我再查一次。");
+            message.append("我目前查不到「%s」的詳細公開資料，先替您整理一般訂位須知：".formatted(restaurant));
+            message.append("\n建議直接致電餐廳；您也可以提供完整店名與分店，我可以再查一次。");
         }
         message.append("\n\n訂位小提醒:%d 位、%s 用餐;建議提前 10 分鐘報到,"
                 .formatted(partySize, diningAt.format(DINING_TIME)))
                 .append("用餐時間一般抓 1.5 小時(人多聚餐可抓 2 小時)。")
-                .append("\n要我把用餐時段排進行程,或建一個「打電話訂位」提醒,跟我說一聲就好。")
+                .append("\n如果您要把用餐時段排進行程，或建立「打電話訂位」提醒，可以再告訴我。")
                 .append("\n\n祝您用餐愉快!🍽️");
         return IntentResult.message(IntentResult.Action.RESTAURANT_BOOKING_INFO, message.toString());
     }
@@ -171,5 +196,33 @@ public class RestaurantBookingService {
     private static String firstNonBlank(String first, String second) {
         return first != null && !first.isBlank() ? first
                 : second != null && !second.isBlank() ? second : null;
+    }
+
+    private static boolean hasChildNeed(String value) {
+        return containsAny(value, "小孩", "幼兒", "寶寶", "兒童");
+    }
+
+    private static boolean hasAccessibilityNeed(String value) {
+        return containsAny(value, "長輩", "老人", "行動不便", "輪椅");
+    }
+
+    private static boolean hasPetNeed(String value) {
+        return containsAny(value, "毛小孩", "寵物", "狗", "貓");
+    }
+
+    private static String needsSummary(RestaurantBookingDraft draft) {
+        StringBuilder value = new StringBuilder();
+        if (draft.isIncludesChild()) value.append("兒童 ");
+        if (draft.isRequiresAccessibility()) value.append("輪椅長輩 ");
+        if (draft.isIncludesPet()) value.append("毛小孩");
+        return value.toString().strip();
+    }
+
+    private static boolean containsAny(String value, String... markers) {
+        if (value == null) return false;
+        for (String marker : markers) {
+            if (value.contains(marker)) return true;
+        }
+        return false;
     }
 }

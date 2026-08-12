@@ -97,7 +97,7 @@
 - `reminder`：提醒排程與任務狀態機、debounce、升級催促
 - `schedule`：行程 source of truth、週期行程、pending 池、行程結果追蹤
 - `travel`：旅行規劃引導、行李清單、行程表圖片草稿
-- `integration`：TDX／氣象署／Google Places／LINE／通知（log、Windows Toast、outbox）轉接層
+- `integration`：TDX／氣象署／Google Places／LINE／通知（log、Windows Toast、LINE push、outbox）轉接層。Calendar scheduled poller 與 transactional occurrence processor 分 bean，避免 self-invocation 繞過 transaction；LINE proactive delivery 以 actor/workspace membership 與 external identity解析目的地，使用 durable delivery UUID 作 retry key，並在實際發送前重新驗證授權。已結束 timed interval 的逾期 occurrence 不在重啟後補送「時間快到了」。
 - `shared`：error／time／validation／security／observability
 
 另有 `internal/ai-dispatcher`：同 repo 內**完全隔離的獨立 Spring Boot 應用**（自有 Maven build、PostgreSQL、Flyway），控制 Codex 開發 agent 的啟動與生命週期。它是開發自動化基礎設施，不是產品 runtime 的一部分；隔離保證與設計見 `internal/ai-dispatcher/README.md` 與 `DESIGN.md`。
@@ -153,7 +153,95 @@ CREATED → SCHEDULED → REMINDED → 等待回報 ─→ CONFIRMED
 
 ## 11. 外部整合（台灣在地）
 
-- TDX 運輸資料流通服務（政府、免費）：公車／捷運路線與即時到站 →「最晚幾點出門才趕得上」的判斷來源。
+- 公共地點先由產品內建、immutable 的 system-owned catalog 回答，涵蓋捷運站、港口、機場、高鐵、
+  台鐵客運站、縣市政府與中大型遊樂園。解析順序固定為使用者自訂 `Place` → system catalog →
+  外部 Places 唯讀補充。catalog 解析結果由 Java 分為唯一命中、同一大型地點的多個實體點、跨縣市
+  不同實體歧義與未命中；唯一命中直接套用，同一大型地點不提早追問，等最終行程規劃時依已驗證的
+  行程／路線限制選點並告知選了哪裡與理由，只有跨縣市實體仍歧義時才問一個縣市問題。使用者未反對
+  的 catalog 結果可複製到 Calendar typed snapshot，但不得因此建立或修改使用者自訂地點。缺少座標時
+  只能視為可信名稱，不能宣稱已驗證距離、路線或交通時間。catalog 是有日期與官方來源標記的版本化
+  snapshot，更新時須驗證分類筆數、別名、同名歧義與座標，不保存 LINE 原文、任意使用者 payload 或
+  provider raw error。使用者已精確指定唯一點位時不追加「未建立自訂地點」；只有大型場站最終選點
+  才公開系統選擇、理由與 saved/not-saved 邊界。
+- 公共地點是 entity evidence，不等於使用者要求的 operation。含明確「從起點到目的地」與建立／安排
+  語意的句子必須組合成 `PLAN_ROUTE_ITINERARY`，不得被 system-place 回答或每日行程查詢捷徑提早攔截。
+  規劃／規畫／安排視為相同 route operation。明確活動欄位驗證成功後先且只建立活動，再問使用者是否
+  需要交通規劃；拒絕時活動維持不變，接受時先問
+  活動時間可否隨交通調整。外部主辦或固定時段為 `LOCKED`，可協調區間為 `WINDOWED`，可一起調整為
+  `FLEXIBLE`；不確定時只問一題。交通證據充分時只增加一個內部 departure node，不建立第二個可見
+  活動；證據不足則零交通 mutation，且不得猜測路線、時間或緩衝。
+- 一般自然語言、route endpoint 與 logical/multipoint knowledge 以 bundled、版本化 system-place catalog
+  為 canonical path；installation-owned DB catalog 則只服務明確 `ASK_PLACE_CATALOG`／
+  `ADOPT_PLACE_CATALOG` 與唯讀 API。DB catalog adoption 只回傳 typed entity evidence，不建立自訂 `Place`、
+  不取得 route／Calendar mutation authority；唯一命中不附 custom-place disclaimer，多結果只問一個地區或
+  候選編號問題。schema 由 Flyway V113 建立，既有 Calendar V94 不得改寫。
+- standalone 起訖／時間完整時首輪直接查 route provider；provider unavailable 只保存 bounded typed
+  Calendar draft state並問一個是否保留的問題，不能先建立假行程。重查從 typed draft恢復，不重讀 raw
+  LINE text；quote、active focus與唯一 pending workflow依序 fencing。建立前檢查 direct overlap及前後
+  相鄰銜接；有風險時先公開已驗證路線摘要，再給一個調整建議與一個確認問題，不公開內部 node／plan ID。
+- `待會`／`稍後`／`等一下`／`晚點`搭配明確時刻時，由注入Clock解析為現在之後最近一次該時刻；12小時制
+  無上午／下午標記時只在這些明確未來語意下選最近的未來 occurrence。單獨裸時刻仍不得猜日期，只有相對詞
+  但沒有時刻也不得猜時間。已解析的route時間必須先保存於typed Calendar draft；若明講的出發地尚未確認，
+  provider與Calendar materialization維持0並只問一個已確認出發地，不得把地點錯誤改寫成再次詢問時間。
+  在輸出任何route必要澄清前，draft必須先保存bounded transport mode（可為null）與time role，讓route lifecycle
+  能依typed workflow精確辨認owner；這只建立可恢復／可取消的request identity，不取得provider或Calendar
+  materialization authority。否則`取消`不得落入slot answer handler並被當成無效地點、時間或交通方式。
+  修正前已建立的精確workflow若缺time role，但具有typed route journey kind，lifecycle仍可將它辨識為route；
+  time role與journey kind兩者皆缺時維持fail closed，不得只信pending question code或公開label。
+- 使用者在已建立的 standalone route 風險回覆選擇「往後安排到安全時間」時，只能由 Java 依目前 typed
+  adjacency 計算缺口並重新查 route provider。只有本次行程前方風險可由單純後移解除、provider 回傳新
+  evidence，且 hypothetical assessment 已無風險時，才以同一 transaction 更新該 fresh route 的 plan、
+  start/end node 與 draft，並 resolve 原 risk；provider unavailable、後方仍有銜接限制、節點已被修改或
+  重算後仍不安全時維持原行程並只問一題。provider revalidation 必須在 replay reservation 之後，duplicate
+  request 不得重查 provider 或重複 Calendar mutation。
+- standalone route 的 LINE 回覆使用固定、掃讀友善的行程卡：本次行程、日期、時間軸、typed 重複規則、
+  交通方式、必要時的
+  衝突行程與單一問題。所有有風險的既有行程至少公開名稱與時間；有可信地點時一併公開，但不得輸出
+  UUID、schema 或 provider raw reason。只有 endpoint source 為本輪／可信 quote 明講或已確認 typed context，
+  且座標有效時才可輸出 Google Maps coordinate link；連結是唯讀導覽，不代表 Google Routes 已被呼叫。
+  只有起點與終點都通過同一公開來源gate時，才追加一個使用typed交通模式的Google Maps directions URL；
+  任一端為HOME、推定context、legacy unknown、私人來源或無效座標時都不得輸出完整路線網址。該網址由
+  Google Maps開啟後自行規劃，不取代TDX evidence，也不授權外部query或Calendar mutation。
+- standalone route 的 provider departure／arrival 是唯一核心交通區間；公開標頭、行程分鐘數與持久化
+  start/end 都不得納入一般緩衝、停車或等車作業。一般 connection buffer 只在新建／調整項目與既有項目
+  過近，且任一側有地點位移時才可詢問；無此條件時不得詢問或設定。開車抵達後停車與計程車出發前等車
+  維持 typed actor/workspace 操作偏好，但外部活動本身不自動套用一般、停車或等車作業。
+- 使用者針對銜接風險選擇「往後安全安排」或「保留」後，若仍缺前後緩衝，系統以不同 typed pending code
+  保存已選分支，只問一題前後分鐘數。回答後直接續作原選擇；安全調整把適用的前側緩衝加入 provider
+  revalidation requested time，但最後 Calendar start/end 仍只保存 provider 回傳的 depart/arrive。
+- route衝突公開邊界必須量化「可用銜接分鐘／路線所需分鐘／至少不足分鐘」，並列出每個既有行程名稱與
+  boundary time。直接重疊、只有前方風險、含後方風險使用不同typed question code；含後方風險不得提供
+  「往後安排即可安全」的錯誤選項，直接重疊不得只問沒有主詞與原因的「要改用其他時間嗎」。
+- Calendar 起始時間的提醒使用共用 typed lifecycle，但依 capability 分批啟用。本輪 route 必須先以 provider
+  evidence 完成 exactly-one Calendar materialization，才可詢問停車、等車或出發提醒。這些都是可略過的附屬
+  設定，不得讓已建立行程繼續被標成「尚未完成」，也不得攔截下一個完整 executable operation；真正的衝突、
+  缺地點、必要 connection buffer 或 provider failure 仍屬主要 gate。relative reminder 隨調整後的起始時間自動
+  更新並公開告知，fixed-clock reminder 進入 review，使用者回答後精確取消舊待審規則再建立新規則或不再提醒。
+  計程車可依等車時間建立提早叫車提醒；所有提醒 mutation 必須 replay-safe、actor/workspace/node scoped。
+- route 的出發提醒回答若同一 turn 已明確提供提前分鐘數，必須由 Java typed policy 優先建立該單一相對提醒，
+  不得因句中同時有「好／要」而改套自適應預設。建立結果直接列出每個實際提醒時間與相對出發語意；後續
+  「哪兩個／有哪些提醒」等唯讀回指，依 actor/workspace/focus workflow 綁定的 Calendar draft 與 active reminder
+  rules 回答，不要求使用者重述行程名稱、不依 raw recent text 猜測，且不得新增或修改提醒。
+- route journey kind 由 validated placement＋明確 source semantics 決定並保存為
+  `STANDALONE_TRIP`／`ACTIVITY_WITH_TRANSPORT`，不得用 raw model `endAt` 或事後只看 placement 分流。
+  `STANDALONE_TRIP` 的完整區間只由出發／抵達 time role 與 provider duration 決定，不得為了建立交通路線
+  詢問「活動預計多久」或「幾點結束」；只有另行 typed 為活動本體時才適用活動時長欄位。
+  未 explicit-linked 的前後行程只在 6 小時內進入 assessment／fingerprint；同旅程／航班／轉乘 typed
+  linkage 可跨越 6 小時。鄰近缺地點時先建立已驗證路線，再針對缺少的一側只問一題；direct overlap
+  仍可阻擋 materialization。
+- 缺 route origin 時依 explicit/quote、confirmed same-journey、6 小時內前一地點、typed HOME、單一問題
+  的 Java precedence 決定。`actor_location_preference` 只參照 confirmed actor-owned Place，啟用並強制
+  RLS；pending 不保存 raw 地址／LINE 原文／generic JSON。上午 10 點前若有跨夜覆蓋或 6–18 小時內距
+  HOME 至少 30 公里的 confirmed location，fail closed 問出發地，不從標題、人物、飯店、品牌或國名猜測。
+  continuation 必須在首次 HOME／draft／Calendar mutation 前跨過 inbound mutation boundary，duplicate
+  delivery 直接 replay terminal result。
+- `actor_route_operation_preference` 與 route endpoint source 都是 typed、actor/workspace-scoped 狀態，啟用並
+  強制 RLS。endpoint source 不保存 LINE 原文、地址或 generic JSON；legacy unknown source 一律 fail closed，
+  不得因此產生 Maps 連結。
+- TDX 運輸資料流通服務（政府、免費）與 Google Routes 都由 provider-neutral policy 選擇。台灣 transit
+  預設維持 TDX primary，Google 可作 primary/fallback/confirmation，但切換預設前必須有代表性真實路線的
+  success、route quality、latency與cost evidence。TDX首末哩固定為步行，不能靜默加入付費叫車；Google
+  公開回覆須帶必要 attribution。任一 provider只提供 typed evidence，不取得 Calendar mutation authority。
 - 中央氣象署開放資料平台（免費）：降雨、高溫規則（下大雨提醒少買、高溫提醒蛤蜊早點買）。
 - Google Places API：店家營業時間、附近搜尋（控制在免費額度內，靠 Redis 快取壓用量）。
 - LINE Messaging API：建 LINE 官方帳號 bot，使用者將訊息「轉傳」給它，webhook 進後端解析。（LINE 沒有讓第三方直接讀訊息的 API，轉傳是正規解法。）
@@ -443,7 +531,8 @@ model、pipeline、embedding 與 pgvector；啟動條件與安全規則詳見 `d
 對話層必須先回答使用者當輪的直接問題，再說限制與下一步。短句的唯一承接順序為：同 actor 可驗證的
 明確 LINE 引用；明確焦點控制／新工作／feedback／meta／單次唯讀問題；尚待回答的 focus transition；
 active focus 內尚未回答的問題；active work／subject focus；最後才是同 scope 的有限近期上下文。
-多候選時以含類別、時間與可區分資訊的編號清單讓使用者選擇。功能改善回饋、唯讀詢問與解析失敗不得
+真正需要使用者決定的多候選，以含類別、時間與可區分資訊的單一選擇問題讓使用者選擇；同一大型公共
+地點的多個實體點不是早期澄清，應延後到最終行程規劃選定並說明。功能改善回饋、唯讀詢問與解析失敗不得
 被舊草稿搶答，也不得降級成建立待辦或行程。LLM 可協助理解指代與表達，但選擇範圍、焦點與業務
 狀態轉換及 mutation 仍由 Java 驗證。
 
@@ -506,6 +595,32 @@ focus、active binding、transition 與 referent context 均需 workspace／acto
 optimistic version、注入 `Clock`、idempotency 與同 actor 跨 channel 隔離測試。焦點控制只屬對話狀態，
 不寫 LifeRecord／tag graph；真正可感知的業務 mutation 仍依原 domain event recorder 規則處理。
 
+當 typed pending operation 尚未完成而新輸入可能啟動另一個可執行操作時，所有 domain 共用同一個
+Java context-transition gate。明確延續會以 workflow binding 恢復、公開目前處理名稱，並重顯完整可回答的
+current question與typed next-question metadata；只叫使用者「回答剛才的問題」不算恢復。明確新操作保留舊
+domain draft、原子切換 focus，並公開舊／新名稱；無法判定時在任何 provider 或 committed-resource mutation前
+只建立 `conversation.context-target` 單一問題。若該turn本身已是完整且驗證成功的新standalone route，route
+contributor可先建立provider `NOT_REQUESTED`的typed Calendar draft；V115只在既有FORCE-RLS pending row保存
+其UUID pointer。選「新的」後才在同一交易啟用staged route並完成舊pointer，不得要求使用者重複輸入。
+共用 lifecycle contributor 的 resume contract 固定提供 typed `LifecycleContext`：`publicTopic`、
+`activeStep`、`preservedFacts`、`unresolvedFacts`，並另帶 `nextQuestion`。共用 renderer 依
+「目前正在處理 → 目前進度／子步驟 → 已保留資訊 → 尚待確認 → 下一步」組裝，不讓各 capability
+自行省略欄位或改變順序。每個 blocking step 都必須能用泛用狀態問句唯讀重顯這份 context；狀態查詢
+不得消耗 pending question、推進 workflow 或產生業務 mutation。
+公開主題只來自 actor／workspace／workflow 綁定的 typed state；不得從最近原文、LLM摘要或不唯一history猜測。
+目前僅route contributor啟用此production contract；Calendar、Task、Place、Booking與非同步工作依rollout計畫
+逐批接入，不能因上層介面存在就自動取得清除、provider或外部mutation authority。
+V114/V115均不在pending row保存LINE原文、地址或generic JSON；選擇前Calendar materialization與provider call
+為0。無法安全staging的其他能力仍以typed `conversation.new-operation-content`承接，不得因此取得route lifecycle
+authority。可信 quote 優先；meta／一次性唯讀插話不消耗選擇或原問題。
+
+目前操作的取消同樣由共用 Java context-transition gate 處理，但只在 lifecycle contributor 能依 actor／workspace／
+workflow 精確解析 typed owner 時生效。`取消`、`取消這次的行程建立`等 bounded control phrase 只關閉未完成 draft、
+pending question 與對應 focus；不得取消、刪除或更動已建立 Calendar plan。帶有明確日期、時間或資源目標的取消
+要求（例如「取消明天九點的行程」）必須交回該 domain 的 committed-resource cancellation contract，不得被目前
+操作控制語句攔截。generic `intent.unknown-*` question 不得覆蓋既有 capability-owned pending question，避免一次
+模型未知判斷破壞後續 lifecycle 恢復、取消或補值能力。
+
 ## 36. 開發 Session 協調平面與共享資源生命週期（2026-07-22，規劃）
 
 本節記錄開發基礎設施的規劃基線，不表示協調工具已經落地。詳細 resource matrix、競態證據、階段 gate
@@ -548,3 +663,94 @@ ephemeral resource（包含專用測試 volume）可自動清理；共享健康�
 uncertain，不能自動刪除。禁止以 Docker
 system／volume prune、Redis FLUSHALL、Flyway clean、模糊名稱比對或例行 Maven clean 當作恢復策略。
 需要 destructive cleanup 時必須另取專用 lease、確認沒有 consumer、精確列出目標並取得使用者批准。
+
+## 37. 秘書式公開回覆與承諾證據（2026-08-04）
+
+公開文案不是自由文字成功訊號，而是 typed claim。`IntentResult` 與直接 `PublicConversationReply` 都攜帶
+`PublicReplyEvidence`；只有對應 transaction／query／repair／async work／notification outbox／replay 已完成
+時，才能公開宣稱「已記住」「已重新處理」「已變更」「已開始處理」或「完成後會通知」。缺證據時 final
+boundary 必須降級為真實 acknowledgement 或一個釐清問題。文字 denylist 只負責攔 legacy 漏網句型，不能
+取代 application/domain state。
+
+所有 REST、LINE text、image/OCR、literal error、role denial、replay、focus notice 與 provider reply 在完成
+所有 decoration 後，統一經 `PublicConversationResponseService`；`SecretaryReplyTonePolicy` 再套用預設
+「我／您」、簡短先回答、一般回覆不自動加 emoji 的 channel-neutral 口吻。`IntentResult.Action.values()`
+動態對應已 review template／claim class；無法分類的新 action 讓 catalog gate fail closed。
+
+V103 的 `conversation_voice_profile` 保存 actor/workspace-owned assistant self-name、user address 與兩個 bounded
+feedback variant cursor；`conversation_voice_preference_draft` 只保存 typed target/value、workflow revision、
+expiry 與 suspended pending pointer。兩表啟用並強制 RLS，使用注入 `Clock`，不保存 raw LINE text 或 generic
+JSON slot bag。direct／multi-turn／read-back／reset／cancel／restart／same-value replay 共用同一服務；稱呼只
+影響公開表達，不改 AppUser、workspace role、actor identity、provider identity 或授權。
+
+V106 在同一 actor/workspace profile 增加 nullable bounded `response_style`。一般稱讚只推進 bounded variant
+cursor，不寫入 style；只有明確 future-facing 指令才可保存目前確實受 final boundary 支援的
+`CONCISE_WARM_SECRETARY`。style 可 read-back／reset／restart／replay，不保存原始稱讚或任意 prompt 文字，
+也不消耗既有 business pending。
+
+稱讚與不滿各使用至少十個 controlled variants，cursor 防止連續重複。稱讚只承認當輪結果，不虛構長期
+記憶；不滿預設主動問一個可行問題。只有 fresh read-only repair 實際完成才可說已重新整理；mutation repair
+仍須重新驗證與取得原本需要的確認。feedback、稱呼與 meta 插話會暫停原 business pending，結束後依 owned
+pointer 精確恢復，不得把原問題標成 expired 或誤接到新 workflow。
+
+V105 的 `restaurant_booking_draft` 只保存餐廳、用餐時間、人數與三個 bounded hospitality flags，以及
+workflow/revision/fencing。它是 read-only 訂位資訊引導，不代表 provider availability、hold、booking 或
+payment；每輪只問下一個 typed question，完成時必須明說尚未向餐廳送出訂位或付款。表啟用並強制 RLS，
+不保存 raw LINE text 或 generic JSON slot bag。
+
+## 38. 對話操作樹與可恢復子流程（2026-08-11）
+
+共用 conversation lifecycle 以 typed operation tree 表示主操作與子流程。共用 registry 只負責解析 owner、
+parent、公開狀態與關閉邊界；各 capability contributor 仍持有自己的業務狀態與 mutation authority。狀態查詢
+是 read-only interrupt，固定回答目前主題、目前子步驟、已保留／已完成資訊、尚缺資訊及唯一下一步，不消耗
+pending question。
+
+本批 production 只啟用 Route→Place 一條 parent-child edge。V116 child draft 只保存 exact parent revision、
+bounded alias/query 與 provider-resolved typed candidate，啟用並強制 RLS；不保存 LINE 原文或 generic JSON。
+確認「儲存並繼續」才建立 Place；「只用這次」只把 typed candidate帶回父路線；兩者都在 provider route
+成功後才 exactly-once materialize Calendar plan。一般「取消」只關閉 leaf child並恢復父路線；明確取消整個
+行程或「全部清除重來」才由 leaf 到 root 關閉未完成樹，已完成資料一律保留。其他 capability 只列入分批
+rollout，不因共用介面存在而自動取得 lifecycle、Calendar 或外部 mutation authority。
+
+V117 將 Route→Place child 明確分為 OFFER、DETAILS、CONFIRM。DETAILS 接受 bounded 地點名稱、地址或
+HTTPS Google Maps 地點連結；`maps.app.goo.gl`／`goo.gl` 短連結最多展開四跳，且每一跳都必須重新通過
+Google Maps exact-host、無 user-info、無自訂 port 的檢查。解析後只保存 typed 名稱、地址與座標，原始 URL
+不寫入 pending draft或log。非 Google HTTP連結、hostile redirect與缺少有效座標一律fail closed；確認前
+Place與Calendar mutation仍為0。連結本身只是位置證據，不是Google Routes路線證據或任何外部mutation授權。
+
+Route→Place 的每一個 inbound answer 都必須先通過目前 child stage 的 typed compatibility。OFFER 可直接接受
+自然 alias 宣告、具地點形狀的名稱／地址或 Google Maps 連結；完整的新行程／活動指令不得因含「建立」而被
+誤當成建立地點同意。DETAILS 遇到新操作、狀態詢問或明確異議時不得消耗為地址：服務要公開目前父主題、
+子階段、未修改資料與原本唯一下一步。使用者可選擇繼續，或「保留目前進度並開始新的操作」；保留只代表
+typed unfinished draft仍可恢復，不代表已建立Place、Calendar plan或取得任何外部mutation authority。
+
+V117的route-origin boundary另以typed policy區分`NAMED_PLACE`與
+`TRANSIENT_CURRENT_LOCATION`。具名起點可接受「從／由／自／以」、出發／啟程／起程／動身、
+出發地／起點等bounded組合，child只保存剝除交通語意後的alias，不得把「從公司出發」建立成地點名稱。
+「我目前的位置／現在的位置／這裡／這邊／此處」不是長期Place alias；若沒有位置證據，只要求本次位置的
+Google Maps連結，若同句已有連結則解析後直接以`EXPLICIT_CURRENT_TURN`寫入目前Calendar draft。這條路徑
+不得建立Place、place alias或HOME preference，raw URL仍不得持久化；取消、完成或draft到期沿用既有
+lifecycle邊界。
+
+child 的 terminal success 只代表子流程完成，不得等同父流程完成。application service必須把child產出的
+typed值寫回exact parent revision，再重新從父流程的typed completeness gate繼續：父流程仍缺欄位、provider
+evidence或使用者決策時，停在父流程唯一下一步且Calendar mutation為0；只有父流程已無剩餘必要操作時，才可
+在同一輪完成父流程。CONFIRM階段的儲存語句必須先由child stage攔截，不能掉入全域`ACCEPT_CONTEXT`而直接
+確認父草稿。若同輪完成父流程，公開回覆仍須包含已保存地點、完整路線結果及後續附屬問題，不能只輸出泛用
+「已放進行事曆」。
+
+若歷史版本或併發結果已使exact parent從PENDING變為MATERIALIZED，`MATERIALIZED`只證明已有committed
+Calendar資料，不代表整個使用者操作已完成，也不能授權公開「已建立／已安排」。只有同一parent、revision精確
+為child保存值加一、單點plan仍fresh且尚無provider evidence時，才可在不建立第二個plan的前提下把child的typed
+地點接回父流程；接著必須重新取得provider evidence、將同一plan補成verified interval與exactly-two起訖節點，並
+通過共用operation completion gate。gate同時查核actor/workspace-owned draft、active plan、placement、endpoints、
+provider evidence與required child均已完成；任一不符就fail closed且不得產生完成語句。真正完成後使用正常完整
+路線模板，附屬提醒可在完成後另問且不反向阻塞父流程。其他status／revision差異仍不得用寬鬆stale bypass掩蓋競爭。
+
+多選一公開問題使用共用`PublicConversationChoiceQuestion`／`PublicConversationChoice` typed contract。
+capability-owned catalog是action code、公開名稱、資料保存／mutation影響及可接受答案的唯一來源；共用
+renderer固定輸出`1. 2. 3.`編號、選項間空行、名稱與影響；同一typed choice question依當下顯示順序解析數字、
+全形數字、常用序號說法與catalog文字答案，不得由另一個router猜測序號代表的action。conversation method只組裝fact與choice set，
+共用lifecycle的`ResumeQuestion`直接承載同一typed choice question，因此正常提問、狀態查詢後恢復與replay
+不會產生不同文案或答案語意。單一問題仍可使用`ClarificationStep`；兩個以上選項不得退化為行內逗號串接。
+本輪只遷移Route→Place CONFIRM，其他capability依獨立審查與failure-first逐項遷移。

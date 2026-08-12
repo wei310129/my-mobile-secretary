@@ -1,0 +1,533 @@
+# system-owned public-place catalog; snapshot=2026-08-03; sources=TDX_RAIL,CAA_AIRPORTS,MOTC_PORTS,LOCAL_GOVERNMENTS,TOURISM_AMUSEMENT
+key	category	name	location	latitude	longitude	aliases	source
+CAA:AIRPORT:15	AIRPORT	七美機場	澎湖縣七美鄉平和村55號			七美機場	CAA_AIRPORTS
+CAA:AIRPORT:04	AIRPORT	臺中國際機場	臺中市沙鹿區中航路一段168號			台中國際機場|臺中國際機場|台中機場|臺中機場|清泉崗機場	CAA_AIRPORTS
+CAA:AIRPORT:03	AIRPORT	臺北松山國際機場	臺北市松山區敦化北路340之9號			台北松山國際機場|臺北松山國際機場|台北松山機場|臺北松山機場|松山機場	CAA_AIRPORTS
+CAA:AIRPORT:07	AIRPORT	臺南機場	臺南市南區機場路775號			台南機場|臺南機場	CAA_AIRPORTS
+CAA:AIRPORT:08	AIRPORT	臺東機場	臺東市民航路1100號			台東機場|臺東機場|豐年機場	CAA_AIRPORTS
+CAA:AIRPORT:01	AIRPORT	臺灣桃園國際機場	桃園市大園區航站南路9號			台灣桃園國際機場|臺灣桃園國際機場|桃園國際機場|桃園機場|桃機	CAA_AIRPORTS
+CAA:AIRPORT:10	AIRPORT	嘉義機場	嘉義縣水上鄉榮典路1號			嘉義機場|水上機場	CAA_AIRPORTS
+CAA:AIRPORT:17	AIRPORT	恆春機場	屏東縣恆春鎮省北路二段393號			五里亭機場|恆春機場	CAA_AIRPORTS
+CAA:AIRPORT:16	AIRPORT	望安機場	澎湖縣望安鄉中社村156號			望安機場	CAA_AIRPORTS
+CAA:AIRPORT:06	AIRPORT	澎湖機場	澎湖縣湖西鄉隘門村126-5號			澎湖機場|馬公機場	CAA_AIRPORTS
+CAA:AIRPORT:14	AIRPORT	綠島機場	臺東縣綠島鄉南寮231號			綠島機場	CAA_AIRPORTS
+CAA:AIRPORT:05	AIRPORT	花蓮機場	花蓮縣新城鄉嘉里村機場1號			花蓮機場	CAA_AIRPORTS
+CAA:AIRPORT:13	AIRPORT	蘭嶼機場	臺東縣蘭嶼鄉紅頭村漁人151號			蘭嶼機場	CAA_AIRPORTS
+CAA:AIRPORT:09	AIRPORT	金門機場	金門縣金湖鎮尚義機場2號			尚義機場|金門機場	CAA_AIRPORTS
+CAA:AIRPORT:12	AIRPORT	馬祖北竿機場	連江縣北竿鄉塘岐村261-2號			北竿機場|馬祖北竿機場	CAA_AIRPORTS
+CAA:AIRPORT:11	AIRPORT	馬祖南竿機場	連江縣南竿鄉復興村220號			南竿機場|馬祖南竿機場	CAA_AIRPORTS
+CAA:AIRPORT:02	AIRPORT	高雄國際機場	高雄市小港區中山四路2號			小港機場|高雄國際機場|高雄機場	CAA_AIRPORTS
+TOURISM:AMUSEMENT:1	AMUSEMENT_PARK	8大森林樂園	92055屏東縣潮州鎮潮州路800號(22.548554,120.557001)			8大森林|8大森林樂園	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:27	AMUSEMENT_PARK	九九峰動物樂園	542 南投縣草屯鎮富頂路一段726巷99號			九九峰動物|九九峰動物樂園	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:2	AMUSEMENT_PARK	九族文化村	555南投縣魚池鄉大林村金天巷45號座標：23°52'13.6"N 120°56'41.0"E			九族文化村	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:7	AMUSEMENT_PARK	六福村主題遊樂園	306新竹縣關西鎮仁安里拱子溝60號(24.825239,121.180603)			六福村|六福村主題|六福村主題遊|六福村主題遊樂園	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:23	AMUSEMENT_PARK	劍湖山世界股份有限公司	646雲林縣古坑鄉永光村大湖口67號N23° 36’56.0736”E120° 34’45.5016”			劍湖山世界股份有限公司	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:25	AMUSEMENT_PARK	台東原生應用植物園	954台東縣卑南鄉8號			台東原生應用植物園|臺東原生應用植物園	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:3	AMUSEMENT_PARK	大路觀主題樂園	90645屏東縣高樹鄉廣興村中正路188號(22.737382,120.625593)			大路觀|大路觀主題|大路觀主題樂園	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:4	AMUSEMENT_PARK	小人國主題樂園	325,桃園市龍潭區高原里7鄰高原路891號北緯24°49'56.3東經121°11'18.5			小人國|小人國主題|小人國主題樂園	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:5	AMUSEMENT_PARK	小叮噹科學主題樂園	(304)新竹縣新豐鄉松柏村康和路199號經度: 120.980012° 緯度:24.868938°			小叮噹科學|小叮噹科學主題|小叮噹科學主題樂園	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:6	AMUSEMENT_PARK	小墾丁渡假村	郵遞區號:94744地址:屏東縣滿州鄉滿州村中山路205號 座標:22°01'34.1"N 120°49'56.1"E			小墾丁渡假村	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:26	AMUSEMENT_PARK	尚順育樂世界	351苗栗縣頭份市育樂街6號經緯度 24.68825, 120.90466			尚順育樂世界	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:12	AMUSEMENT_PARK	怡園渡假村	97451花蓮縣壽豐鄉豐坪路三段6巷21號 (經度:121°31'20" 緯度:23°50'26")			怡園渡假村	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:11	AMUSEMENT_PARK	杉林溪森林生態渡假園區	55791南投縣竹山鎮大鞍里溪山路6號 23.63970000, 120.79210000			杉林溪森林生態渡假園區	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:13	AMUSEMENT_PARK	東勢林場遊樂區	42352臺中市東勢區勢林街6-1號。 24.28221740651827, 120.8703937903344			東勢林場遊樂區	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:9	AMUSEMENT_PARK	柳營尖山埤渡假村	郵遞區號:73658;園區住址:臺南市柳營區旭山里60號;經緯度:23.266749,120.392637			柳營尖山埤渡假村	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:15	AMUSEMENT_PARK	泰雅渡假村	544南投縣國姓鄉北港村北原路56-2號（24.066686, 120.941123）			泰雅渡假村	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:8	AMUSEMENT_PARK	火炎山溫泉度假村	郵遞區號:35878園區地址:苗栗縣苑裡鎮石鎮里8鄰1號經緯度:24.409867,120.700801			火炎山溫泉度假村	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:21	AMUSEMENT_PARK	綠舞日式主題園區	26841宜蘭縣五結鄉五濱路二段459號(24.703138, 121.820735)			綠舞日式主題園區	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:18	AMUSEMENT_PARK	義大世界	840高雄市大樹區學城路一段10號經緯度：E120°24’2404, N22°43’4843			義大世界	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:19	AMUSEMENT_PARK	萬瑞森林樂園	31242新竹縣橫山村23鄰23號24.706602，121135144			萬瑞森林|萬瑞森林樂園	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:10	AMUSEMENT_PARK	西湖渡假村	36742苗栗縣三義鄉西湖村西湖11號（24.3901972,120.7585986）			西湖渡假村	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:22	AMUSEMENT_PARK	遠雄海洋公園股份有限公司	郵遞區號：97449地址：花蓮縣壽豐鄉鹽寮村福德189號經緯度：E 121°36’12”N 23°54’7”			遠雄海洋公園股份有限公司	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:16	AMUSEMENT_PARK	野柳海洋世界	207新北市萬里區野柳里港東路167-3號(25°12'18.3"N 121°41'28.9"E)			野柳海洋世界	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:17	AMUSEMENT_PARK	雲仙樂園	233 新北市烏來區烏來里瀑布路1-1號 指標的經緯度:24.848815,121.551234 定位網址: http://card.url.com.tw/realads/map_latlng.php?pos=24.848815,121.551234			雲仙|雲仙樂園	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:20	AMUSEMENT_PARK	頑皮世界野生動物園	72649 台南市學甲區三慶里頂洲75-25號 23°16'54.0"N 120°12'33.2"E			頑皮世界野生動物園	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:14	AMUSEMENT_PARK	香格里拉樂園	361苗栗縣造橋鄉豐湖村1鄰乳姑山15-3號(24.624301，120.846680)			香格里拉|香格里拉樂園	TOURISM_AMUSEMENT
+TOURISM:AMUSEMENT:24	AMUSEMENT_PARK	麗寶樂園	42145臺中市后里區福容路3號經緯度24.320820,120.695457			麗寶|麗寶樂園	TOURISM_AMUSEMENT
+TDX:HSR_STATION:THSR-0990	HSR_STATION	南港	台北市南港區南港路一段313號	25.053704	121.60709	南港|南港站|南港高鐵站|高鐵南港站	TDX_RAIL
+TDX:HSR_STATION:THSR-1040	HSR_STATION	台中	台中市烏日區站區二路8號	24.112484	120.615967	台中|臺中|台中站|臺中站|台中高鐵站|臺中高鐵站|高鐵台中站|高鐵臺中站	TDX_RAIL
+TDX:HSR_STATION:THSR-1000	HSR_STATION	台北	台北市北平西路3號	25.04767	121.516983	台北|臺北|台北站|臺北站|台北高鐵站|臺北高鐵站|高鐵台北站|高鐵臺北站	TDX_RAIL
+TDX:HSR_STATION:THSR-1060	HSR_STATION	台南	台南市歸仁區歸仁大道100號	22.925077	120.286201	台南|臺南|台南站|臺南站|台南高鐵站|臺南高鐵站|高鐵台南站|高鐵臺南站	TDX_RAIL
+TDX:HSR_STATION:THSR-1050	HSR_STATION	嘉義	嘉義縣太保市高鐵西路168號	23.459507	120.323257	嘉義|嘉義站|嘉義高鐵站|高鐵嘉義站	TDX_RAIL
+TDX:HSR_STATION:THSR-1070	HSR_STATION	左營	高雄市左營區高鐵路105號	22.687391	120.307487	左營|左營站|左營高鐵站|高鐵左營站	TDX_RAIL
+TDX:HSR_STATION:THSR-1043	HSR_STATION	彰化	彰化縣田中鎮站區路二段99號	23.874327	120.574608	彰化|彰化站|彰化高鐵站|高鐵彰化站	TDX_RAIL
+TDX:HSR_STATION:THSR-1030	HSR_STATION	新竹	新竹縣竹北市高鐵七路6號	24.808441	121.04026	新竹|新竹站|新竹高鐵站|高鐵新竹站	TDX_RAIL
+TDX:HSR_STATION:THSR-1010	HSR_STATION	板橋	新北市板橋區縣民大道二段7號	25.014214	121.4638	板橋|板橋站|板橋高鐵站|高鐵板橋站	TDX_RAIL
+TDX:HSR_STATION:THSR-1020	HSR_STATION	桃園	桃園市中壢區高鐵北路一段6號	25.012861	121.214729	桃園|桃園站|桃園高鐵站|高鐵桃園站	TDX_RAIL
+TDX:HSR_STATION:THSR-1035	HSR_STATION	苗栗	苗栗縣後龍鎮高鐵三路268號	24.605448	120.825272	苗栗|苗栗站|苗栗高鐵站|高鐵苗栗站	TDX_RAIL
+TDX:HSR_STATION:THSR-1047	HSR_STATION	雲林	雲林縣虎尾鎮站前東路301號	23.736231	120.416512	雲林|雲林站|雲林高鐵站|高鐵雲林站	TDX_RAIL
+GOV:LOCAL:14	LOCAL_GOVERNMENT	南投縣政府	南投縣南投市中興路660號			南投縣府|南投縣政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:04	LOCAL_GOVERNMENT	臺中市政府	臺中市西屯區臺灣大道三段99號			台中市府|臺中市府|台中市政府|臺中市政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:01	LOCAL_GOVERNMENT	臺北市政府	臺北市信義區市府路1號			台北市府|臺北市府|台北市政府|臺北市政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:05	LOCAL_GOVERNMENT	臺南市政府	臺南市安平區永華路二段6號			台南市府|臺南市府|台南市政府|臺南市政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:19	LOCAL_GOVERNMENT	臺東縣政府	臺東縣臺東市中山路276號			台東縣府|臺東縣府|台東縣政府|臺東縣政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:09	LOCAL_GOVERNMENT	嘉義市政府	嘉義市東區中山路199號			嘉義市府|嘉義市政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:16	LOCAL_GOVERNMENT	嘉義縣政府	嘉義縣太保市祥和一路東段1號			嘉義縣府|嘉義縣政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:07	LOCAL_GOVERNMENT	基隆市政府	基隆市中正區義一路1號			基隆市府|基隆市政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:10	LOCAL_GOVERNMENT	宜蘭縣政府	宜蘭縣宜蘭市縣政北路1號			宜蘭縣府|宜蘭縣政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:17	LOCAL_GOVERNMENT	屏東縣政府	屏東縣屏東市自由路527號			屏東縣府|屏東縣政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:13	LOCAL_GOVERNMENT	彰化縣政府	彰化縣彰化市中山路二段416號			彰化縣府|彰化縣政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:02	LOCAL_GOVERNMENT	新北市政府	新北市板橋區中山路一段161號			新北市府|新北市政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:08	LOCAL_GOVERNMENT	新竹市政府	新竹市北區中正路120號			新竹市府|新竹市政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:11	LOCAL_GOVERNMENT	新竹縣政府	新竹縣竹北市光明六路10號			新竹縣府|新竹縣政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:03	LOCAL_GOVERNMENT	桃園市政府	桃園市桃園區縣府路1號			桃園市府|桃園市政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:20	LOCAL_GOVERNMENT	澎湖縣政府	澎湖縣馬公市治平路32號			澎湖縣府|澎湖縣政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:18	LOCAL_GOVERNMENT	花蓮縣政府	花蓮縣花蓮市府前路17號			花蓮縣府|花蓮縣政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:12	LOCAL_GOVERNMENT	苗栗縣政府	苗栗縣苗栗市縣府路100號			苗栗縣府|苗栗縣政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:22	LOCAL_GOVERNMENT	連江縣政府	連江縣南竿鄉介壽村76號			連江縣府|連江縣政府|馬祖縣政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:21	LOCAL_GOVERNMENT	金門縣政府	金門縣金城鎮民生路60號			金門縣府|金門縣政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:15	LOCAL_GOVERNMENT	雲林縣政府	雲林縣斗六市雲林路二段515號			雲林縣府|雲林縣政府	LOCAL_GOVERNMENTS
+GOV:LOCAL:06	LOCAL_GOVERNMENT	高雄市政府	高雄市苓雅區四維三路2號			高雄市府|高雄市政府	LOCAL_GOVERNMENTS
+TDX:METRO_STATION:TRTC-G03	METRO_STATION	七張	231007新北市新店區北新路2段150號	24.975036	121.543129	七張|七張捷運站|七張站|台北捷運七張站|臺北捷運七張站|捷運七張站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O51	METRO_STATION	三和國中	241080新北市三重區三和路4段107號B1	25.076794	121.486455	三和國中|三和國中捷運站|三和國中站|台北捷運三和國中站|臺北捷運三和國中站|捷運三和國中站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R8	METRO_STATION	三多商圈	高雄市前鎮區中山二路268號地下一層	22.61398	120.304588	三多商圈|三多商圈捷運站|三多商圈站|捷運三多商圈站|高雄捷運三多商圈站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O53	METRO_STATION	三民高中	247010新北市蘆洲區三民路105號B1	25.085425	121.473365	三民高中|三民高中捷運站|三民高中站|台北捷運三民高中站|臺北捷運三民高中站|捷運三民高中站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O15	METRO_STATION	三重	241012新北市三重區捷運路36號B1	25.05571	121.48422	三重|三重捷運站|三重站|台北捷運三重站|臺北捷運三重站|捷運三重站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O50	METRO_STATION	三重國小	241054新北市三重區三和路3段5號B1	25.070275	121.49701	三重國小|三重國小捷運站|三重國小站|台北捷運三重國小站|臺北捷運三重國小站|捷運三重國小站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A2	METRO_STATION	三重站	新北市三重區捷運路36號	25.0548	121.48273	三重|三重捷運站|三重站|捷運三重站|桃園機場捷運三重站|機場捷運三重站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R17	METRO_STATION	世運	高雄市楠梓區左楠路1號	22.701841	120.302531	世運|世運捷運站|世運站|捷運世運站|高雄捷運世運站	TDX_RAIL
+TDX:METRO_STATION:NTMCC-Y14	METRO_STATION	中原	23556新北市中和區板南路510號	25.00841	121.484159	中原|中原捷運站|中原站|捷運中原站|新北捷運中原站	TDX_RAIL
+TDX:METRO_STATION:NTMCC-Y12	METRO_STATION	中和	23558新北市中和區中山路二段271號	25.002382	121.495978	中和|中和捷運站|中和站|捷運中和站|新北捷運中和站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R9	METRO_STATION	中央公園	高雄市前金區中山一路11號地下一層	22.624839	120.301212	中央公園|中央公園捷運站|中央公園站|捷運中央公園站|高雄捷運中央公園站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G14	METRO_STATION	中山	103022臺北市大同區南京西路55號	25.052621	121.520364	中山|中山捷運站|中山站|台北捷運中山站|臺北捷運中山站|捷運中山站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R11	METRO_STATION	中山	103014臺北市大同區南京西路16號	25.052621	121.520364	中山|中山捷運站|中山站|台北捷運中山站|臺北捷運中山站|捷運中山站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR12	METRO_STATION	中山國中	104079臺北市中山區復興北路376號	25.06085	121.544215	中山國中|中山國中捷運站|中山國中站|台北捷運中山國中站|臺北捷運中山國中站|捷運中山國中站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O10	METRO_STATION	中山國小	104028臺北市中山區民權東路1段71號B1	25.062665	121.526609	中山國小|中山國小捷運站|中山國小站|台北捷運中山國小站|臺北捷運中山國小站|捷運中山國小站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G10	METRO_STATION	中正紀念堂	100207臺北市中正區羅斯福路1段8之1號B1?	25.032767	121.518273	中正紀念堂|中正紀念堂捷運站|中正紀念堂站|台北捷運中正紀念堂站|臺北捷運中正紀念堂站|捷運中正紀念堂站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O20	METRO_STATION	丹鳳	242048新北市新莊區中正路624之1號B1	25.029073	121.422422	丹鳳|丹鳳捷運站|丹鳳站|台北捷運丹鳳站|臺北捷運丹鳳站|捷運丹鳳站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G14	METRO_STATION	九張犁	臺中市烏日區建國路915號	24.1145	120.6401	九張犁|九張犁捷運站|九張犁站|台中捷運九張犁站|臺中捷運九張犁站|捷運九張犁站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G15	METRO_STATION	九德	臺中市烏日區建國路639號	24.11104	120.63448	九德|九德捷運站|九德站|台中捷運九德站|臺中捷運九德站|捷運九德站	TDX_RAIL
+TDX:METRO_STATION:KRTC-O8	METRO_STATION	五塊厝	高雄市苓雅區中正一路286號地下一層	22.629413	120.327731	五塊厝|五塊厝捷運站|五塊厝站|捷運五塊厝站|高雄捷運五塊厝站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL05	METRO_STATION	亞東醫院	220056新北市板橋區南雅南路2段17號B1	24.99828	121.452465	亞東醫院|亞東醫院捷運站|亞東醫院站|台北捷運亞東醫院站|臺北捷運亞東醫院站|捷運亞東醫院站	TDX_RAIL
+TDX:METRO_STATION:KRTC-O6	METRO_STATION	信義國小	高雄市新興區中正三路32-1號地下一樓	22.630675	120.311391	信義國小|信義國小捷運站|信義國小站|捷運信義國小站|高雄捷運信義國小站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R04	METRO_STATION	信義安和	106049臺北市大安區信義路4段212之1號B1	25.03331	121.55265	信義安和|信義安和捷運站|信義安和站|台北捷運信義安和站|臺北捷運信義安和站|捷運信義安和站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O16	METRO_STATION	先嗇宮	241017新北市三重區重新路5段515號B1	25.04632	121.47165	先嗇宮|先嗇宮捷運站|先嗇宮站|台北捷運先嗇宮站|臺北捷運先嗇宮站|捷運先嗇宮站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR19	METRO_STATION	內湖	114049臺北市內湖區成功路4段186號	25.083675	121.594363	內湖|內湖捷運站|內湖站|台北捷運內湖站|臺北捷運內湖站|捷運內湖站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G07	METRO_STATION	公館	100046臺北市中正區羅斯福路4段64之1號B1	25.014781	121.534358	公館|公館捷運站|公館站|台北捷運公館站|臺北捷運公館站|捷運公館站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR07	METRO_STATION	六張犁	106039臺北市大安區和平東路3段168號	25.02381	121.55302	六張犁|六張犁捷運站|六張犁站|台北捷運六張犁站|臺北捷運六張犁站|捷運六張犁站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R6	METRO_STATION	凱旋	高雄市前鎮區中山三路1號地下一樓	22.596764	120.315119	凱旋|凱旋捷運站|凱旋站|捷運凱旋站|高雄捷運凱旋站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R13	METRO_STATION	凹子底	高雄市鼓山區博愛二路21號地下一層	22.657268	120.303239	凹子底|凹子底捷運站|凹子底站|捷運凹子底站|高雄捷運凹子底站	TDX_RAIL
+TDX:METRO_STATION:KRTC-O4	METRO_STATION	前金	高雄市前金區中正四路192-1號地下一層	22.628933	120.294766	前金|前金捷運站|前金站|捷運前金站|高雄捷運前金站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R5	METRO_STATION	前鎮高中	高雄市前鎮區翠亨北路225號地下一樓	22.588482	120.321686	前鎮高中|前鎮高中捷運站|前鎮高中站|捷運前鎮高中站|高雄捷運前鎮高中站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR15	METRO_STATION	劍南路	104051臺北市中山區北安路798號	25.08483	121.555582	劍南路|劍南路捷運站|劍南路站|台北捷運劍南路站|臺北捷運劍南路站|捷運劍南路站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R15	METRO_STATION	劍潭	111011臺北市士林區中山北路5段65號	25.084201	121.524955	劍潭|劍潭捷運站|劍潭站|台北捷運劍潭站|臺北捷運劍潭站|捷運劍潭站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR01	METRO_STATION	動物園	116016臺北市文山區新光路2段32號	24.998205	121.579501	動物園|動物園捷運站|動物園站|台北捷運動物園站|臺北捷運動物園站|捷運動物園站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G0	METRO_STATION	北屯總站	臺中市北屯區敦富東街100號	24.18913	120.70864	北屯總|北屯總捷運站|北屯總站|台中捷運北屯總站|臺中捷運北屯總站|捷運北屯總站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R22	METRO_STATION	北投	112006臺北市北投區光明路1號	25.131819	121.498648	北投|北投捷運站|北投站|台北捷運北投站|臺北捷運北投站|捷運北投站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G13	METRO_STATION	北門	103005臺北市大同區塔城街10號	25.049554	121.510184	北門|北門捷運站|北門站|台北捷運北門站|臺北捷運北門站|捷運北門站	TDX_RAIL
+TDX:METRO_STATION:NTMCC-Y08	METRO_STATION	十四張	23141新北市新店區民權路282號	24.984333	121.527698	十四張|十四張捷運站|十四張站|捷運十四張站|新北捷運十四張站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G18	METRO_STATION	南京三民	105062臺北市松山區南京東路5段237號	25.051588	121.56471	南京三民|南京三民捷運站|南京三民站|台北捷運南京三民站|臺北捷運南京三民站|捷運南京三民站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR11	METRO_STATION	南京復興	105020臺北市松山區南京東路3段253號	25.052044	121.544303	南京復興|南京復興捷運站|南京復興站|台北捷運南京復興站|臺北捷運南京復興站|捷運南京復興站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O01	METRO_STATION	南勢角	235050新北市中和區捷運路6號	24.990065	121.509237	南勢角|南勢角捷運站|南勢角站|台北捷運南勢角站|臺北捷運南勢角站|捷運南勢角站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G11	METRO_STATION	南屯	臺中市南屯區五權西路二段328號	24.1405	120.6466	南屯|南屯捷運站|南屯站|台中捷運南屯站|臺中捷運南屯站|捷運南屯站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL22	METRO_STATION	南港	115011臺北市南港區忠孝東路7段380號	25.052035	121.60697	南港|南港捷運站|南港站|台北捷運南港站|臺北捷運南港站|捷運南港站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL23	METRO_STATION	南港展覽館	板南線：115021臺北市南港區研究院路1段1號	25.054919	121.616861	南港展覽館|南港展覽館捷運站|南港展覽館站|台北捷運南港展覽館站|臺北捷運南港展覽館站|捷運南港展覽館站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR24	METRO_STATION	南港展覽館	文湖線：115018臺北市南港區南港路1段32號	25.054919	121.616861	南港展覽館|南港展覽館捷運站|南港展覽館站|台北捷運南港展覽館站|臺北捷運南港展覽館站|捷運南港展覽館站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR23	METRO_STATION	南港軟體園區	115018臺北市南港區經貿二路183號	25.059911	121.61586	南港軟體園區|南港軟體園區捷運站|南港軟體園區站|台北捷運南港軟體園區站|臺北捷運南港軟體園區站|捷運南港軟體園區站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G09	METRO_STATION	古亭	100032臺北市中正區羅斯福路2段164之1號B1	25.026373	121.522868	古亭|古亭捷運站|古亭站|台北捷運古亭站|臺北捷運古亭站|捷運古亭站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R03	METRO_STATION	台北101/世貿	110013臺北市信義區信義路5段20號B1	25.033028	121.562755	台北101/世貿|臺北101/世貿|台北101/世貿捷運站|臺北101/世貿捷運站|台北101/世貿站|臺北101/世貿站|台北捷運台北101/世貿站|臺北捷運臺北101/世貿站|捷運台北101/世貿站|捷運臺北101/世貿站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G17	METRO_STATION	台北小巨蛋	105037臺北市松山區南京東路4段10之1號	25.05152	121.552549	台北小巨蛋|臺北小巨蛋|台北小巨蛋捷運站|臺北小巨蛋捷運站|台北小巨蛋站|臺北小巨蛋站|台北捷運台北小巨蛋站|臺北捷運臺北小巨蛋站|捷運台北小巨蛋站|捷運臺北小巨蛋站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O13	METRO_STATION	台北橋	241454新北市三重區重新路1段108號B1	25.063075	121.500575	台北捷運台北橋站|臺北捷運臺北橋站|台北橋|臺北橋|台北橋捷運站|臺北橋捷運站|台北橋站|臺北橋站|捷運台北橋站|捷運臺北橋站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL12	METRO_STATION	台北車站	100009臺北市中正區忠孝西路1段49號	25.04631	121.517415	台北捷運台北車站|臺北捷運臺北車站|台北車|臺北車|台北車捷運站|臺北車捷運站|台北車站|臺北車站|捷運台北車站|捷運臺北車站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A1	METRO_STATION	台北車站	台北市中正區鄭州路8號	25.04869	121.51428	台北車|臺北車|台北車捷運站|臺北車捷運站|台北車站|臺北車站|捷運台北車站|捷運臺北車站|桃園機場捷運台北車站|桃園機場捷運臺北車站|機場捷運台北車站|機場捷運臺北車站|機捷台北車站|機捷臺北車站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R09	METRO_STATION	台大醫院	100006臺北市中正區公園路52號B1	25.041399	121.51602	台北捷運台大醫院站|臺北捷運臺大醫院站|台大醫院|臺大醫院|台大醫院捷運站|臺大醫院捷運站|台大醫院站|臺大醫院站|捷運台大醫院站|捷運臺大醫院站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G08	METRO_STATION	台電大樓	100043臺北市中正區羅斯福路3段126之5號B1	25.020733	121.528143	台北捷運台電大樓站|臺北捷運臺電大樓站|台電大樓|臺電大樓|台電大樓捷運站|臺電大樓捷運站|台電大樓站|臺電大樓站|捷運台電大樓站|捷運臺電大樓站	TDX_RAIL
+TDX:METRO_STATION:KRTC-O1	METRO_STATION	哈瑪星	高雄市鼓山區臨海二路17-1號地下一層	22.621492	120.274508	哈瑪星|哈瑪星捷運站|哈瑪星站|捷運哈瑪星站|高雄捷運哈瑪星站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R20	METRO_STATION	唭哩岸	112025臺北市北投區東華街2段301號	25.120852	121.506234	台北捷運唭哩岸站|臺北捷運唭哩岸站|唭哩岸|唭哩岸捷運站|唭哩岸站|捷運唭哩岸站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL13	METRO_STATION	善導寺	100024臺北市中正區忠孝東路1段58號B1	25.04468	121.523885	台北捷運善導寺站|臺北捷運善導寺站|善導寺|善導寺捷運站|善導寺站|捷運善導寺站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G5	METRO_STATION	四維國小	臺中市北屯區文心路四段 898號	24.17124	120.69329	台中捷運四維國小站|臺中捷運四維國小站|四維國小|四維國小捷運站|四維國小站|捷運四維國小站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL17	METRO_STATION	國父紀念館	110054臺北市信義區忠孝東路4段400號	25.04137	121.557815	台北捷運國父紀念館站|臺北捷運國父紀念館站|國父紀念館|國父紀念館捷運站|國父紀念館站|捷運國父紀念館站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R14	METRO_STATION	圓山	103032臺北市大同區酒泉街9之1號	25.071409	121.520074	台北捷運圓山站|臺北捷運圓山站|圓山|圓山捷運站|圓山站|捷運圓山站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL03	METRO_STATION	土城	236017新北市土城區金城路1段105號B1	24.97313	121.44432	台北捷運土城站|臺北捷運土城站|土城|土城捷運站|土城站|捷運土城站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A11	METRO_STATION	坑口站	桃園市蘆竹區坑菓路460號	25.08646	121.26637	坑口|坑口捷運站|坑口站|捷運坑口站|桃園機場捷運坑口站|機場捷運坑口站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R16	METRO_STATION	士林	111012臺北市士林區福德路1號	25.093492	121.52623	台北捷運士林站|臺北捷運士林站|士林|士林捷運站|士林站|捷運士林站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A15	METRO_STATION	大園站	桃園市大園區橫湳一路50號	25.05595	121.21048	大園|大園捷運站|大園站|捷運大園站|桃園機場捷運大園站|機場捷運大園站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G04	METRO_STATION	大坪林	23143新北市新店區北新路3段190號	24.98272	121.54134	台北捷運大坪林站|臺北捷運大坪林站|大坪林|大坪林捷運站|大坪林站|捷運大坪林站|新北捷運大坪林站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR09	METRO_STATION	大安	106097臺北市大安區信義路4段2號	25.033311	121.54237	台北捷運大安站|臺北捷運大安站|大安|大安捷運站|大安站|捷運大安站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R05	METRO_STATION	大安	106028臺北市大安區信義路3段180號B1	25.033311	121.54237	台北捷運大安站|臺北捷運大安站|大安|大安捷運站|大安站|捷運大安站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R06	METRO_STATION	大安森林公園	106008臺北市大安區信義路3段100號B1	25.033225	121.536151	台北捷運大安森林公園站|臺北捷運大安森林公園站|大安森林公園|大安森林公園捷運站|大安森林公園站|捷運大安森林公園站	TDX_RAIL
+TDX:METRO_STATION:KRTC-OT1	METRO_STATION	大寮	高雄市大寮區捷西路300號	22.622122	120.390528	大寮|大寮捷運站|大寮站|捷運大寮站|高雄捷運大寮站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G13	METRO_STATION	大慶	臺中市南區建國北路一段11號	24.1191	120.6476	台中捷運大慶站|臺中捷運大慶站|大慶|大慶捷運站|大慶站|捷運大慶站	TDX_RAIL
+TDX:METRO_STATION:KRTC-O13	METRO_STATION	大東	高雄市鳳山區光遠路226號地下一層	22.625178	120.363497	大東|大東捷運站|大東站|捷運大東站|高雄捷運大東站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O12	METRO_STATION	大橋頭	103041臺北市大同區民權西路223號B1	25.06322	121.513003	台北捷運大橋頭站|臺北捷運大橋頭站|大橋頭|大橋頭捷運站|大橋頭站|捷運大橋頭站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR20	METRO_STATION	大湖公園	114041臺北市內湖區成功路5段11號	25.083805	121.602214	台北捷運大湖公園站|臺北捷運大湖公園站|大湖公園|大湖公園捷運站|大湖公園站|捷運大湖公園站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR14	METRO_STATION	大直	104044臺北市中山區北安路534之1號	25.07943	121.54679	台北捷運大直站|臺北捷運大直站|大直|大直捷運站|大直站|捷運大直站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R21	METRO_STATION	奇岩	112057臺北市北投區三合街2段489號	25.12547	121.50114	台北捷運奇岩站|臺北捷運奇岩站|奇岩|奇岩捷運站|奇岩站|捷運奇岩站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G11	METRO_STATION	小南門	100057臺北市中正區愛國西路22號B1	25.035619	121.510798	台北捷運小南門站|臺北捷運小南門站|小南門|小南門捷運站|小南門站|捷運小南門站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R3	METRO_STATION	小港	高雄市小港區沿海一路280號地下一樓	22.56478	120.353808	小港|小港捷運站|小港站|捷運小港站|高雄捷運小港站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G03A	METRO_STATION	小碧潭	231222新北市新店區中央路151號4樓	24.97188	121.53058	台北捷運小碧潭站|臺北捷運小碧潭站|小碧潭|小碧潭捷運站|小碧潭站|捷運小碧潭站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A10	METRO_STATION	山鼻站	桃園市蘆竹區南山路三段155號	25.0808	121.28476	山鼻|山鼻捷運站|山鼻站|捷運山鼻站|桃園機場捷運山鼻站|機場捷運山鼻站	TDX_RAIL
+TDX:METRO_STATION:KRTC-RK1	METRO_STATION	岡山車站	高雄市岡山區中山北路1號	22.79245	120.29923	岡山車|岡山車捷運站|岡山車站|捷運岡山車站|高雄捷運岡山車站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R24	METRO_STATION	岡山高醫	高雄市岡山區大遼里9鄰中山南路2號	22.780642	120.30188	岡山高醫|岡山高醫捷運站|岡山高醫站|捷運岡山高醫站|高雄捷運岡山高醫站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R16	METRO_STATION	左營	高雄市左營區高鐵路107號地下一層	22.688376	120.308887	左營|左營捷運站|左營站|捷運左營站|高雄捷運左營站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R14	METRO_STATION	巨蛋	高雄市左營區博愛二路485號地下一層	22.666158	120.30336	巨蛋|巨蛋捷運站|巨蛋站|捷運巨蛋站|高雄捷運巨蛋站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G9	METRO_STATION	市政府	臺中市西屯區文心路二段688號、699號	24.16199	120.64903	台中捷運市政府站|臺中捷運市政府站|市政府|市政府捷運站|市政府站|捷運市政府站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL18	METRO_STATION	市政府	110060臺北市信義區忠孝東路5段2號	25.041135	121.565685	台北捷運市政府站|臺北捷運市政府站|市政府|市政府捷運站|市政府站|捷運市政府站	TDX_RAIL
+TDX:METRO_STATION:NTMCC-Y19	METRO_STATION	幸福	24250新北市新莊區思源路292號	25.049984	121.45998	幸福|幸福捷運站|幸福站|捷運幸福站|新北捷運幸福站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL06	METRO_STATION	府中	220052新北市板橋區縣民大道1段193號B1	25.008465	121.459276	台北捷運府中站|臺北捷運府中站|府中|府中捷運站|府中站|捷運府中站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R20	METRO_STATION	後勁	高雄市楠梓區加昌路178號	22.722324	120.31637	後勁|後勁捷運站|後勁站|捷運後勁站|高雄捷運後勁站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL20	METRO_STATION	後山埤	115025臺北市南港區忠孝東路6段2號	25.044715	121.58227	台北捷運後山埤站|臺北捷運後山埤站|後山埤|後山埤捷運站|後山埤站|捷運後山埤站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R12	METRO_STATION	後驛	高雄市三民區博愛一路220號地下一層	22.648495	120.303413	後驛|後驛捷運站|後驛站|捷運後驛站|高雄捷運後驛站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O52	METRO_STATION	徐匯中學	247019新北市蘆洲區中山一路3號B1	25.080485	121.479945	台北捷運徐匯中學站|臺北捷運徐匯中學站|徐匯中學|徐匯中學捷運站|徐匯中學站|捷運徐匯中學站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R23	METRO_STATION	復興崗	112054臺北市北投區中央北路3段53巷10號	25.137474	121.485457	台北捷運復興崗站|臺北捷運復興崗站|復興崗|復興崗捷運站|復興崗站|捷運復興崗站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL15	METRO_STATION	忠孝復興	106071臺北市大安區忠孝東路4段47號	25.041633	121.543769	台北捷運忠孝復興站|臺北捷運忠孝復興站|忠孝復興|忠孝復興捷運站|忠孝復興站|捷運忠孝復興站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR10	METRO_STATION	忠孝復興	106084臺北市大安區忠孝東路3段302號	25.041104	121.543703	台北捷運忠孝復興站|臺北捷運忠孝復興站|忠孝復興|忠孝復興捷運站|忠孝復興站|捷運忠孝復興站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL16	METRO_STATION	忠孝敦化	106057臺北市大安區忠孝東路4段182號	25.041505	121.55045	台北捷運忠孝敦化站|臺北捷運忠孝敦化站|忠孝敦化|忠孝敦化捷運站|忠孝敦化站|捷運忠孝敦化站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL14	METRO_STATION	忠孝新生	106083臺北市大安區新生南路1段67號	25.0423	121.5328	台北捷運忠孝新生站|臺北捷運忠孝新生站|忠孝新生|忠孝新生捷運站|忠孝新生站|捷運忠孝新生站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R24	METRO_STATION	忠義	112017臺北市北投區中央北路4段301號	25.131041	121.473293	台北捷運忠義站|臺北捷運忠義站|忠義|忠義捷運站|忠義站|捷運忠義站	TDX_RAIL
+TDX:METRO_STATION:KRTC-O7	METRO_STATION	文化中心	高雄市苓雅區中正二路45號地下一層	22.630224	120.317632	捷運文化中心站|文化中心|文化中心捷運站|文化中心站|高雄捷運文化中心站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR18	METRO_STATION	文德	114053臺北市內湖區文德路214號	25.078567	121.584973	台北捷運文德站|臺北捷運文德站|捷運文德站|文德|文德捷運站|文德站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G7	METRO_STATION	文心中清	臺中市北區文心路三段700號	24.17368	120.67059	台中捷運文心中清站|臺中捷運文心中清站|捷運文心中清站|文心中清|文心中清捷運站|文心中清站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G6	METRO_STATION	文心崇德	臺中市北屯區文心路四段 538 號	24.17219	120.68486	台中捷運文心崇德站|臺中捷運文心崇德站|捷運文心崇德站|文心崇德|文心崇德捷運站|文心崇德站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G10a	METRO_STATION	文心森林公園	臺中市南屯區文心路一段259號	24.1454	120.6466	台中捷運文心森林公園站|臺中捷運文心森林公園站|捷運文心森林公園站|文心森林公園|文心森林公園捷運站|文心森林公園站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G8a	METRO_STATION	文心櫻花	臺中市西屯區文心路三段107之28號	24.16763	120.65367	台中捷運文心櫻花站|臺中捷運文心櫻花站|捷運文心櫻花站|文心櫻花|文心櫻花捷運站|文心櫻花站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G8	METRO_STATION	文華高中	臺中市西屯區文心路三段199號	24.17141	120.66045	台中捷運文華高中站|臺中捷運文華高中站|捷運文華高中站|文華高中|文華高中捷運站|文華高中站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R22A	METRO_STATION	新北投	112028臺北市北投區大業路700號	25.136931	121.502595	台北捷運新北投站|臺北捷運新北投站|捷運新北投站|新北投|新北投捷運站|新北投站	TDX_RAIL
+TDX:METRO_STATION:NTMCC-Y20	METRO_STATION	新北產業園區	24886新北市新莊區五工路35號	25.061548	121.459926	捷運新北產業園區站|新北捷運新北產業園區站|新北產業園區|新北產業園區捷運站|新北產業園區站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A3	METRO_STATION	新北產業園區站	新北市新莊區五工路37號	25.06171	121.45918	捷運新北產業園區站|新北產業園區|新北產業園區捷運站|新北產業園區站|桃園機場捷運新北產業園區站|機場捷運新北產業園區站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL08	METRO_STATION	新埔	220030新北市板橋區民生路3段2號B1	25.023736	121.468363	台北捷運新埔站|臺北捷運新埔站|捷運新埔站|新埔|新埔捷運站|新埔站	TDX_RAIL
+TDX:METRO_STATION:NTMCC-Y17	METRO_STATION	新埔民生	22047新北市板橋區民生路3段70號	25.026282	121.466831	捷運新埔民生站|新北捷運新埔民生站|新埔民生|新埔民生捷運站|新埔民生站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G01	METRO_STATION	新店	231039新北市新店區北宜路1段2號	24.958181	121.5377	台北捷運新店站|臺北捷運新店站|捷運新店站|新店|新店捷運站|新店站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G02	METRO_STATION	新店區公所	231634新北市新店區北新路1段295號	24.96744	121.5413	台北捷運新店區公所站|臺北捷運新店區公所站|捷運新店區公所站|新店區公所|新店區公所捷運站|新店區公所站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O18	METRO_STATION	新莊	242008新北市新莊區中正路138號B1	25.03608	121.45218	台北捷運新莊站|臺北捷運新莊站|捷運新莊站|新莊|新莊捷運站|新莊站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A4	METRO_STATION	新莊副都心站	新北市新莊區新北大道四段188號	25.05924	121.44561	捷運新莊副都心站|新莊副都心|新莊副都心捷運站|新莊副都心站|桃園機場捷運新莊副都心站|機場捷運新莊副都心站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL21	METRO_STATION	昆陽	115007臺北市南港區忠孝東路6段451號	25.050459	121.593228	台北捷運昆陽站|臺北捷運昆陽站|捷運昆陽站|昆陽|昆陽捷運站|昆陽站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R18	METRO_STATION	明德	112038臺北市北投區明德路95號	25.109815	121.518785	台北捷運明德站|臺北捷運明德站|捷運明德站|明德|明德捷運站|明德站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O02	METRO_STATION	景安	23582新北市中和區景平路486號	24.99392	121.505114	台北捷運景安站|臺北捷運景安站|捷運景安站|新北捷運景安站|景安|景安捷運站|景安站	TDX_RAIL
+TDX:METRO_STATION:NTMCC-Y10	METRO_STATION	景平	23578新北市中和區景平路121號	24.992143	121.516386	捷運景平站|新北捷運景平站|景平|景平捷運站|景平站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G05	METRO_STATION	景美	116056臺北市文山區羅斯福路6段216號	24.992824	121.540697	台北捷運景美站|臺北捷運景美站|捷運景美站|景美|景美捷運站|景美站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR02	METRO_STATION	木柵	116027臺北市文山區木柵路4段135號	24.99824	121.573127	台北捷運木柵站|臺北捷運木柵站|捷運木柵站|木柵|木柵捷運站|木柵站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR22	METRO_STATION	東湖	114056臺北市內湖區康寧路3段235號	25.067455	121.611535	台北捷運東湖站|臺北捷運東湖站|捷運東湖站|東湖|東湖捷運站|東湖站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O06	METRO_STATION	東門	10650臺北市大安區信義路2段166號B1	25.033894	121.528766	台北捷運東門站|臺北捷運東門站|捷運東門站|東門|東門捷運站|東門站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R07	METRO_STATION	東門	106007臺北市大安區信義路2段166號B1	25.033894	121.528766	台北捷運東門站|臺北捷運東門站|捷運東門站|東門|東門捷運站|東門站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G19	METRO_STATION	松山	105057臺北市松山區八德路4段742號	25.050118	121.577706	台北捷運松山站|臺北捷運松山站|捷運松山站|松山|松山捷運站|松山站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR13	METRO_STATION	松山機場	105008臺北市松山區敦化北路338號	25.063111	121.55162	台北捷運松山機場站|臺北捷運松山機場站|捷運松山機場站|松山機場|松山機場捷運站|松山機場站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G15	METRO_STATION	松江南京	104092臺北市中山區松江路126號B1	25.052693	121.53285	台北捷運松江南京站|臺北捷運松江南京站|捷運松江南京站|松江南京|松江南京捷運站|松江南京站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G4	METRO_STATION	松竹	臺中市北屯區北屯路458號	24.1808	120.70145	台中捷運松竹站|臺中捷運松竹站|捷運松竹站|松竹|松竹捷運站|松竹站	TDX_RAIL
+TDX:METRO_STATION:NTMCC-Y15	METRO_STATION	板新	22066新北市板橋區板新路109號	25.014436	121.472269	捷運板新站|新北捷運板新站|板新|板新捷運站|板新站	TDX_RAIL
+TDX:METRO_STATION:NTMCC-Y16	METRO_STATION	板橋	22041新北市板橋區新站路66號	25.015156	121.464825	捷運板橋站|新北捷運板橋站|板橋|板橋捷運站|板橋站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL07	METRO_STATION	板橋	220073新北市板橋區站前路5號B1	25.014098	121.462671	台北捷運板橋站|臺北捷運板橋站|捷運板橋站|板橋|板橋捷運站|板橋站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A9	METRO_STATION	林口站	新北市林口區八德路290號	25.0658	121.36134	捷運林口站|林口|林口捷運站|林口站|桃園機場捷運林口站|機場捷運林口站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A19	METRO_STATION	桃園體育園區站	桃園市中壢區芝芭里1鄰高鐵南路二段350號	25.00199	121.20349	捷運桃園體育園區站|桃園機場捷運桃園體育園區站|桃園體育園區|桃園體育園區捷運站|桃園體育園區站|機場捷運桃園體育園區站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R19	METRO_STATION	楠梓科技園區	高雄市楠梓區加昌路598號	22.718651	120.307242	捷運楠梓科技園區站|楠梓科技園區|楠梓科技園區捷運站|楠梓科技園區站|高雄捷運楠梓科技園區站	TDX_RAIL
+TDX:METRO_STATION:NTMCC-Y13	METRO_STATION	橋和	23557新北市中和區板南路430號	25.004413	121.490461	捷運橋和站|新北捷運橋和站|橋和|橋和捷運站|橋和站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R23	METRO_STATION	橋頭火車站	高雄市橋頭區站前街12之1號	22.760249	120.310976	捷運橋頭火車站|橋頭火車|橋頭火車捷運站|橋頭火車站|高雄捷運橋頭火車站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R22A	METRO_STATION	橋頭糖廠	高雄市橋頭區興糖路19號	22.75316	120.314698	捷運橋頭糖廠站|橋頭糖廠|橋頭糖廠捷運站|橋頭糖廠站|高雄捷運橋頭糖廠站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A14a	METRO_STATION	機場旅館站	桃園市大園區航站南路1之2號	25.07007	121.22142	捷運機場旅館站|桃園機場捷運機場旅館站|機場捷運機場旅館站|機場旅館|機場旅館捷運站|機場旅館站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A12	METRO_STATION	機場第一航廈站	桃園市大園區航站南路17之1號	25.0814	121.23783	捷運機場第一航廈站|桃園機場捷運機場第一航廈站|機場捷運機場第一航廈站|機場第一航廈|機場第一航廈捷運站|機場第一航廈站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A13	METRO_STATION	機場第二航廈站	桃園市大園區航站南路9號地下一層之1號	25.07735	121.23213	捷運機場第二航廈站|桃園機場捷運機場第二航廈站|機場捷運機場第二航廈站|機場第二航廈|機場第二航廈捷運站|機場第二航廈站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A16	METRO_STATION	橫山站	桃園市大園區大竹南路1180號	25.03665	121.21556	捷運橫山站|桃園機場捷運橫山站|機場捷運橫山站|橫山|橫山捷運站|橫山站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O11	METRO_STATION	民權西路	103045臺北市大同區民權西路72號	25.06235	121.519585	台北捷運民權西路站|臺北捷運民權西路站|捷運民權西路站|民權西路|民權西路捷運站|民權西路站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G10	METRO_STATION	水安宮	臺中市南屯區文心路一段519號	24.15311	120.64668	台中捷運水安宮站|臺中捷運水安宮站|捷運水安宮站|水安宮|水安宮捷運站|水安宮站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O03	METRO_STATION	永安市場	235066新北市中和區中和路388號	25.002895	121.511225	台北捷運永安市場站|臺北捷運永安市場站|捷運永安市場站|永安市場|永安市場捷運站|永安市場站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL02	METRO_STATION	永寧	236036新北市土城區中央路3段105號B1	24.96682	121.43613	台北捷運永寧站|臺北捷運永寧站|捷運永寧站|永寧|永寧捷運站|永寧站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL19	METRO_STATION	永春	110037臺北市信義區忠孝東路5段455號	25.040855	121.5762	台北捷運永春站|臺北捷運永春站|捷運永春站|永春|永春捷運站|永春站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL09	METRO_STATION	江子翠	220016新北市板橋區文化路2段296號B1	25.030265	121.47257	台北捷運江子翠站|臺北捷運江子翠站|捷運江子翠站|江子翠|江子翠捷運站|江子翠站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R18	METRO_STATION	油廠國小	高雄市楠梓區左楠路6號	22.708872	120.302323	捷運油廠國小站|油廠國小|油廠國小捷運站|油廠國小站|高雄捷運油廠國小站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A5	METRO_STATION	泰山站	新北市泰山區新北大道四段431號	25.05321	121.43943	捷運泰山站|桃園機場捷運泰山站|機場捷運泰山站|泰山|泰山捷運站|泰山站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A6	METRO_STATION	泰山貴和站	新北市泰山區新北大道六段460號	25.03321	121.42262	捷運泰山貴和站|桃園機場捷運泰山貴和站|機場捷運泰山貴和站|泰山貴和|泰山貴和捷運站|泰山貴和站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL04	METRO_STATION	海山	236023新北市土城區海山路39號B2	24.985348	121.448787	台北捷運海山站|臺北捷運海山站|捷運海山站|海山|海山捷運站|海山站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R28	METRO_STATION	淡水	251018新北市淡水區中正路1號	25.167745	121.445805	台北捷運淡水站|臺北捷運淡水站|捷運淡水站|淡水|淡水捷運站|淡水站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR17	METRO_STATION	港墘	114004臺北市內湖區內湖路1段663號	25.08007	121.57516	台北捷運港墘站|臺北捷運港墘站|捷運港墘站|港墘|港墘捷運站|港墘站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G16	METRO_STATION	烏日	臺中市烏日區建國路295號	24.1089	120.6249	台中捷運烏日站|臺中捷運烏日站|捷運烏日站|烏日|烏日捷運站|烏日站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R7	METRO_STATION	獅甲	高雄市前鎮區中山三路150號地下一層	22.606047	120.308079	捷運獅甲站|獅甲|獅甲捷運站|獅甲站|高雄捷運獅甲站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A21	METRO_STATION	環北站	桃園市中壢區中豐北路一段26號	24.96722	121.22114	捷運環北站|桃園機場捷運環北站|機場捷運環北站|環北|環北捷運站|環北站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R15	METRO_STATION	生態園區	高雄市左營區博愛三路435號地下一層	22.676686	120.306619	捷運生態園區站|生態園區|生態園區捷運站|生態園區站|高雄捷運生態園區站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R19	METRO_STATION	石牌	112052臺北市北投區石牌路1段200號	25.114455	121.515572	台北捷運石牌站|臺北捷運石牌站|捷運石牌站|石牌|石牌捷運站|石牌站	TDX_RAIL
+TDX:METRO_STATION:NTMCC-Y09	METRO_STATION	秀朗橋	23582新北市中和區景平路2號	24.990549	121.525051	捷運秀朗橋站|新北捷運秀朗橋站|秀朗橋|秀朗橋捷運站|秀朗橋站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR08	METRO_STATION	科技大樓	106101臺北市大安區復興南路2段235號	25.02612	121.543462	台北捷運科技大樓站|臺北捷運科技大樓站|捷運科技大樓站|科技大樓|科技大樓捷運站|科技大樓站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R26	METRO_STATION	竹圍	251033新北市淡水區民權路50號	25.1369	121.45955	台北捷運竹圍站|臺北捷運竹圍站|捷運竹圍站|竹圍|竹圍捷運站|竹圍站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R27	METRO_STATION	紅樹林	251033新北市淡水區中正東路2段68號	25.15399	121.4588	台北捷運紅樹林站|臺北捷運紅樹林站|捷運紅樹林站|紅樹林|紅樹林捷運站|紅樹林站	TDX_RAIL
+TDX:METRO_STATION:KRTC-O5	METRO_STATION	美麗島	高雄市新興區中山一路115號地下一樓	22.631278	120.303254	捷運美麗島站|美麗島|美麗島捷運站|美麗島站|高雄捷運美麗島站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A22	METRO_STATION	老街溪站	桃園市中壢區中豐路289號	24.95823	121.21936	捷運老街溪站|桃園機場捷運老街溪站|機場捷運老街溪站|老街溪|老街溪捷運站|老街溪站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A20	METRO_STATION	興南站	桃園市中壢區興和里6鄰中豐北路一段685號	24.98025	121.21627	捷運興南站|桃園機場捷運興南站|機場捷運興南站|興南|興南捷運站|興南站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G3	METRO_STATION	舊社	臺中市北屯區松竹路一段1250號	24.18228	120.70729	台中捷運舊社站|臺中捷運舊社站|捷運舊社站|舊社|舊社捷運站|舊社站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R17	METRO_STATION	芝山	111031臺北市士林區福國路70號	25.102718	121.522546	台北捷運芝山站|臺北捷運芝山站|捷運芝山站|芝山|芝山捷運站|芝山站	TDX_RAIL
+TDX:METRO_STATION:KRTC-O9	METRO_STATION	苓雅運動園區	高雄市苓雅區中正一路99號地下一層	22.6272	120.334651	捷運苓雅運動園區站|苓雅運動園區|苓雅運動園區捷運站|苓雅運動園區站|高雄捷運苓雅運動園區站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R4A	METRO_STATION	草衙	高雄市前鎮區翠亨南路555號地下一樓	22.580354	120.328569	捷運草衙站|草衙|草衙捷運站|草衙站|高雄捷運草衙站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O14	METRO_STATION	菜寮	241007新北市三重區重新路3段150號B1	25.059808	121.491451	台北捷運菜寮站|臺北捷運菜寮站|捷運菜寮站|菜寮|菜寮捷運站|菜寮站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR03	METRO_STATION	萬芳社區	116027臺北市文山區萬芳路60號	24.99857	121.568088	台北捷運萬芳社區站|臺北捷運萬芳社區站|捷運萬芳社區站|萬芳社區|萬芳社區捷運站|萬芳社區站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR04	METRO_STATION	萬芳醫院	116081臺北市文山區興隆路3段113號	24.99932	121.558092	台北捷運萬芳醫院站|臺北捷運萬芳醫院站|捷運萬芳醫院站|萬芳醫院|萬芳醫院捷運站|萬芳醫院站	TDX_RAIL
+TDX:METRO_STATION:TRTC-G06	METRO_STATION	萬隆	116060臺北市文山區羅斯福路5段214號	25.001978	121.539008	台北捷運萬隆站|臺北捷運萬隆站|捷運萬隆站|萬隆|萬隆捷運站|萬隆站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR21	METRO_STATION	葫洲	114046臺北市內湖區康寧路3段16號	25.07271	121.607146	台北捷運葫洲站|臺北捷運葫洲站|捷運葫洲站|葫洲|葫洲捷運站|葫洲站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O54	METRO_STATION	蘆洲	247011新北市蘆洲區三民路386號B1	25.09152	121.46471	台北捷運蘆洲站|臺北捷運蘆洲站|捷運蘆洲站|蘆洲|蘆洲捷運站|蘆洲站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O09	METRO_STATION	行天宮	104023臺北市中山區松江路316號B1	25.05924	121.53315	台北捷運行天宮站|臺北捷運行天宮站|捷運行天宮站|行天宮|行天宮捷運站|行天宮站	TDX_RAIL
+TDX:METRO_STATION:KRTC-O10	METRO_STATION	衛武營	高雄市苓雅區中正一路2號地下一層	22.625055	120.341045	捷運衛武營站|衛武營|衛武營捷運站|衛武營站|高雄捷運衛武營站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR16	METRO_STATION	西湖	114066臺北市內湖區內湖路1段256號	25.08216	121.567227	台北捷運西湖站|臺北捷運西湖站|捷運西湖站|西湖|西湖捷運站|西湖站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL11	METRO_STATION	西門	100005臺北市中正區寶慶路32之1號B1	25.042274	121.508511	台北捷運西門站|臺北捷運西門站|捷運西門站|西門|西門捷運站|西門站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G12	METRO_STATION	豐樂公園	臺中市南屯區文心南路168號	24.1326	120.64635	台中捷運豐樂公園站|臺中捷運豐樂公園站|捷運豐樂公園站|豐樂公園|豐樂公園捷運站|豐樂公園站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R02	METRO_STATION	象山	110022臺北市信義區信義路5段152號B1	25.032816	121.57008	台北捷運象山站|臺北捷運象山站|捷運象山站|象山|象山捷運站|象山站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O19	METRO_STATION	輔大	242062新北市新莊區中正路510之1號B1	25.03279	121.435735	台北捷運輔大站|臺北捷運輔大站|捷運輔大站|輔大|輔大捷運站|輔大站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR05	METRO_STATION	辛亥	116081臺北市文山區辛亥路4段128號	25.005455	121.557046	台北捷運辛亥站|臺北捷運辛亥站|捷運辛亥站|辛亥|辛亥捷運站|辛亥站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O21	METRO_STATION	迴龍	242052新北市新莊區中正路758號B1	25.022107	121.411757	台北捷運迴龍站|臺北捷運迴龍站|捷運迴龍站|迴龍|迴龍捷運站|迴龍站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R21	METRO_STATION	都會公園	高雄市楠梓區高楠公路1835號	22.729529	120.321014	捷運都會公園站|都會公園|都會公園捷運站|都會公園站|高雄捷運都會公園站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A8	METRO_STATION	長庚醫院站	桃園市龜山區文化一路6號	25.06053	121.37073	捷運長庚醫院站|桃園機場捷運長庚醫院站|機場捷運長庚醫院站|長庚醫院|長庚醫院捷運站|長庚醫院站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R25	METRO_STATION	關渡	112021臺北市北投區大度路3段296巷51號	25.12563	121.4671	台北捷運關渡站|臺北捷運關渡站|捷運關渡站|關渡|關渡捷運站|關渡站	TDX_RAIL
+TDX:METRO_STATION:TRTC-R12	METRO_STATION	雙連	103018臺北市大同區民生西路47號	25.057575	121.520685	台北捷運雙連站|臺北捷運雙連站|捷運雙連站|雙連|雙連捷運站|雙連站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R22	METRO_STATION	青埔	高雄市橋頭區經武路20號	22.744345	120.317795	捷運青埔站|青埔|青埔捷運站|青埔站|高雄捷運青埔站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL01	METRO_STATION	頂埔	236040新北市土城區中央路4段51之6號B3	24.959351	121.418744	台北捷運頂埔站|臺北捷運頂埔站|捷運頂埔站|頂埔|頂埔捷運站|頂埔站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O04	METRO_STATION	頂溪	234016新北市永和區永和路2段168號B1	25.01308	121.515398	台北捷運頂溪站|臺北捷運頂溪站|捷運頂溪站|頂溪|頂溪捷運站|頂溪站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A17	METRO_STATION	領航站	桃園市大園區橫峰里37鄰領航北路四段351號	25.02417	121.22095	捷運領航站|桃園機場捷運領航站|機場捷運領航站|領航|領航捷運站|領航站	TDX_RAIL
+TDX:METRO_STATION:TRTC-O17	METRO_STATION	頭前庄	24251新北市新莊區思源路18號B1	25.039862	121.460479	台北捷運頭前庄站|臺北捷運頭前庄站|捷運頭前庄站|新北捷運頭前庄站|頭前庄|頭前庄捷運站|頭前庄站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A7	METRO_STATION	體育大學站	桃園市龜山區文化一路688號	25.04124	121.38543	捷運體育大學站|桃園機場捷運體育大學站|機場捷運體育大學站|體育大學|體育大學捷運站|體育大學站	TDX_RAIL
+TDX:METRO_STATION:TMRT-G17	METRO_STATION	高鐵臺中站	臺中市烏日區高鐵東一路28號	24.11011	120.61405	台中捷運高鐵台中站|台中捷運高鐵臺中站|臺中捷運高鐵臺中站|捷運高鐵台中站|捷運高鐵臺中站|高鐵台中|高鐵臺中|高鐵台中捷運站|高鐵臺中捷運站|高鐵台中站|高鐵臺中站	TDX_RAIL
+TDX:METRO_STATION:TYMC-A18	METRO_STATION	高鐵桃園站	桃園市中壢區青埔里2鄰高鐵北路一段5號	25.01374	121.21406	捷運高鐵桃園站|桃園機場捷運高鐵桃園站|機場捷運高鐵桃園站|高鐵桃園|高鐵桃園捷運站|高鐵桃園站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R4	METRO_STATION	高雄國際機場	高雄市小港區中山四路2之2號地下一樓	22.570166	120.341772	捷運高雄國際機場站|高雄國際機場|高雄國際機場捷運站|高雄國際機場站|高雄捷運高雄國際機場站	TDX_RAIL
+TDX:METRO_STATION:KRTC-R11	METRO_STATION	高雄車站	高雄市三民區建國二路320號地下一層	22.639694	120.302703	捷運高雄車站|高雄捷運高雄車站|高雄車|高雄車捷運站|高雄車站	TDX_RAIL
+TDX:METRO_STATION:KRTC-O12	METRO_STATION	鳳山	高雄市鳳山區光遠路446號地下層	22.625953	120.355166	捷運鳳山站|高雄捷運鳳山站|鳳山|鳳山捷運站|鳳山站	TDX_RAIL
+TDX:METRO_STATION:KRTC-O14	METRO_STATION	鳳山國中	高雄市鳳山區中山東路225號地下一層	22.62466	120.371331	捷運鳳山國中站|高雄捷運鳳山國中站|鳳山國中|鳳山國中捷運站|鳳山國中站	TDX_RAIL
+TDX:METRO_STATION:KRTC-O11	METRO_STATION	鳳山西站	高雄市鳳山區自由路281號地下層	22.625273	120.348118	捷運鳳山西站|高雄捷運鳳山西站|鳳山西|鳳山西捷運站|鳳山西站	TDX_RAIL
+TDX:METRO_STATION:KRTC-O2	METRO_STATION	鹽埕埔	高雄市鹽埕區大勇路96號地下一層	22.623501	120.283777	捷運鹽埕埔站|高雄捷運鹽埕埔站|鹽埕埔|鹽埕埔捷運站|鹽埕埔站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BR06	METRO_STATION	麟光	106043臺北市大安區和平東路3段410號	25.018495	121.558834	台北捷運麟光站|臺北捷運麟光站|捷運麟光站|麟光|麟光捷運站|麟光站	TDX_RAIL
+TDX:METRO_STATION:TRTC-BL10	METRO_STATION	龍山寺	108015臺北市萬華區西園路1段153號	25.03528	121.500325	台北捷運龍山寺站|臺北捷運龍山寺站|捷運龍山寺站|龍山寺|龍山寺捷運站|龍山寺站	TDX_RAIL
+TDX:RAIL_STATION:TRA-0930	RAIL_STATION	七堵	206006基隆市七堵區長興里東新街 2 號	25.09294	121.71415	七堵|七堵火車站|七堵站|台鐵七堵站|臺鐵七堵站	TDX_RAIL
+TDX:RAIL_STATION:TRA-0910	RAIL_STATION	三坑	200006基隆市仁愛區德厚里龍安街 206 號	25.12305	121.74202	三坑|三坑火車站|三坑站|台鐵三坑站|臺鐵三坑站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4390	RAIL_STATION	三塊厝	807008高雄市三民區德北里6鄰康平街1號	22.63931	120.29414	三塊厝|三塊厝火車站|三塊厝站|台鐵三塊厝站|臺鐵三塊厝站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1220	RAIL_STATION	三姓橋	300109新竹市 香山區香山里元培街 32 巷 30 號	24.78731	120.92844	三姓橋|三姓橋火車站|三姓橋站|台鐵三姓橋站|臺鐵三姓橋站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6120	RAIL_STATION	三民	981010花蓮縣玉里鎮三民里三民 10 號	23.42458	121.34539	三民|三民火車站|三民站|台鐵三民站|臺鐵三民站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3190	RAIL_STATION	三義	367001苗栗縣三義鄉雙湖村雙湖 90 號	24.42066	120.77393	三義|三義火車站|三義站|台鐵三義站|臺鐵三義站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7330	RAIL_STATION	三貂嶺	224006新北市瑞芳區碩仁里魚寮路 1 號	25.06555	121.82257	三貂嶺|三貂嶺火車站|三貂嶺站|台鐵三貂嶺站|臺鐵三貂嶺站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1201	RAIL_STATION	上員	310021新竹縣竹東鎮上員里光明路 (無站房)	24.77776	121.05582	上員|上員火車站|上員站|台鐵上員站|臺鐵上員站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1100	RAIL_STATION	中壢	320001桃園市中壢區石頭里中和路 139 號	24.95374	121.22589	中壢|中壢火車站|中壢站|台鐵中壢站|臺鐵中壢站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4270	RAIL_STATION	中洲	717014臺南市仁德區中洲五街236號	22.90446	120.25284	中洲|中洲火車站|中洲站|台鐵中洲站|臺鐵中洲站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7170	RAIL_STATION	中里	268018宜蘭縣五結鄉中里路	24.69415	121.77526	中里|中里火車站|中里站|台鐵中里站|臺鐵中里站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4460	RAIL_STATION	九曲堂	840001高雄市大樹區久堂里久堂路鐵路巷 15 號	22.65641	120.42089	九曲堂|九曲堂火車站|九曲堂站|台鐵九曲堂站|臺鐵九曲堂站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1205	RAIL_STATION	九讚頭	312002新竹縣橫山鄉大肚村中豐路二段 286 巷 29 號	24.72062	121.13622	九讚頭|九讚頭火車站|九讚頭站|台鐵九讚頭站|臺鐵九讚頭站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3430	RAIL_STATION	二水	530018彰化縣二水鄉光化村光文路 1 號	23.81321	120.61805	二水|二水火車站|二水站|台鐵二水站|臺鐵二水站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7180	RAIL_STATION	二結	268016宜蘭縣五結鄉五結中路三段658巷8號	24.70528	121.77409	二結|二結火車站|二結站|台鐵二結站|臺鐵二結站	TDX_RAIL
+TDX:RAIL_STATION:TRA-0950	RAIL_STATION	五堵	221041新北市汐止區長安里長安路 17 號	25.07799	121.66758	五堵|五堵火車站|五堵站|台鐵五堵站|臺鐵五堵站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3310	RAIL_STATION	五權	402019臺中市南區建國南路二段201號	24.12877	120.66654	五權|五權火車站|五權站|台鐵五權站|臺鐵五權站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4260	RAIL_STATION	仁德	717010臺南市仁德區保安里永德路 10 號	22.92354	120.24054	仁德|仁德火車站|仁德站|台鐵仁德站|臺鐵仁德站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5100	RAIL_STATION	佳冬	931006屏東縣佳冬鄉六根村復興路21號	22.41409	120.54774	佳冬|佳冬火車站|佳冬站|台鐵佳冬站|臺鐵佳冬站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4250	RAIL_STATION	保安	717015臺南市仁德區保安里文賢路一段 529 巷 10 號	22.93296	120.23158	保安|保安火車站|保安站|台鐵保安站|臺鐵保安站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6160	RAIL_STATION	光復	976007花蓮縣光復鄉大安村中正路一段 2 之 1 號	23.66631	121.42117	光復|光復火車站|光復站|台鐵光復站|臺鐵光復站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1090	RAIL_STATION	內壢	320070桃園市中壢區中原里中華路一段 267 號	24.97281	121.25826	內壢|內壢火車站|內壢站|台鐵內壢站|臺鐵內壢站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4360	RAIL_STATION	內惟	804056高雄市鼓山區翠華路500號地下1層	22.66589	120.28701	內惟|內惟火車站|內惟站|台鐵內惟站|臺鐵內惟站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1208	RAIL_STATION	內灣	312003新竹縣橫山鄉內灣村中正路 6 號	24.70535	121.18255	內灣|內灣火車站|內灣站|台鐵內灣站|臺鐵內灣站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5140	RAIL_STATION	內獅	941010屏東縣枋山鄉加祿村南和 43 號	22.30617	120.64331	內獅|內獅火車站|內獅站|台鐵內獅站|臺鐵內獅站	TDX_RAIL
+TDX:RAIL_STATION:TRA-0920	RAIL_STATION	八堵	205001基隆市暖暖區八南里八堵路 142 號	25.10838	121.72904	八堵|八堵火車站|八堵站|台鐵八堵站|臺鐵八堵站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7362	RAIL_STATION	八斗子	224007新北市瑞芳區建基路2段121號隔壁 砂子里省道臺 2 線 (與新北市瑞芳區交界處、無站房)	25.13528	121.80286	八斗子|八斗子火車站|八斗子站|台鐵八斗子站|臺鐵八斗子站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4470	RAIL_STATION	六塊厝	900008屏東縣屏東市長安里光復路 392 號	22.66597	120.46497	六塊厝|六塊厝火車站|六塊厝站|台鐵六塊厝站|臺鐵六塊厝站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1194	RAIL_STATION	六家	302052新竹縣竹北市隘口里復興三路二段 229 號	24.80766	121.03941	六家|六家火車站|六家站|台鐵六家站|臺鐵六家站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7150	RAIL_STATION	冬山	269027宜蘭縣冬山鄉冬山村中正路 1 -1號	24.63633	121.79211	冬山|冬山火車站|冬山站|台鐵冬山站|臺鐵冬山站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5130	RAIL_STATION	加祿	941005屏東縣枋山鄉加祿村會社 53 號	22.33085	120.62445	加祿|加祿火車站|加祿站|台鐵加祿站|臺鐵加祿站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7010	RAIL_STATION	北埔	971066花蓮縣新城鄉北埔村自強街 113 號	24.03253	121.60166	北埔|北埔火車站|北埔站|台鐵北埔站|臺鐵北埔站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1190	RAIL_STATION	北新竹	300002新竹市 東區東園里中華路一段 291 之 2 號	24.80875	120.98381	北新竹|北新竹火車站|北新竹站|台鐵北新竹站|臺鐵北新竹站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1150	RAIL_STATION	北湖	303118新竹縣湖口鄉東興村北湖路 1 號	24.92218	121.05575	北湖|北湖火車站|北湖站|台鐵北湖站|臺鐵北湖站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7332	RAIL_STATION	十分	226003新北市平溪區十分里十分街 51 號	25.04111	121.77514	十分|十分火車站|十分站|台鐵十分站|臺鐵十分站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1191	RAIL_STATION	千甲	300053新竹市 東區水源里千甲路 142 號	24.80657	121.0034	千甲|千甲火車站|千甲站|台鐵千甲站|臺鐵千甲站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3170	RAIL_STATION	南勢	360023苗栗縣苗栗市新英里南勢 39 號	24.52246	120.79154	南勢|南勢火車站|南勢站|台鐵南勢站|臺鐵南勢站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5070	RAIL_STATION	南州	926003屏東縣南州鄉仁里村仁里路 86 號	22.49207	120.51174	南州|南州火車站|南州站|台鐵南州站|臺鐵南州站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6190	RAIL_STATION	南平	975002花蓮縣鳳林鎮南平里自強路 233 號	23.78231	121.45824	南平|南平火車站|南平站|台鐵南平站|臺鐵南平站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5998	RAIL_STATION	南方小站	92013屏東縣潮州鎮光復路 461 號	22.52755	120.53658	南方小|南方小火車站|南方小站|台鐵南方小站|臺鐵南方小站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1050	RAIL_STATION	南樹林	23846新北市樹林區東山里中山路二段 230 號	24.98044	121.40884	南樹林|南樹林火車站|南樹林站|台鐵南樹林站|臺鐵南樹林站	TDX_RAIL
+TDX:RAIL_STATION:TRA-0980	RAIL_STATION	南港	115018臺北市南港區南港里南港路一段 313 號 B2	25.05348	121.60706	南港|南港火車站|南港站|台鐵南港站|臺鐵南港站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7090	RAIL_STATION	南澳	270010宜蘭縣蘇澳鎮南強里大通路 22 號	24.46342	121.80103	南澳|南澳火車站|南澳站|台鐵南澳站|臺鐵南澳站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4180	RAIL_STATION	南科	744008臺南市新市區大營里大營 287-300 號	23.10726	120.30202	南科|南科火車站|南科站|台鐵南科站|臺鐵南科站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4100	RAIL_STATION	南靖	608009嘉義縣水上鄉三鎮村三鎮路 26 號	23.41344	120.38654	南靖|南靖火車站|南靖站|台鐵南靖站|臺鐵南靖站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3300	RAIL_STATION	臺中	400005臺中市中區綠川里臺灣大道一段 1 號	24.13728	120.68691	台中|臺中|台中火車站|臺中火車站|台中站|臺中站|台鐵台中站|台鐵臺中站|臺鐵臺中站	TDX_RAIL
+TDX:RAIL_STATION:TRA-2210	RAIL_STATION	臺中港	43642臺中市清水區頂湳里甲南路 2 號	24.30441	120.60231	台中港|臺中港|台中港火車站|臺中港火車站|台中港站|臺中港站|台鐵台中港站|台鐵臺中港站|臺鐵臺中港站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1000	RAIL_STATION	臺北	100230臺北市中正區黎明里北平西路 3 號	25.04775	121.51711	台北|臺北|台北火車站|臺北火車站|台北站|臺北站|台鐵台北站|台鐵臺北站|臺鐵臺北站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1001	RAIL_STATION	臺北-環島	100230臺北市中正區	25.04774	121.51711	台北-環島|臺北-環島|台北-環島火車站|臺北-環島火車站|台北-環島站|臺北-環島站|台鐵台北-環島站|台鐵臺北-環島站|臺鐵臺北-環島站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4220	RAIL_STATION	臺南	701014臺南市東區成大里北門路二段4號	22.99681	120.21295	台南|臺南|台南火車站|臺南火車站|台南站|臺南站|台鐵台南站|台鐵臺南站|臺鐵臺南站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6000	RAIL_STATION	臺東	950030臺東縣臺東市岩灣里岩灣路 101 巷 598 號	22.79372	121.1231	台東|臺東|台東火車站|臺東火車站|台東站|臺東站|台鐵台東站|台鐵臺東站|臺鐵臺東站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1206	RAIL_STATION	合興	312003新竹縣橫山鄉力行村中山街一段 17 號	24.71667	121.15437	台鐵合興站|臺鐵合興站|合興|合興火車站|合興站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6250	RAIL_STATION	吉安	973039花蓮縣吉安鄉南昌村南昌路1號	23.96823	121.58266	台鐵吉安站|臺鐵吉安站|吉安|吉安火車站|吉安站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3220	RAIL_STATION	后里	42142臺中市后里區義里里甲后路一段 1 號	24.30933	120.73288	台鐵后里站|臺鐵后里站|后里|后里火車站|后里站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7050	RAIL_STATION	和仁	972005花蓮縣秀林鄉和平村和仁 71 號	24.24225	121.71182	台鐵和仁站|臺鐵和仁站|和仁|和仁火車站|和仁站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7060	RAIL_STATION	和平	972005花蓮縣秀林鄉和平村和平 276 號	24.29839	121.75344	台鐵和平站|臺鐵和平站|和平|和平火車站|和平站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3390	RAIL_STATION	員林	510001彰化縣員林市和平里民權街 55 號	23.95947	120.56977	台鐵員林站|臺鐵員林站|員林|員林火車站|員林站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4170	RAIL_STATION	善化	741001臺南市善化區光文里中山路 1 號	23.13333	120.30653	台鐵善化站|臺鐵善化站|善化|善化火車站|善化站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4070	RAIL_STATION	嘉北	600050嘉義市 東區後湖里保建街 110 號	23.49981	120.44851	台鐵嘉北站|臺鐵嘉北站|嘉北|嘉北火車站|嘉北站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4080	RAIL_STATION	嘉義	600006嘉義市 西區番社里中山路 528 號	23.47915	120.44114	台鐵嘉義站|臺鐵嘉義站|嘉義|嘉義火車站|嘉義站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7200	RAIL_STATION	四城	262005宜蘭縣礁溪鄉吳沙村站前路 24 號	24.78681	121.76271	台鐵四城站|臺鐵四城站|四城|四城火車站|四城站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7380	RAIL_STATION	四腳亭	224009新北市瑞芳區吉慶里中央路 65 號	25.10281	121.76195	台鐵四腳亭站|臺鐵四腳亭站|四腳亭|四腳亭火車站|四腳亭站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1110	RAIL_STATION	埔心	326009桃園市楊梅區埔心里永美路 208 號	24.91939	121.18363	台鐵埔心站|臺鐵埔心站|埔心|埔心火車站|埔心站	TDX_RAIL
+TDX:RAIL_STATION:TRA-0900	RAIL_STATION	基隆	203001基隆市中山區中山一路 16 之 1 號	25.13191	121.73837	台鐵基隆站|臺鐵基隆站|基隆|基隆火車站|基隆站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6220	RAIL_STATION	壽豐	974002花蓮縣壽豐鄉壽豐村壽山路 1 號	23.86901	121.51064	台鐵壽豐站|臺鐵壽豐站|壽豐|壽豐火車站|壽豐站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7240	RAIL_STATION	外澳	261004宜蘭縣頭城鎮濱海路二段 217 號	24.88375	121.84572	台鐵外澳站|臺鐵外澳站|外澳|外澳火車站|外澳站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6150	RAIL_STATION	大富	976007花蓮縣光復鄉大富村明德路 1 號	23.60571	121.38963	台鐵大富站|臺鐵大富站|大富|大富火車站|大富站	TDX_RAIL
+TDX:RAIL_STATION:TRA-2120	RAIL_STATION	大山	35658苗栗縣後龍鎮大山里明山路 180 號	24.64565	120.80376	台鐵大山站|臺鐵大山站|大山|大山火車站|大山站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3320	RAIL_STATION	大慶	402026臺中市南區樹德里7鄰大慶街2段130號	24.11911	120.64795	台鐵大慶站|臺鐵大慶站|大慶|大慶火車站|大慶站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3380	RAIL_STATION	大村	515002彰化縣大村鄉過溝村福進路 100 號	23.99002	120.56062	台鐵大村站|臺鐵大村站|大村|大村火車站|大村站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4050	RAIL_STATION	大林	622002嘉義縣大林鎮吉林里中山路 2 號	23.60089	120.45597	台鐵大林站|臺鐵大林站|大林|大林火車站|大林站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4210	RAIL_STATION	大橋	710009臺南市永康區西橋里中華路 835 號	23.01923	120.22429	台鐵大橋站|臺鐵大橋站|大橋|大橋火車站|大橋站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5190	RAIL_STATION	大武	965003臺東縣大武鄉大鳥村和平部落 33 號	22.36526	120.90094	台鐵大武站|臺鐵大武站|大武|大武火車站|大武站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4290	RAIL_STATION	大湖	821004高雄市路竹區甲南里天祐路 24 號	22.87821	120.25384	台鐵大湖站|臺鐵大湖站|大湖|大湖火車站|大湖站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7260	RAIL_STATION	大溪	261005宜蘭縣頭城鎮濱海路五段 63 號	24.93836	121.88983	台鐵大溪站|臺鐵大溪站|大溪|大溪火車站|大溪站	TDX_RAIL
+TDX:RAIL_STATION:TRA-2200	RAIL_STATION	大甲	437003臺中市大甲區大甲里中山路一段 828 號	24.34448	120.62702	台鐵大甲站|臺鐵大甲站|大甲|大甲火車站|大甲站	TDX_RAIL
+TDX:RAIL_STATION:TRA-2250	RAIL_STATION	大肚	43242臺中市大肚區頂街里平和街 121 號	24.15417	120.54249	台鐵大肚站|臺鐵大肚站|大肚|大肚火車站|大肚站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7331	RAIL_STATION	大華	226003新北市平溪區南山里六分 12 之 1 號	25.04998	121.79732	台鐵大華站|臺鐵大華站|大華|大華火車站|大華站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7270	RAIL_STATION	大里	261005宜蘭縣頭城鎮大里里濱海路六段 326 號	24.96677	121.92253	台鐵大里站|臺鐵大里站|大里|大里火車站|大里站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3280	RAIL_STATION	太原	406008臺中市北屯區北興里東光路 665 號	24.16449	120.69988	台鐵太原站|臺鐵太原站|太原|太原火車站|太原站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5220	RAIL_STATION	太麻里	963004臺東縣太麻里鄉大王村站前路 2 號	22.61883	121.00492	台鐵太麻里站|臺鐵太麻里站|太麻里|太麻里火車站|太麻里站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7190	RAIL_STATION	宜蘭	260003宜蘭縣宜蘭市和睦里光復路 1 號	24.75457	121.75803	台鐵宜蘭站|臺鐵宜蘭站|宜蘭|宜蘭火車站|宜蘭站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1130	RAIL_STATION	富岡	326019桃園市楊梅區富岡里成功路 37 號	24.93436	121.08309	台鐵富岡站|臺鐵富岡站|富岡|富岡火車站|富岡站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6140	RAIL_STATION	富源	978003花蓮縣瑞穗鄉富源村富源路 2 號	23.58031	121.38008	台鐵富源站|臺鐵富源站|富源|富源火車站|富源站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1207	RAIL_STATION	富貴	312003新竹縣橫山鄉豐田村中山街一段 (無站房)	24.71551	121.16743	台鐵富貴站|臺鐵富貴站|富貴|富貴火車站|富貴站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6080	RAIL_STATION	富里	983001花蓮縣富里鄉富里村車站街 56 號	23.17924	121.24864	台鐵富里站|臺鐵富里站|富里|富里火車站|富里站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5000	RAIL_STATION	屏東	900011屏東縣屏東市建國里公勇路 62 號	22.66905	120.48617	台鐵屏東站|臺鐵屏東站|屏東|屏東火車站|屏東站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1060	RAIL_STATION	山佳	238012新北市樹林區中山路三段108號	24.97273	121.39254	台鐵山佳站|臺鐵山佳站|山佳|山佳火車站|山佳站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6010	RAIL_STATION	山里	954003臺東縣卑南鄉嘉豐村山里路 108 號	22.86194	121.13778	台鐵山里站|臺鐵山里站|山里|山里火車站|山里站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4310	RAIL_STATION	岡山	820102高雄市岡山區碧紅里岡燕路 111 號	22.79223	120.30004	台鐵岡山站|臺鐵岡山站|岡山|岡山火車站|岡山站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5060	RAIL_STATION	崁頂	924003屏東縣崁頂鄉崁頂村田寮路	22.51311	120.51481	台鐵崁頂站|臺鐵崁頂站|崁頂|崁頂火車站|崁頂站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7040	RAIL_STATION	崇德	972003花蓮縣秀林鄉崇德村海濱路 96 號	24.17199	121.65536	台鐵崇德站|臺鐵崇德站|崇德|崇德火車站|崇德站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1240	RAIL_STATION	崎頂	35054苗栗縣竹南鎮崎頂里北戶 55 號	24.72291	120.87183	台鐵崎頂站|臺鐵崎頂站|崎頂|崎頂火車站|崎頂站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7334	RAIL_STATION	嶺腳	226001新北市平溪區嶺腳里嶺腳寮 22 號	25.03016	121.74795	台鐵嶺腳站|臺鐵嶺腳站|嶺腳|嶺腳火車站|嶺腳站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4350	RAIL_STATION	左營	813014高雄市左營區翠華路1050號地下1層	22.67445	120.29401	台鐵左營站|臺鐵左營站|左營|左營火車站|左營站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6230	RAIL_STATION	平和	974004花蓮縣壽豐鄉平和村平和路 1 號	23.88279	121.52045	台鐵平和站|臺鐵平和站|平和|平和火車站|平和站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7335	RAIL_STATION	平溪	226001新北市平溪區平溪里中華街 12 號	25.02571	121.74019	台鐵平溪站|臺鐵平溪站|平溪|平溪火車站|平溪站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5240	RAIL_STATION	康樂	950029臺東縣臺東市康樂里博物館路 51 巷 131 號	22.76426	121.09356	台鐵康樂站|臺鐵康樂站|康樂|康樂火車站|康樂站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3360	RAIL_STATION	彰化	500003彰化縣彰化市長樂里三民路 1 號	24.08177	120.53854	台鐵彰化站|臺鐵彰化站|彰化|彰化火車站|彰化站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4110	RAIL_STATION	後壁	731022臺南市後壁區後壁里後壁 77 號	23.36626	120.36058	台鐵後壁站|臺鐵後壁站|後壁|後壁火車站|後壁站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4450	RAIL_STATION	後庄	831115高雄市大寮區後庄里民慶街 9 號	22.64016	120.39131	台鐵後庄站|臺鐵後庄站|後庄|後庄火車站|後庄站	TDX_RAIL
+TDX:RAIL_STATION:TRA-2130	RAIL_STATION	後龍	35641苗栗縣後龍鎮北龍里車站街 127-2 號	24.61621	120.78731	台鐵後龍站|臺鐵後龍站|後龍|後龍火車站|後龍站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6240	RAIL_STATION	志學	974003花蓮縣壽豐鄉志學村中正路 1 號	23.90769	121.5295	台鐵志學站|臺鐵志學站|志學|志學火車站|志學站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3350	RAIL_STATION	成功	414012臺中市烏日區榮泉里中山路三段 550 號	24.11424	120.59021	台鐵成功站|臺鐵成功站|成功|成功火車站|成功站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4160	RAIL_STATION	拔林	720004臺南市官田區拔林里拔子林 83 之 1 號	23.17284	120.32125	台鐵拔林站|臺鐵拔林站|拔林|拔林火車站|拔林站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3470	RAIL_STATION	斗六	640010雲林縣斗六市信義里民生路 187 號	23.71184	120.54099	台鐵斗六站|臺鐵斗六站|斗六|斗六火車站|斗六站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3480	RAIL_STATION	斗南	630042雲林縣斗南鎮南昌里中山路 2 號	23.67257	120.48089	台鐵斗南站|臺鐵斗南站|斗南|斗南火車站|斗南站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7030	RAIL_STATION	新城	971001花蓮縣新城鄉新城村新興一路 73 號	24.12756	121.64086	台鐵新城站|臺鐵新城站|新城|新城火車站|新城站	TDX_RAIL
+TDX:RAIL_STATION:TRA-2160	RAIL_STATION	新埔	35742苗栗縣通霄鎮新埔里新埔 57 號	24.54018	120.69518	台鐵新埔站|臺鐵新埔站|新埔|新埔火車站|新埔站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1140	RAIL_STATION	新富	326019桃園市楊梅區富豐里新明街	24.93109	121.06751	台鐵新富站|臺鐵新富站|新富|新富火車站|新富站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4340	RAIL_STATION	新左營	813014高雄市左營區尾北里站前北路 1 號	22.68754	120.30678	台鐵新左營站|臺鐵新左營站|新左營|新左營火車站|新左營站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4190	RAIL_STATION	新市	744004臺南市新市區新和里中華路 1 號	23.06823	120.29004	台鐵新市站|臺鐵新市站|新市|新市火車站|新市站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3340	RAIL_STATION	新烏日	41456臺中市烏日區三和里高鐵東一路 26 號	24.10937	120.61421	台鐵新烏日站|臺鐵新烏日站|新烏日|新烏日火車站|新烏日站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4120	RAIL_STATION	新營	730005臺南市新營區中營里中山路 1 號	23.30673	120.32307	台鐵新營站|臺鐵新營站|新營|新營火車站|新營站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1210	RAIL_STATION	新竹	300003新竹市 東區榮光里中華路二段 445 號	24.80157	120.97157	台鐵新竹站|臺鐵新竹站|新竹|新竹火車站|新竹站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1192	RAIL_STATION	新莊	300051新竹市 東區新莊里關東路 310 號	24.78811	121.02196	台鐵新莊站|臺鐵新莊站|新莊|新莊火車站|新莊站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1170	RAIL_STATION	新豐	304114新竹縣新豐鄉山崎村新興路 202 號	24.86939	120.99626	台鐵新豐站|臺鐵新豐站|新豐|新豐火車站|新豐站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7140	RAIL_STATION	新馬	270013宜蘭縣蘇澳鎮新城里中山路二段 322 號	24.61541	121.82291	台鐵新馬站|臺鐵新馬站|新馬|新馬火車站|新馬站	TDX_RAIL
+TDX:RAIL_STATION:TRA-2190	RAIL_STATION	日南	437105臺中市大甲區孟春里中山路二段 140 巷 8 號	24.37815	120.65412	台鐵日南站|臺鐵日南站|日南|日南火車站|日南站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7020	RAIL_STATION	景美	972067花蓮縣秀林鄉景美村加灣 178 之 1 號	24.09041	121.61095	台鐵景美站|臺鐵景美站|景美|景美火車站|景美站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7390	RAIL_STATION	暖暖	20544基隆市暖暖區暖暖里暖暖街 51 號	25.10231	121.74031	台鐵暖暖站|臺鐵暖暖站|暖暖|暖暖火車站|暖暖站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7333	RAIL_STATION	望古	226003新北市平溪區望古里 (無站房)	25.03445	121.76349	台鐵望古站|臺鐵望古站|望古|望古火車站|望古站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5110	RAIL_STATION	東海	940002屏東縣枋寮鄉東海村西安路 92 號	22.39897	120.57236	台鐵東海站|臺鐵東海站|東海|東海火車站|東海站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7100	RAIL_STATION	東澳	272006宜蘭縣南澳鄉東岳村東岳路 1 號	24.51827	121.83072	台鐵東澳站|臺鐵東澳站|東澳|東澳火車站|東澳站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6090	RAIL_STATION	東竹	983005花蓮縣富里鄉新興村新興 23 號	23.22605	121.27842	台鐵東竹站|臺鐵東竹站|東竹|東竹火車站|東竹站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6100	RAIL_STATION	東里	983004花蓮縣富里鄉東里村大莊路 15 之 6 號	23.27234	121.30418	台鐵東里站|臺鐵東里站|東里|東里火車站|東里站	TDX_RAIL
+TDX:RAIL_STATION:TRA-0990	RAIL_STATION	松山	110417臺北市信義區松山路 11 號B1	25.04927	121.57906	台鐵松山站|臺鐵松山站|松山|松山火車站|松山站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3270	RAIL_STATION	松竹	406015臺中市北屯區舊社里松竹路一段1473巷100號	24.18035	120.70193	台鐵松竹站|臺鐵松竹站|松竹|松竹火車站|松竹站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1020	RAIL_STATION	板橋	220227新北市板橋區新民里縣民大道二段 7 號（縣民大道側）	25.01434	121.46377	台鐵板橋站|臺鐵板橋站|板橋|板橋火車站|板橋站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5120	RAIL_STATION	枋寮	940003屏東縣枋寮鄉枋寮村儲運路 18 號	22.36802	120.59511	台鐵枋寮站|臺鐵枋寮站|枋寮|枋寮火車站|枋寮站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5160	RAIL_STATION	枋山	943010屏東縣獅子鄉內獅村內獅巷 84 號	22.26704	120.65947	台鐵枋山站|臺鐵枋山站|枋山|枋山火車站|枋山站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5170	RAIL_STATION	枋野	94350屏東縣獅子鄉內獅村內獅巷 88 號	22.28091	120.71709	台鐵枋野站|臺鐵枋野站|枋野|枋野火車站|枋野站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3450	RAIL_STATION	林內	643001雲林縣林內鄉林中村中山路 42 號	23.75967	120.61499	台鐵林內站|臺鐵林內站|林內|林內火車站|林內站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6200	RAIL_STATION	林榮新光	975002花蓮縣鳳林鎮兆豐路800號	23.80176	121.46169	台鐵林榮新光站|臺鐵林榮新光站|林榮新光|林榮新光火車站|林榮新光站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5090	RAIL_STATION	林邊	927001屏東縣林邊鄉仁和村仁愛路 33 號	22.43135	120.51529	台鐵林邊站|臺鐵林邊站|林邊|林邊火車站|林邊站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4140	RAIL_STATION	林鳳營	734004臺南市六甲區中社里林鳳營 16 號	23.24259	120.32107	台鐵林鳳營站|臺鐵林鳳營站|林鳳營|林鳳營火車站|林鳳營站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4130	RAIL_STATION	柳營	736002臺南市柳營區東昇里建國路 1 號	23.27762	120.32252	台鐵柳營站|臺鐵柳營站|柳營|柳營火車站|柳營站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3240	RAIL_STATION	栗林	427001臺中市潭子區潭豐路二段747號	24.23461	120.7106	台鐵栗林站|臺鐵栗林站|栗林|栗林火車站|栗林站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1080	RAIL_STATION	桃園	330002桃園市桃園區武陵里中正路 1 號	24.98888	121.31449	台鐵桃園站|臺鐵桃園站|桃園|桃園火車站|桃園站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1120	RAIL_STATION	楊梅	326101桃園市楊梅區楊梅里大成路 256 號	24.91427	121.14637	台鐵楊梅站|臺鐵楊梅站|楊梅|楊梅火車站|楊梅站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4330	RAIL_STATION	楠梓	811022高雄市楠梓區惠楠里建楠路 229 號	22.72696	120.32425	台鐵楠梓站|臺鐵楠梓站|楠梓|楠梓火車站|楠梓站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1202	RAIL_STATION	榮華	310008新竹縣竹東鎮仁愛里北興路 (無站房)	24.74839	121.08319	台鐵榮華站|臺鐵榮華站|榮華|榮華火車站|榮華站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1040	RAIL_STATION	樹林	238005新北市樹林區樹北里鎮前街 112 號	24.99123	121.42442	台鐵樹林站|臺鐵樹林站|樹林|樹林火車站|樹林站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4320	RAIL_STATION	橋頭	825008高雄市橋頭區橋頭里站前街 14 號	22.76098	120.31011	台鐵橋頭站|臺鐵橋頭站|橋頭|橋頭火車站|橋頭站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1204	RAIL_STATION	橫山	312001新竹縣橫山鄉橫山村橫山路 97 號 (無站房)	24.72041	121.11772	台鐵橫山站|臺鐵橫山站|橫山|橫山火車站|橫山站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4430	RAIL_STATION	正義	802001高雄市苓雅區建軍里正義路 308 號 B1	22.63425	120.34245	台鐵正義站|臺鐵正義站|正義|正義火車站|正義站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7080	RAIL_STATION	武塔	272017宜蘭縣南澳鄉武塔村新溪路 18 號	24.44879	121.77601	台鐵武塔站|臺鐵武塔站|武塔|武塔火車站|武塔站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5010	RAIL_STATION	歸來	900002屏東縣屏東市歸心里歸仁路 5 之 4 號	22.65246	120.50263	台鐵歸來站|臺鐵歸來站|歸來|歸來火車站|歸來站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4410	RAIL_STATION	民族	807027高雄市三民區博惠里14鄰凱旋一路260號	22.63879	120.31494	台鐵民族站|臺鐵民族站|民族|民族火車站|民族站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4060	RAIL_STATION	民雄	621002嘉義縣民雄鄉東榮村和平路 2 號	23.55522	120.43165	台鐵民雄站|臺鐵民雄站|民雄|民雄火車站|民雄站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4090	RAIL_STATION	水上	608001嘉義縣水上鄉粗溪村68號	23.43398	120.39971	台鐵水上站|臺鐵水上站|水上|水上火車站|水上站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3435	RAIL_STATION	水里	553001南投縣水里鄉水里村民生路 440 號	23.81845	120.85332	台鐵水里站|臺鐵水里站|水里|水里火車站|水里站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4200	RAIL_STATION	永康	710017臺南市永康區埔園里中山路 459 號	23.03825	120.25347	台鐵永康站|臺鐵永康站|永康|永康火車站|永康站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7110	RAIL_STATION	永樂	270011宜蘭縣蘇澳鎮永樂里圳頭路 60 號	24.56843	121.84458	台鐵永樂站|臺鐵永樂站|永樂|永樂火車站|永樂站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3400	RAIL_STATION	永靖	512001彰化縣永靖鄉崙子村崙饒路25 號	23.92808	120.57173	台鐵永靖站|臺鐵永靖站|永靖|永靖火車站|永靖站	TDX_RAIL
+TDX:RAIL_STATION:TRA-0960	RAIL_STATION	汐止	221029新北市汐止區信望里信義路 1 號	25.0679	121.66113	台鐵汐止站|臺鐵汐止站|汐止|汐止火車站|汐止站	TDX_RAIL
+TDX:RAIL_STATION:TRA-0970	RAIL_STATION	汐科	221026新北市汐止區大同里大同路二段 182 號	25.06406	121.65233	台鐵汐科站|臺鐵汐科站|汐科|汐科火車站|汐科站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6070	RAIL_STATION	池上	958003臺東縣池上鄉福文村鐵花路 30 號	23.12613	121.21949	台鐵池上站|臺鐵池上站|池上|池上火車站|池上站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4272	RAIL_STATION	沙崙	711010臺南市歸仁區沙崙里歸仁大道 102 號	22.92407	120.28622	台鐵沙崙站|臺鐵沙崙站|沙崙|沙崙火車站|沙崙站	TDX_RAIL
+TDX:RAIL_STATION:TRA-2230	RAIL_STATION	沙鹿	43353臺中市沙鹿區沙鹿里中正街 94 號	24.23702	120.55752	台鐵沙鹿站|臺鐵沙鹿站|沙鹿|沙鹿火車站|沙鹿站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3210	RAIL_STATION	泰安	42156臺中市后里區泰安里安眉路 37 之 12 號	24.33146	120.74181	台鐵泰安站|臺鐵泰安站|泰安|泰安火車站|泰安站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1030	RAIL_STATION	浮洲	22058新北市板橋區僑中里僑中二街 156 號	25.00419	121.44477	台鐵浮洲站|臺鐵浮洲站|浮洲|浮洲火車站|浮洲站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7361	RAIL_STATION	海科館	202010基隆市中正區長潭里	25.13754	121.79997	台鐵海科館站|臺鐵海科館站|海科館|海科館火車站|海科館站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6060	RAIL_STATION	海端	956004臺東縣關山鎮德高里西莊 49 號	23.10292	121.17676	台鐵海端站|臺鐵海端站|海端|海端火車站|海端站	TDX_RAIL
+TDX:RAIL_STATION:TRA-2220	RAIL_STATION	清水	436109臺中市清水區南社里中正街 115 號	24.26364	120.56918	台鐵清水站|臺鐵清水站|清水|清水火車站|清水站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1160	RAIL_STATION	湖口	303032新竹縣湖口鄉仁勢村中山路二段 121 號	24.90303	121.04412	台鐵湖口站|臺鐵湖口站|湖口|湖口火車站|湖口站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3431	RAIL_STATION	源泉	530017彰化縣二水鄉合興村英義路 (無站房)	23.79845	120.64211	台鐵源泉站|臺鐵源泉站|源泉|源泉火車站|源泉站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7070	RAIL_STATION	漢本	272019宜蘭縣南澳鄉澳花村蘇花路一段 56 號	24.33543	121.76838	台鐵漢本站|臺鐵漢本站|漢本|漢本火車站|漢本站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3250	RAIL_STATION	潭子	42751臺中市潭子區中山路二段352-1號	24.21214	120.70564	台鐵潭子站|臺鐵潭子站|潭子|潭子火車站|潭子站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5050	RAIL_STATION	潮州	920004屏東縣潮州鎮新榮里信義路 111 號	22.55008	120.53604	台鐵潮州站|臺鐵潮州站|潮州|潮州火車站|潮州站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5999	RAIL_STATION	潮州基地	92054屏東縣潮州鎮光春里光復路 616 號	22.52231	120.52642	台鐵潮州基地站|臺鐵潮州基地站|潮州基地|潮州基地火車站|潮州基地站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3432	RAIL_STATION	濁水	551001南投縣名間鄉濁水村車站路 15 號	23.83467	120.70467	台鐵濁水站|臺鐵濁水站|濁水|濁水火車站|濁水站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5200	RAIL_STATION	瀧溪	963006臺東縣太麻里鄉多良村大溪 37 號	22.46102	120.94176	台鐵瀧溪站|臺鐵瀧溪站|瀧溪|瀧溪火車站|瀧溪站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3330	RAIL_STATION	烏日	41442臺中市烏日區烏日里三民街 258 號	24.10867	120.62244	台鐵烏日站|臺鐵烏日站|烏日|烏日火車站|烏日站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7320	RAIL_STATION	牡丹	227001新北市雙溪區牡丹里51號	25.05871	121.85197	台鐵牡丹站|臺鐵牡丹站|牡丹|牡丹火車站|牡丹站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7350	RAIL_STATION	猴硐	224006新北市瑞芳區光復里柴寮路 70 號	25.08702	121.82743	台鐵猴硐站|臺鐵猴硐站|猴硐|猴硐火車站|猴硐站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6110	RAIL_STATION	玉里	981003花蓮縣玉里鎮中城里康樂街 39 號	23.33155	121.31172	台鐵玉里站|臺鐵玉里站|玉里|玉里火車站|玉里站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6040	RAIL_STATION	瑞和	955003臺東縣鹿野鄉瑞和村瑞景路三段 1 之 1 號	22.97997	121.15595	台鐵瑞和站|臺鐵瑞和站|瑞和|瑞和火車站|瑞和站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6030	RAIL_STATION	瑞源	955003臺東縣鹿野鄉瑞源村瑞景路一段 336 巷 8 號 之 1	22.95604	121.15901	台鐵瑞源站|臺鐵瑞源站|瑞源|瑞源火車站|瑞源站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6130	RAIL_STATION	瑞穗	978001花蓮縣瑞穗鄉瑞穗村四維街 13 號	23.49738	121.37684	台鐵瑞穗站|臺鐵瑞穗站|瑞穗|瑞穗火車站|瑞穗站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7360	RAIL_STATION	瑞芳	224001新北市瑞芳區龍潭里明燈路三段 82 號	25.10872	121.80599	台鐵瑞芳站|臺鐵瑞芳站|瑞芳|瑞芳火車站|瑞芳站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3420	RAIL_STATION	田中	520022彰化縣田中鎮中路里中州路一段 1 號	23.85843	120.59146	台鐵田中站|臺鐵田中站|田中|田中火車站|田中站	TDX_RAIL
+TDX:RAIL_STATION:TRA-2150	RAIL_STATION	白沙屯	35742苗栗縣通霄鎮白西里白西 131 號	24.56481	120.70824	台鐵白沙屯站|臺鐵白沙屯站|白沙屯|白沙屯火車站|白沙屯站	TDX_RAIL
+TDX:RAIL_STATION:TRA-0940	RAIL_STATION	百福	206011基隆市七堵區堵南里明德三路 1 之 1 號	25.07795	121.69379	台鐵百福站|臺鐵百福站|百福|百福火車站|百福站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5230	RAIL_STATION	知本	950103臺東縣臺東市知本里知本路二段 900 巷 85 號	22.71022	121.06068	台鐵知本站|臺鐵知本站|知本|知本火車站|知本站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7280	RAIL_STATION	石城	261006宜蘭縣頭城鎮濱海路七段 230 號	24.97832	121.94507	台鐵石城站|臺鐵石城站|石城|石城火車站|石城站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3460	RAIL_STATION	石榴	640155雲林縣斗六市榴北里文明路 31 號	23.73167	120.57998	台鐵石榴站|臺鐵石榴站|石榴|石榴火車站|石榴站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3490	RAIL_STATION	石龜	630雲林縣斗南鎮石龜里	23.63951	120.47106	台鐵石龜站|臺鐵石龜站|石龜|石龜火車站|石龜站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7210	RAIL_STATION	礁溪	262001宜蘭縣礁溪鄉德陽村溫泉路 1 號	24.82703	121.77535	台鐵礁溪站|臺鐵礁溪站|礁溪|礁溪火車站|礁溪站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3410	RAIL_STATION	社頭	511009彰化縣社頭鄉廣興村社站路 10 號	23.89573	120.58077	台鐵社頭站|臺鐵社頭站|社頭|社頭火車站|社頭站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7290	RAIL_STATION	福隆	228001新北市貢寮區福隆里福隆街 2 號	25.01595	121.94471	台鐵福隆站|臺鐵福隆站|福隆|福隆火車站|福隆站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4420	RAIL_STATION	科工館	807031高雄市三民區寶盛里15鄰大順三路307號	22.63709	120.32603	台鐵科工館站|臺鐵科工館站|科工館|科工館火車站|科工館站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1193	RAIL_STATION	竹中	310019新竹縣竹東鎮頭重里竹中路 145 號	24.78145	121.03141	台鐵竹中站|臺鐵竹中站|竹中|竹中火車站|竹中站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1180	RAIL_STATION	竹北	30265新竹縣竹北市竹義里和平街 59 號	24.83919	121.00946	台鐵竹北站|臺鐵竹北站|竹北|竹北火車站|竹北站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1250	RAIL_STATION	竹南	350007苗栗縣竹南鎮竹南里中山路 166 號	24.68654	120.88041	台鐵竹南站|臺鐵竹南站|竹南|竹南火車站|竹南站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1203	RAIL_STATION	竹東	310007新竹縣竹東鎮雞林里東林路 196 號	24.73823	121.09472	台鐵竹東站|臺鐵竹東站|竹東|竹東火車站|竹東站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5040	RAIL_STATION	竹田	911165屏東縣竹田鄉履豐村豐明路29 號	22.58658	120.53978	台鐵竹田站|臺鐵竹田站|竹田|竹田火車站|竹田站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3290	RAIL_STATION	精武	401005臺中市東區東南里東光路 161號	24.14887	120.69784	台鐵精武站|臺鐵精武站|精武|精武火車站|精武站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7160	RAIL_STATION	羅東	265010宜蘭縣羅東鎮大新里公正路 2 號	24.67791	121.77464	台鐵羅東站|臺鐵羅東站|羅東|羅東火車站|羅東站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4370	RAIL_STATION	美術館	804016高雄市鼓山區翠華路246號	22.65185	120.28148	台鐵美術館站|臺鐵美術館站|美術館|美術館火車站|美術館站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3370	RAIL_STATION	花壇	503009彰化縣花壇鄉花壇村中正路 370 號	24.02502	120.53742	台鐵花壇站|臺鐵花壇站|花壇|花壇火車站|花壇站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7000	RAIL_STATION	花蓮	970015花蓮縣花蓮市國聯里國聯一路 100 號	23.99265	121.60131	台鐵花蓮站|臺鐵花蓮站|花蓮|花蓮火車站|花蓮站	TDX_RAIL
+TDX:RAIL_STATION:TRA-2180	RAIL_STATION	苑裡	358011苗栗縣苑裡鎮苑北里中山路 165 號	24.44344	120.65146	台鐵苑裡站|臺鐵苑裡站|苑裡|苑裡火車站|苑裡站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3160	RAIL_STATION	苗栗	360003苗栗縣苗栗市上苗里為公路 1 號	24.57001	120.82233	台鐵苗栗站|臺鐵苗栗站|苗栗|苗栗火車站|苗栗站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7336	RAIL_STATION	菁桐	226002新北市平溪區菁桐里菁桐街 52 號	25.02391	121.72391	台鐵菁桐站|臺鐵菁桐站|菁桐|菁桐火車站|菁桐站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6170	RAIL_STATION	萬榮	975003花蓮縣鳳林鎮長橋里長德街 17 號	23.71199	121.41907	台鐵萬榮站|臺鐵萬榮站|萬榮|萬榮火車站|萬榮站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1010	RAIL_STATION	萬華	108220臺北市萬華區富福里康定路 382 號	25.03339	121.49996	台鐵萬華站|臺鐵萬華站|萬華|萬華火車站|萬華站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7120	RAIL_STATION	蘇澳	270001宜蘭縣蘇澳鎮蘇南里太平路 1 號	24.59516	121.85143	台鐵蘇澳站|臺鐵蘇澳站|蘇澳|蘇澳火車站|蘇澳站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7130	RAIL_STATION	蘇澳新	270013宜蘭縣蘇澳鎮聖愛里中山路二段 238 號	24.60852	121.82735	台鐵蘇澳新站|臺鐵蘇澳新站|蘇澳新|蘇澳新火車站|蘇澳新站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5030	RAIL_STATION	西勢	911165屏東縣竹田鄉西勢村西豐路 2 號	22.61637	120.52649	台鐵西勢站|臺鐵西勢站|西勢|西勢火車站|西勢站	TDX_RAIL
+TDX:RAIL_STATION:TRA-2110	RAIL_STATION	談文	36143苗栗縣造橋鄉談文村仁愛路 29 號	24.65641	120.85825	台鐵談文站|臺鐵談文站|談文|談文火車站|談文站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3230	RAIL_STATION	豐原	420020臺中市豐原區豐原里中正路 1-1號	24.25438	120.72374	台鐵豐原站|臺鐵豐原站|豐原|豐原火車站|豐原站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3150	RAIL_STATION	豐富	356002苗栗縣後龍鎮校椅里高鐵一路 66 號	24.60429	120.82637	台鐵豐富站|臺鐵豐富站|豐富|豐富火車站|豐富站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6210	RAIL_STATION	豐田	974006花蓮縣壽豐鄉豐山村站前街 36 號	23.84842	121.49618	台鐵豐田站|臺鐵豐田站|豐田|豐田火車站|豐田站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7300	RAIL_STATION	貢寮	228003新北市貢寮區貢寮里朝陽街 33 號	25.02197	121.90879	台鐵貢寮站|臺鐵貢寮站|貢寮|貢寮火車站|貢寮站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4300	RAIL_STATION	路竹	821006高雄市路竹區竹南里中正路 288 號	22.85404	120.26619	台鐵路竹站|臺鐵路竹站|路竹|路竹火車站|路竹站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3436	RAIL_STATION	車埕	553004南投縣水里鄉車埕村民權巷 2 號	23.83263	120.86572	台鐵車埕站|臺鐵車埕站|車埕|車埕火車站|車埕站	TDX_RAIL
+TDX:RAIL_STATION:TRA-2260	RAIL_STATION	追分	43245臺中市大肚區王田里追分街 13 號	24.12051	120.57018	台鐵追分站|臺鐵追分站|追分|追分火車站|追分站	TDX_RAIL
+TDX:RAIL_STATION:TRA-2170	RAIL_STATION	通霄	357006苗栗縣通霄鎮通西里中正路 109 號	24.49141	120.67843	台鐵通霄站|臺鐵通霄站|通霄|通霄火車站|通霄站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3140	RAIL_STATION	造橋	36144苗栗縣造橋鄉造橋村平仁路 54 號	24.64186	120.86721	台鐵造橋站|臺鐵造橋站|造橋|造橋火車站|造橋站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5210	RAIL_STATION	金崙	963005臺東縣太麻里鄉金崙村金崙 47 之 17 號	22.53161	120.96721	台鐵金崙站|臺鐵金崙站|金崙|金崙火車站|金崙站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3180	RAIL_STATION	銅鑼	36641苗栗縣銅鑼鄉銅鑼村大同路13號	24.48634	120.78617	台鐵銅鑼站|臺鐵銅鑼站|銅鑼|銅鑼火車站|銅鑼站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5080	RAIL_STATION	鎮安	927005屏東縣林邊鄉鎮安村永和路4號	22.45794	120.51129	台鐵鎮安站|臺鐵鎮安站|鎮安|鎮安火車站|鎮安站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4271	RAIL_STATION	長榮大學	711010臺南市歸仁區大潭里長大路15 號	22.90729	120.27263	台鐵長榮大學站|臺鐵長榮大學站|長榮大學|長榮大學火車站|長榮大學站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6050	RAIL_STATION	關山	956004臺東縣關山鎮里壠里博愛路 2 號	23.04566	121.1643	台鐵關山站|臺鐵關山站|關山|關山火車站|關山站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4150	RAIL_STATION	隆田	720001臺南市官田區隆田里中山路一段 1 號	23.19271	120.31917	台鐵隆田站|臺鐵隆田站|隆田|隆田火車站|隆田站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3434	RAIL_STATION	集集	552001南投縣集集鎮吳厝里民生路 75 號	23.82647	120.78495	台鐵集集站|臺鐵集集站|集集|集集火車站|集集站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7310	RAIL_STATION	雙溪	227004新北市雙溪區新基里朝陽街 1 號	25.03851	121.86654	台鐵雙溪站|臺鐵雙溪站|雙溪|雙溪火車站|雙溪站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7220	RAIL_STATION	頂埔	261002宜蘭縣頭城鎮下埔里下埔路 4 之 8 號	24.84391	121.80913	台鐵頂埔站|臺鐵頂埔站|頂埔|頂埔火車站|頂埔站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7230	RAIL_STATION	頭城	261006宜蘭縣頭城鎮纘祥路 59 號	24.85898	121.82258	台鐵頭城站|臺鐵頭城站|頭城|頭城火車站|頭城站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3260	RAIL_STATION	頭家厝	42745臺中市潭子區頭張東路43巷8號	24.19572	120.70398	台鐵頭家厝站|臺鐵頭家厝站|頭家厝|頭家厝火車站|頭家厝站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1230	RAIL_STATION	香山	300111新竹市 香山區朝山里中華路五段 347 巷 2 弄 27 號	24.76311	120.91388	台鐵香山站|臺鐵香山站|香山|香山火車站|香山站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4400	RAIL_STATION	高雄	807001高雄市三民區港西里建國二路 318 號	22.63946	120.30292	台鐵高雄站|臺鐵高雄站|高雄|高雄火車站|高雄站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4440	RAIL_STATION	鳳山	830025高雄市鳳山區曹公里曹公路 137 號	22.63145	120.35745	台鐵鳳山站|臺鐵鳳山站|鳳山|鳳山火車站|鳳山站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6180	RAIL_STATION	鳳林	975005花蓮縣鳳林鎮鳳智里中山路 43 號	23.74634	121.44701	台鐵鳳林站|臺鐵鳳林站|鳳林|鳳林火車站|鳳林站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1075	RAIL_STATION	鳳鳴	239013新北市鶯歌區鳳鳴里鳳一路 2 號	24.97268	121.33658	台鐵鳳鳴站|臺鐵鳳鳴站|鳳鳴|鳳鳴火車站|鳳鳴站	TDX_RAIL
+TDX:RAIL_STATION:TRA-1070	RAIL_STATION	鶯歌	239005新北市鶯歌區東鶯里文化路 68-1號	24.95455	121.35517	台鐵鶯歌站|臺鐵鶯歌站|鶯歌|鶯歌火車站|鶯歌站	TDX_RAIL
+TDX:RAIL_STATION:TRA-6020	RAIL_STATION	鹿野	955002臺東縣鹿野鄉鹿野村中正路 38 號	22.91249	121.13701	台鐵鹿野站|臺鐵鹿野站|鹿野|鹿野火車站|鹿野站	TDX_RAIL
+TDX:RAIL_STATION:TRA-5020	RAIL_STATION	麟洛	909141屏東縣麟洛鄉田道村中華路站前巷 15 號	22.63481	120.51432	台鐵麟洛站|臺鐵麟洛站|麟洛|麟洛火車站|麟洛站	TDX_RAIL
+TDX:RAIL_STATION:TRA-4380	RAIL_STATION	鼓山	804005高雄市鼓山區鐵路街20巷6號	22.64181	120.28071	台鐵鼓山站|臺鐵鼓山站|鼓山|鼓山火車站|鼓山站	TDX_RAIL
+TDX:RAIL_STATION:TRA-2240	RAIL_STATION	龍井	43450臺中市龍井區龍泉里龍新路 1 號	24.19748	120.54335	台鐵龍井站|臺鐵龍井站|龍井|龍井火車站|龍井站	TDX_RAIL
+TDX:RAIL_STATION:TRA-3433	RAIL_STATION	龍泉	552003南投縣集集鎮隘寮村龍泉巷 (無站房)	23.83521	120.75014	台鐵龍泉站|臺鐵龍泉站|龍泉|龍泉火車站|龍泉站	TDX_RAIL
+TDX:RAIL_STATION:TRA-2140	RAIL_STATION	龍港	35668苗栗縣後龍鎮龍津里7鄰公司寮 85 號	24.61169	120.75812	台鐵龍港站|臺鐵龍港站|龍港|龍港火車站|龍港站	TDX_RAIL
+TDX:RAIL_STATION:TRA-7250	RAIL_STATION	龜山	261004宜蘭縣頭城鎮更新里濱海路三段 261 號	24.90484	121.8689	台鐵龜山站|臺鐵龜山站|龜山|龜山火車站|龜山站	TDX_RAIL
+MOTC:SEAPORT:03	SEAPORT	臺中港	臺中市梧棲區臺灣大道十段2號			台中港|臺中港	MOTC_PORTS
+MOTC:SEAPORT:02	SEAPORT	臺北港	新北市八里區商港路123號			台北港|臺北港|淡水新港	MOTC_PORTS
+MOTC:SEAPORT:01	SEAPORT	基隆港	基隆市仁愛區、中正區港區			基隆商港|基隆港	MOTC_PORTS
+MOTC:SEAPORT:07	SEAPORT	安平港	臺南市南區新港路25號			台南安平港|臺南安平港|安平港	MOTC_PORTS
+MOTC:SEAPORT:05	SEAPORT	花蓮港	花蓮縣花蓮市海岸路66號			花蓮商港|花蓮港	MOTC_PORTS
+MOTC:SEAPORT:06	SEAPORT	蘇澳港	宜蘭縣蘇澳鎮港區路1號			蘇澳商港|蘇澳港	MOTC_PORTS
+MOTC:SEAPORT:04	SEAPORT	高雄港	高雄市鼓山區、鹽埕區、苓雅區及小港區沿海港區			高雄商港|高雄港	MOTC_PORTS

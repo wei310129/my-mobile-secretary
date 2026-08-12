@@ -16,6 +16,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.stereotype.Service;
@@ -58,6 +59,39 @@ public class ExternalIdentityService {
         return identityRepository.findByProviderAndSubject(normalizedProvider, normalizedSubject)
                 .map(this::resolveLinkedIdentity)
                 .orElseGet(() -> Resolution.failed(ResolutionStatus.NOT_LINKED));
+    }
+
+    /** Resolves an outbound provider destination only for an active workspace member. */
+    public Optional<String> outboundSubject(UUID workspaceId, UUID userId, String provider) {
+        UUID requiredWorkspaceId = Objects.requireNonNull(workspaceId, "workspaceId");
+        UUID requiredUserId = Objects.requireNonNull(userId, "userId");
+        if (userRepository.findById(requiredUserId).filter(AppUser::isActive).isEmpty()
+                || memberRepository
+                        .findByWorkspaceIdAndUserId(requiredWorkspaceId, requiredUserId)
+                        .isEmpty()) {
+            return Optional.empty();
+        }
+        return identityRepository
+                .findByUserIdAndProvider(requiredUserId, normalizeProvider(provider))
+                .map(ExternalIdentity::getSubject);
+    }
+
+    /** Resolves the configured single-owner LINE identity without bypassing membership checks. */
+    public Optional<String> outboundLineSubject(
+            UUID workspaceId, UUID userId, String configuredOwnerSubject) {
+        Optional<String> linked = outboundSubject(workspaceId, userId, LINE_PROVIDER);
+        if (linked.isPresent()) {
+            return linked;
+        }
+        if (!LegacyAccountIds.WORKSPACE_ID.equals(workspaceId)
+                || !LegacyAccountIds.USER_ID.equals(userId)
+                || configuredOwnerSubject == null
+                || configuredOwnerSubject.isBlank()
+                || userRepository.findById(userId).filter(AppUser::isActive).isEmpty()
+                || memberRepository.findByWorkspaceIdAndUserId(workspaceId, userId).isEmpty()) {
+            return Optional.empty();
+        }
+        return Optional.of(configuredOwnerSubject.strip());
     }
 
     /**

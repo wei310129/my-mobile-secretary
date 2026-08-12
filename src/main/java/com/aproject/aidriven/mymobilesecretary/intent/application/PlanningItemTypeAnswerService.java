@@ -62,7 +62,7 @@ public class PlanningItemTypeAnswerService {
             return Optional.of(IntentResult.clarificationNeeded(
                     "這句沒有唯一指到一筆資料，所以我不會拿目前未完成的草稿代答。\n"
                             + typeLegend()
-                            + "\n\n請用 LINE 回覆原清單，或告訴我清單中的編號／名稱，我會按實際類別列出。"));
+                            + "\n\n請用 LINE 回覆原清單，或告訴我清單中的編號／名稱；我可以按實際類別列出。"));
         }
 
         StringBuilder message = new StringBuilder("📋 找到的項目按實際類別列出：");

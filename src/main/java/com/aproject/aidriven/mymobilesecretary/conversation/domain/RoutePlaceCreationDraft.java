@@ -160,6 +160,10 @@ public class RoutePlaceCreationDraft extends WorkspaceOwnedEntity {
         return false;
     }
 
+    public boolean isPendingAt(Instant now) {
+        return status == RoutePlaceCreationDraftStatus.PENDING && expiresAt.isAfter(now);
+    }
+
     public ResolvedPlaceCandidate candidate() {
         if (step != RoutePlaceCreationStep.CONFIRM
                 || candidateName == null

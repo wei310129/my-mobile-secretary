@@ -54,6 +54,15 @@ class LineContentClientTest {
         });
     }
 
+    private void stubChunkedContent(byte[] body, String contentType) {
+        server.createContext("/v2/bot/message/", exchange -> {
+            exchange.getResponseHeaders().add("Content-Type", contentType);
+            exchange.sendResponseHeaders(200, 0);
+            exchange.getResponseBody().write(body);
+            exchange.close();
+        });
+    }
+
     @Test
     void fetchesBytesAndMimeType() {
         stubContent(200, "fake-image-bytes".getBytes(UTF_8), "image/png");
@@ -70,6 +79,34 @@ class LineContentClientTest {
         stubContent(200, "x".getBytes(UTF_8), null);
 
         assertThat(client().fetchContent("msg-1").mimeType()).isEqualTo("image/jpeg");
+    }
+
+    @Test
+    void rejectsDeclaredContentBeyondCallerLimit() {
+        stubContent(200, "123456".getBytes(UTF_8), "application/pdf");
+
+        assertThatThrownBy(() -> client().fetchContent("msg-large", 5))
+                .isInstanceOf(IntegrationException.class)
+                .hasMessageContaining("size limit");
+    }
+
+    @Test
+    void acceptsContentExactlyAtCallerLimit() {
+        stubContent(200, "12345".getBytes(UTF_8), "application/pdf");
+
+        LineContentClient.MessageContent content = client().fetchContent("msg-exact", 5);
+
+        assertThat(content.bytes()).isEqualTo("12345".getBytes(UTF_8));
+        assertThat(content.mimeType()).isEqualTo("application/pdf");
+    }
+
+    @Test
+    void rejectsActualChunkedBytesBeyondCallerLimit() {
+        stubChunkedContent("123456".getBytes(UTF_8), "application/pdf");
+
+        assertThatThrownBy(() -> client().fetchContent("msg-chunked", 5))
+                .isInstanceOf(IntegrationException.class)
+                .hasMessageContaining("size limit");
     }
 
     @Test

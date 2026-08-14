@@ -1,8 +1,10 @@
 package com.aproject.aidriven.mymobilesecretary.integration.line;
 
 import com.aproject.aidriven.mymobilesecretary.integration.IntegrationException;
+import java.io.ByteArrayOutputStream;
+import java.io.IOException;
+import java.io.InputStream;
 import org.springframework.http.MediaType;
-import org.springframework.http.ResponseEntity;
 import org.springframework.http.client.SimpleClientHttpRequestFactory;
 import org.springframework.stereotype.Component;
 import org.springframework.web.client.RestClient;
@@ -15,6 +17,8 @@ import org.springframework.web.client.RestClient;
  */
 @Component
 public class LineContentClient {
+
+    private static final long DEFAULT_MAX_BYTES = 15L * 1024 * 1024;
 
     private final RestClient restClient;
     private final LineTokenManager tokenManager;
@@ -33,24 +37,60 @@ public class LineContentClient {
 
     /** 下載一則訊息的二進位內容與其 MIME type。 */
     public MessageContent fetchContent(String messageId) {
+        return fetchContent(messageId, DEFAULT_MAX_BYTES, MediaType.IMAGE_JPEG_VALUE);
+    }
+
+    /** Reads LINE content with a strict byte cap before retaining it in application memory. */
+    public MessageContent fetchContent(String messageId, long maxBytes) {
+        return fetchContent(messageId, maxBytes, MediaType.APPLICATION_OCTET_STREAM_VALUE);
+    }
+
+    private MessageContent fetchContent(String messageId, long maxBytes, String defaultMimeType) {
+        if (maxBytes <= 0) {
+            throw new IllegalArgumentException("LINE content limit must be positive");
+        }
         try {
-            ResponseEntity<byte[]> response = restClient.get()
+            return restClient.get()
                     .uri("/v2/bot/message/{messageId}/content", messageId)
                     .header("Authorization", "Bearer " + tokenManager.getAccessToken())
-                    .retrieve()
-                    .toEntity(byte[].class);
-            byte[] body = response.getBody();
-            if (body == null || body.length == 0) {
-                throw new IntegrationException("LINE content is empty [messageId=%s]".formatted(messageId));
-            }
-            MediaType contentType = response.getHeaders().getContentType();
-            return new MessageContent(body,
-                    contentType == null ? MediaType.IMAGE_JPEG_VALUE : contentType.toString());
+                    .exchange((request, response) -> {
+                        if (!response.getStatusCode().is2xxSuccessful()) {
+                            throw new IntegrationException("LINE content fetch returned non-success status");
+                        }
+                        long declaredLength = response.getHeaders().getContentLength();
+                        if (declaredLength > maxBytes) {
+                            throw new IntegrationException("LINE content exceeds the configured size limit");
+                        }
+                        byte[] body = readBounded(response.getBody(), maxBytes);
+                        if (body.length == 0) {
+                            throw new IntegrationException("LINE content is empty");
+                        }
+                        MediaType contentType = response.getHeaders().getContentType();
+                        return new MessageContent(
+                                body,
+                                contentType == null ? defaultMimeType : contentType.toString());
+                    });
         } catch (IntegrationException e) {
             throw e;
         } catch (Exception e) {
-            throw new IntegrationException("LINE content fetch failed [messageId=%s]".formatted(messageId), e);
+            throw new IntegrationException("LINE content fetch failed", e);
         }
+    }
+
+    private static byte[] readBounded(InputStream input, long maxBytes) throws IOException {
+        int initialSize = (int) Math.min(maxBytes, 8192);
+        ByteArrayOutputStream output = new ByteArrayOutputStream(initialSize);
+        byte[] buffer = new byte[8192];
+        long total = 0;
+        int read;
+        while ((read = input.read(buffer)) != -1) {
+            total += read;
+            if (total > maxBytes) {
+                throw new IntegrationException("LINE content exceeds the configured size limit");
+            }
+            output.write(buffer, 0, read);
+        }
+        return output.toByteArray();
     }
 
     /** 訊息內容與其 MIME type(如 image/jpeg)。 */

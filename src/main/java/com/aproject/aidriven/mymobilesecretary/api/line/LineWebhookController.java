@@ -10,6 +10,7 @@ import com.aproject.aidriven.mymobilesecretary.account.security.idempotency.Idem
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceChannel;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContext;
 import com.aproject.aidriven.mymobilesecretary.account.workspace.WorkspaceContextHolder;
+import com.aproject.aidriven.mymobilesecretary.conversation.application.TrustedConversationReferenceContext;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineContentClient;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLog;
 import com.aproject.aidriven.mymobilesecretary.integration.line.LineMessageLogService;
@@ -21,6 +22,7 @@ import com.aproject.aidriven.mymobilesecretary.intent.application.ConversationRe
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentResult;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentService;
 import com.aproject.aidriven.mymobilesecretary.intent.application.ReceiptService;
+import com.aproject.aidriven.mymobilesecretary.media.application.MediaStorageProperties;
 import com.aproject.aidriven.mymobilesecretary.media.application.MediaStorageService;
 import com.aproject.aidriven.mymobilesecretary.media.domain.StoredMedia;
 import com.aproject.aidriven.mymobilesecretary.media.domain.StoredMedia.SourceType;
@@ -48,6 +50,7 @@ import org.springframework.web.bind.annotation.RestController;
 public class LineWebhookController {
 
     private static final Logger log = LoggerFactory.getLogger(LineWebhookController.class);
+    private static final int MAX_EVENTS_PER_WEBHOOK = 100;
 
     private final LineSignatureVerifier signatureVerifier;
     private final LineMessagingClient messagingClient;
@@ -56,6 +59,7 @@ public class LineWebhookController {
     private final IntentService intentService;
     private final ReceiptService receiptService;
     private final MediaStorageService mediaStorageService;
+    private final MediaStorageProperties mediaStorageProperties;
     private final LineMessageLogService messageLogService;
     private final ExternalIdentityService identityService;
     private final IdempotencyService idempotencyService;
@@ -70,6 +74,7 @@ public class LineWebhookController {
                                  IntentService intentService,
                                  ReceiptService receiptService,
                                  MediaStorageService mediaStorageService,
+                                 MediaStorageProperties mediaStorageProperties,
                                  LineMessageLogService messageLogService,
                                  ExternalIdentityService identityService,
                                  IdempotencyService idempotencyService,
@@ -83,6 +88,7 @@ public class LineWebhookController {
         this.intentService = intentService;
         this.receiptService = receiptService;
         this.mediaStorageService = mediaStorageService;
+        this.mediaStorageProperties = mediaStorageProperties;
         this.messageLogService = messageLogService;
         this.identityService = identityService;
         this.idempotencyService = idempotencyService;
@@ -97,6 +103,9 @@ public class LineWebhookController {
             @RequestBody byte[] rawBody) {
         if (!properties.usable()) {
             return ResponseEntity.ok().build();
+        }
+        if (rawBody.length > LineWebhookBodyLimitFilter.MAX_BODY_BYTES) {
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).build();
         }
         if (!signatureVerifier.verify(rawBody, signature, properties.channelSecret())) {
             log.warn("LINE webhook signature verification failed");
@@ -114,6 +123,9 @@ public class LineWebhookController {
         if (payload.events() == null) {
             return ResponseEntity.ok().build();
         }
+        if (payload.events().size() > MAX_EVENTS_PER_WEBHOOK) {
+            return ResponseEntity.status(HttpStatus.PAYLOAD_TOO_LARGE).build();
+        }
         for (LineWebhookPayload.Event event : payload.events()) {
             processEvent(event);
         }
@@ -121,7 +133,8 @@ public class LineWebhookController {
     }
 
     private void processEvent(LineWebhookPayload.Event event) {
-        if (event == null || (!event.isTextMessage() && !event.isImageMessage())) {
+        if (event == null || (!event.isTextMessage() && !event.isImageMessage()
+                && !event.isFileMessage())) {
             return;
         }
 
@@ -190,7 +203,9 @@ public class LineWebhookController {
         try {
             reply = event.isTextMessage()
                     ? prepareTextReply(event, executionBoundary)
-                    : prepareImageReply(event, executionBoundary);
+                    : event.isImageMessage()
+                            ? prepareImageReply(event, executionBoundary)
+                            : prepareFileReply(event, executionBoundary);
         } catch (Exception failure) {
             if (eventKey != null) {
                 if (executionBoundary.started()) {
@@ -225,12 +240,19 @@ public class LineWebhookController {
     private PreparedReply prepareTextReply(LineWebhookPayload.Event event,
                                            ExecutionBoundary executionBoundary) {
         String original = event.message().text();
-        String contextualized = messageLogService.contextualize(
-                original, event.message().quotedMessageId());
+        LineMessageLogService.ResolvedConversationContext conversation =
+                messageLogService.resolveContext(original, event.message().quotedMessageId());
         messageLogService.recordSafely(LineMessageLog.Direction.IN, "TEXT", original,
                 event.message().id(), event.message().quotedMessageId());
-        IntentResult result = intentService.handleWithContext(
-                original, contextualized, "LINE", executionBoundary::beforeMutation);
+        IntentResult result;
+        try (var trustedReference = TrustedConversationReferenceContext.open(
+                conversation.trustedMaterializationProposalId(), conversation.trustedMediaId())) {
+            result = intentService.handleWithContext(
+                    original,
+                    conversation.interpreterText(),
+                    "LINE",
+                    executionBoundary::beforeMutation);
+        }
         return new PreparedReply(result.action().name(), result.responseEnvelope().message(),
                 conversationReferenceService.capture(result));
     }
@@ -249,8 +271,43 @@ public class LineWebhookController {
         messageLogService.enrichImageContextSafely(event.message().id(), result.message());
         mediaStorageService.label(original.getId(), result.action());
         return new PreparedReply(result.action(), result.message()
-                + "\n\n🗂️ 原始圖檔已私密保存（檔案編號 #%d），可在 App 的檔案區查看。"
-                        .formatted(original.getId()), null);
+                + "\n\n🗂️ 原始圖檔已私密保存，可在 App 的檔案區查看。", null);
+    }
+
+    private PreparedReply prepareFileReply(LineWebhookPayload.Event event,
+                                           ExecutionBoundary executionBoundary) {
+        LineWebhookPayload.Message message = event.message();
+        if (message.id() == null || message.id().isBlank()) {
+            throw new IllegalArgumentException("LINE file message id is required");
+        }
+        long maxBytes = mediaStorageProperties.maxFileSize().toBytes();
+        if (message.fileSize() != null
+                && (message.fileSize() <= 0 || message.fileSize() > maxBytes)) {
+            throw new IllegalArgumentException("LINE file declared size is invalid");
+        }
+        validateFilename(message.fileName());
+        messageLogService.recordSafely(
+                LineMessageLog.Direction.IN,
+                "FILE",
+                "[檔案]",
+                message.id(),
+                message.quotedMessageId());
+        LineContentClient.MessageContent content =
+                contentClient.fetchContent(message.id(), maxBytes);
+        executionBoundary.beforeMutation();
+        StoredMedia stored = mediaStorageService.store(
+                SourceType.LINE,
+                message.id(),
+                "LINE 檔案",
+                null,
+                content.mimeType(),
+                content.bytes());
+        messageLogService.attachReferencesSafely(
+                message.id(), "MEDIA:" + stored.getId() + ":1");
+        return new PreparedReply(
+                "MEDIA_FILE_SAVED",
+                "🗂️ 檔案已私密保存，可在 App 的檔案區查看。這次沒有解析或執行檔案內的文字。",
+                null);
     }
 
     private void handleExistingDelivery(LineWebhookPayload.Event event,
@@ -336,11 +393,28 @@ public class LineWebhookController {
                 message == null ? "" : nullToEmpty(message.id()),
                 message == null ? "" : nullToEmpty(message.type()),
                 message == null ? "" : nullToEmpty(message.text()),
-                message == null ? "" : nullToEmpty(message.quotedMessageId()));
+                message == null ? "" : nullToEmpty(message.quotedMessageId()),
+                message == null ? "" : nullToEmpty(message.fileName()),
+                message == null || message.fileSize() == null
+                        ? ""
+                        : message.fileSize().toString());
     }
 
     private static String nullToEmpty(String value) {
         return value == null ? "" : value;
+    }
+
+    private static void validateFilename(String value) {
+        if (value == null || value.isBlank()) {
+            return;
+        }
+        String basename = value.replace('\\', '/');
+        basename = basename.substring(basename.lastIndexOf('/') + 1)
+                .replaceAll("[^\\p{L}\\p{N} ._()\\-]", "_")
+                .strip();
+        if (basename.isBlank() || basename.length() > 200) {
+            throw new IllegalArgumentException("LINE filename is invalid");
+        }
     }
 
     private final class ExecutionBoundary {

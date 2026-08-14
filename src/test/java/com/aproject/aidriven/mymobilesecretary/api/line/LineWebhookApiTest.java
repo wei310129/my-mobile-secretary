@@ -107,6 +107,33 @@ class LineWebhookApiTest extends IntegrationTestBase {
 
     /** 正確簽章 + 文字訊息 → 200,走過 IntentService 建立任務。 */
     @Test
+    void oversizedWebhookBodyIsRejectedBeforeSignatureOrParsing() throws Exception {
+        byte[] body = "x".repeat(LineWebhookBodyLimitFilter.MAX_BODY_BYTES + 1)
+                .getBytes(StandardCharsets.UTF_8);
+
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", "irrelevant")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isPayloadTooLarge());
+    }
+
+    @Test
+    void excessiveEventCountIsRejectedAfterValidSignature() throws Exception {
+        String events = java.util.stream.IntStream.range(0, 101)
+                .mapToObj(index -> "{\"type\":\"follow\"}")
+                .collect(java.util.stream.Collectors.joining(","));
+        byte[] body = ("{\"events\":[" + events + "]}")
+                .getBytes(StandardCharsets.UTF_8);
+
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(body))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isPayloadTooLarge());
+    }
+
+    @Test
     void validSignatureProcessesTextMessage() throws Exception {
         stub.nextCommand(new IntentCommand(
                 IntentCommand.Type.CREATE_TASK, "LINE webhook 測試任務", null, null, null, null, "NORMAL", null,
@@ -210,6 +237,58 @@ class LineWebhookApiTest extends IntegrationTestBase {
                 .andReturn().getResponse().getContentAsString(StandardCharsets.UTF_8);
         assertThat(media).contains("\"sourceType\":\"LINE\"")
                 .contains("\"mediaType\":\"image/png\"");
+        assertThat(lineMessageLogs.findAll().stream()
+                        .filter(log -> log.getDirection() == LineMessageLog.Direction.OUT)
+                        .map(LineMessageLog::getContent))
+                .allSatisfy(reply -> assertThat(reply).doesNotMatch(".*#\\d+.*"));
+    }
+
+    @Test
+    void filePdfIsStoredOnceWithoutIntentOrInternalIdDisclosure() throws Exception {
+        String messageId = "m-file-" + UUID.randomUUID();
+        byte[] pdf = "%PDF-1.7\nsafe ticket".getBytes(StandardCharsets.US_ASCII);
+        when(contentClient.fetchContent(
+                        org.mockito.ArgumentMatchers.eq(messageId),
+                        org.mockito.ArgumentMatchers.anyLong()))
+                .thenReturn(new LineContentClient.MessageContent(pdf, "application/octet-stream"));
+        byte[] body = """
+                {"events":[{"type":"message","replyToken":"rt-file",
+                "webhookEventId":"event-%s","source":{"userId":"%s"},
+                "message":{"id":"%s","type":"file",
+                "fileName":"../ticket.pdf","fileSize":%d}}]}
+                """.formatted(messageId, OWNER_USER_ID, messageId, pdf.length)
+                .getBytes(StandardCharsets.UTF_8);
+
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(body))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+        mockMvc.perform(post("/api/line/webhook")
+                        .header("X-Line-Signature", sign(body))
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(body))
+                .andExpect(status().isOk());
+
+        String media = mockMvc.perform(
+                        org.springframework.test.web.servlet.request.MockMvcRequestBuilders
+                                .get("/api/media"))
+                .andExpect(status().isOk())
+                .andReturn()
+                .getResponse()
+                .getContentAsString(StandardCharsets.UTF_8);
+        assertThat(media)
+                .contains("\"sourceType\":\"LINE\"", "\"mediaType\":\"application/pdf\"")
+                .doesNotContain("../ticket.pdf", "\"originalFilename\":\"ticket.pdf\"");
+        org.mockito.Mockito.verify(contentClient, org.mockito.Mockito.times(1)).fetchContent(
+                org.mockito.ArgumentMatchers.eq(messageId), org.mockito.ArgumentMatchers.anyLong());
+        assertThat(taskRepository.count()).isZero();
+        assertThat(lineMessageLogs.findAll().stream()
+                        .filter(log -> log.getDirection() == LineMessageLog.Direction.OUT)
+                        .map(LineMessageLog::getContent))
+                .allSatisfy(reply -> assertThat(reply)
+                        .doesNotContain(messageId, "../ticket.pdf")
+                        .doesNotMatch(".*#\\d+.*"));
     }
 
     @Test

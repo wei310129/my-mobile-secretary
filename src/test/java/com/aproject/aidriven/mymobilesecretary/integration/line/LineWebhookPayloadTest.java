@@ -38,4 +38,21 @@ class LineWebhookPayloadTest {
 
         assertThat(payload.events().getFirst().message().quotedMessageId()).isEqualTo("m1");
     }
+
+    @Test
+    void fileMetadataIsRetainedAndRecognized() throws Exception {
+        String json = """
+                {"events":[{"type":"message","message":{"id":"m3","type":"file",
+                "fileName":"ticket.pdf","fileSize":12345}}]}
+                """;
+
+        LineWebhookPayload payload = new com.fasterxml.jackson.databind.ObjectMapper()
+                .readValue(json, LineWebhookPayload.class);
+        LineWebhookPayload.Event event = payload.events().getFirst();
+
+        assertThat(event.isFileMessage()).isTrue();
+        assertThat(event.message().fileName()).isEqualTo("ticket.pdf");
+        assertThat(event.message().fileSize()).isEqualTo(12345L);
+        assertThat(event.idempotencyKey()).isEqualTo("message:m3");
+    }
 }

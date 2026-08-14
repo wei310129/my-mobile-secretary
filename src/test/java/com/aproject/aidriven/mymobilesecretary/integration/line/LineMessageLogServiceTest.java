@@ -135,6 +135,43 @@ class LineMessageLogServiceTest {
     }
 
     @Test
+    void materializationReferenceStaysTrustedAndNeverEntersInterpreterText() {
+        UUID proposalId = UUID.fromString("70000000-0000-0000-0000-000000000007");
+        LineMessageLog quoted = LineMessageLog.of(
+                LineMessageLog.Direction.OUT, "TEXT", "A pending proposal", NOW);
+        quoted.attachReferences("MATERIALIZATION:" + proposalId + ":1");
+        when(repository.findFirstByWorkspaceIdAndCreatedByUserIdAndExternalMessageId(
+                        WORKSPACE_ID, ACTOR_ID, "quoted-materialization"))
+                .thenReturn(Optional.of(quoted));
+
+        LineMessageLogService.ResolvedConversationContext context = inScope(
+                () -> service.resolveContext("continue", "quoted-materialization"));
+
+        assertThat(context.trustedMaterializationProposalId()).isEqualTo(proposalId);
+        assertThat(context.interpreterText())
+                .contains("continue")
+                .doesNotContain("MATERIALIZATION:", proposalId.toString());
+    }
+
+    @Test
+    void mediaReferenceStaysTrustedAndNeverEntersInterpreterText() {
+        LineMessageLog quoted = LineMessageLog.of(
+                LineMessageLog.Direction.IN, "FILE", "[file]", NOW);
+        quoted.attachReferences("MEDIA:37:1");
+        when(repository.findFirstByWorkspaceIdAndCreatedByUserIdAndExternalMessageId(
+                        WORKSPACE_ID, ACTOR_ID, "quoted-file"))
+                .thenReturn(Optional.of(quoted));
+
+        LineMessageLogService.ResolvedConversationContext context = inScope(
+                () -> service.resolveContext("use this", "quoted-file"));
+
+        assertThat(context.trustedMediaId()).isEqualTo(37L);
+        assertThat(context.interpreterText())
+                .contains("use this")
+                .doesNotContain("MEDIA:37");
+    }
+
+    @Test
     void lengthyChildCourseMessageIncludesRecentHistoryForSpeechRecognitionDisambiguation() {
         LineMessageLog previous = LineMessageLog.of(
                 LineMessageLog.Direction.IN, "TEXT", "女兒每週六要上夏恩英語課", NOW);

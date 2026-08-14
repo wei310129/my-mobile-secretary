@@ -23,6 +23,10 @@ public record LineWebhookPayload(List<Event> events) {
             return "message".equals(type) && message != null && "image".equals(message.type());
         }
 
+        public boolean isFileMessage() {
+            return "message".equals(type) && message != null && "file".equals(message.type());
+        }
+
         /** 發訊者的 LINE userId;LINE 平台驗證請求等無來源事件為 null。 */
         public String sourceUserId() {
             return source == null ? null : source.userId();
@@ -40,10 +44,16 @@ public record LineWebhookPayload(List<Event> events) {
 
     @JsonIgnoreProperties(ignoreUnknown = true)
     public record Message(String id, String type, String text,
-                          String quotedMessageId, String quoteToken) {
+                          String quotedMessageId, String quoteToken,
+                          String fileName, Long fileSize) {
 
         public Message(String id, String type, String text) {
-            this(id, type, text, null, null);
+            this(id, type, text, null, null, null, null);
+        }
+
+        public Message(String id, String type, String text,
+                       String quotedMessageId, String quoteToken) {
+            this(id, type, text, quotedMessageId, quoteToken, null, null);
         }
     }
 

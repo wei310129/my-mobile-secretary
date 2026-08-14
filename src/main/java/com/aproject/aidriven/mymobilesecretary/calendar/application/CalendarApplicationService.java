@@ -415,13 +415,17 @@ public class CalendarApplicationService {
             Instant now) {
         Map<String, Instant> resolved = resolveNodes(drafts, placement);
         for (CalendarNodeDraft draft : drafts) {
-            nodes.saveAndFlush(CalendarTimeNodeEntity.create(
+            CalendarTimeNodeEntity node = CalendarTimeNodeEntity.create(
                     UUID.randomUUID(),
                     planId,
                     activityId,
                     draft.node(),
                     resolved.get(draft.node().id()),
-                    now));
+                    now);
+            if (draft.location() != null) {
+                node.reviseLocation(draft.location(), node.getRevision(), now);
+            }
+            nodes.saveAndFlush(node);
         }
     }
 

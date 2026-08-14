@@ -18,6 +18,22 @@ public interface RoutePlaceCreationDraftRepository
                     String scopeDigest,
                     RoutePlaceCreationDraftStatus status);
 
+    Optional<RoutePlaceCreationDraft>
+            findWithLockByIdAndWorkspaceIdAndCreatedByUserIdAndChannelAndConversationScopeDigest(
+                    UUID id,
+                    UUID workspaceId,
+                    UUID actorId,
+                    WorkspaceChannel channel,
+                    String scopeDigest);
+
+    Optional<RoutePlaceCreationDraft>
+            findByIdAndWorkspaceIdAndCreatedByUserIdAndChannelAndConversationScopeDigest(
+                    UUID id,
+                    UUID workspaceId,
+                    UUID actorId,
+                    WorkspaceChannel channel,
+                    String scopeDigest);
+
     boolean existsByWorkspaceIdAndCreatedByUserIdAndParentCalendarDraftIdAndStatus(
             UUID workspaceId,
             UUID actorId,

@@ -12,12 +12,12 @@
 
 My Mobile Secretary 將 LLM 限制在自然語言理解、Structured Output 與結果表達；真正會改變狀態的操作，仍由 Java 的 domain/application layer 驗證並執行。目標是讓 AI 能參與個人行程、提醒與生活資訊處理，同時保留後端系統需要的可測試性、權限邊界與一致性。
 
-### 典型處理流程
+### 示範流程：建立定時提醒
 
 ```text
 LINE / REST
     │
-    │  自然語言需求
+    │  「明天下午三點提醒我買牛奶」
     ▼
 Conversation / Intent
     │
@@ -40,6 +40,7 @@ Domain Handler
     ├─ Redis
     └─ Integration Adapter
     │
+    │  提醒到期，由背景 worker 處理
     ▼
 Notification Outbox
     │
@@ -49,27 +50,28 @@ LINE / Windows Toast / Server Log
 
 ## 目前能力與完成度
 
-### 已納入目前後端架構
+### 已實作的後端能力
 
-- LINE Bot 與 REST API 作為主要互動入口。
-- Spring AI + Anthropic 將自然語言轉為結構化 Intent；LLM 不直接修改業務資料。
-- Calendar、Planner、Schedule、Reminder 等領域能力以 application/domain 邊界組織。
-- PostgreSQL 16 + PostGIS 保存交易、行事曆、任務、知識與地理資料。
-- Flyway 管理 schema 演進，並停用 Hibernate 自動更新。
-- Redis 7 用於外部 API 快取與延遲提醒。
-- Notification Outbox 將「通知落地」與「實際送出」解耦。
-- workspace scope + PostgreSQL Row-Level Security 提供第二層資料隔離。
-- JUnit 5、Spring Boot Test、Testcontainers 支援自動化測試。
-- `internal/ai-dispatcher` 與產品 runtime 分離，專門處理 Codex 開發 agent 協調。
+| 使用情境 | 目前可以做什麼 |
+| --- | --- |
+| 待辦與提醒 | 透過 LINE／REST 建立、查詢、完成與調整待辦；Redis 延遲佇列處理到期提醒 |
+| 行程與規劃 | Calendar、Planner、Reminder 處理行程、提醒與時間／地理可行性；Calendar v2 切換依獨立 gate 推進 |
+| 購物與個人知識 | 管理購物清單、庫存與價格歷史；圖片文件先抽取，再依領域規則保存生活資訊 |
+| 外部情境 | 透過 adapter 查詢天氣、交通與地點；可用性依供應商設定與資料覆蓋而定 |
+| 可靠性與隔離 | Notification Outbox、workspace／actor scope、PostgreSQL RLS、Flyway 與自動化測試已納入後端 |
 
-### 規劃／持續擴充
+可以從這些語句開始：`明天下午三點提醒我買牛奶`、`購物清單加雞蛋跟牛奶`、`明天會下雨嗎`。時間、地點或上下文不足時，系統需先釐清，不能把模型的猜測當作可執行事實；完整語句契約見[對話能力目錄](src/main/resources/conversation-capabilities.txt)。
 
-- 原生 iOS 客戶端。
-- EventKit、Core Location、APNs 等 iOS 能力。
-- 更多外部資料來源與可執行 Provider。
-- Booking／Payment 等會造成外部狀態變更的能力，維持明確確認與安全閘門。
+### 尚未完成或仍受驗收閘門限制
 
-> README 僅將目前程式庫已建立的能力與規劃項目分開描述；更細的現況與設計決策以 `docs/` 為準。
+| 項目 | 狀態與邊界 |
+| --- | --- |
+| 原生 iOS／EventKit／Core Location／APNs／Live Activities | 規劃中；目前主要入口是 LINE Bot 與 REST API |
+| Booking／Payment 真實交易 | 已有本地及 fake-provider 執行基礎；真實供應商串接、保留庫存、下單與付款尚未開放 |
+| Calendar v2 完整切換與舊模型移除 | 依現行計畫分階段驗收，不以模組存在代表已完成所有 release gates |
+| 進階基礎設施 | Redis Streams、Kafka、Kubernetes 與 pgvector 留待後續階段評估 |
+
+目前完成度以[現行決策](docs/decisions/current.md)與[進行中計畫索引](docs/exec-plans/active/index.md)為準；上述能力不代表所有外部服務與客戶端均已上線。
 
 ## Engineering Highlights
 
@@ -205,7 +207,31 @@ flowchart TB
 
 ## 外部整合
 
-現有或規劃中的整合包括 LINE Messaging API、Anthropic、TDX、中央氣象署、Google Places，以及未來 iOS 所需的 EventKit、Core Location 與 APNs。
+目前後端整合包括 LINE Messaging API、Anthropic、TDX、中央氣象署與 Google Places，需依各 adapter 設定憑證。EventKit、Core Location 與 APNs 屬未來 iOS 客戶端範圍；真實交易 Provider 仍受獨立開發及外部操作閘門限制。
+
+## 測試與工程證據
+
+驗證入口與測試來源均可在儲存庫查閱：
+
+| 驗證目標 | 證據入口 |
+| --- | --- |
+| 自然語言能力契約 | [ConversationCapabilityCatalogTest](src/test/java/com/aproject/aidriven/mymobilesecretary/intent/application/ConversationCapabilityCatalogTest.java) |
+| LINE webhook 與簽章防線 | [LineWebhookApiTest](src/test/java/com/aproject/aidriven/mymobilesecretary/api/line/LineWebhookApiTest.java)、[LineSignatureVerifierTest](src/test/java/com/aproject/aidriven/mymobilesecretary/integration/line/LineSignatureVerifierTest.java) |
+| Redis 到期提醒流程 | [DelayedReminderFlowTest](src/test/java/com/aproject/aidriven/mymobilesecretary/reminder/application/DelayedReminderFlowTest.java) |
+| 通知持久化與交付 | [NotificationOutboxIntegrationTest](src/test/java/com/aproject/aidriven/mymobilesecretary/integration/notification/NotificationOutboxIntegrationTest.java) |
+| workspace／RLS 隔離 | [WorkspaceRlsIntegrationTest](src/test/java/com/aproject/aidriven/mymobilesecretary/account/workspace/WorkspaceRlsIntegrationTest.java) |
+
+[GitHub Actions Test gates](.github/workflows/test-gates.yml) 在 PR 執行 Fast、三個 Integration shards 與彙整 gate；整合測試使用 Testcontainers，單一 shard 內保持 serial。測試報告以該次 CI 的 Surefire artifacts 為準；真實 LLM／外部服務的 live evaluation 為另外的 opt-in 範圍。
+
+```powershell
+# 不啟動完整 Spring／Testcontainers 的快速驗證
+powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1 -Lane Fast
+
+# 完整 deterministic automated regression（需要 Docker，排除 live evaluation）
+powershell -ExecutionPolicy Bypass -File .\scripts\test.ps1 -Lane Full
+```
+
+測試分層與完整 gate 見[測試策略](docs/test-strategy.md)。本頁提供可重現的驗證入口；通過項目與數量需查該次執行報告。
 
 ## 技術棧
 
@@ -220,6 +246,20 @@ flowchart TB
 | Test | JUnit 5、Spring Boot Test、Testcontainers |
 | Local Infrastructure | Docker Compose |
 
+## 本機啟動（Windows 開發環境）
+
+準備 JDK 21、Docker Desktop 與 PowerShell；專案附 Maven Wrapper。LINE 與 Anthropic 等憑證放在未追蹤的 `secrets.yaml`，依 `src/main/resources/application.yaml` 的設定鍵配置，勿提交至版控。完整自然語言示範需要模型憑證；LINE 互動另需 channel 設定與可由 LINE 存取的 HTTPS webhook。
+
+```powershell
+# 啟動 PostgreSQL／Redis、主服務與既有協調式開發環境
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-start.ps1
+
+# 查看服務健康與 checkout／運行版本
+powershell -ExecutionPolicy Bypass -File .\scripts\dev-status.ps1
+```
+
+`dev-start.ps1` 預設使用 `local` profile，管理 ngrok，並以 LINE 官方端到端 webhook 測試驗證入口。啟動成功只證明服務及 webhook 連通；上方自然語言示範仍需透過 LINE 實際驗收。[環境預檢契約](docs/agent-context/development-environment-preflight.md)說明寫入、測試與 runtime 操作的 capability gate。
+
 ## 儲存庫邊界
 
 ```text
@@ -231,4 +271,10 @@ internal/ai-dispatcher/    # 獨立的開發自動化應用，不屬於產品 ru
 
 `internal/ai-dispatcher` 擁有獨立的 Maven build、資料庫、Flyway migration 與生命週期，只負責 Codex 開發 agent 的協調，不得成為主應用依賴。
 
-更完整的架構原則與現行決策，請參閱 [docs/architecture.md](docs/architecture.md) 與 [docs/decisions/current.md](docs/decisions/current.md)。
+## 路線圖與文件
+
+- [架構與長期方向](docs/architecture.md)：產品原則、模組邊界與原始路線圖。
+- [現行決策](docs/decisions/current.md)：已拍板的產品語意與工程不變量。
+- [進行中計畫](docs/exec-plans/active/index.md)：Calendar、Travel、Booking 等階段與驗收閘門。
+- [開發計畫與歷史](docs/development-plan.md)：階段進度、驗收結果與決策追溯。
+- [測試策略](docs/test-strategy.md)：本機選測、CI gate 與 live evaluation 邊界。

@@ -8,6 +8,22 @@
 
 這個專案也記錄我如何實踐 **Agentic coding**：由我決定產品與架構邊界，透過 AI agent 分階段開發，再以雙機交接、測試與版本證據驗收。下面整理已完成的操作實績與可查證來源。
 
+## 工程重點與驗證入口
+
+| 問題 | 設計取捨 | 證據入口 |
+| --- | --- | --- |
+| LLM 輸出可能不符合可執行規則 | 模型只理解與表達；Java application/domain 驗證權限、時間、地理與狀態，再執行資料異動 | 本頁 Engineering Highlights；[架構文件](docs/architecture.md) |
+| 單人維護仍需清楚的模組邊界 | 採 modular monolith、薄客戶端與 provider adapter，控制部署及整合成本 | 本頁架構與模組導覽 |
+| 私人任務不能跨使用者洩漏 | workspace／actor scope 加上 PostgreSQL RLS，schema 由 Flyway 管理 | 本頁資料隔離；[測試策略](docs/test-strategy.md) |
+| 核心交易與外部通知可能分別失敗 | Notification Outbox 先落地，再交付通知通道；可靠落地不等於第三方已送達 | 本頁通知可靠性與完成度 |
+| 時間推進或模型調整造成回歸 | 可注入 Clock、Fast／Testcontainers／opt-in live evaluation 分層驗證 | [PR #62 的固定 Clock 修復](https://github.com/wei310129/my-mobile-secretary/pull/62)；本頁 Agentic Coding |
+
+### AI 開發工具與責任
+
+前期使用 **Claude Code**，並使用 **ChatGPT／Codex** 協助需求分析、方案比較、實作、重構與測試。我負責產品方向、架構與執行邊界、驗收標準及結果判斷；AI 的程式產出仍須經直接相關測試與交付品質閘門驗證。`internal/ai-dispatcher` 是隔離的開發自動化應用，不是個人秘書產品的 runtime。
+
+下方 PR 與測試數量是特定修正的歷史證據；目前版本的通過範圍以該次報告為準。
+
 ## 這個專案在解決什麼問題
 
 一般聊天型 AI 很擅長理解需求，但「理解」不等於「可靠執行」。
@@ -318,3 +334,4 @@ internal/ai-dispatcher/    # 獨立的開發自動化應用，不屬於產品 ru
 - [進行中計畫](docs/exec-plans/active/index.md)：Calendar、Travel、Booking 等階段與驗收閘門。
 - [開發計畫與歷史](docs/development-plan.md)：階段進度、驗收結果與決策追溯。
 - [測試策略](docs/test-strategy.md)：本機選測、CI gate 與 live evaluation 邊界。
+

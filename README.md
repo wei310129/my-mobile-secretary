@@ -6,6 +6,8 @@
 
 > 核心優先順序：**提醒的可靠度高於提醒的聰明度。**
 
+這個專案也記錄我如何實踐 **Agentic coding**：由我決定產品與架構邊界，透過 AI agent 分階段開發，再以雙機交接、測試與版本證據驗收。下面整理已完成的操作實績與可查證來源。
+
 ## 這個專案在解決什麼問題
 
 一般聊天型 AI 很擅長理解需求，但「理解」不等於「可靠執行」。
@@ -72,6 +74,44 @@ LINE / Windows Toast / Server Log
 | 進階基礎設施 | Redis Streams、Kafka、Kubernetes 與 pgvector 留待後續階段評估 |
 
 目前完成度以[現行決策](docs/decisions/current.md)與[進行中計畫索引](docs/exec-plans/active/index.md)為準；上述能力不代表所有外部服務與客戶端均已上線。
+
+## Agentic Coding：我如何用 AI 開發與驗收
+
+我負責產品決策、架構邊界與驗收標準，讓 coding agent 依明確契約完成規劃、實作與測試。每個階段都要留下可 review 的分支、測試結果與交接紀錄；模型回覆「完成」仍需用工程證據確認。
+
+### 從需求到可審查的交付
+
+1. **先固定契約**：把產品決策、不變量、候選檔案與驗收條件寫進計畫，依 [AGENTS.md](AGENTS.md) 與任務路由載入必要 context。
+2. **分階段實作**：一個 gate 對應一支從 main 建立的分支與一個 PR；限定可修改路徑，避免 agent 順手擴大範圍。
+3. **用證據驗收**：先重現失敗，再跑 focused、相鄰安全測試與必要的完整回歸；交付附上命令、結果、skip 與殘餘風險。
+4. **保留人的決策權**：產品行為變更、跨機交接與外部異動依各自 gate 處理；merge 必須取得當輪對精確 PR／head SHA 的授權，再重新驗證 required checks。
+
+長時間開發的計畫也設有 context 壓縮提醒點，續作摘要保留已拍板決策、修改檔案、驗證結果、未完成工作與下一步，讓新 session 能接續已驗證的階段。
+
+### 雙機開發：用 ownership 與 Git 交接工作
+
+筆電與桌電各有開發 lane，分工由路徑與發布 checkpoint 約束：
+
+| 開發 lane | 分工與交接方式 |
+| --- | --- |
+| 筆電 | Calendar／Travel／Conversation 與中央整合；負責發布上游契約與 schema handoff |
+| 桌電 | 接手已發布的 Booking／ADD execution 契約；在自己的分支開發與驗證，依 grant 使用 migration 版本 |
+
+跨機交接使用已 push 的 SHA、producer-owned 狀態檔與 trigger receipt；consumer 必須重新驗證 Git 與依賴狀態。同機的 Maven mutex 只協調本機資源，跨機協調另由 Git、路徑 ownership 與一次性 Flyway grant 處理。規則見[雙機計畫](docs/exec-plans/active/two-machine-parallel-development-plan.md)與[交接協定](docs/exec-plans/active/parallel-development-trigger-registry.md)。
+
+**已發布的操作實績**：[桌電交接紀錄](docs/exec-plans/active/handoffs/desktop-trigger-state.json)保存 ADD Core 的 [PR #11／發布版本](https://github.com/wei310129/my-mobile-secretary/commit/194413cd78004494a30c6c64a7aba60c6cb525f2)，包含 focused 19、security-neighbor 29、完整回歸 1,609 tests（16 skipped），failure／error 均為 0。Booking B4-Fake 也有已合併版本、測試證據與外部異動次數 0 的紀錄。這些是各階段的歷史驗收數字；後續串接與 lane 切換仍需各自通過 gate。
+
+### 測試驗證：從修正案例檢查到泛化與回歸
+
+- **分層驗證**：純 Java 契約與規則跑 Fast；Spring wiring、Flyway、RLS、通知與併發由 Testcontainers integration 驗證；真實模型與外部服務另外做 opt-in live evaluation。CI 分 shard 執行並檢查 suite 是否漏測或重複，詳見[測試策略](docs/test-strategy.md)。
+- **保留未參與修正的驗收案例**：對話能力以 permanent regression 與 sealed holdout 驗收，避免只符合修正時看過的語句。[Calendar Wheel 8 紀錄](docs/exec-plans/active/calendar-plan-v2-sol-medium-development-test-plan.md)包含 16 cases／19 turns 的 sealed holdout，failed 為 0。
+- **失敗重現與修復實例**：[PR #62](https://github.com/wei310129/my-mobile-secretary/pull/62)曾因系統日期推進出現 3 個整合測試失敗。先在本機重現，再為這三個測試類別注入固定的 scenario `Clock`；保留原有 assertions 與正式環境的時鐘行為。修正後依序通過 3 個原失敗案例、49 個相關測試，以及本機完整回歸 1,656 tests（13 skipped、0 failure／error），並通過[該修正 SHA 的 CI](https://github.com/wei310129/my-mobile-secretary/actions/runs/36653318941)。本機 Git metadata 插件相容性問題的測試暫用參數與限制另記於[工具待辦](docs/tooling-backlog.md)，未改動 CI 設定。
+
+### 開發環境也要有故障與交付驗證
+
+Agent 開發會共用 Maven target、Docker、資料庫與服務生命週期。我將 repository-owned 入口接入 coordinator lease 與交接 receipt，並在隔離環境驗證競爭、失敗注入與 owner crash。[協調工具完成紀錄](docs/exec-plans/completed/development-session-coordination-pipeline.md)包含 20-process kernel 驗證、同時進入 critical section 最多 1 個程序，以及 rollout 各項 gate 的結果。
+
+交付時也比對 checkout 與 `/actuator/info` 的完整 SHA，區分「程式碼已提交」與「服務正在運行該版本」。未經 wrapper 的 IDE／直接命令仍有偵測邊界，共用持久資料的清理也維持保守策略；這些限制與測試結果一併留下紀錄。
 
 ## Engineering Highlights
 

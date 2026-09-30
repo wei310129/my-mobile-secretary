@@ -29,6 +29,8 @@
 
 ## 待處理
 
+- 2026-09-30：本機 Git 2.17.1 配合 git-commit-id Maven plugin 9.0.2 的 native Git 路徑，在 `.git` 執行 `git log ... HEAD` 時遇到 revision／filename 歧義，Maven 在測試前中止。工具專用 session 應驗證受支援 Git 版本及 primary／linked worktree 的 metadata 擷取；本次測試僅以官方 `-Dmaven.gitcommitid.skip=true` 參數略過本機 metadata，不可用此結果宣稱 clean build 或運行版本 CURRENT。
+
 - Codex host execution policy目前會拒絕 linked worktree 的精確低風險 `git fetch origin main` escalation，
   因普通 sandbox無權寫 Git common-dir 的 `worktrees/<id>/FETCH_HEAD`，而 auto-review又禁止所有
   `require_escalated`。此項已判定由 host policy owner負責；repo-local prefix rule無法同時表達 exact argv

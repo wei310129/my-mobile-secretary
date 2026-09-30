@@ -4,16 +4,19 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aproject.aidriven.mymobilesecretary.FixedScenarioClockConfiguration;
 import com.aproject.aidriven.mymobilesecretary.IntegrationTestBase;
 import com.aproject.aidriven.mymobilesecretary.TestcontainersConfiguration.StubIntentInterpreter;
 import com.aproject.aidriven.mymobilesecretary.intent.application.IntentCommand;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 
 /**
  * 意圖 API 整合測試:解析(stub)→ 驗證 → 執行 → 自動綁定/可行性把關的完整鏈。
  */
+@Import(FixedScenarioClockConfiguration.class)
 class IntentApiTest extends IntegrationTestBase {
 
     @Autowired

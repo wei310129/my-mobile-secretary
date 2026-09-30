@@ -5,13 +5,16 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
+import com.aproject.aidriven.mymobilesecretary.FixedScenarioClockConfiguration;
 import com.aproject.aidriven.mymobilesecretary.IntegrationTestBase;
 import com.aproject.aidriven.mymobilesecretary.schedule.application.ScheduleService;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 
 /** Scenario #158: a yearless date that conflicts with its stated weekday is fail-closed. */
+@Import(FixedScenarioClockConfiguration.class)
 class CalendarDateIntentApiTest extends IntegrationTestBase {
 
     @Autowired

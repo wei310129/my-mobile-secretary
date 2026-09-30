@@ -2,17 +2,22 @@ package com.aproject.aidriven.mymobilesecretary.calendar.participation;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.aproject.aidriven.mymobilesecretary.FixedScenarioClockConfiguration;
 import com.aproject.aidriven.mymobilesecretary.calendar.recurrence.CalendarOccurrenceKey;
+import java.time.Clock;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDateTime;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Import;
 
+@Import(FixedScenarioClockConfiguration.class)
 class CalendarRecurringRegistrationIntegrationTest
         extends CalendarParticipationIntegrationSupport {
 
+    @Autowired private Clock clock;
     @Autowired private CalendarRegistrationPolicyService registrationPolicies;
     @Autowired private CalendarRecurringRegistrationService recurringRegistrations;
 
@@ -168,7 +173,7 @@ class CalendarRecurringRegistrationIntegrationTest
     }
 
     private void configureBasePolicy(Fixture fixture) {
-        Instant now = Instant.parse("2026-07-25T00:00:00Z");
+        Instant now = Instant.now(clock);
         inContext(
                 fixture.ownerContext(),
                 () -> registrationPolicies.configure(
